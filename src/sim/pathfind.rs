@@ -240,11 +240,7 @@ pub fn astar_counted(grid: &TileGrid, start: usize, goal: usize) -> (Option<Vec<
             if tentative < g_score[nb] {
                 g_score[nb] = tentative;
                 came_from[nb] = cell;
-                open.push(Reverse((
-                    tentative + manhattan(grid, nb, goal),
-                    tentative,
-                    nb,
-                )));
+                open.push(Reverse((tentative + manhattan(grid, nb, goal), tentative, nb)));
             }
         }
     }

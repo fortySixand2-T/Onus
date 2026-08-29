@@ -155,10 +155,7 @@ pub fn report_rates(time: Res<Time>, mut report: ResMut<RateReport>) {
     report.frames += 1;
     report.elapsed += time.delta_secs();
     if report.elapsed >= 1.0 {
-        info!(
-            "sim ticks: {} | frames: {}",
-            report.sim_ticks, report.frames
-        );
+        info!("sim ticks: {} | frames: {}", report.sim_ticks, report.frames);
         report.sim_ticks = 0;
         report.frames = 0;
         report.elapsed = 0.0;

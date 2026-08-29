@@ -42,12 +42,7 @@ fn clear_selection(commands: &mut Commands, selected: &Query<Entity, With<Select
     }
 }
 
-type SelectableItem<'a> = (
-    Entity,
-    &'a Position,
-    Option<&'a UnitKind>,
-    Option<&'a ResourceNode>,
-);
+type SelectableItem<'a> = (Entity, &'a Position, Option<&'a UnitKind>, Option<&'a ResourceNode>);
 
 /// Topmost selectable under the cursor: the containing box with the nearest center.
 fn pick(

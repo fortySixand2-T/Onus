@@ -71,3 +71,4 @@
 - [2026-08-29] Modified: tests/m1_selection.rs — M4a AC3: harness supplies Content + Stockpiles to apply_commands
 - [2026-08-29] Modified: tests/m4a_economy.rs — M4a AC3: placement/production cost tests + input-emits-orders tests
 - [2026-08-29] Modified: FINDINGS.md — F-003: Time<Fixed> outside FixedUpdate leaks wall-clock into the sim
+- [2026-08-29] Modified: src/input.rs, src/ui.rs, src/sim/pathfind.rs, src/sim/spatial.rs, tests/m1_selection.rs — revert incidental rustfmt churn outside M4a scope
