@@ -103,3 +103,6 @@
 - [2026-08-29] Modified: FINDINGS.md — F-006 (integer damage + data-driven stat scaling), F-007 (snapshot combat tick, engage vs pursue leash)
 - [2026-08-29] Created: tests/critic_m4b.rs — M4b adversarial critic probes (13 tests; 3 fail: player-order override, nemesis multiply truncation, dangling Target)
 - [2026-08-29] Modified: CHANGELOG.md — logged the M4b critic pass
+- [2026-08-29] Modified: src/sim/mod.rs — critic fix: an explicit MoveTo/Gather order removes Engaging, so a commander's order beats an in-progress auto-chase
+- [2026-08-29] Modified: src/sim/combat.rs — Engaging doc now states where the cancellation happens (apply_commands)
+- [2026-08-29] Modified: tests/m4b_combat.rs — coverage for the mid-chase case: a move order cancels an auto-chase already in progress

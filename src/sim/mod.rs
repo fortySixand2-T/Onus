@@ -139,11 +139,17 @@ pub fn apply_commands(
                 for e in units {
                     // A move order cancels gathering, but a carried load is
                     // kept (it stays "in flight" — Alloy is never destroyed).
+                    // It also cancels an auto-engagement: `Engaging` marks a
+                    // move *combat* issued, so leaving it on would let the same
+                    // tick's combat pass overwrite the commander's destination.
+                    // Orders come from the commander; the sim only ever
+                    // auto-chases a unit that has none.
                     commands
                         .entity(e)
                         .insert(MoveTarget(dest))
                         .remove::<GatherTarget>()
-                        .remove::<GatherPhase>();
+                        .remove::<GatherPhase>()
+                        .remove::<Engaging>();
                 }
             }
             Order::Gather {
@@ -155,11 +161,13 @@ pub fn apply_commands(
                     // Move to the node and start the gather loop (`economy`).
                     // `insert_if_new` on `Carrying` so re-tasking a worker that
                     // is already holding a load never zeroes that load.
+                    // Also an explicit order, so it likewise ends any chase.
                     commands
                         .entity(e)
                         .insert(MoveTarget(node_pos))
                         .insert(GatherTarget(node))
                         .insert(GatherPhase::ToNode)
+                        .remove::<Engaging>()
                         .insert_if_new(Carrying(0));
                 }
             }

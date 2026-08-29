@@ -16,11 +16,11 @@ use std::path::PathBuf;
 
 use bevy::prelude::*;
 
-use onus::sim::combat::{AttackCooldown, Casualties, Health, Target};
+use onus::sim::combat::{AttackCooldown, Casualties, Engaging, Health, Target};
 use onus::sim::content::Content;
 use onus::sim::economy::{Stockpiles, UnitDefIdx};
 use onus::sim::spatial::{brute_force_nearest_enemy, Faction, SplitMix64, Unit};
-use onus::sim::{CommandQueue, MoveTarget, Position, RateReport, TileGrid};
+use onus::sim::{CommandQueue, MoveTarget, Order, Position, RateReport, TileGrid};
 
 // ---- harness ----------------------------------------------------------------
 
@@ -506,6 +506,49 @@ fn the_nemesis_bonus_applies_in_a_live_fight() {
         dealt > base - c.unit("ravager").unwrap().armor * c.combat.mitigation_per_armor,
         "and it beats the armored hit"
     );
+}
+
+/// The commander outranks the sim: a move order issued to a unit that is
+/// *already* auto-chasing cancels the chase on the tick it is applied, and the
+/// unit goes where it was told. (The earlier tests only covered a unit that had
+/// never engaged, which is how the mid-chase case slipped through.)
+#[test]
+fn a_move_order_cancels_an_auto_chase_already_in_progress() {
+    let mut app = sim_app();
+    let hunter = spawn_unit(&mut app, "sentinel", Faction::A, Vec2::ZERO);
+    let prey = spawn_unit(&mut app, "worker", Faction::B, Vec2::new(150.0, 0.0));
+
+    step(&mut app);
+    assert!(
+        app.world().get::<Engaging>(hunter).is_some(),
+        "precondition: the sentinel is chasing"
+    );
+
+    let dest = Vec2::new(-400.0, 0.0);
+    app.world_mut()
+        .resource_mut::<CommandQueue>()
+        .0
+        .push_back(Order::MoveTo {
+            units: vec![hunter],
+            dest,
+        });
+    step(&mut app);
+    assert!(
+        app.world().get::<Engaging>(hunter).is_none(),
+        "the order ends the chase"
+    );
+    assert_eq!(
+        app.world().get::<MoveTarget>(hunter).map(|m| m.0),
+        Some(dest),
+        "and the destination survives the same tick's combat pass"
+    );
+
+    tick(&mut app, 120);
+    assert!(
+        pos(&app, hunter).unwrap().x < -100.0,
+        "the unit retreats instead of resuming the chase"
+    );
+    assert!(alive(&app, prey), "and it never got back into reach");
 }
 
 /// A cooldown component is sim state, not a wall-clock timer: it counts ticks.

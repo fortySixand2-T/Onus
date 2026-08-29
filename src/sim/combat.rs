@@ -78,9 +78,14 @@ pub struct AttackCooldown(pub u32);
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Target(pub Entity);
 
-/// Marks a [`MoveTarget`] that *combat* set while chasing. Player orders carry
-/// no `Engaging`, so auto-engagement never overrides what the commander asked
-/// for: combat only ever cancels a move it issued itself.
+/// Marks a [`MoveTarget`] that *combat* set while chasing.
+///
+/// The marker is what keeps auto-engagement from overriding the commander:
+/// combat only ever re-aims or cancels a move that carries `Engaging`, and
+/// [`crate::sim::apply_commands`] **removes** `Engaging` when an explicit
+/// `MoveTo`/`Gather` order arrives. So an order always wins — including on the
+/// tick it is issued, since orders are applied before the combat pass — and a
+/// unit is auto-chased only while it has no orders of its own.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Engaging;
 
