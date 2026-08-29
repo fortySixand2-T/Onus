@@ -118,13 +118,33 @@ Critic probes: grid nearest-enemy == brute-force nearest-enemy over random seeds
 
 Critic probes: path uses only walkable, contiguous cells and reaches the goal; returns none iff unreachable; flow field agrees with A* on reachability; group cost < N× A*.
 
-### M4 — economy, combat, AI
-- [ ] Resource gather/deposit loop.
-- [ ] Building placement consumes the resource.
-- [ ] Health + attack; engages nearest enemy in range; death despawns.
-- [ ] Scripted AI builds and attacks on a timer.
+### M4 — economy, combat, AI (the game becomes playable)
 
-Critic probes: resource conserved (gathered == deposited + carried); building cost deducted exactly once; death despawns exactly once; AI is deterministic given the seed.
+Split into three sub-milestones, each its own implementer→critic loop. Content is
+data: costs/stats load from `assets/data/units.ron` + `resources.ron` (MVP =
+**Alloy only** as the single currency funding all 5 units + Worker; see MVP_PLAN.md).
+Combat uses M2 nearest-enemy; movement uses M3 pathfinding. 1v1 vs scripted AI,
+mirror nation.
+
+#### M4a — economy (Alloy loop + content-as-data)
+- [ ] Load `units.ron` + `resources.ron` into sim structs at startup (no hardcoded costs/stats).
+- [ ] Worker gather/deposit loop: harvest Alloy from a deposit, return to HQ, deposit; per-faction stockpile.
+- [ ] Building placement consumes Alloy (HQ at start; Barracks placeable). Unit production (HQ→Worker, Barracks→its units) each costs Alloy.
+
+Critic probes: resource conserved (gathered == deposited + carried + in-flight); every building/unit cost deducted **exactly once**; costs come from the RON, not constants; deterministic given the seed.
+
+#### M4b — combat (4-stat + nemesis)
+- [ ] Health + attack; a unit engages the nearest enemy in range (M2), pathing via M3; death despawns.
+- [ ] 4-stat model: Offense = damage/hit, Armor = flat mitigation per hit, Defense = HP pool, Speed = movement.
+- [ ] Nemesis override: +30% damage **ignoring armor** iff `attacker.nemesis == defender.id` (from RON).
+
+Critic probes: damage/armor math matches the spec; nemesis applies iff prey matches and ignores armor; death despawns **exactly once** (no double-death); HP never underflows; deterministic.
+
+#### M4c — scripted AI + win condition
+- [ ] Scripted AI: gathers, builds a Barracks, trains a mixed force, attack-moves — on a timer, **deterministic given the seed**.
+- [ ] Win = destroy the enemy **HQ**; the match then terminates. Target ≤ ~8 min.
+
+Critic probes: AI is deterministic given the seed (same seed ⇒ same actions); the match terminates on HQ destruction; no wall-clock / iteration-order nondeterminism in the AI or end check.
 
 ### M5 — deterministic replay
 - [ ] `Command` enum tagged with a target tick; applied only in `FixedUpdate`.
