@@ -113,3 +113,4 @@
 - [2026-08-29] Modified: src/sim/combat.rs — critic fix: Target is published after the death pass, so no engagement points at a unit that died this tick
 - [2026-08-29] Modified: tests/m4b_combat.rs — no_engagement_points_at_a_unit_that_died_this_tick
 - [2026-08-29] Modified: FINDINGS.md — corrected the F-005 extension commit reference
+- [2026-08-29] Modified: tests/critic_m4b.rs — M4b critic pass 2: 12 probes on the fix diff (order ownership across tick boundaries, max_stat as data, validator overflow, Target/nearest-enemy differential, per-tick state hash, casualty conservation); 2 fail

@@ -618,3 +618,482 @@ fn a_unit_never_fires_faster_than_its_ron_cadence() {
         );
     }
 }
+
+// ============================================================================
+// Critic pass 2 — probes on the fix diff (12e9ba0..HEAD).
+// ============================================================================
+
+use onus::sim::spatial::{brute_force_nearest_enemy, Unit};
+
+/// Live snapshot of every unit, sorted by entity bits — the same order the
+/// combat snapshot uses, so index i here is index i there.
+fn layout(app: &mut App) -> Vec<(Entity, Unit)> {
+    let mut v: Vec<(Entity, Unit)> = app
+        .world_mut()
+        .query::<(Entity, &Position, &Faction)>()
+        .iter(app.world())
+        .map(|(e, p, f)| {
+            (
+                e,
+                Unit {
+                    pos: p.0,
+                    faction: *f,
+                },
+            )
+        })
+        .collect();
+    v.sort_unstable_by_key(|(e, _)| e.to_bits());
+    v
+}
+
+fn targets(app: &mut App) -> Vec<(Entity, Entity)> {
+    let mut v: Vec<(Entity, Entity)> = app
+        .world_mut()
+        .query::<(Entity, &Target)>()
+        .iter(app.world())
+        .map(|(e, t)| (e, t.0))
+        .collect();
+    v.sort_unstable_by_key(|(e, _)| e.to_bits());
+    v
+}
+
+/// Whole-world fingerprint at a tick boundary, including the engagement graph.
+fn state_hash(app: &mut App) -> u64 {
+    let mut rows: Vec<(u64, u32, u32, u64, u32)> = app
+        .world_mut()
+        .query::<(Entity, &Position, Option<&Health>, Option<&Target>, Option<&AttackCooldown>)>()
+        .iter(app.world())
+        .map(|(e, p, h, t, cd)| {
+            (
+                e.to_bits(),
+                p.0.x.to_bits(),
+                p.0.y.to_bits(),
+                t.map(|t| t.0.to_bits()).unwrap_or(u64::MAX),
+                h.map(|h| h.current).unwrap_or(u32::MAX) ^ (cd.map(|c| c.0).unwrap_or(u32::MAX) << 1),
+            )
+        })
+        .collect();
+    rows.sort_unstable();
+    let mut acc = 0xcbf2_9ce4_8422_2325u64;
+    for r in rows {
+        for w in [r.0, r.1 as u64, r.2 as u64, r.3, r.4 as u64] {
+            acc ^= w;
+            acc = acc.wrapping_mul(0x1000_0000_01b3);
+        }
+    }
+    acc
+}
+
+// ---- P16-P21: the commander owns the unit's orders, on every tick ----------
+
+/// The fix removes `Engaging` when an order arrives. Probe the *boundary*: the
+/// order is issued on the very tick the chase would begin, so the unit has no
+/// `Engaging` yet and the order must still win.
+#[test]
+fn an_order_issued_on_the_tick_a_chase_would_begin_wins() {
+    let mut app = sim_app();
+    let hunter = spawn_unit(&mut app, "sentinel", Faction::A, Vec2::ZERO);
+    let _prey = spawn_unit(&mut app, "worker", Faction::B, Vec2::new(150.0, 0.0));
+    let dest = Vec2::new(-500.0, 0.0);
+    push(
+        &mut app,
+        Order::MoveTo {
+            units: vec![hunter],
+            dest,
+        },
+    );
+    step(&mut app);
+    assert!(
+        app.world().get::<Engaging>(hunter).is_none(),
+        "combat must not start a chase on a unit that was just ordered"
+    );
+    assert_eq!(
+        app.world().get::<MoveTarget>(hunter).map(|m| m.0),
+        Some(dest),
+        "the commanded destination must survive the tick's combat pass"
+    );
+}
+
+/// The order must keep winning on *every* subsequent tick, not just the one it
+/// arrived on: a fix that only clears `Engaging` once would let combat
+/// re-acquire and overwrite the destination one tick later.
+#[test]
+fn the_commanded_destination_survives_every_later_tick() {
+    let mut app = sim_app();
+    let hunter = spawn_unit(&mut app, "sentinel", Faction::A, Vec2::new(0.0, 0.0));
+    // Prey parked right beside the commanded path, permanently in engage range.
+    let _prey = spawn_unit(&mut app, "worker", Faction::B, Vec2::new(-150.0, 40.0));
+    step(&mut app);
+    assert!(
+        app.world().get::<Engaging>(hunter).is_some(),
+        "precondition: the sentinel auto-chased first"
+    );
+    let dest = Vec2::new(-500.0, 0.0);
+    push(
+        &mut app,
+        Order::MoveTo {
+            units: vec![hunter],
+            dest,
+        },
+    );
+    for t in 0..300u32 {
+        step(&mut app);
+        if pos(&app, hunter).unwrap().distance(dest) <= onus::sim::STOP_EPS {
+            return; // arrived: the order was honoured start to finish
+        }
+        assert!(
+            app.world().get::<Engaging>(hunter).is_none(),
+            "tick {t}: combat re-acquired a unit that has standing orders"
+        );
+        assert_eq!(
+            app.world().get::<MoveTarget>(hunter).map(|m| m.0),
+            Some(dest),
+            "tick {t}: combat overwrote the commanded destination"
+        );
+    }
+    panic!("the unit never reached the commanded destination");
+}
+
+/// An order issued on the exact tick the chased target dies: combat's
+/// "nothing left to chase" branch must not take the commander's `MoveTarget`
+/// with it. `hunter` is mid-chase; `killer` lands the fatal blow on the same
+/// tick the order is applied.
+#[test]
+fn an_order_issued_on_the_tick_the_target_dies_is_kept() {
+    let mut app = sim_app();
+    let hunter = spawn_unit(&mut app, "sentinel", Faction::A, Vec2::new(150.0, 0.0));
+    let killer = spawn_unit(&mut app, "sentinel", Faction::A, Vec2::new(50.0, 0.0));
+    let prey = spawn_unit(&mut app, "worker", Faction::B, Vec2::ZERO);
+    step(&mut app);
+    assert!(
+        app.world().get::<Engaging>(hunter).is_some(),
+        "precondition: the hunter is chasing"
+    );
+    // Arm the killer for this tick and make the next hit lethal.
+    set_hp(&mut app, prey, 1);
+    app.world_mut()
+        .entity_mut(killer)
+        .insert(AttackCooldown(0));
+    let dest = Vec2::new(600.0, 0.0);
+    push(
+        &mut app,
+        Order::MoveTo {
+            units: vec![hunter],
+            dest,
+        },
+    );
+    step(&mut app);
+    assert!(!alive(&app, prey), "precondition: the prey died on this tick");
+    assert!(
+        app.world().get::<Engaging>(hunter).is_none(),
+        "the order cancelled the chase"
+    );
+    assert_eq!(
+        app.world().get::<MoveTarget>(hunter).map(|m| m.0),
+        Some(dest),
+        "the death pass must not drop the commander's destination"
+    );
+    assert!(
+        app.world().get::<Target>(hunter).is_none(),
+        "and no engagement may survive pointing at the dead prey"
+    );
+}
+
+/// A `Gather` order is an explicit order too: it must cancel a chase in flight
+/// and its destination must survive the same tick's combat pass.
+#[test]
+fn a_gather_order_also_cancels_a_chase_in_progress() {
+    let mut app = sim_app();
+    let hunter = spawn_unit(&mut app, "sentinel", Faction::A, Vec2::ZERO);
+    let _prey = spawn_unit(&mut app, "worker", Faction::B, Vec2::new(150.0, 0.0));
+    let node_pos = Vec2::new(-300.0, 0.0);
+    let node = app
+        .world_mut()
+        .spawn((
+            Position(node_pos),
+            onus::sim::ResourceNode { amount: 500 },
+        ))
+        .id();
+    step(&mut app);
+    assert!(app.world().get::<Engaging>(hunter).is_some(), "precondition");
+    push(
+        &mut app,
+        Order::Gather {
+            units: vec![hunter],
+            node,
+            node_pos,
+        },
+    );
+    step(&mut app);
+    assert!(
+        app.world().get::<Engaging>(hunter).is_none(),
+        "a gather order must end the chase"
+    );
+    assert_eq!(
+        app.world().get::<MoveTarget>(hunter).map(|m| m.0),
+        Some(node_pos),
+        "the gather destination must survive the combat pass"
+    );
+}
+
+/// Order / re-engage / order again, many times over. Every order must win on
+/// the tick it lands, no matter what combat state the unit was in.
+#[test]
+fn repeated_order_and_reengage_cycles_never_let_combat_win() {
+    let mut app = sim_app();
+    let hunter = spawn_unit(&mut app, "sentinel", Faction::A, Vec2::ZERO);
+    let _prey = spawn_unit(&mut app, "worker", Faction::B, Vec2::new(120.0, 0.0));
+    for cycle in 0..6u32 {
+        // Let it re-acquire on its own for a few ticks.
+        tick(&mut app, 5);
+        let dest = Vec2::new(-200.0 - cycle as f32 * 5.0, 30.0 * cycle as f32);
+        push(
+            &mut app,
+            Order::MoveTo {
+                units: vec![hunter],
+                dest,
+            },
+        );
+        step(&mut app);
+        assert!(
+            app.world().get::<Engaging>(hunter).is_none(),
+            "cycle {cycle}: chase not cancelled"
+        );
+        assert_eq!(
+            app.world().get::<MoveTarget>(hunter).map(|m| m.0),
+            Some(dest),
+            "cycle {cycle}: destination overwritten by combat"
+        );
+    }
+}
+
+// ---- P22-P24: the load-time bound and the saturating backstop must agree ---
+
+fn load_with_combat(name: &str, edits: &[(&str, &str)]) -> Result<Content, String> {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target/critic_m4b_pass2")
+        .join(name);
+    std::fs::create_dir_all(&dir).unwrap();
+    let mut units = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
+    for (from, to) in edits {
+        assert!(units.contains(from), "anchor `{from}` missing");
+        units = units.replace(from, to);
+    }
+    std::fs::write(dir.join("units.ron"), units).unwrap();
+    std::fs::copy(data_dir().join("resources.ron"), dir.join("resources.ron")).unwrap();
+    Content::load_from_dir(&dir).map_err(|e| e.to_string())
+}
+
+/// `max_stat` is data: the shipped roster must fit under it, a stat above it
+/// must be refused, and lowering it below a shipped stat must refuse the roster.
+#[test]
+fn max_stat_is_data_and_bounds_exactly_the_design_scale() {
+    assert!(content().combat.max_stat >= 10, "the 1-10 scale must fit");
+    assert!(
+        load_with_combat("stat_11", &[("speed: 7, offense: 6,", "speed: 7, offense: 11,")]).is_err(),
+        "a stat above the declared scale must be rejected"
+    );
+    assert!(
+        load_with_combat("max_8", &[("max_stat: 10,", "max_stat: 8,")]).is_err(),
+        "lowering max_stat below a shipped stat (arclight offense 9) must reject"
+    );
+    assert!(
+        load_with_combat("max_10", &[("max_stat: 10,", "max_stat: 10,  ")]).is_ok(),
+        "the shipped roster must still load"
+    );
+}
+
+/// The loader's job is to *reject* content it cannot represent, and rejection
+/// means `Err` — not an arithmetic overflow inside the validator itself. The
+/// peak-damage check multiplies three unbounded data fields in `u64`.
+#[test]
+fn a_degenerate_scale_is_rejected_not_overflowed_inside_the_validator() {
+    let r = load_with_combat(
+        "degenerate_scale",
+        &[
+            ("max_stat: 10,", "max_stat: 4000000000,"),
+            ("damage_per_offense: 5,", "damage_per_offense: 4000000000,"),
+        ],
+    );
+    assert!(
+        r.is_err(),
+        "content whose peak damage cannot be represented must be rejected"
+    );
+}
+
+/// The load-time bound and the saturating backstop must agree about what is
+/// legal: content the loader *accepts* must never need saturation to evaluate.
+#[test]
+fn accepted_content_never_needs_a_saturating_hit() {
+    // max_stat * damage_per_offense * mult_milli = 2^27 * 2^26 * 2048 = 2^64.
+    let c = load_with_combat(
+        "wrap_to_zero",
+        &[
+            ("max_stat: 10,", "max_stat: 134217728,"),
+            ("damage_per_offense: 5,", "damage_per_offense: 67108864,"),
+            ("damage_mult: 1.3,", "damage_mult: 2.048,"),
+            ("hp_per_defense: 20,", "hp_per_defense: 1,"),
+        ],
+    );
+    let Ok(c) = c else {
+        return; // rejected — the validator and the backstop agree.
+    };
+    let bulwark = c.unit_index("bulwark").unwrap();
+    let mut c2 = c.clone();
+    c2.units[bulwark].offense = c.combat.max_stat; // legal by the loader's own bound
+    let base = (c2.units[bulwark].offense as u64) * (c2.combat.damage_per_offense as u64);
+    assert!(
+        base <= u32::MAX as u64,
+        "the loader accepted a scale whose base damage ({base}) cannot be \
+         represented in the u32 the sim counts in — the bound and the \
+         saturating backstop disagree about what is legal"
+    );
+}
+
+// ---- P25-P28: the deferred `Target` write must not perturb the sim ---------
+
+/// Differential oracle: every published engagement must be the brute-force
+/// nearest enemy computed on the *start-of-tick* snapshot. Deferring the
+/// `Target` write must not have changed who gets picked.
+#[test]
+fn every_published_target_is_the_brute_force_nearest_enemy() {
+    let mut app = sim_app();
+    let roster = ["bulwark", "sentinel", "ripper", "ravager", "arclight"];
+    let mut rng = onus::sim::SplitMix64::new(0xA5A5_1234);
+    for k in 0..10 {
+        let f = if k % 2 == 0 { Faction::A } else { Faction::B };
+        let x = (rng.next_u64() % 400) as f32 - 200.0 + if k % 2 == 0 { -60.0 } else { 60.0 };
+        let y = (rng.next_u64() % 400) as f32 - 200.0 + k as f32 * 0.37;
+        spawn_unit(&mut app, roster[k % roster.len()], f, Vec2::new(x, y));
+    }
+    for t in 0..600u32 {
+        let before = layout(&mut app);
+        step(&mut app);
+        for (e, tgt) in targets(&mut app) {
+            let i = before
+                .iter()
+                .position(|(x, _)| *x == e)
+                .unwrap_or_else(|| panic!("tick {t}: target holder {e:?} not in snapshot"));
+            let units: Vec<Unit> = before.iter().map(|(_, u)| *u).collect();
+            let expect = brute_force_nearest_enemy(&units, i)
+                .map(|j| before[j].0)
+                .unwrap_or_else(|| panic!("tick {t}: {e:?} has a target but no enemy existed"));
+            assert_eq!(
+                tgt, expect,
+                "tick {t}: {e:?} engaged {tgt:?}, nearest enemy was {expect:?}"
+            );
+        }
+    }
+}
+
+/// No `Target` may dangle, and none may be spuriously dropped: a living unit
+/// whose start-of-tick nearest enemy is still alive and inside engage range
+/// must end the tick holding that engagement.
+#[test]
+fn a_multi_kill_melee_leaves_no_dangling_and_no_missing_engagement() {
+    let mut app = sim_app();
+    let mut ids = Vec::new();
+    for k in 0..8u32 {
+        let a = spawn_unit(
+            &mut app,
+            "ripper",
+            Faction::A,
+            Vec2::new(-30.0, k as f32 * 9.0),
+        );
+        let b = spawn_unit(
+            &mut app,
+            "ripper",
+            Faction::B,
+            Vec2::new(30.0, k as f32 * 9.0 + 1.0),
+        );
+        ids.push(a);
+        ids.push(b);
+    }
+    // Everyone one hit from death, so a tick kills many at once.
+    for e in &ids {
+        set_hp(&mut app, *e, 1);
+    }
+    let engage = app.world().resource::<Content>().combat.engage_range;
+    for t in 0..300u32 {
+        let before = layout(&mut app);
+        step(&mut app);
+        for (e, tgt) in targets(&mut app) {
+            assert!(
+                alive(&app, tgt),
+                "tick {t}: {e:?} holds a Target on the despawned {tgt:?}"
+            );
+            assert!(alive(&app, e), "tick {t}: dead {e:?} still holds a Target");
+        }
+        // No spurious drops.
+        let units: Vec<Unit> = before.iter().map(|(_, u)| *u).collect();
+        let held = targets(&mut app);
+        for (i, (e, u)) in before.iter().enumerate() {
+            if !alive(&app, *e) {
+                continue;
+            }
+            let Some(j) = brute_force_nearest_enemy(&units, i) else {
+                continue;
+            };
+            if !alive(&app, before[j].0) || u.pos.distance(before[j].1.pos) > engage {
+                continue;
+            }
+            assert!(
+                held.iter().any(|(h, _)| h == e),
+                "tick {t}: living {e:?} lost its engagement with the living, \
+                 in-range {:?}",
+                before[j].0
+            );
+        }
+        if before.len() <= 1 {
+            break;
+        }
+    }
+}
+
+/// Determinism, including the engagement graph: identical setups produce
+/// identical per-tick state hashes.
+#[test]
+fn per_tick_state_hashes_match_across_identical_runs() {
+    fn run() -> Vec<u64> {
+        let mut app = sim_app();
+        let roster = ["bulwark", "sentinel", "ripper", "ravager", "arclight"];
+        for k in 0..10usize {
+            let f = if k % 2 == 0 { Faction::A } else { Faction::B };
+            let x = if k % 2 == 0 { -80.0 } else { 80.0 } + k as f32 * 3.1;
+            spawn_unit(&mut app, roster[k % 5], f, Vec2::new(x, k as f32 * 11.0));
+        }
+        (0..400)
+            .map(|_| {
+                step(&mut app);
+                state_hash(&mut app)
+            })
+            .collect()
+    }
+    assert_eq!(run(), run(), "the sim is not deterministic tick-for-tick");
+}
+
+/// Conservation: the casualty ledger equals the number of entities that
+/// actually left the world, on every tick.
+#[test]
+fn casualties_equal_the_units_that_actually_despawned() {
+    let mut app = sim_app();
+    let roster = ["bulwark", "sentinel", "ripper", "ravager", "arclight"];
+    let mut spawned = 0u32;
+    for k in 0..10usize {
+        let f = if k % 2 == 0 { Faction::A } else { Faction::B };
+        let x = if k % 2 == 0 { -40.0 } else { 40.0 };
+        spawn_unit(&mut app, roster[k % 5], f, Vec2::new(x, k as f32 * 7.0));
+        spawned += 1;
+    }
+    for t in 0..1200u32 {
+        step(&mut app);
+        let alive_now = layout(&mut app).len() as u32;
+        let lost = app.world().resource::<Casualties>().total();
+        assert_eq!(
+            spawned - alive_now,
+            lost,
+            "tick {t}: {} units gone but {lost} casualties recorded",
+            spawned - alive_now
+        );
+    }
+}
