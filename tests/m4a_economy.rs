@@ -114,26 +114,29 @@ fn loading_is_deterministic_and_missing_dir_is_an_error() {
 use bevy::prelude::*;
 
 use onus::sim::economy::{
-    gather, production, Building, Carrying, GatherPhase, ProductionQueue, Stockpiles, UnitDefIdx,
+    Building, Carrying, GatherPhase, ProductionQueue, Stockpiles, UnitDefIdx,
 };
 use onus::sim::spatial::Faction;
-use onus::sim::{
-    apply_commands, movement, CommandQueue, GatherTarget, Order, Position, RateReport, ResourceNode,
-};
+use onus::sim::{CommandQueue, GatherTarget, Order, Position, RateReport, ResourceNode};
 
-/// A headless sim app running the real `FixedUpdate` chain in `Update` (one
-/// `app.update()` == one sim tick), so tests step the sim deterministically
-/// without a real-time accumulator or a renderer. `tick` advances `Time<Fixed>`
-/// by exactly one timestep per step — no wall-clock enters the sim.
+/// A headless app running **the shipped sim chain** (`onus::add_sim_systems`,
+/// the same definition `build_app` installs on `FixedUpdate`) on `Update`, so
+/// one `app.update()` == one sim tick and the test can hand the sim exactly one
+/// fixed timestep per step — no real-time accumulator, no renderer, and no
+/// hand-rolled system list that could drift from the game.
 fn sim_app(content: Content) -> App {
+    sim_app_with(content, Stockpiles::default())
+}
+
+fn sim_app_with(content: Content, stock: Stockpiles) -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .insert_resource(Time::<Fixed>::from_hz(60.0))
         .insert_resource(content)
         .init_resource::<CommandQueue>()
         .init_resource::<RateReport>()
-        .init_resource::<Stockpiles>()
-        .add_systems(Update, (apply_commands, gather, movement).chain());
+        .insert_resource(stock);
+    onus::add_sim_systems(&mut app, Update);
     app
 }
 
@@ -354,20 +357,9 @@ fn a_move_order_keeps_the_carried_load_and_stops_gathering() {
 
 // ---- AC3: building placement + unit production cost Alloy -------------------
 
-/// Same headless chain as AC2 plus the production system.
+/// The same shipped chain, started with a given Alloy balance.
 fn econ_app(content: Content, starting_alloy: u32) -> App {
-    let mut app = App::new();
-    app.add_plugins(MinimalPlugins)
-        .insert_resource(Time::<Fixed>::from_hz(60.0))
-        .insert_resource(content)
-        .init_resource::<CommandQueue>()
-        .init_resource::<RateReport>()
-        .insert_resource(Stockpiles::starting(starting_alloy))
-        .add_systems(
-            Update,
-            (apply_commands, production, gather, movement).chain(),
-        );
-    app
+    sim_app_with(content, Stockpiles::starting(starting_alloy))
 }
 
 fn place(app: &mut App, faction: Faction, id: &str, pos: Vec2) {

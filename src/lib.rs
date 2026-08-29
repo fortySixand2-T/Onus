@@ -10,6 +10,7 @@
 //! at 60 Hz; presentation is written from it in `Update`. Input emits
 //! [`sim::Order`]s onto a queue applied only in the sim.
 
+use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::*;
 
 pub mod client;
@@ -21,16 +22,20 @@ pub mod ui;
 use crate::client::*;
 use crate::sim::*;
 
-/// Build the full game app: window, renderer, resources, and the M0–M1 systems.
-/// `main` just calls `.run()` on this; tests build their own headless apps.
+/// Build the full game app: window, renderer, resources, and the shipped
+/// systems. `main` just calls `.run()` on this. The sim half of the schedule is
+/// [`add_sim_systems`] — the *single* definition of the sim chain, shared with
+/// the headless tests so the two can never drift.
 pub fn build_app() -> App {
+    // Content is data: costs/stats come from assets/data/*.ron, never from
+    // constants. Loaded render-free (plain file IO) before startup so the
+    // driver and the sim see the same definitions.
+    let content = Content::load_default().expect("assets/data/*.ron load");
+
     let mut app = App::new();
     app.add_plugins(DefaultPlugins)
         .insert_resource(Time::<Fixed>::from_hz(60.0))
-        // Content is data: costs/stats come from assets/data/*.ron, never from
-        // constants. Loaded render-free (plain file IO) before startup so both
-        // the driver and the sim see the same definitions.
-        .insert_resource(Content::load_default().expect("assets/data/*.ron load"))
+        .insert_resource(content)
         .init_resource::<CursorWorld>()
         .init_resource::<DragState>()
         .init_resource::<ClickTracker>()
@@ -51,10 +56,28 @@ pub fn build_app() -> App {
                 ui::update_options_panel,
                 ui::report_rates,
             ),
-        )
-        .add_systems(
-            FixedUpdate,
-            (sim::apply_commands, sim::economy::gather, sim::movement).chain(),
         );
+    add_sim_systems(&mut app, FixedUpdate);
     app
+}
+
+/// Register the sim chain on `schedule`. **The one definition of what the sim
+/// runs and in what order**: the shipped app installs it on `FixedUpdate`, and
+/// the headless tests install it on `Update` (where they can hand the sim
+/// exactly one fixed timestep per step). Nothing may hand-roll this list — that
+/// is how a system like `production` ends up tested but never shipped.
+///
+/// Order matters: orders are applied (and paid for) first, then production
+/// advances queues, then gatherers decide where to go, then everything moves.
+pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
+    app.add_systems(
+        schedule,
+        (
+            sim::apply_commands,
+            sim::economy::production,
+            sim::economy::gather,
+            sim::movement,
+        )
+            .chain(),
+    );
 }
