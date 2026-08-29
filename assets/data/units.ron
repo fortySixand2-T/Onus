@@ -15,6 +15,25 @@
 //                       ticks spent harvesting one load at a deposit)
 // `mvp_buildings` is the building cost table (HQ + the three barracks); each
 // lists the unit ids it can produce.
+//
+// SCHEMA NOTE (M4b) — combat. The 1-10 design stats are *design* numbers; the
+// sim needs real ones, so `mvp_combat` below carries the scaling (data, not Rust
+// constants) and each unit carries its own engagement numbers:
+//   mvp_attack_ticks — FixedUpdate ticks between two hits (a cadence, never
+//                      seconds; the sim counts ticks). 0 for non-combatants.
+//   mvp_attack_range — world-unit radius within which this unit can hit. 0 for
+//                      non-combatants (offense 0 ⇒ both must be 0).
+// Derived, per hit, in integer arithmetic only:
+//   HP pool  = defense * mvp_combat.hp_per_defense
+//   damage   = offense * mvp_combat.damage_per_offense
+//   mitigate = defender.armor * mvp_combat.mitigation_per_armor   (flat, per hit)
+//   speed    = speed * mvp_combat.speed_per_point                 (world units/s)
+// `speed_per_point` is 36.0 because the retired M4a global constant (180 u/s)
+// was exactly the Worker's `speed: 5` — per-unit data that keeps M4a's timings.
+// Nemesis (`nemesis_bonus`) is applied as an integer per-mille multiplier:
+// damage = floor(base * round(damage_mult * 1000) / 1000), armor skipped. The
+// float is converted once at load; no float ever enters per-hit damage, so the
+// result is bit-identical on every machine.
 (
     workers: [
         (
@@ -27,6 +46,7 @@
             mvp_train_ticks: 600,
             mvp_carry_capacity: 10,
             mvp_gather_ticks: 90,
+            mvp_attack_ticks: 0, mvp_attack_range: 0.0,   // non-combatant
             speed: 5, offense: 0, defense: 3, armor: 0,
             gathers: true,
             builds: true,
@@ -38,6 +58,7 @@
             cost: (resource: "alloy",   amount: 110),
             mvp_kind: Soldier,
             mvp_alloy_cost: 110, mvp_train_ticks: 1500,
+            mvp_attack_ticks: 90, mvp_attack_range: 48.0,
             speed: 2, offense: 4, defense: 9, armor: 9, nemesis: "ravager",
         ),
         (
@@ -45,6 +66,7 @@
             cost: (resource: "alloy",   amount: 70),
             mvp_kind: Scout,
             mvp_alloy_cost: 70, mvp_train_ticks: 900,
+            mvp_attack_ticks: 60, mvp_attack_range: 60.0,
             speed: 7, offense: 6, defense: 5, armor: 5, nemesis: "ripper",
         ),
         (
@@ -52,6 +74,7 @@
             cost: (resource: "biomass", amount: 40),
             mvp_kind: Scout,
             mvp_alloy_cost: 40, mvp_train_ticks: 720,
+            mvp_attack_ticks: 40, mvp_attack_range: 40.0,
             speed: 9, offense: 6, defense: 3, armor: 1, nemesis: "arclight",
         ),
         (
@@ -59,6 +82,7 @@
             cost: (resource: "biomass", amount: 90),
             mvp_kind: Soldier,
             mvp_alloy_cost: 90, mvp_train_ticks: 1200,
+            mvp_attack_ticks: 75, mvp_attack_range: 44.0,
             speed: 4, offense: 7, defense: 8, armor: 4, nemesis: "sentinel",
         ),
         (
@@ -66,6 +90,7 @@
             cost: (resource: "aether",  amount: 80),
             mvp_kind: Soldier,
             mvp_alloy_cost: 80, mvp_train_ticks: 1080,
+            mvp_attack_ticks: 100, mvp_attack_range: 120.0,   // the ranged one
             speed: 5, offense: 9, defense: 2, armor: 2, nemesis: "bulwark",
         ),
     ],
@@ -77,9 +102,21 @@
         (id: "gene_vats",    name: "Gene-Vats",    alloy_cost: 150, produces: ["ripper", "ravager"]),
         (id: "aether_spire", name: "Aether Spire", alloy_cost: 200, produces: ["arclight"]),
     ],
+    // M4b: how the 1-10 design stats become sim numbers. Change balance here,
+    // never in Rust.
+    mvp_combat: (
+        hp_per_defense: 20,        // Defense -> HP pool
+        damage_per_offense: 5,     // Offense -> damage per hit
+        mitigation_per_armor: 2,   // Armor  -> flat mitigation per hit
+        speed_per_point: 36.0,     // Speed  -> world units per second
+        engage_range: 220.0,       // radius in which an idle unit picks a fight
+        pursue_range: 400.0,       // leash: how far it will chase before giving
+                                   // up (>= engage_range, because walking around
+                                   // an obstacle legitimately opens the gap)
+    ),
     // Applied when attacker.nemesis == defender.id
     nemesis_bonus: (
-        damage_mult: 1.3,   // +30% vs the one prey
+        damage_mult: 1.3,   // +30% vs the one prey (held as 1300 per-mille)
         ignore_armor: true,
     ),
 )

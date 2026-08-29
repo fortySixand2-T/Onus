@@ -87,3 +87,11 @@
 - [2026-08-29] Modified: tests/critic_m4a.rs — M4a critic pass 2: 17 probes on the fix diff (shared sim chain, partial-accept deposits, content validation, RON tick/price fidelity, sim-owned UnitKind)
 - [2026-08-29] Modified: BUILD_PLAN.md — Ticked M2, M3 and M4a acceptance criteria (harness-green + critic PASS)
 - [2026-08-29] Modified: CLAUDE.md — Status now M0–M3 + M4a done; next milestone M4b (combat)
+- [2026-08-29] Created: tests/m4b_combat.rs — M4b L2 combat tests (engagement via M2, M3 pathing, exactly-once death, determinism)
+- [2026-08-29] Created: src/sim/combat.rs — M4b combat core: Health/AttackCooldown/Target/Engaging, snapshot-based tick, damage formula, Casualties ledger
+- [2026-08-29] Modified: assets/data/units.ron — M4b combat data: mvp_attack_ticks/mvp_attack_range per unit, mvp_combat scaling block (HP/damage/mitigation/speed/engage/pursue)
+- [2026-08-29] Modified: src/sim/content.rs — CombatDef + NemesisBonus::mult_milli; validation of the new combat fields
+- [2026-08-29] Modified: src/sim/pathfind.rs — TileGrid is an ECS Resource so the sim can path against the map
+- [2026-08-29] Modified: src/sim/economy.rs — production spawns units with their RON HP pool
+- [2026-08-29] Modified: src/sim/mod.rs — expose sim::combat and re-export its components
+- [2026-08-29] Modified: src/lib.rs — register sim::combat::combat in the one shared sim chain; install the Casualties ledger with it

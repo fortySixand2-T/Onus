@@ -18,6 +18,7 @@
 //! is a deterministic *nodes-expanded* counter (see the `*_counted` variants),
 //! which the M3 flow-field-vs-N×A* comparison is built on.
 
+use bevy::ecs::prelude::Resource;
 use bevy::math::Vec2;
 use std::cmp::Reverse;
 use std::collections::{BinaryHeap, VecDeque};
@@ -36,6 +37,10 @@ const DIRS: [(isize, isize); 4] = [(0, -1), (-1, 0), (1, 0), (0, 1)];
 /// `origin` (the world position of cell `(0,0)`'s lower corner) and `cell_size`,
 /// so a path of cell ids maps to a list of world-space waypoints (cell centres)
 /// a unit can follow with the M2 movement code.
+///
+/// It is an ECS `Resource` so the sim can path against the match's map; when no
+/// grid is inserted the sim simply moves in straight lines.
+#[derive(Resource)]
 pub struct TileGrid {
     pub width: usize,
     pub height: usize,

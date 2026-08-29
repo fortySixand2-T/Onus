@@ -56,6 +56,13 @@ pub struct UnitDef {
     /// Ticks spent harvesting one load at a deposit (gatherers only).
     #[serde(default)]
     pub mvp_gather_ticks: u32,
+    /// `FixedUpdate` ticks between two hits — a cadence in *ticks*, never
+    /// seconds. `0` marks a non-combatant (and then `offense` must be 0 too).
+    /// Deliberately **not** `#[serde(default)]`: a missing cadence must be a
+    /// load error, not a silent 0 that makes a unit fire every tick.
+    pub mvp_attack_ticks: u32,
+    /// World-unit radius within which this unit can hit. `0` ⇒ non-combatant.
+    pub mvp_attack_range: f32,
     pub speed: u32,
     pub offense: u32,
     pub defense: u32,
@@ -86,8 +93,45 @@ pub struct BuildingDef {
 /// The nemesis rule (consumed by combat in M4b).
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct NemesisBonus {
+    /// The design-facing multiplier (`1.3` = +30%). Read *once*, here; per-hit
+    /// damage uses [`NemesisBonus::mult_milli`] instead, so no float ever
+    /// reaches the arithmetic that decides how much HP a unit loses.
     pub damage_mult: f32,
     pub ignore_armor: bool,
+}
+
+impl NemesisBonus {
+    /// Denominator of the integer multiplier: the bonus is held as per-mille.
+    pub const MULT_SCALE: u32 = 1_000;
+
+    /// `damage_mult` as an integer per-mille (`1.3` → `1300`). The one and only
+    /// float→int conversion in the damage path; rounding is half-away-from-zero
+    /// (`f32::round`) and happens on a constant from the RON, so every machine
+    /// gets the same integer and per-hit damage is bit-identical everywhere.
+    pub fn mult_milli(&self) -> u32 {
+        (self.damage_mult * Self::MULT_SCALE as f32).round() as u32
+    }
+}
+
+/// M4b combat scaling: how the 1-10 design stats become sim numbers. Data, so
+/// balance changes never touch Rust.
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct CombatDef {
+    /// HP pool = `defense * hp_per_defense`.
+    pub hp_per_defense: u32,
+    /// Damage per hit = `offense * damage_per_offense`.
+    pub damage_per_offense: u32,
+    /// Flat mitigation per hit = `defender.armor * mitigation_per_armor`.
+    pub mitigation_per_armor: u32,
+    /// Movement = `speed * speed_per_point` world units per second.
+    pub speed_per_point: f32,
+    /// Radius within which an idle unit picks a fight (world units).
+    pub engage_range: f32,
+    /// Leash: how far a unit already chasing will follow before giving up. At
+    /// least `engage_range` — pathing around an obstacle legitimately opens the
+    /// straight-line gap, and a unit that dropped its target there would
+    /// oscillate at the wall instead of coming around it.
+    pub pursue_range: f32,
 }
 
 /// How a resource enters the economy.
@@ -126,6 +170,7 @@ struct UnitsFile {
     workers: Vec<UnitDef>,
     combat: Vec<UnitDef>,
     mvp_buildings: Vec<BuildingDef>,
+    mvp_combat: CombatDef,
     nemesis_bonus: NemesisBonus,
 }
 
@@ -145,6 +190,8 @@ pub struct Content {
     /// Workers first, then combat units — RON order, stable.
     pub units: Vec<UnitDef>,
     pub buildings: Vec<BuildingDef>,
+    /// Stat scaling for combat (M4b).
+    pub combat: CombatDef,
     pub nemesis_bonus: NemesisBonus,
     pub resources: Vec<ResourceDef>,
     pub mvp_active: Vec<String>,
@@ -218,6 +265,7 @@ impl Content {
         let content = Content {
             units,
             buildings: units_file.mvp_buildings,
+            combat: units_file.mvp_combat,
             nemesis_bonus: units_file.nemesis_bonus,
             resources: resources_file.resources,
             mvp_active: resources_file.mvp_active,
@@ -260,6 +308,58 @@ impl Content {
             if !self.buildings.iter().any(|b| b.produces.contains(&u.id)) {
                 return bad(format!("unit `{}` has no producing building", u.id));
             }
+
+            // Combat (M4b). Every unit is killable, so every unit needs a real
+            // HP pool and a way to move; only units that can actually hurt
+            // something carry a cadence and a reach — and they must carry both.
+            if u.defense == 0 {
+                return bad(format!("unit `{}` has no HP pool (defense 0)", u.id));
+            }
+            if u.speed == 0 {
+                return bad(format!("unit `{}` cannot move (speed 0)", u.id));
+            }
+            if u.offense > 0 {
+                if u.mvp_attack_ticks == 0 {
+                    return bad(format!("unit `{}` has offense but no attack cadence", u.id));
+                }
+                if u.mvp_attack_range <= 0.0 {
+                    return bad(format!("unit `{}` has offense but no attack range", u.id));
+                }
+                if u.mvp_attack_range > self.combat.engage_range {
+                    return bad(format!(
+                        "unit `{}` reaches further than it will chase",
+                        u.id
+                    ));
+                }
+            } else if u.mvp_attack_ticks != 0 || u.mvp_attack_range != 0.0 {
+                return bad(format!(
+                    "unit `{}` has no offense but declares attack data",
+                    u.id
+                ));
+            }
+            if let Some(prey) = &u.nemesis {
+                if self.unit_index(prey).is_none() {
+                    return bad(format!("unit `{}` names unknown nemesis `{prey}`", u.id));
+                }
+            }
+        }
+
+        // Combat scaling: every factor the sim multiplies a design stat by has
+        // to be stated and non-degenerate — a 0 here would silently produce
+        // units with no HP, no damage, or no movement.
+        let c = &self.combat;
+        if c.hp_per_defense == 0 || c.damage_per_offense == 0 || c.mitigation_per_armor == 0 {
+            return bad("mvp_combat scaling factors must be positive".to_string());
+        }
+        if !(c.speed_per_point > 0.0 && c.engage_range > 0.0) {
+            return bad("mvp_combat speed_per_point / engage_range must be positive".to_string());
+        }
+        if c.pursue_range < c.engage_range {
+            return bad("mvp_combat pursue_range must be >= engage_range".to_string());
+        }
+        let mult = self.nemesis_bonus.damage_mult;
+        if !(mult.is_finite() && mult >= 1.0) {
+            return bad("nemesis_bonus.damage_mult must be finite and >= 1.0".to_string());
         }
 
         if self.resources.iter().all(|r| r.id != self.economy.currency) {

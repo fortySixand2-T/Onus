@@ -69,14 +69,22 @@ pub fn build_app() -> App {
 /// is how a system like `production` ends up tested but never shipped.
 ///
 /// Order matters: orders are applied (and paid for) first, then production
-/// advances queues, then gatherers decide where to go, then everything moves.
+/// advances queues, then gatherers decide where to go, then combat picks its
+/// targets and fires, then everything moves — so a chase order issued this tick
+/// is followed on this tick.
 pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
+    // Sim-owned state that the chain *requires* is installed with the chain, for
+    // the same reason the chain itself is defined once (F-004): a caller that
+    // has to remember a resource is a caller that will eventually forget one.
+    // (Content and the starting Stockpiles are match setup — the caller's.)
+    app.init_resource::<Casualties>();
     app.add_systems(
         schedule,
         (
             sim::apply_commands,
             sim::economy::production,
             sim::economy::gather,
+            sim::combat::combat,
             sim::movement,
         )
             .chain(),

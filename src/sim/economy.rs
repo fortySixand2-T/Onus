@@ -22,6 +22,7 @@ use bevy::ecs::prelude::*;
 use bevy::math::Vec2;
 use std::collections::VecDeque;
 
+use crate::sim::combat::Health;
 use crate::sim::content::Content;
 use crate::sim::spatial::Faction;
 use crate::sim::{GatherTarget, MoveTarget, Position, ResourceNode};
@@ -379,6 +380,9 @@ pub fn production(
             UnitDefIdx(done.unit),
             def.mvp_kind,
             faction,
+            // Every unit enters the world killable, with the HP pool its
+            // `defense` stat buys (M4b).
+            Health::from_def(&content, done.unit),
         ));
         if def.gathers {
             spawned.insert(Carrying(0));
