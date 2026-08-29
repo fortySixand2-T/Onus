@@ -46,3 +46,4 @@
 - [2026-08-29] Modified: Cargo.toml — register the pathfind bench
 - [2026-08-29] Modified: FINDINGS.md — M3: record F-002 (group move N×A* -> one flow field; ~320x fewer nodes, ~1230x wall-clock)
 - [2026-08-29] Modified: FINDINGS.md — M3: pin F-002 commit reference to the AC3 commit (362a314)
+- [2026-08-29] Created: tests/critic_m3.rs — M3: adversarial critic tests (BFS oracle vs A*/flow field; None-iff-unreachable; flow reachability==A*; group cost << N×A* by node count; edge cases; all pass)
