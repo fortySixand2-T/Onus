@@ -149,3 +149,69 @@ applies to every future counter: cap the *intake*, never drop the difference.
 **Evidence.** `tests/critic_m4a.rs::a_deposit_into_a_near_full_stockpile_destroys_no_alloy`
 asserts `banked + carried + in-deposit` invariant on every tick starting from
 `u32::MAX - 4`; red before, green after (commit `93c472a`).
+
+## F-006 — Combat damage is integer arithmetic; the design stats are scaled in data (M4b)
+
+**Wall hit.** The roster's stats are a 1-10 *design* scale (`offense: 4`,
+`defense: 9`) and the nemesis bonus is a float (`damage_mult: 1.3`). Neither is
+usable as-is: a 1-10 HP pool dies to one hit, and a float multiplier in the
+per-hit path makes damage a function of the FPU — the exact failure mode M5's
+per-tick state hash exists to catch.
+
+**Measurement.** Two decisions, both pinned by tests rather than by argument:
+
+| Question | Choice | Pinned by |
+|---|---|---|
+| 1-10 → sim numbers | `mvp_combat` block in `units.ron`: `hp_per_defense: 20`, `damage_per_offense: 5`, `mitigation_per_armor: 2`, `speed_per_point: 36.0` | `defense_is_the_hp_pool_and_offense_is_damage_per_hit`, `armor_is_flat_mitigation_per_hit`, `movement_speed_comes_from_the_units_ron` |
+| ×1.3 rounding | integer per-mille: `floor(base * 1300 / 1000)`, one `f32::round` at load in `NemesisBonus::mult_milli` | `the_nemesis_multiplier_is_integer_per_mille`, `nemesis_adds_30_percent_and_ignores_armor` |
+
+`speed_per_point: 36.0` is not arbitrary: the retired global `sim::SPEED` was
+180 u/s and the Worker's `speed` is 5, so 180/5 = 36 turns the constant into
+per-unit data **without moving any M4a timing** — the whole M4a economy suite
+(22 tests) passes unchanged across the retirement.
+
+**Decision.** Every number combat multiplies is RON data, and the per-hit path
+is `u32`/`u64` only. `damage_per_hit` is the single place damage is decided
+(sim and tests call the same function); the one float→int conversion happens on
+a constant at load. `Content::validate` rejects a unit with no HP pool, no
+speed, offense without a cadence/reach, or a cadence/reach without offense — a
+missing `mvp_attack_ticks` is a load error, never a silent `0` that would let a
+unit fire every tick.
+
+**Evidence.** `cargo test --test m4b_combat` (15/15) and `cargo test --lib
+combat` (5/5) on the box, commits `4509ab1` / `92db62b` / `ffe6ef1`. The AC3
+tests were run red first with the nemesis branch stubbed out
+(`left: 12, right: 26`) and green after.
+
+## F-007 — Combat resolves from a start-of-tick snapshot, and chasing needs a leash (M4b)
+
+**Wall hit.** Two failure modes that only appear once units can die:
+1. If attackers mutate HP as they are iterated, the *order* they are iterated in
+   decides who dies — and a unit killed early in the tick never swings back.
+   With ECS archetype order that is not even stable, which is exactly the
+   "iteration order affects outcomes" invariant M5 forbids.
+2. `an_attacker_paths_around_a_wall_to_reach_its_target` failed on the first
+   run: the attacker acquired a target 192 units away (inside the 220 engage
+   radius), started around the wall, and *dropped* it — walking the detour put
+   the straight-line distance at ~295. It then re-acquired, turned back, and
+   oscillated at the obstacle forever.
+
+**Decision.**
+1. One tick of combat is computed from a snapshot taken before anything is
+   written: targets, distances and HP all come from the start-of-tick state,
+   damage accumulates in a local ledger, and a single final pass writes HP back
+   and despawns the dead. Processing order therefore cannot change the outcome
+   (entities are still walked in ascending `Entity::to_bits()` so the *commands*
+   are stable), two units that kill each other on one tick both die, and each
+   death is applied — and credited to `Casualties` — exactly once.
+2. Engagement takes two radii, both data: `engage_range` (220) is the radius in
+   which an *idle* unit picks a fight; `pursue_range` (400) is the leash a unit
+   already chasing keeps until it gives up. `validate` requires
+   `pursue_range >= engage_range`.
+
+**Evidence.** `a_mutual_kill_on_one_tick_despawns_both_exactly_once` (both die,
+`Casualties::total() == 2`, and still 2 sixty ticks later),
+`hp_never_underflows_on_overkill`, `a_battle_is_deterministic_across_identical_runs`
+(20 mixed units, 900 ticks, byte-identical survivor state) and the wall test
+(the attacker's cell is asserted walkable on *every* tick of the approach), all
+in `tests/m4b_combat.rs`, commit `4509ab1`. Reproduce: `cargo test --test m4b_combat`.

@@ -100,3 +100,4 @@
 - [2026-08-29] Modified: tests/m4b_combat.rs — AC2 tests: defense=HP pool, offense=damage, armor=flat mitigation, speed=per-unit data
 - [2026-08-29] Modified: src/sim/combat.rs — L1 tests pinning the nemesis rule and its integer per-mille rounding
 - [2026-08-29] Modified: tests/m4b_combat.rs — AC3 tests: +30% ignoring armor iff the defender is the declared prey
+- [2026-08-29] Modified: FINDINGS.md — F-006 (integer damage + data-driven stat scaling), F-007 (snapshot combat tick, engage vs pursue leash)
