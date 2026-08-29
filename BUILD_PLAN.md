@@ -133,6 +133,15 @@ mirror nation.
 
 Critic probes: resource conserved (gathered == deposited + carried + in-flight); every building/unit cost deducted **exactly once**; costs come from the RON, not constants; deterministic given the seed.
 
+> **M4a deferrals (explicit, not oversights).**
+> - **Order ownership.** `Order::Train` charges the *targeted building's* faction; the
+>   order carries no orderer, so one side could in principle queue from another's
+>   building. Not exercisable at M4a (only faction A has buildings) — **M4c** adds the
+>   second commander and must tag orders with their issuer and reject cross-faction ones.
+> - **Movement speed.** `sim::SPEED` is one global constant and overrides the per-unit
+>   `speed` in `units.ron`. Movement is **M4b**'s milestone; it makes speed per-unit data
+>   and retires the constant.
+
 #### M4b — combat (4-stat + nemesis)
 - [ ] Health + attack; a unit engages the nearest enemy in range (M2), pathing via M3; death despawns.
 - [ ] 4-stat model: Offense = damage/hit, Armor = flat mitigation per hit, Defense = HP pool, Speed = movement.

@@ -26,7 +26,10 @@ pub use spatial::{
 
 // ---- tunables --------------------------------------------------------------
 
-/// Unit move speed, world units per second.
+/// Unit move speed, world units per second. **Deliberately still a constant at
+/// M4a**: `units.ron` carries a per-unit `speed`, but movement is M4b's
+/// milestone, which makes speed per-unit data and retires this. See the M4a
+/// deferrals note in BUILD_PLAN.md.
 pub const SPEED: f32 = 180.0;
 /// Distance at which a moving unit snaps to its target and stops.
 pub const STOP_EPS: f32 = 1.0;
@@ -100,6 +103,8 @@ pub enum Order {
         pos: Vec2,
     },
     /// Train a unit (index into `Content::units`) at a building — costs Alloy.
+    /// The *building's* faction pays; the order carries no issuer, so ownership
+    /// is unchecked. Deferred to M4c with the second commander (BUILD_PLAN.md).
     Train {
         building: Entity,
         unit: usize,

@@ -106,3 +106,46 @@ commits `ea0fdc8` / `63a4c33`) fail before the fix and pass after; the
 tick-counted conservation test asserts the invariant on *every* tick, so a
 drifting step size shows up as a phase difference immediately. Reproduce:
 `cargo test --test m4a_economy`.
+
+## F-004 — A system that only exists in the test harness is not shipped (M4a)
+
+**Wall hit.** M4a's `training_a_unit_charges_once_at_order_time_and_spawns_on_completion`
+passed while the shipped game was broken: `build_app()` registered
+`(apply_commands, gather, movement)` on `FixedUpdate`, and `economy::production`
+— the only system that advances a production queue and spawns the paid-for unit
+— was registered *nowhere in `src/`*. It ran solely inside the test's own
+`econ_app()`. In the real binary a Train order deducted Alloy and the unit never
+arrived: charged, never delivered, never refunded. Found by the M4a critic.
+
+**Measurement.** `tests/critic_m4a.rs::shipped_app_schedules_the_production_system`
+reads `src/lib.rs` and asserts the registered `FixedUpdate` chain contains
+`production`; it failed against the committed diff and passes now. The failure
+mode is structural, not numeric: two hand-written system lists (one shipped, one
+in tests) drift, and the test suite grades the copy it wrote itself.
+
+**Decision.** There is exactly **one** definition of the sim chain —
+`onus::add_sim_systems(app, schedule)` in `src/lib.rs`. `build_app()` installs it
+on `FixedUpdate`; the headless tests install the same function on `Update`
+(where they can hand the sim one fixed timestep per step, per F-003). No test may
+hand-roll the list. A duplicated list is the bug; sharing the definition is the
+fix.
+
+**Evidence.** `cargo test --test critic_m4a` (6/6) and `--test m4a_economy`
+(22/22) on the box, commit `5eb3919`. Reproduce: `cargo test`.
+
+## F-005 — "Saturating" arithmetic is resource destruction (M4a)
+
+**Wall hit.** `Stockpiles::add` used `saturating_add`, so a deposit that crossed
+the `u32` ceiling silently vanished — while the module doc claimed Alloy is only
+ever *moved*. The critic's ledger showed 6 Alloy destroyed
+(`left: 4294967385, right: 4294967391`).
+
+**Decision.** `add` now returns the amount **accepted** (`amount.min(u32::MAX -
+balance)`) and the gather loop subtracts only that from the worker's `Carrying`;
+the remainder stays in hand and the worker waits at the drop-off. Conservation
+holds by construction rather than by staying below a magnitude. Same principle
+applies to every future counter: cap the *intake*, never drop the difference.
+
+**Evidence.** `tests/critic_m4a.rs::a_deposit_into_a_near_full_stockpile_destroys_no_alloy`
+asserts `banked + carried + in-deposit` invariant on every tick starting from
+`u32::MAX - 4`; red before, green after (commit `93c472a`).

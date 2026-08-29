@@ -74,3 +74,13 @@
 - [2026-08-29] Modified: src/input.rs, src/ui.rs, src/sim/pathfind.rs, src/sim/spatial.rs, tests/m1_selection.rs — revert incidental rustfmt churn outside M4a scope
 - [2026-08-29] Created: tests/critic_m4a.rs — M4a adversarial critic probes (production wiring, conservation, exactly-once ledger, per-tick determinism)
 - [2026-08-29] Modified: CHANGELOG.md — logged the M4a critic test file
+- [2026-08-29] Modified: src/lib.rs — M4a critic fix: add_sim_systems() is the one sim-chain definition; production registered in FixedUpdate; starting Alloy from RON
+- [2026-08-29] Modified: tests/m4a_economy.rs — M4a critic fix: harnesses use the shipped chain; load-validation, sim-owned UnitKind and gather-tick probes
+- [2026-08-29] Modified: src/sim/economy.rs — M4a critic fix: Stockpiles::add returns accepted amount (no annihilation); harvest takes exactly mvp_gather_ticks; production spawns UnitKind
+- [2026-08-29] Modified: src/sim/content.rs — M4a critic fix: validate() rejects unplayable content; mvp_kind field; starting_alloy
+- [2026-08-29] Modified: assets/data/resources.ron — M4a critic fix: starting_alloy in mvp_economy
+- [2026-08-29] Modified: assets/data/units.ron — M4a critic fix: per-unit mvp_kind
+- [2026-08-29] Modified: src/sim/mod.rs — M4a critic fix: UnitKind is Deserialize sim data; deferral notes on SPEED and Order::Train ownership
+- [2026-08-29] Modified: src/ui.rs, src/client.rs — M4a critic fix: attach_visuals no longer writes the sim's UnitKind
+- [2026-08-29] Modified: BUILD_PLAN.md — M4a deferrals note (order ownership → M4c, movement speed → M4b)
+- [2026-08-29] Modified: FINDINGS.md — F-004 (one shared sim-chain definition), F-005 (saturating add destroys resource)
