@@ -13,7 +13,7 @@ use std::collections::VecDeque;
 
 pub mod pathfind;
 pub mod spatial;
-pub use pathfind::{astar, TileGrid};
+pub use pathfind::{astar, FlowField, TileGrid};
 pub use spatial::{
     brute_force_nearest_enemy, random_layout, Faction, SpatialGrid, SplitMix64, Unit,
 };

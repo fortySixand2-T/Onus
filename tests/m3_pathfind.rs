@@ -10,7 +10,7 @@
 
 use bevy::math::Vec2;
 
-use onus::sim::pathfind::{astar, astar_counted, TileGrid};
+use onus::sim::pathfind::{astar, astar_counted, FlowField, TileGrid};
 use onus::sim::step_toward;
 
 /// Assert `path` is a valid route from `start` to `goal`: every cell walkable,
@@ -221,4 +221,144 @@ fn astar_counted_agrees_with_astar_and_reports_work() {
     }
     let (none, _) = astar_counted(&walled, start, walled.idx(5, 5));
     assert_eq!(none, None);
+}
+
+// ---- AC3: group move via one flow field ------------------------------------
+
+// A map with a sealed interior pocket: cells (2,2) and (3,2) are walkable but
+// fully ringed by blocked cells, so they are unreachable from the outside.
+fn pocket_map() -> TileGrid {
+    TileGrid::from_rows(
+        &[
+            "......", // y=0
+            ".####.", // y=1
+            ".#..#.", // y=2  (2,2),(3,2) walkable but sealed
+            ".####.", // y=3
+            "......", // y=4
+        ],
+        CELL,
+        ORIGIN,
+    )
+}
+
+#[test]
+fn flow_field_next_steps_lead_to_goal() {
+    let grid = walled_map();
+    let goal = grid.idx(5, 2);
+    let field = FlowField::compute(&grid, goal);
+
+    // From every reachable non-goal cell, repeatedly following `next` reaches the
+    // goal in exactly `distance` steps over walkable, edge-adjacent cells.
+    for start in 0..grid.len() {
+        if !grid.is_walkable(start) || !field.is_reachable(start) {
+            continue;
+        }
+        let mut cur = start;
+        let mut steps = 0u32;
+        while cur != goal {
+            let nxt = field.next(cur).expect("reachable non-goal cell has a flow direction");
+            assert!(grid.is_walkable(nxt), "flow steps only onto walkable cells");
+            let (ax, ay) = grid.xy(cur);
+            let (bx, by) = grid.xy(nxt);
+            assert_eq!(ax.abs_diff(bx) + ay.abs_diff(by), 1, "flow steps are edge-adjacent");
+            cur = nxt;
+            steps += 1;
+            assert!(steps <= grid.len() as u32, "flow following terminates");
+        }
+        assert_eq!(steps, field.distance(start).unwrap(), "steps == field distance");
+    }
+    assert!(field.next(goal).is_none(), "the goal itself has no flow direction");
+}
+
+// ---- AC3 probe (c): flow field agrees with A* on reachability --------------
+
+#[test]
+fn flow_field_reachability_agrees_with_astar() {
+    for grid in [pocket_map(), TileGrid::random(24, 24, CELL, ORIGIN, 0.28, 0x5EED)] {
+        // Pick a walkable goal.
+        let goal = (0..grid.len()).find(|&c| grid.is_walkable(c)).unwrap();
+        let field = FlowField::compute(&grid, goal);
+        for cell in 0..grid.len() {
+            let astar_reaches = astar(&grid, cell, goal).is_some();
+            // Reachability: the field reaches a cell iff A* finds a path from it.
+            assert_eq!(
+                field.is_reachable(cell),
+                astar_reaches,
+                "reachability disagreement at cell {cell}"
+            );
+            // Flow *direction*: every non-goal cell has a direction iff A* finds a
+            // path from it (the goal is the sole exception — reachable, no dir).
+            if cell != goal {
+                assert_eq!(
+                    field.has_direction(cell),
+                    astar_reaches,
+                    "flow-direction disagreement at non-goal cell {cell}"
+                );
+            }
+        }
+        // The sealed pocket cells (when present) are the unreachable witnesses.
+        if grid.width == 6 {
+            assert!(!field.is_reachable(grid.idx(2, 2)), "sealed pocket is unreachable");
+            assert!(!field.is_reachable(grid.idx(3, 2)), "sealed pocket is unreachable");
+        }
+    }
+}
+
+#[test]
+fn flow_field_is_deterministic() {
+    let grid = TileGrid::random(20, 20, CELL, ORIGIN, 0.2, 0xD00D);
+    let goal = grid.idx(10, 10);
+    let a = FlowField::compute(&grid, goal);
+    let b = FlowField::compute(&grid, goal);
+    for c in 0..grid.len() {
+        assert_eq!(a.next(c), b.next(c), "flow direction stable across runs at {c}");
+        assert_eq!(a.distance(c), b.distance(c), "flow distance stable across runs at {c}");
+    }
+}
+
+// ---- AC3 probe (d): group move costs far less than N× A* -------------------
+
+#[test]
+fn group_flow_field_costs_far_less_than_n_times_astar() {
+    // A realistic group move: many units scattered over an obstacle field, all
+    // ordered to one destination. Measured in nodes expanded (deterministic),
+    // never wall-clock, so the comparison is reproducible.
+    let grid = TileGrid::random(48, 48, CELL, ORIGIN, 0.2, 0xC0FFEE);
+    // Goal = the reachable cell farthest from the origin corner, to make the A*
+    // searches substantial (not trivially adjacent).
+    let goal = grid.idx(47, 47);
+    // If the corner is blocked, nudge to a nearby walkable goal.
+    let goal = (goal..grid.len())
+        .chain(0..goal)
+        .find(|&c| grid.is_walkable(c))
+        .unwrap();
+
+    let (field, flow_work) = FlowField::compute_counted(&grid, goal);
+
+    // The group: every reachable cell is a unit's start (one field serves them
+    // all). Sum the work N independent A* runs would spend instead.
+    let starts: Vec<usize> = (0..grid.len())
+        .filter(|&c| c != goal && field.is_reachable(c))
+        .collect();
+    let n = starts.len();
+    assert!(n > 100, "a meaningful group ({n} units)");
+
+    let mut astar_work = 0usize;
+    for &s in &starts {
+        // Each unit reaches the goal by following the shared field (group solved).
+        assert!(field.next(s).is_some(), "each group unit has a flow direction");
+        let (path, expanded) = astar_counted(&grid, s, goal);
+        assert!(path.is_some(), "each group unit is reachable by A* too");
+        astar_work += expanded;
+    }
+
+    println!(
+        "F-002 group move: N={n} units | flow field one BFS = {flow_work} nodes expanded | \
+         N×A* = {astar_work} nodes expanded | ratio = {:.1}×",
+        astar_work as f64 / flow_work as f64
+    );
+    assert!(
+        flow_work * 10 < astar_work,
+        "one flow field ({flow_work}) must cost <1/10 of N×A* ({astar_work})"
+    );
 }

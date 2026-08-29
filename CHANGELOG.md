@@ -39,3 +39,9 @@
 - [2026-08-29] Modified: src/sim/pathfind.rs — M3 AC2: A* (astar + astar_counted nodes-expanded variant), deterministic (f,g,cell) open-set order, Vec-indexed came_from/g_score (no HashMap), Manhattan heuristic; None iff unreachable
 - [2026-08-29] Modified: src/sim/mod.rs — M3 AC2: re-export astar
 - [2026-08-29] Modified: tests/m3_pathfind.rs — M3 AC2: A* tests (walkable+contiguous+reaches goal, None iff unreachable, shortest length, determinism, unit follows waypoints via step_toward, counted variant)
+- [2026-08-29] Modified: src/sim/pathfind.rs — M3 AC3: FlowField (one BFS/Dijkstra from goal, compute + compute_counted, next/is_reachable/distance/has_direction); one field serves a whole group move
+- [2026-08-29] Modified: src/sim/mod.rs — M3 AC3: re-export FlowField
+- [2026-08-29] Modified: tests/m3_pathfind.rs — M3 AC3: flow-field tests (next steps lead to goal; reachability agrees with A* incl. sealed pocket; determinism; group cost < N×A* by node count)
+- [2026-08-29] Created: benches/pathfind.rs — M3: criterion group-move bench (N×A* vs one flow field)
+- [2026-08-29] Modified: Cargo.toml — register the pathfind bench
+- [2026-08-29] Modified: FINDINGS.md — M3: record F-002 (group move N×A* -> one flow field; ~320x fewer nodes, ~1230x wall-clock)

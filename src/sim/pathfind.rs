@@ -20,7 +20,7 @@
 
 use bevy::math::Vec2;
 use std::cmp::Reverse;
-use std::collections::BinaryHeap;
+use std::collections::{BinaryHeap, VecDeque};
 
 use crate::sim::spatial::SplitMix64;
 
@@ -257,6 +257,100 @@ fn reconstruct(came_from: &[usize], start: usize, goal: usize) -> Vec<usize> {
     }
     path.reverse();
     path
+}
+
+// ---- flow field ------------------------------------------------------------
+
+/// A group-move solution: one BFS outward from a single goal that assigns every
+/// reachable cell the next step toward the goal. N units share this *one* field
+/// instead of running N separate A* searches. Built by [`FlowField::compute`].
+///
+/// The edges are unit-cost and undirected, so a plain FIFO BFS yields shortest
+/// distances and a field whose reachability is identical to A*'s. Deterministic:
+/// FIFO queue over the fixed [`DIRS`] neighbour order, all state `Vec`-indexed.
+pub struct FlowField {
+    goal: usize,
+    /// BFS distance (in steps) from each cell to the goal; `u32::MAX` if the goal
+    /// is unreachable from that cell (or the cell is blocked).
+    dist: Vec<u32>,
+    /// `from[cell]` = the neighbour a unit on `cell` steps to next to head toward
+    /// the goal, or `usize::MAX` for the goal itself and for unreachable cells.
+    from: Vec<usize>,
+}
+
+impl FlowField {
+    /// Compute the field toward `goal`. See [`FlowField::compute_counted`].
+    pub fn compute(grid: &TileGrid, goal: usize) -> Self {
+        Self::compute_counted(grid, goal).0
+    }
+
+    /// As [`FlowField::compute`], but also returns the number of nodes expanded
+    /// (cells dequeued) — the *whole group's* search work, one BFS in total, the
+    /// deterministic figure compared against N×A* in the M3 findings.
+    pub fn compute_counted(grid: &TileGrid, goal: usize) -> (Self, usize) {
+        let n = grid.len();
+        let mut dist = vec![u32::MAX; n];
+        let mut from = vec![usize::MAX; n];
+        let mut expanded = 0usize;
+
+        if goal < n && grid.is_walkable(goal) {
+            let mut queue = VecDeque::new();
+            let mut neighbors = Vec::with_capacity(4);
+            dist[goal] = 0;
+            queue.push_back(goal);
+            while let Some(cell) = queue.pop_front() {
+                expanded += 1;
+                grid.walkable_neighbors(cell, &mut neighbors);
+                for &nb in &neighbors {
+                    if dist[nb] == u32::MAX {
+                        // First time reached ⇒ shortest (unit-cost BFS). Point the
+                        // neighbour back at `cell`, which is one step closer.
+                        dist[nb] = dist[cell] + 1;
+                        from[nb] = cell;
+                        queue.push_back(nb);
+                    }
+                }
+            }
+        }
+        (Self { goal, dist, from }, expanded)
+    }
+
+    /// The goal cell this field flows toward.
+    #[inline]
+    pub fn goal(&self) -> usize {
+        self.goal
+    }
+
+    /// Whether the goal is reachable from `cell` by following the field. True for
+    /// the goal itself.
+    #[inline]
+    pub fn is_reachable(&self, cell: usize) -> bool {
+        cell < self.dist.len() && self.dist[cell] != u32::MAX
+    }
+
+    /// BFS distance from `cell` to the goal in steps, or `None` if unreachable.
+    #[inline]
+    pub fn distance(&self, cell: usize) -> Option<u32> {
+        self.is_reachable(cell).then(|| self.dist[cell])
+    }
+
+    /// The next cell a unit on `cell` should move to. `None` at the goal (already
+    /// arrived) or from an unreachable cell (no flow direction there).
+    #[inline]
+    pub fn next(&self, cell: usize) -> Option<usize> {
+        match self.from.get(cell).copied() {
+            Some(usize::MAX) | None => None,
+            Some(next) => Some(next),
+        }
+    }
+
+    /// Whether `cell` carries a flow direction (equivalently, `next(cell)` is
+    /// `Some`). This is the goal-excluded reachability the critic probe checks
+    /// against A*: every non-goal cell has a direction iff A* finds a path.
+    #[inline]
+    pub fn has_direction(&self, cell: usize) -> bool {
+        self.next(cell).is_some()
+    }
 }
 
 // ---- L1 unit tests ---------------------------------------------------------

@@ -21,6 +21,10 @@ harness = false
 name = "nearest_enemy"
 harness = false
 
+[[bench]]
+name = "pathfind"
+harness = false
+
 [profile.dev]
 opt-level = 1
 
