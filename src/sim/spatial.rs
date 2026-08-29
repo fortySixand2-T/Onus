@@ -86,6 +86,40 @@ pub fn random_layout(n: usize, seed: u64, min: Vec2, max: Vec2) -> Vec<Unit> {
         .collect()
 }
 
+// ---- nearest-enemy: brute force (the naive O(n²) pass) ---------------------
+
+/// Nearest enemy of unit `i` by the naive scan: check every other unit, keep the
+/// nearest of the opposite faction. Returns its index, or `None` if unit `i` has
+/// no enemy (e.g. a single unit, or all units share a faction).
+///
+/// Ties (equal squared distance) resolve to the **smallest index**, so the
+/// result is fully deterministic and a valid oracle for the grid.
+pub fn brute_force_nearest_enemy(units: &[Unit], i: usize) -> Option<usize> {
+    brute_force_nearest_enemy_counted(units, i).0
+}
+
+/// As [`brute_force_nearest_enemy`], but also returns the number of enemy
+/// distance evaluations performed — the naive pass's *work*, used to prove the
+/// grid's speedup deterministically (alongside the wall-clock bench).
+pub fn brute_force_nearest_enemy_counted(units: &[Unit], i: usize) -> (Option<usize>, usize) {
+    let me = units[i];
+    let mut best: Option<(f32, usize)> = None;
+    let mut work = 0usize;
+    for (j, u) in units.iter().enumerate() {
+        if u.faction == me.faction {
+            continue;
+        }
+        work += 1;
+        let d2 = me.pos.distance_squared(u.pos);
+        // Replace only on a strictly smaller distance; equal distances keep the
+        // earlier (smaller) index, giving the deterministic tie-break.
+        if best.is_none_or(|(bd2, _)| d2 < bd2) {
+            best = Some((d2, j));
+        }
+    }
+    (best.map(|(_, j)| j), work)
+}
+
 // ---- L1 unit tests ---------------------------------------------------------
 
 #[cfg(test)]
@@ -115,5 +149,58 @@ mod tests {
         assert!(layout
             .iter()
             .all(|u| u.pos.x >= -10.0 && u.pos.x < 10.0 && u.pos.y >= -10.0 && u.pos.y < 10.0));
+    }
+
+    // ---- AC2: brute-force nearest-enemy ------------------------------------
+
+    fn unit(x: f32, y: f32, f: Faction) -> Unit {
+        Unit {
+            pos: Vec2::new(x, y),
+            faction: f,
+        }
+    }
+
+    #[test]
+    fn brute_finds_nearest_opposite_faction() {
+        let units = [
+            unit(0.0, 0.0, Faction::A),  // 0
+            unit(10.0, 0.0, Faction::B), // 1 (far enemy)
+            unit(5.0, 0.0, Faction::B),  // 2 (near enemy)
+        ];
+        assert_eq!(brute_force_nearest_enemy(&units, 0), Some(2), "nearest enemy, not just any");
+        assert_eq!(brute_force_nearest_enemy(&units, 2), Some(0), "B's nearest enemy is the A");
+    }
+
+    #[test]
+    fn brute_single_unit_has_no_enemy() {
+        let units = [unit(3.0, 4.0, Faction::A)];
+        assert_eq!(brute_force_nearest_enemy(&units, 0), None);
+    }
+
+    #[test]
+    fn brute_all_one_faction_has_no_enemy() {
+        let units = [
+            unit(0.0, 0.0, Faction::A),
+            unit(1.0, 1.0, Faction::A),
+            unit(9.0, 9.0, Faction::A),
+        ];
+        for i in 0..units.len() {
+            assert_eq!(brute_force_nearest_enemy(&units, i), None, "no enemy anywhere");
+        }
+    }
+
+    #[test]
+    fn brute_ties_break_to_smallest_index() {
+        // Two enemies at the exact same distance (5) from unit 0.
+        let units = [
+            unit(0.0, 0.0, Faction::A), // 0
+            unit(0.0, 5.0, Faction::B), // 1  distance 5
+            unit(5.0, 0.0, Faction::B), // 2  distance 5
+        ];
+        assert_eq!(
+            brute_force_nearest_enemy(&units, 0),
+            Some(1),
+            "equal distance ⇒ smallest index wins, deterministically"
+        );
     }
 }

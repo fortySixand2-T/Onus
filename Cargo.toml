@@ -17,6 +17,10 @@ criterion = "0.5"
 name = "movement"
 harness = false
 
+[[bench]]
+name = "nearest_enemy"
+harness = false
+
 [profile.dev]
 opt-level = 1
 

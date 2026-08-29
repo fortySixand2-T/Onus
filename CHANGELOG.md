@@ -24,3 +24,7 @@
 - [2026-08-29] Created: src/sim/spatial.rs — M2 AC1: Faction component, Unit data, splitmix64 RNG, deterministic random_layout
 - [2026-08-29] Modified: src/sim/mod.rs — M2: declare and re-export the spatial module
 - [2026-08-29] Created: tests/m2_spatial.rs — M2 AC1: L2 test spawning 1000+ units across two factions; layout determinism
+- [2026-08-29] Modified: src/sim/spatial.rs — M2 AC2: brute_force_nearest_enemy (+counted variant), deterministic tie-break; L1 tests
+- [2026-08-29] Created: benches/nearest_enemy.rs — M2 AC2: criterion bench logging the naive O(n^2) all-pairs timing
+- [2026-08-29] Modified: Cargo.toml — register the nearest_enemy bench
+- [2026-08-29] Modified: src/sim/mod.rs — re-export brute_force_nearest_enemy

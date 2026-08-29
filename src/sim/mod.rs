@@ -12,7 +12,7 @@ use bevy::time::{Fixed, Time};
 use std::collections::VecDeque;
 
 pub mod spatial;
-pub use spatial::{random_layout, Faction, SplitMix64, Unit};
+pub use spatial::{brute_force_nearest_enemy, random_layout, Faction, SplitMix64, Unit};
 
 // ---- tunables --------------------------------------------------------------
 
