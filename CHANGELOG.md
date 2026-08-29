@@ -28,3 +28,6 @@
 - [2026-08-29] Created: benches/nearest_enemy.rs — M2 AC2: criterion bench logging the naive O(n^2) all-pairs timing
 - [2026-08-29] Modified: Cargo.toml — register the nearest_enemy bench
 - [2026-08-29] Modified: src/sim/mod.rs — re-export brute_force_nearest_enemy
+- [2026-08-29] Modified: src/sim/spatial.rs — M2 AC3: SpatialGrid (uniform grid, ring-expanding nearest_enemy, identical result); differential + edge-case + speedup L1 tests
+- [2026-08-29] Modified: benches/nearest_enemy.rs — M2 AC3: add end-to-end grid pass alongside naive
+- [2026-08-29] Modified: src/sim/mod.rs — re-export SpatialGrid

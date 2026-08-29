@@ -120,6 +120,142 @@ pub fn brute_force_nearest_enemy_counted(units: &[Unit], i: usize) -> (Option<us
     (best.map(|(_, j)| j), work)
 }
 
+// ---- nearest-enemy: uniform spatial grid -----------------------------------
+
+/// A uniform grid over the world that buckets units into square cells, so a
+/// nearest-enemy query only inspects nearby cells instead of every unit.
+///
+/// Correctness (identical answer to [`brute_force_nearest_enemy`]): the query
+/// scans cells in expanding Chebyshev rings around the query cell. Any cell at
+/// ring `k ≥ 1` is at least `(k−1)·cell_size` away, so once a best enemy is
+/// found we can stop as soon as the next ring's guaranteed minimum distance
+/// **strictly exceeds** the best distance — nothing unexamined can beat *or tie*
+/// it, so ties still resolve to the smallest index exactly as brute force does.
+/// Units outside the bounds are clamped into edge cells; since their true
+/// distance only *exceeds* the cell bound, the same stop rule stays valid.
+pub struct SpatialGrid {
+    cell_size: f32,
+    min: Vec2,
+    cols: usize,
+    rows: usize,
+    /// `cells[row * cols + col]` = indices of the units in that cell.
+    cells: Vec<Vec<usize>>,
+}
+
+impl SpatialGrid {
+    /// Build a grid whose bounds are the units' own extent. Empty input yields a
+    /// valid 1×1 empty grid.
+    pub fn build(units: &[Unit], cell_size: f32) -> Self {
+        let mut min = Vec2::splat(f32::INFINITY);
+        let mut max = Vec2::splat(f32::NEG_INFINITY);
+        for u in units {
+            min = min.min(u.pos);
+            max = max.max(u.pos);
+        }
+        if units.is_empty() {
+            min = Vec2::ZERO;
+            max = Vec2::ZERO;
+        }
+        Self::build_with_bounds(units, cell_size, min, max)
+    }
+
+    /// Build a grid over an explicit `[min, max]` box. Units outside the box are
+    /// clamped into the nearest edge cell (still answered correctly).
+    pub fn build_with_bounds(units: &[Unit], cell_size: f32, min: Vec2, max: Vec2) -> Self {
+        let cell_size = if cell_size > 0.0 { cell_size } else { 1.0 };
+        let extent = (max - min).max(Vec2::ZERO);
+        let cols = (extent.x / cell_size).floor() as usize + 1;
+        let rows = (extent.y / cell_size).floor() as usize + 1;
+        let mut grid = Self {
+            cell_size,
+            min,
+            cols,
+            rows,
+            cells: vec![Vec::new(); cols * rows],
+        };
+        for (i, u) in units.iter().enumerate() {
+            let (c, r) = grid.cell_of(u.pos);
+            grid.cells[r * cols + c].push(i);
+        }
+        grid
+    }
+
+    /// Cell (col, row) containing `p`, clamped to the grid. Float→int casts
+    /// saturate in Rust, and the clamp then folds any out-of-bounds point onto
+    /// the nearest edge cell.
+    fn cell_of(&self, p: Vec2) -> (usize, usize) {
+        let fx = ((p.x - self.min.x) / self.cell_size).floor() as isize;
+        let fy = ((p.y - self.min.y) / self.cell_size).floor() as isize;
+        let col = fx.clamp(0, self.cols as isize - 1) as usize;
+        let row = fy.clamp(0, self.rows as isize - 1) as usize;
+        (col, row)
+    }
+
+    /// Nearest enemy of unit `i`, identical to [`brute_force_nearest_enemy`].
+    pub fn nearest_enemy(&self, units: &[Unit], i: usize) -> Option<usize> {
+        self.nearest_enemy_counted(units, i).0
+    }
+
+    /// As [`Self::nearest_enemy`], but also returns the number of enemy distance
+    /// evaluations — the grid's *work*, for the deterministic speedup proof.
+    pub fn nearest_enemy_counted(&self, units: &[Unit], i: usize) -> (Option<usize>, usize) {
+        let me = units[i];
+        let (c0, r0) = self.cell_of(me.pos);
+        let max_ring = c0
+            .max(self.cols - 1 - c0)
+            .max(r0.max(self.rows - 1 - r0));
+
+        let mut best_d2 = f32::INFINITY;
+        let mut best_idx: Option<usize> = None;
+        let mut work = 0usize;
+        let mut r = 0usize;
+        loop {
+            // Scan the border cells at Chebyshev distance exactly `r`.
+            let row_lo = r0.saturating_sub(r);
+            let row_hi = (r0 + r).min(self.rows - 1);
+            let col_lo = c0.saturating_sub(r);
+            let col_hi = (c0 + r).min(self.cols - 1);
+            for row in row_lo..=row_hi {
+                for col in col_lo..=col_hi {
+                    let cheby = (col as isize - c0 as isize)
+                        .unsigned_abs()
+                        .max((row as isize - r0 as isize).unsigned_abs());
+                    if cheby != r {
+                        continue; // interior already scanned in an earlier ring
+                    }
+                    for &j in &self.cells[row * self.cols + col] {
+                        if units[j].faction == me.faction {
+                            continue;
+                        }
+                        work += 1;
+                        let d2 = me.pos.distance_squared(units[j].pos);
+                        let better = match best_idx {
+                            None => true,
+                            Some(b) => d2 < best_d2 || (d2 == best_d2 && j < b),
+                        };
+                        if better {
+                            best_d2 = d2;
+                            best_idx = Some(j);
+                        }
+                    }
+                }
+            }
+
+            // Unexamined rings (k > r) are ≥ r·cell_size away. Stop once that
+            // strictly exceeds the best distance found — nothing left can tie it.
+            let reach = r as f32 * self.cell_size;
+            if best_idx.is_some() && reach * reach > best_d2 {
+                break;
+            }
+            if r >= max_ring {
+                break; // whole grid scanned
+            }
+            r += 1;
+        }
+        (best_idx, work)
+    }
+}
+
 // ---- L1 unit tests ---------------------------------------------------------
 
 #[cfg(test)]
@@ -201,6 +337,115 @@ mod tests {
             brute_force_nearest_enemy(&units, 0),
             Some(1),
             "equal distance ⇒ smallest index wins, deterministically"
+        );
+    }
+
+    // ---- AC3: spatial grid == brute force (the differential oracle) ---------
+
+    /// Assert the grid answers *every* query identically to brute force, for a
+    /// grid built both from data-derived bounds and from the given tight bounds.
+    fn assert_grid_eq_brute(units: &[Unit], cell_size: f32, min: Vec2, max: Vec2) {
+        let g_auto = SpatialGrid::build(units, cell_size);
+        let g_fixed = SpatialGrid::build_with_bounds(units, cell_size, min, max);
+        for i in 0..units.len() {
+            let expected = brute_force_nearest_enemy(units, i);
+            assert_eq!(
+                g_auto.nearest_enemy(units, i),
+                expected,
+                "data-bounds grid disagrees at unit {i}"
+            );
+            assert_eq!(
+                g_fixed.nearest_enemy(units, i),
+                expected,
+                "fixed-bounds grid disagrees at unit {i}"
+            );
+        }
+    }
+
+    #[test]
+    fn grid_matches_brute_over_many_seeds() {
+        let (min, max) = (Vec2::new(-1000.0, -1000.0), Vec2::new(1000.0, 1000.0));
+        for seed in 0..80u64 {
+            // Vary count and cell size across seeds to probe many grid shapes.
+            let n = 50 + (seed as usize % 7) * 60; // 50..410
+            let cell = 20.0 + (seed % 5) as f32 * 55.0; // 20..240
+            let units = random_layout(n, seed.wrapping_mul(0x0001_2345), min, max);
+            assert_grid_eq_brute(&units, cell, min, max);
+        }
+    }
+
+    #[test]
+    fn grid_matches_brute_single_and_all_one_faction() {
+        // Single unit → no enemy.
+        let one = [unit(1.0, 2.0, Faction::A)];
+        assert_eq!(SpatialGrid::build(&one, 10.0).nearest_enemy(&one, 0), None);
+
+        // All one faction → no enemy for anyone.
+        let all_a = [
+            unit(0.0, 0.0, Faction::A),
+            unit(30.0, 10.0, Faction::A),
+            unit(-40.0, 90.0, Faction::A),
+        ];
+        let g = SpatialGrid::build(&all_a, 25.0);
+        for i in 0..all_a.len() {
+            assert_eq!(g.nearest_enemy(&all_a, i), None);
+        }
+    }
+
+    #[test]
+    fn grid_handles_units_outside_explicit_bounds() {
+        // Tight bounds around the origin, but several units live far outside —
+        // they must be bucketed into edge cells and still yield brute-identical
+        // answers (query points inside *and* outside the bounds).
+        let units = [
+            unit(0.0, 0.0, Faction::A),
+            unit(5.0, 5.0, Faction::B),
+            unit(9000.0, -9000.0, Faction::B),  // far outside
+            unit(-9000.0, 9000.0, Faction::A),  // far outside
+            unit(3.0, -4000.0, Faction::B),     // outside on one axis
+            unit(-2.0, 2.0, Faction::A),
+        ];
+        assert_grid_eq_brute(&units, 15.0, Vec2::new(-10.0, -10.0), Vec2::new(10.0, 10.0));
+    }
+
+    #[test]
+    fn grid_handles_boundary_empty_cells_and_duplicates() {
+        let (min, max) = (Vec2::new(0.0, 0.0), Vec2::new(100.0, 100.0));
+        let units = [
+            unit(0.0, 0.0, Faction::A),     // exactly on the min corner
+            unit(100.0, 100.0, Faction::B), // exactly on the max corner
+            unit(50.0, 50.0, Faction::A),   // isolated with empty neighbor cells
+            unit(50.0, 50.0, Faction::B),   // duplicate position, opposite side (dist 0)
+            unit(0.0, 100.0, Faction::B),   // other corners
+            unit(100.0, 0.0, Faction::A),
+        ];
+        // small cells ⇒ many empty cells between occupied ones.
+        assert_grid_eq_brute(&units, 7.0, min, max);
+        // one big cell ⇒ everything in a single bucket (degenerate but valid).
+        assert_grid_eq_brute(&units, 1000.0, min, max);
+    }
+
+    #[test]
+    fn grid_visits_far_fewer_candidates_than_brute() {
+        // The speedup mechanism, proven deterministically: on a dense uniform
+        // field the grid evaluates far fewer distances than the naive scan.
+        let (min, max) = (Vec2::new(-1000.0, -1000.0), Vec2::new(1000.0, 1000.0));
+        let units = random_layout(2000, 99, min, max);
+        let cell = 40.0;
+        let grid = SpatialGrid::build(&units, cell);
+
+        let mut brute_work = 0usize;
+        let mut grid_work = 0usize;
+        for i in 0..units.len() {
+            let (be, bw) = brute_force_nearest_enemy_counted(&units, i);
+            let (ge, gw) = grid.nearest_enemy_counted(&units, i);
+            assert_eq!(be, ge, "counted variants must also agree at unit {i}");
+            brute_work += bw;
+            grid_work += gw;
+        }
+        assert!(
+            grid_work * 10 < brute_work,
+            "grid should evaluate <1/10 the distances of brute (grid={grid_work}, brute={brute_work})"
         );
     }
 }
