@@ -400,6 +400,39 @@ mod tests {
     }
 
     #[test]
+    fn nemesis_boosts_by_30_percent_and_skips_armor() {
+        let c = content();
+        let (bulwark, ravager, sentinel) = (
+            c.unit_index("bulwark").unwrap(),
+            c.unit_index("ravager").unwrap(),
+            c.unit_index("sentinel").unwrap(),
+        );
+        // Bulwark preys on the Ravager: 4 * 5 = 20 base, * 1300 / 1000 = 26,
+        // and the Ravager's 4 armor (8 mitigation) is ignored.
+        assert_eq!(damage_per_hit(&c, bulwark, ravager), 26);
+        // Against anything else the plain armor math applies: 20 - 5 * 2 = 10.
+        assert_eq!(damage_per_hit(&c, bulwark, sentinel), 10);
+        // The bonus is not symmetric: the prey gets nothing back.
+        assert_eq!(
+            damage_per_hit(&c, ravager, bulwark),
+            35u32.saturating_sub(18),
+            "Ravager preys on the Sentinel, not the Bulwark"
+        );
+    }
+
+    #[test]
+    fn the_nemesis_multiplier_is_integer_per_mille() {
+        let c = content();
+        assert_eq!(c.nemesis_bonus.mult_milli(), 1_300);
+        // floor(base * 1300 / 1000) — stated here so a rounding change is a
+        // test failure, not a silent balance shift.
+        for base in [0u32, 1, 3, 7, 20, 45, 1_000] {
+            let expect = (base as u64 * 1_300 / 1_000) as u32;
+            assert_eq!(base * 13 / 10, expect, "base {base}");
+        }
+    }
+
+    #[test]
     fn health_pool_comes_from_defense() {
         let c = content();
         let h = Health::from_def(&c, c.unit_index("bulwark").unwrap());

@@ -437,6 +437,77 @@ fn movement_speed_comes_from_the_units_ron() {
     );
 }
 
+// ---- AC3: the nemesis override ---------------------------------------------
+
+/// +30% damage, ignoring armor, iff the defender is the attacker's declared
+/// prey. Integer math throughout: floor(base * 1300 / 1000).
+#[test]
+fn nemesis_adds_30_percent_and_ignores_armor() {
+    let c = content();
+    let milli = c.nemesis_bonus.mult_milli();
+    assert_eq!(milli, 1300, "+30% held as integer per-mille");
+    assert!(c.nemesis_bonus.ignore_armor);
+
+    for u in &c.units {
+        let a = c.unit_index(&u.id).unwrap();
+        let Some(prey_id) = u.nemesis.as_deref() else {
+            continue;
+        };
+        let prey = c.unit_index(prey_id).expect("nemesis names a real unit");
+        let base = u.offense * c.combat.damage_per_offense;
+        let expect = (base as u64 * milli as u64 / 1000) as u32;
+        assert_eq!(
+            onus::sim::combat::damage_per_hit(&c, a, prey),
+            expect,
+            "{} vs its prey {prey_id}: +30%, armor ignored",
+            u.id
+        );
+        // Strictly better than the armored, unbuffed hit it would otherwise be.
+        let mitigation = c.units[prey].armor * c.combat.mitigation_per_armor;
+        assert!(
+            expect > base.saturating_sub(mitigation),
+            "the override actually helps"
+        );
+        // And every *other* defender is unaffected by this unit's nemesis.
+        for other in &c.units {
+            if other.id == *prey_id {
+                continue;
+            }
+            let o = c.unit_index(&other.id).unwrap();
+            let flat = base.saturating_sub(other.armor * c.combat.mitigation_per_armor);
+            assert_eq!(
+                onus::sim::combat::damage_per_hit(&c, a, o),
+                flat,
+                "{} vs non-prey {}: plain armor math",
+                u.id,
+                other.id
+            );
+        }
+    }
+}
+
+/// The override shows up in the fight, not just in the formula: the Bulwark
+/// kills its prey (Ravager, armor 4) faster than a Sentinel of the same armor
+/// class would be hurt — measured as HP removed per hit in a live sim.
+#[test]
+fn the_nemesis_bonus_applies_in_a_live_fight() {
+    let mut app = sim_app();
+    // Bulwark's nemesis is the Ravager.
+    let prey = spawn_unit(&mut app, "ravager", Faction::B, Vec2::new(20.0, 0.0));
+    let _bulwark = spawn_unit(&mut app, "bulwark", Faction::A, Vec2::ZERO);
+    let full = hp(&app, prey).unwrap();
+
+    step(&mut app);
+    let dealt = full - hp(&app, prey).unwrap();
+    let c = content();
+    let base = c.unit("bulwark").unwrap().offense * c.combat.damage_per_offense;
+    assert_eq!(dealt, base * 13 / 10, "nemesis damage, armor ignored");
+    assert!(
+        dealt > base - c.unit("ravager").unwrap().armor * c.combat.mitigation_per_armor,
+        "and it beats the armored hit"
+    );
+}
+
 /// A cooldown component is sim state, not a wall-clock timer: it counts ticks.
 #[test]
 fn the_attack_cadence_counts_ticks() {
