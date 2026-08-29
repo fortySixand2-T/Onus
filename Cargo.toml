@@ -1,0 +1,16 @@
+[package]
+name = "onus"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bevy = "0.19"
+
+# Fast dev rebuilds (dev only): `cargo run --features bevy/dynamic_linking`
+# Pair with the `mold` linker on Linux for best iteration times.
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
