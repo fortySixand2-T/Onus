@@ -190,7 +190,7 @@ Validators use `checked_*`; runtime derivations saturate; and a rejection is an
 `accepted_content_never_needs_a_saturating_hit`) plus
 `a_scale_the_validator_cannot_multiply_is_an_error_not_a_panic`; both
 `cargo test` and `cargo test --release` are green — the release run is
-load-bearing here, since the wrap is invisible in debug. Commit `HEAD`.
+load-bearing here, since the wrap is invisible in debug. Commit `d861f23`.
 
 ## F-006 — Combat damage is integer arithmetic; the design stats are scaled in data (M4b)
 
