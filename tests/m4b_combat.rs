@@ -551,6 +551,41 @@ fn a_move_order_cancels_an_auto_chase_already_in_progress() {
     assert!(alive(&app, prey), "and it never got back into reach");
 }
 
+/// Stats the per-hit arithmetic cannot represent are refused at load, and the
+/// nemesis multiply saturates rather than wrapping if one ever reaches it: a
+/// +30% bonus is never allowed to come out smaller than the base hit.
+#[test]
+fn out_of_scale_stats_are_rejected_and_the_bonus_never_wraps() {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/m4b_scale_content");
+    std::fs::create_dir_all(&dir).unwrap();
+    let units = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
+    std::fs::write(
+        dir.join("units.ron"),
+        units.replace("speed: 2, offense: 4,", "speed: 2, offense: 4000000000,"),
+    )
+    .unwrap();
+    std::fs::copy(data_dir().join("resources.ron"), dir.join("resources.ron")).unwrap();
+    assert!(
+        Content::load_from_dir(&dir).is_err(),
+        "an offense far outside the design scale must not load"
+    );
+
+    // And in memory, where nothing was validated, the bonus still cannot invert.
+    let mut c = content();
+    let (bulwark, ravager) = (
+        c.unit_index("bulwark").unwrap(),
+        c.unit_index("ravager").unwrap(),
+    );
+    for offense in [1u32, 10, 1_000_000_000] {
+        c.units[bulwark].offense = offense;
+        let base = offense.saturating_mul(c.combat.damage_per_offense);
+        assert!(
+            onus::sim::combat::damage_per_hit(&c, bulwark, ravager) >= base,
+            "offense {offense}: the nemesis bonus must never be a penalty"
+        );
+    }
+}
+
 /// A cooldown component is sim state, not a wall-clock timer: it counts ticks.
 #[test]
 fn the_attack_cadence_counts_ticks() {

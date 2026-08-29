@@ -150,6 +150,20 @@ applies to every future counter: cap the *intake*, never drop the difference.
 asserts `banked + carried + in-deposit` invariant on every tick starting from
 `u32::MAX - 4`; red before, green after (commit `93c472a`).
 
+**Extension (M4b).** The same class resurfaced in combat and the M4b critic
+caught it: `damage_per_hit` widened the nemesis multiply to `u64` and then cast
+back with a plain `as u32`, which *wraps*. At offense 1e9 the "+30% bonus"
+came out as `1_288_490_187` against an unmitigated base of `4_294_967_295` — a
+70% penalty (`the_nemesis_bonus_is_never_smaller_than_the_base_damage`). Two
+fixes, because either alone is half a fix: the cast now saturates
+(`.min(u32::MAX as u64)`), **and** `Content::validate` bounds every design stat
+by the data-declared `mvp_combat.max_stat` and rejects any scaling whose peak HP
+or peak nemesis hit does not fit the `u32` the sim counts in. Validation that
+admits values the arithmetic cannot represent is the actual defect; saturation
+is only the backstop for content built in memory. Evidence:
+`cargo test --test critic_m4b` and
+`out_of_scale_stats_are_rejected_and_the_bonus_never_wraps`, commit `bb3c2b1`.
+
 ## F-006 — Combat damage is integer arithmetic; the design stats are scaled in data (M4b)
 
 **Wall hit.** The roster's stats are a 1-10 *design* scale (`offense: 4`,

@@ -109,6 +109,9 @@
         damage_per_offense: 5,     // Offense -> damage per hit
         mitigation_per_armor: 2,   // Armor  -> flat mitigation per hit
         speed_per_point: 36.0,     // Speed  -> world units per second
+        max_stat: 10,              // the design scale is 1-10; stats above this
+                                   // are a load error (the per-hit arithmetic is
+                                   // u32 and must be able to represent them)
         engage_range: 220.0,       // radius in which an idle unit picks a fight
         pursue_range: 400.0,       // leash: how far it will chase before giving
                                    // up (>= engage_range, because walking around

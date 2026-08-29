@@ -146,9 +146,15 @@ pub fn damage_per_hit(content: &Content, attacker: usize, defender: usize) -> u3
     if is_nemesis {
         let bonus = content.nemesis_bonus;
         // Integer per-mille: widened to u64 so the multiply cannot wrap, then
-        // divided back down. No float touches this arithmetic.
-        let boosted =
-            (base as u64 * bonus.mult_milli() as u64 / NemesisBonus::MULT_SCALE as u64) as u32;
+        // divided back down. No float touches this arithmetic. The narrowing
+        // back to u32 **saturates** — a truncating `as u32` would turn a bonus
+        // into a penalty at large offense, which is the F-005 mistake (silent
+        // arithmetic mangling a quantity) in a new place. `Content::validate`
+        // also bounds the stats so shipped data can never reach the ceiling;
+        // the saturation is the backstop for anything built in memory.
+        let boosted = (base as u64 * bonus.mult_milli() as u64
+            / NemesisBonus::MULT_SCALE as u64)
+            .min(u32::MAX as u64) as u32;
         if bonus.ignore_armor {
             boosted
         } else {

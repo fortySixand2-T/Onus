@@ -127,6 +127,10 @@ pub struct CombatDef {
     pub speed_per_point: f32,
     /// Radius within which an idle unit picks a fight (world units).
     pub engage_range: f32,
+    /// Upper bound of the 1-10 design scale. Stats above it are rejected at
+    /// load: validation that admits values the per-hit arithmetic cannot
+    /// represent is worse than no validation at all.
+    pub max_stat: u32,
     /// Leash: how far a unit already chasing will follow before giving up. At
     /// least `engage_range` — pathing around an obstacle legitimately opens the
     /// straight-line gap, and a unit that dropped its target there would
@@ -312,6 +316,19 @@ impl Content {
             // Combat (M4b). Every unit is killable, so every unit needs a real
             // HP pool and a way to move; only units that can actually hurt
             // something carry a cadence and a reach — and they must carry both.
+            for (stat, value) in [
+                ("offense", u.offense),
+                ("defense", u.defense),
+                ("armor", u.armor),
+                ("speed", u.speed),
+            ] {
+                if value > self.combat.max_stat {
+                    return bad(format!(
+                        "unit `{}` has {stat} {value}, above the design scale max {}",
+                        u.id, self.combat.max_stat
+                    ));
+                }
+            }
             if u.defense == 0 {
                 return bad(format!("unit `{}` has no HP pool (defense 0)", u.id));
             }
@@ -357,9 +374,28 @@ impl Content {
         if c.pursue_range < c.engage_range {
             return bad("mvp_combat pursue_range must be >= engage_range".to_string());
         }
+        if c.max_stat == 0 {
+            return bad("mvp_combat max_stat must be positive".to_string());
+        }
         let mult = self.nemesis_bonus.damage_mult;
         if !(mult.is_finite() && mult >= 1.0) {
             return bad("nemesis_bonus.damage_mult must be finite and >= 1.0".to_string());
+        }
+
+        // Representability: the *largest* HP pool and the *largest* nemesis hit
+        // the bounded stats can produce must both fit in the u32 the sim counts
+        // them in. Data that can only be evaluated by saturating is data the
+        // loader should refuse, not data the formula should paper over.
+        let max_stat = c.max_stat as u64;
+        let peak_hp = max_stat * c.hp_per_defense as u64;
+        let peak_damage = max_stat * c.damage_per_offense as u64 * self.nemesis_bonus.mult_milli()
+            as u64
+            / NemesisBonus::MULT_SCALE as u64;
+        if peak_hp > u32::MAX as u64 || peak_damage > u32::MAX as u64 {
+            return bad(format!(
+                "mvp_combat scaling overflows the sim's u32 arithmetic \
+                 (peak HP {peak_hp}, peak damage {peak_damage})"
+            ));
         }
 
         if self.resources.iter().all(|r| r.id != self.economy.currency) {

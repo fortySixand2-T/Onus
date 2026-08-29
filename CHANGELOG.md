@@ -106,3 +106,7 @@
 - [2026-08-29] Modified: src/sim/mod.rs — critic fix: an explicit MoveTo/Gather order removes Engaging, so a commander's order beats an in-progress auto-chase
 - [2026-08-29] Modified: src/sim/combat.rs — Engaging doc now states where the cancellation happens (apply_commands)
 - [2026-08-29] Modified: tests/m4b_combat.rs — coverage for the mid-chase case: a move order cancels an auto-chase already in progress
+- [2026-08-29] Modified: src/sim/combat.rs — critic fix: the nemesis multiply narrows with a saturating cast, never a wrapping one
+- [2026-08-29] Modified: src/sim/content.rs, assets/data/units.ron — mvp_combat.max_stat bounds the design stats at load; peak HP / peak damage must fit u32
+- [2026-08-29] Modified: tests/m4b_combat.rs — out-of-scale stats are rejected at load and the bonus never inverts
+- [2026-08-29] Modified: FINDINGS.md — F-005 extended with the M4b truncating-cast case (same class, two-part fix)
