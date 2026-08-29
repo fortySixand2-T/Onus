@@ -54,10 +54,16 @@ impl Stockpiles {
         self.alloy[faction_slot(f)]
     }
 
-    /// Bank `amount` (a deposit). Saturating: totals never wrap.
-    pub fn add(&mut self, f: Faction, amount: u32) {
+    /// Bank as much of `amount` as the counter can actually hold and return the
+    /// amount **accepted**. Alloy is only ever moved: whatever a full stockpile
+    /// cannot take stays where it was (in the worker's hands), rather than being
+    /// silently annihilated by a saturating add.
+    #[must_use]
+    pub fn add(&mut self, f: Faction, amount: u32) -> u32 {
         let slot = &mut self.alloy[faction_slot(f)];
-        *slot = slot.saturating_add(amount);
+        let accepted = amount.min(u32::MAX - *slot);
+        *slot += accepted;
+        accepted
     }
 
     /// All-or-nothing spend. Returns `true` iff the faction could afford it and
@@ -216,7 +222,9 @@ pub fn gather(
             }
 
             GatherPhase::Harvesting { ticks_left } => {
-                if ticks_left > 0 {
+                // Harvest lands on the `mvp_gather_ticks`-th tick of mining, so
+                // the RON number is exactly how long a load takes.
+                if ticks_left > 1 {
                     *phase = GatherPhase::Harvesting {
                         ticks_left: ticks_left - 1,
                     };
@@ -251,8 +259,15 @@ pub fn gather(
                     continue; // No drop-off yet — hold the load (still conserved).
                 };
                 if pos.distance(drop_pos) <= deposit_range {
-                    stock.add(faction, carrying.0);
-                    carrying.0 = 0;
+                    // Only what the stockpile accepts leaves the worker's hands.
+                    let accepted = stock.add(faction, carrying.0);
+                    carrying.0 -= accepted;
+                    if carrying.0 > 0 {
+                        // A full stockpile took only part of the load; the rest
+                        // stays in hand and the worker waits here with it.
+                        commands.entity(entity).remove::<MoveTarget>();
+                        continue;
+                    }
                     match node_pos {
                         Some(_) => *phase = GatherPhase::ToNode,
                         None => {
