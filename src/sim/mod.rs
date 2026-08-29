@@ -16,7 +16,9 @@ pub mod economy;
 pub mod pathfind;
 pub mod spatial;
 pub use content::Content;
-pub use economy::{Building, Carrying, GatherPhase, ProductionQueue, Stockpiles, UnitDefIdx};
+pub use economy::{
+    Building, Carrying, GatherPhase, ProductionQueue, QueuedUnit, Stockpiles, UnitDefIdx,
+};
 pub use pathfind::{astar, FlowField, TileGrid};
 pub use spatial::{
     brute_force_nearest_enemy, random_layout, Faction, SpatialGrid, SplitMix64, Unit,
@@ -88,6 +90,17 @@ pub enum Order {
         node: Entity,
         node_pos: Vec2,
     },
+    /// Place a building (index into `Content::buildings`) — costs Alloy.
+    Place {
+        faction: Faction,
+        building: usize,
+        pos: Vec2,
+    },
+    /// Train a unit (index into `Content::units`) at a building — costs Alloy.
+    Train {
+        building: Entity,
+        unit: usize,
+    },
 }
 
 /// Counters for the once-per-second sim-tick vs. frame report. `sim_ticks` is
@@ -103,7 +116,13 @@ pub struct RateReport {
 
 /// Drain the command queue, turning intents into per-entity sim components.
 /// Runs before [`movement`] so orders take effect on the same tick.
-pub fn apply_commands(mut queue: ResMut<CommandQueue>, mut commands: Commands) {
+pub fn apply_commands(
+    mut queue: ResMut<CommandQueue>,
+    content: Res<Content>,
+    mut stock: ResMut<Stockpiles>,
+    mut producers: Query<(&Building, &Faction, &mut ProductionQueue)>,
+    mut commands: Commands,
+) {
     while let Some(cmd) = queue.0.pop_front() {
         match cmd {
             Order::MoveTo { units, dest } => {
@@ -132,6 +151,28 @@ pub fn apply_commands(mut queue: ResMut<CommandQueue>, mut commands: Commands) {
                         .insert(GatherTarget(node))
                         .insert(GatherPhase::ToNode)
                         .insert_if_new(Carrying(0));
+                }
+            }
+
+            // Spending orders. Both charge Alloy in exactly one place
+            // (`Stockpiles::try_spend`); a rejected order changes nothing.
+            Order::Place {
+                faction,
+                building,
+                pos,
+            } => {
+                economy::place_building(
+                    &content,
+                    &mut stock,
+                    &mut commands,
+                    faction,
+                    building,
+                    pos,
+                );
+            }
+            Order::Train { building, unit } => {
+                if let Ok((b, faction, mut queue)) = producers.get_mut(building) {
+                    economy::enqueue_unit(&content, &mut stock, b.def, *faction, &mut queue, unit);
                 }
             }
         }

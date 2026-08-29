@@ -6,12 +6,24 @@
 
 use bevy::prelude::*;
 
+use crate::sim::spatial::Faction;
 use crate::sim::UnitKind;
 
 // ---- presentation / interaction tunables -----------------------------------
 
 pub const RESOURCE_SIZE: f32 = 34.0;
 pub const RESOURCE_COLOR: Color = Color::srgb(0.95, 0.85, 0.20);
+/// The side the local player commands (1v1 mirror; the AI takes the other).
+pub const PLAYER_FACTION: Faction = Faction::A;
+
+/// Hotkeys for placing buildings, paired positionally with the *placeable*
+/// buildings of `units.ron` (those that are not the starting drop-off). Keeping
+/// the roster in data means adding a barracks needs no code change here.
+pub const PLACE_KEYS: [KeyCode; 3] = [KeyCode::KeyB, KeyCode::KeyN, KeyCode::KeyM];
+
+/// Hotkeys for training the Nth unit of a selected building's `produces` list.
+pub const TRAIN_KEYS: [KeyCode; 3] = [KeyCode::Digit1, KeyCode::Digit2, KeyCode::Digit3];
+
 pub const BUILDING_SIZE: f32 = 56.0;
 pub const BUILDING_COLOR: Color = Color::srgb(0.55, 0.60, 0.75);
 pub const SELECT_COLOR: Color = Color::srgb(1.0, 1.0, 1.0);
@@ -28,6 +40,16 @@ pub fn unit_color(kind: UnitKind) -> Color {
         UnitKind::Worker => Color::srgb(0.30, 0.80, 0.90),
         UnitKind::Soldier => Color::srgb(0.90, 0.40, 0.30),
         UnitKind::Scout => Color::srgb(0.60, 0.90, 0.40),
+    }
+}
+
+/// Presentation mapping: which sprite archetype a data-driven unit id gets.
+/// Purely visual — the sim knows only the `units.ron` definition index.
+pub fn kind_for_unit_id(id: &str) -> UnitKind {
+    match id {
+        "worker" => UnitKind::Worker,
+        "ripper" | "sentinel" => UnitKind::Scout,
+        _ => UnitKind::Soldier,
     }
 }
 

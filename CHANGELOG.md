@@ -62,3 +62,11 @@
 - [2026-08-29] Modified: src/client.rs — M4a AC2: building color/size presentation constants
 - [2026-08-29] Modified: src/lib.rs — M4a AC2: Stockpiles resource + gather in FixedUpdate
 - [2026-08-29] Modified: tests/m4a_economy.rs — M4a AC2: gather loop, conservation, determinism tests
+- [2026-08-29] Modified: src/sim/economy.rs — M4a AC3: place_building/enqueue_unit (charge once) + production tick
+- [2026-08-29] Modified: src/sim/mod.rs — M4a AC3: Order::Place / Order::Train applied in FixedUpdate
+- [2026-08-29] Modified: src/input.rs — M4a AC3: build/train hotkeys emit orders (never spend)
+- [2026-08-29] Modified: src/client.rs — M4a AC3: PLAYER_FACTION, place/train hotkeys, unit-id → sprite kind
+- [2026-08-29] Modified: src/ui.rs — M4a AC3: attach visuals to sim-spawned entities; Alloy + production panel
+- [2026-08-29] Modified: src/lib.rs — M4a AC3: production system + attach_visuals + build hotkeys wired
+- [2026-08-29] Modified: tests/m1_selection.rs — M4a AC3: harness supplies Content + Stockpiles to apply_commands
+- [2026-08-29] Modified: tests/m4a_economy.rs — M4a AC3: placement/production cost tests + input-emits-orders tests

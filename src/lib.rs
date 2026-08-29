@@ -44,6 +44,8 @@ pub fn build_app() -> App {
                 input::update_cursor,
                 input::selection.after(input::update_cursor),
                 input::emit_commands.after(input::update_cursor),
+                input::emit_build_commands.after(input::update_cursor),
+                ui::attach_visuals,
                 ui::sync_transform,
                 ui::draw_selection,
                 ui::update_options_panel,

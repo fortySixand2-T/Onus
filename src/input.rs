@@ -185,3 +185,51 @@ pub fn emit_commands(
         None => queue.0.push_back(Order::MoveTo { units, dest: cur }),
     }
 }
+
+/// Build/train hotkeys → [`Order`]s. Like every other input path this only
+/// *emits* orders: the Alloy is spent (or the order rejected) by the sim in
+/// `FixedUpdate`, never here.
+pub fn emit_build_commands(
+    keys: Res<ButtonInput<KeyCode>>,
+    cursor: Res<CursorWorld>,
+    content: Res<Content>,
+    selected_buildings: Query<(Entity, &Building), With<Selected>>,
+    mut queue: ResMut<CommandQueue>,
+) {
+    // Place a barracks at the cursor. Placeable = every non-drop-off building,
+    // in RON order, paired with `PLACE_KEYS`.
+    if let Some(cur) = cursor.0 {
+        let placeable = content
+            .buildings
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| !b.dropoff)
+            .map(|(i, _)| i);
+        for (slot, building) in placeable.enumerate() {
+            if PLACE_KEYS.get(slot).is_some_and(|k| keys.just_pressed(*k)) {
+                queue.0.push_back(Order::Place {
+                    faction: PLAYER_FACTION,
+                    building,
+                    pos: cur,
+                });
+            }
+        }
+    }
+
+    // Train the Nth unit a selected building can produce.
+    for (entity, building) in &selected_buildings {
+        let Some(def) = content.buildings.get(building.def) else {
+            continue;
+        };
+        for (slot, unit_id) in def.produces.iter().enumerate() {
+            if TRAIN_KEYS.get(slot).is_some_and(|k| keys.just_pressed(*k)) {
+                if let Some(unit) = content.unit_index(unit_id) {
+                    queue.0.push_back(Order::Train {
+                        building: entity,
+                        unit,
+                    });
+                }
+            }
+        }
+    }
+}

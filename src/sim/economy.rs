@@ -270,3 +270,102 @@ pub fn gather(
         }
     }
 }
+
+// ---- spending: placement and production ------------------------------------
+
+/// Apply a "place this building" order. The Alloy is charged in exactly one
+/// place ([`Stockpiles::try_spend`], all-or-nothing) and only then is the
+/// building spawned, so a rejected order costs nothing and an accepted one is
+/// never charged twice.
+pub fn place_building(
+    content: &Content,
+    stock: &mut Stockpiles,
+    commands: &mut Commands,
+    faction: Faction,
+    building: usize,
+    pos: Vec2,
+) -> bool {
+    let Some(def) = content.buildings.get(building) else {
+        return false;
+    };
+    if !stock.try_spend(faction, def.alloy_cost) {
+        return false;
+    }
+    commands.spawn((
+        Position(pos),
+        Building { def: building },
+        faction,
+        ProductionQueue::default(),
+    ));
+    true
+}
+
+/// Apply a "train this unit here" order: charge once, then enqueue. Rejected
+/// (unknown ids, a building that doesn't produce the unit, or not enough Alloy)
+/// ⇒ nothing spent and nothing queued.
+pub fn enqueue_unit(
+    content: &Content,
+    stock: &mut Stockpiles,
+    building_def: usize,
+    faction: Faction,
+    queue: &mut ProductionQueue,
+    unit: usize,
+) -> bool {
+    let Some(def) = content.units.get(unit) else {
+        return false;
+    };
+    if !content.produces(building_def, unit) {
+        return false;
+    }
+    if !stock.try_spend(faction, def.mvp_alloy_cost) {
+        return false;
+    }
+    queue.items.push_back(QueuedUnit {
+        unit,
+        ticks_left: def.mvp_train_ticks,
+    });
+    true
+}
+
+/// Advance each building's production queue by one tick and spawn the head item
+/// when its timer runs out. **Never charges Alloy** — the cost was taken when
+/// the item was enqueued, so a unit is paid for exactly once.
+pub fn production(
+    content: Res<Content>,
+    mut buildings: Query<(Entity, &Position, &Faction, &mut ProductionQueue)>,
+    mut commands: Commands,
+) {
+    // Stable order (ascending entity index) so spawn order never depends on
+    // archetype/query layout.
+    let mut ordered: Vec<Entity> = buildings.iter().map(|(e, ..)| e).collect();
+    ordered.sort_unstable_by_key(|e| e.to_bits());
+
+    for entity in ordered {
+        let Ok((_, pos, faction, mut queue)) = buildings.get_mut(entity) else {
+            continue;
+        };
+        let (pos, faction) = (pos.0, *faction);
+        let Some(head) = queue.items.front_mut() else {
+            continue;
+        };
+        if head.ticks_left > 0 {
+            head.ticks_left -= 1;
+            continue;
+        }
+        let done = queue.items.pop_front().expect("head exists");
+        let spawn_pos = pos + rally_offset(&content, done.unit);
+        let mut spawned = commands.spawn((Position(spawn_pos), UnitDefIdx(done.unit), faction));
+        if content.units.get(done.unit).is_some_and(|u| u.gathers) {
+            spawned.insert(Carrying(0));
+        }
+    }
+}
+
+/// Where a finished unit appears relative to its producer: just outside the
+/// drop-off radius, on a fixed spoke chosen from the unit's definition index —
+/// deterministic, with no RNG and no clock.
+fn rally_offset(content: &Content, unit: usize) -> Vec2 {
+    let spokes = content.units.len().max(1);
+    let angle = std::f32::consts::TAU * (unit % spokes) as f32 / spokes as f32;
+    Vec2::new(angle.cos(), angle.sin()) * (content.economy.deposit_range + 1.0)
+}

@@ -23,6 +23,10 @@ fn test_app() -> App {
         .init_resource::<DragState>()
         .init_resource::<ClickTracker>()
         .init_resource::<CommandQueue>()
+        // The sim's order application now also settles economy orders, so it
+        // needs the content table and the stockpiles (M4a).
+        .insert_resource(Content::load_default().expect("assets/data/*.ron load"))
+        .init_resource::<Stockpiles>()
         // Note: no `update_cursor` — we set `CursorWorld` directly (no window).
         // `apply_commands` runs in Update here so orders resolve within one frame.
         .add_systems(Update, (selection, emit_commands, apply_commands).chain());
@@ -149,10 +153,16 @@ fn shift_click_adds_and_removes() {
 
     left_click(&mut app, Vec2::ZERO, false);
     left_click(&mut app, Vec2::new(100.0, 0.0), true); // shift-add b
-    assert!(is_selected(&app, a) && is_selected(&app, b), "shift adds to selection");
+    assert!(
+        is_selected(&app, a) && is_selected(&app, b),
+        "shift adds to selection"
+    );
 
     left_click(&mut app, Vec2::new(100.0, 0.0), true); // shift-remove b
-    assert!(is_selected(&app, a) && !is_selected(&app, b), "shift toggles off");
+    assert!(
+        is_selected(&app, a) && !is_selected(&app, b),
+        "shift toggles off"
+    );
 }
 
 #[test]
@@ -163,10 +173,21 @@ fn box_drag_selects_units_but_not_resources() {
     let outside = spawn_unit(&mut app, UnitKind::Scout, Vec2::new(500.0, 500.0));
     let node = spawn_resource(&mut app, Vec2::new(10.0, 10.0)); // inside the rect
 
-    box_drag(&mut app, Vec2::new(-100.0, -100.0), Vec2::new(100.0, 100.0), false);
+    box_drag(
+        &mut app,
+        Vec2::new(-100.0, -100.0),
+        Vec2::new(100.0, 100.0),
+        false,
+    );
 
-    assert!(is_selected(&app, inside_a) && is_selected(&app, inside_b), "units in rect selected");
-    assert!(!is_selected(&app, outside), "unit outside rect not selected");
+    assert!(
+        is_selected(&app, inside_a) && is_selected(&app, inside_b),
+        "units in rect selected"
+    );
+    assert!(
+        !is_selected(&app, outside),
+        "unit outside rect not selected"
+    );
     assert!(!is_selected(&app, node), "resources are not box-selected");
 }
 
@@ -197,8 +218,15 @@ fn right_click_ground_moves_selection() {
     left_click(&mut app, Vec2::ZERO, false);
     right_click(&mut app, Vec2::new(300.0, 0.0));
 
-    assert_eq!(move_target(&app, w), Some(Vec2::new(300.0, 0.0)), "move order sets MoveTarget");
-    assert!(!has_gather_target(&app, w), "a move clears any gather intent");
+    assert_eq!(
+        move_target(&app, w),
+        Some(Vec2::new(300.0, 0.0)),
+        "move order sets MoveTarget"
+    );
+    assert!(
+        !has_gather_target(&app, w),
+        "a move clears any gather intent"
+    );
 }
 
 #[test]
@@ -211,6 +239,13 @@ fn right_click_resource_assigns_gather() {
     left_click(&mut app, Vec2::ZERO, false);
     right_click(&mut app, node_pos);
 
-    assert_eq!(move_target(&app, w), Some(node_pos), "gather moves the unit to the node");
-    assert!(has_gather_target(&app, w), "gather order records the gather target");
+    assert_eq!(
+        move_target(&app, w),
+        Some(node_pos),
+        "gather moves the unit to the node"
+    );
+    assert!(
+        has_gather_target(&app, w),
+        "gather order records the gather target"
+    );
 }

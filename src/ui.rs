@@ -14,6 +14,37 @@ pub fn sync_transform(mut query: Query<(&Position, &mut Transform)>) {
     }
 }
 
+/// Give sim-spawned entities (units produced by a building, buildings placed by
+/// an order) their presentation: sprite, transform, and click hit-box. The sim
+/// creates them render-free; this is the driver catching up in `Update`.
+#[allow(clippy::type_complexity)] // a Bevy query filter reads worse as a type alias
+pub fn attach_visuals(
+    content: Res<Content>,
+    new_units: Query<(Entity, &Position, &UnitDefIdx), Without<Sprite>>,
+    new_buildings: Query<(Entity, &Position), (With<Building>, Without<Sprite>)>,
+    mut commands: Commands,
+) {
+    for (e, pos, idx) in &new_units {
+        let Some(def) = content.units.get(idx.0) else {
+            continue;
+        };
+        let kind = kind_for_unit_id(&def.id);
+        commands.entity(e).insert((
+            kind,
+            Selectable,
+            Sprite::from_color(unit_color(kind), Vec2::splat(unit_size(kind))),
+            Transform::from_translation(pos.0.extend(0.0)),
+        ));
+    }
+    for (e, pos) in &new_buildings {
+        commands.entity(e).insert((
+            Selectable,
+            Sprite::from_color(BUILDING_COLOR, Vec2::splat(BUILDING_SIZE)),
+            Transform::from_translation(pos.0.extend(0.0)),
+        ));
+    }
+}
+
 /// Outline selected entities, and draw the box-drag rectangle while dragging.
 pub fn draw_selection(
     mut gizmos: Gizmos,
@@ -50,15 +81,41 @@ pub fn draw_selection(
 pub fn update_options_panel(
     selected_res: Query<&ResourceNode, With<Selected>>,
     selected_units: Query<&UnitKind, With<Selected>>,
+    selected_buildings: Query<(&Building, &ProductionQueue), With<Selected>>,
+    content: Res<Content>,
+    stock: Res<Stockpiles>,
     mut text_q: Query<&mut Text, With<OptionsPanel>>,
 ) {
     let Ok(mut text) = text_q.single_mut() else {
         return;
     };
+    let alloy = format!("Alloy: {}", stock.alloy(PLAYER_FACTION));
+
+    // A selected building shows what it can train and its queue.
+    if let Some((building, queue)) = selected_buildings.iter().next() {
+        if let Some(def) = content.buildings.get(building.def) {
+            let trainable: Vec<String> = def
+                .produces
+                .iter()
+                .enumerate()
+                .filter_map(|(i, id)| {
+                    let u = content.unit(id)?;
+                    Some(format!("[{}] {} ({})", i + 1, u.name, u.mvp_alloy_cost))
+                })
+                .collect();
+            text.0 = format!(
+                "{alloy}\n{} selected — {} in production\n{}",
+                def.name,
+                queue.items.len(),
+                trainable.join("   ")
+            );
+            return;
+        }
+    }
 
     if let Some(node) = selected_res.iter().next() {
         text.0 = format!(
-            "Resource node selected — {} left\n[G] Gather   [Q] Queue gather",
+            "{alloy}\nResource node selected — {} left\n[G] Gather   [Q] Queue gather",
             node.amount
         );
         return;
