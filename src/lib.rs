@@ -27,10 +27,11 @@ use crate::sim::*;
 /// [`add_sim_systems`] — the *single* definition of the sim chain, shared with
 /// the headless tests so the two can never drift.
 pub fn build_app() -> App {
-    // Content is data: costs/stats come from assets/data/*.ron, never from
-    // constants. Loaded render-free (plain file IO) before startup so the
-    // driver and the sim see the same definitions.
+    // Content is data: costs/stats/starting Alloy come from assets/data/*.ron,
+    // never from constants. Loaded render-free (plain file IO) before startup so
+    // the driver and the sim see the same definitions.
     let content = Content::load_default().expect("assets/data/*.ron load");
+    let starting_alloy = content.economy.starting_alloy;
 
     let mut app = App::new();
     app.add_plugins(DefaultPlugins)
@@ -41,7 +42,7 @@ pub fn build_app() -> App {
         .init_resource::<ClickTracker>()
         .init_resource::<CommandQueue>()
         .init_resource::<RateReport>()
-        .init_resource::<Stockpiles>()
+        .insert_resource(Stockpiles::starting(starting_alloy))
         .add_systems(Startup, setup::setup)
         .add_systems(
             Update,

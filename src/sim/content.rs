@@ -108,6 +108,8 @@ pub struct ResourceDef {
 #[derive(Debug, Clone, Deserialize)]
 pub struct EconomyDef {
     pub currency: String,
+    /// Alloy each faction starts the match with.
+    pub starting_alloy: u32,
     pub gather_range: f32,
     pub deposit_range: f32,
 }

@@ -29,6 +29,7 @@
     // are world-unit radii for "close enough to harvest / to deposit".
     mvp_economy: (
         currency: "alloy",
+        starting_alloy: 300,   // each faction's Alloy at match start
         gather_range: 40.0,
         deposit_range: 48.0,
     ),
