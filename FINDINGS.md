@@ -63,7 +63,7 @@ doesn't, so the time ratio exceeds the node ratio).
 
 **Decision.** A group move to one destination computes **one** flow field
 (Dijkstra/BFS from the goal over the grid) that every unit follows via
-`FlowField::next`, instead of N separate A* searches (commit `f540191`). A* is kept
+`FlowField::next`, instead of N separate A* searches (commit `362a314`). A* is kept
 for single-unit / distinct-goal pathing and as the reachability oracle: the flow
 field must agree with A* on reachability (a non-goal cell has a flow direction iff
 A* finds a path from it).

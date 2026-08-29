@@ -45,3 +45,4 @@
 - [2026-08-29] Created: benches/pathfind.rs — M3: criterion group-move bench (N×A* vs one flow field)
 - [2026-08-29] Modified: Cargo.toml — register the pathfind bench
 - [2026-08-29] Modified: FINDINGS.md — M3: record F-002 (group move N×A* -> one flow field; ~320x fewer nodes, ~1230x wall-clock)
+- [2026-08-29] Modified: FINDINGS.md — M3: pin F-002 commit reference to the AC3 commit (362a314)
