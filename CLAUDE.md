@@ -27,11 +27,21 @@ First build is slow (5–15 min). For fast dev rebuilds: `cargo run --features b
 - [ ] `Transform` synced from `Position` in `Update`.
 - [ ] Log shows ~60 sim ticks vs monitor frame count per second.
 
-### M1 — input & spawning
+### M1 — input & selection
+Real RTS interaction: left-click selects, units come from production later (M4),
+so M1 units are **pre-placed at startup**. Selection is client-side/presentation;
+only movement/gather orders touch the sim (via the command queue → `FixedUpdate`).
 - [ ] Cursor resolves to a world position.
-- [ ] Left-click spawns a unit; selection works.
-- [ ] Right-click sets a target; unit moves to it and stops.
-- [ ] Input never mutates sim state directly.
+- [ ] Units pre-placed at startup across a few types (real spawning deferred to M4).
+- [ ] Left-click selects the unit under the cursor; click empty ground deselects.
+- [ ] Box-drag selects all own units inside the rectangle.
+- [ ] Double-click a unit selects all units of that type (camera is static in M1,
+      so all are on-screen; viewport-limited once panning lands).
+- [ ] Shift+click adds/removes a single unit from the selection.
+- [ ] Right-click on ground moves the selection there and stops; on a resource,
+      assigns a gather target (the gather loop itself lands in M4).
+- [ ] Selecting a resource shows a minimal options panel (debug text for now).
+- [ ] Input never mutates sim state directly — clicks emit intents consumed in `FixedUpdate`.
 
 ### M2 — scale + spatial index
 - [ ] Spawn 1000+ units across two factions.
