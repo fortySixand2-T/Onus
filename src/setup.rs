@@ -26,26 +26,21 @@ pub fn setup(mut commands: Commands, content: Res<Content>) {
         OptionsPanel,
     ));
 
-    // Pre-placed player units across three types.
+    // Pre-placed player units. Each is a real roster entry from `units.ron`, so
+    // it carries that unit's stats — speed, HP pool, damage (M4b) — rather than
+    // a bare silhouette.
     let placements = [
-        (UnitKind::Worker, Vec2::new(-220.0, 60.0)),
-        (UnitKind::Worker, Vec2::new(-170.0, 30.0)),
-        (UnitKind::Worker, Vec2::new(-210.0, -10.0)),
-        (UnitKind::Soldier, Vec2::new(70.0, -40.0)),
-        (UnitKind::Soldier, Vec2::new(120.0, -80.0)),
-        (UnitKind::Soldier, Vec2::new(160.0, -20.0)),
-        (UnitKind::Scout, Vec2::new(-40.0, 170.0)),
-        (UnitKind::Scout, Vec2::new(10.0, 200.0)),
+        ("worker", Vec2::new(-220.0, 60.0)),
+        ("worker", Vec2::new(-170.0, 30.0)),
+        ("worker", Vec2::new(-210.0, -10.0)),
+        ("bulwark", Vec2::new(70.0, -40.0)),
+        ("bulwark", Vec2::new(120.0, -80.0)),
+        ("bulwark", Vec2::new(160.0, -20.0)),
+        ("sentinel", Vec2::new(-40.0, 170.0)),
+        ("sentinel", Vec2::new(10.0, 200.0)),
     ];
-    let worker_def = content.unit_index("worker").expect("worker in units.ron");
-    for (kind, pos) in placements {
-        let e = spawn_unit(&mut commands, kind, pos);
-        // Workers are data-driven from `units.ron` and gather for faction A.
-        if kind == UnitKind::Worker {
-            commands
-                .entity(e)
-                .insert((UnitDefIdx(worker_def), Faction::A));
-        }
+    for (id, pos) in placements {
+        spawn_unit(&mut commands, &content, id, PLAYER_FACTION, pos);
     }
 
     // The player HQ: exists at match start (its cost is not charged), accepts
@@ -74,11 +69,27 @@ pub fn setup(mut commands: Commands, content: Res<Content>) {
     }
 }
 
-fn spawn_unit(commands: &mut Commands, kind: UnitKind, pos: Vec2) -> Entity {
+/// Spawn the roster unit `id` for `faction`. The sim half (definition index,
+/// kind, faction, HP pool) is data from `units.ron`; only the sprite is
+/// presentation.
+fn spawn_unit(
+    commands: &mut Commands,
+    content: &Content,
+    id: &str,
+    faction: Faction,
+    pos: Vec2,
+) -> Entity {
+    let def = content
+        .unit_index(id)
+        .unwrap_or_else(|| panic!("`{id}` in units.ron"));
+    let kind = content.units[def].mvp_kind;
     commands
         .spawn((
             Position(pos),
+            UnitDefIdx(def),
             kind,
+            faction,
+            Health::from_def(content, def),
             Selectable,
             Sprite::from_color(unit_color(kind), Vec2::splat(unit_size(kind))),
             Transform::from_translation(pos.extend(0.0)),

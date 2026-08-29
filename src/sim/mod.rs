@@ -28,11 +28,11 @@ pub use spatial::{
 
 // ---- tunables --------------------------------------------------------------
 
-/// Unit move speed, world units per second. **Deliberately still a constant at
-/// M4a**: `units.ron` carries a per-unit `speed`, but movement is M4b's
-/// milestone, which makes speed per-unit data and retires this. See the M4a
-/// deferrals note in BUILD_PLAN.md.
-pub const SPEED: f32 = 180.0;
+// Move speed used to be the global `SPEED` constant. **Retired in M4b**: Speed
+// is one of the four stats, so it is per-unit RON data
+// (`speed * mvp_combat.speed_per_point`, see `combat::move_speed`) and a unit
+// without a definition simply does not move.
+
 /// Distance at which a moving unit snaps to its target and stops.
 pub const STOP_EPS: f32 = 1.0;
 
@@ -202,16 +202,21 @@ pub fn step_toward(pos: Vec2, target: Vec2, step: f32) -> (Vec2, bool) {
 }
 
 /// Integrate units toward their `MoveTarget`, snapping and stopping on arrival.
+/// Each unit moves at **its own** speed — `speed * mvp_combat.speed_per_point`
+/// from `units.ron` (M4b) — so a Bulwark and a Ripper cover different ground in
+/// the same tick. `delta_secs` is the fixed timestep by construction (F-003).
 pub fn movement(
     time: Res<Time<Fixed>>,
+    content: Res<Content>,
     mut report: ResMut<RateReport>,
-    mut query: Query<(Entity, &mut Position, &MoveTarget)>,
+    mut query: Query<(Entity, &mut Position, &MoveTarget, &UnitDefIdx)>,
     mut commands: Commands,
 ) {
     report.sim_ticks += 1;
-    let step = SPEED * time.delta_secs();
+    let dt = time.delta_secs();
 
-    for (e, mut pos, target) in &mut query {
+    for (e, mut pos, target, def) in &mut query {
+        let step = combat::move_speed(&content, def.0) * dt;
         let (next, arrived) = step_toward(pos.0, target.0, step);
         pos.0 = next;
         if arrived {

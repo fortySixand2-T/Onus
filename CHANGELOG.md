@@ -95,3 +95,6 @@
 - [2026-08-29] Modified: src/sim/economy.rs — production spawns units with their RON HP pool
 - [2026-08-29] Modified: src/sim/mod.rs — expose sim::combat and re-export its components
 - [2026-08-29] Modified: src/lib.rs — register sim::combat::combat in the one shared sim chain; install the Casualties ledger with it
+- [2026-08-29] Modified: src/sim/mod.rs — retired the global sim::SPEED constant; movement now uses each unit's RON speed
+- [2026-08-29] Modified: src/setup.rs — pre-placed units are real roster entries (def index, kind, faction, HP pool)
+- [2026-08-29] Modified: tests/m4b_combat.rs — AC2 tests: defense=HP pool, offense=damage, armor=flat mitigation, speed=per-unit data

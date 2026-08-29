@@ -345,6 +345,98 @@ fn a_battle_is_deterministic_across_identical_runs() {
     assert!(!a.is_empty(), "somebody survived (the test is not vacuous)");
 }
 
+// ---- AC2: the 4-stat model --------------------------------------------------
+
+/// Defense is the HP pool and Offense is damage per hit, both scaled from the
+/// RON — no Rust constants.
+#[test]
+fn defense_is_the_hp_pool_and_offense_is_damage_per_hit() {
+    let c = content();
+    for u in &c.units {
+        let expect = u.defense * c.combat.hp_per_defense;
+        let idx = c.unit_index(&u.id).unwrap();
+        assert_eq!(
+            Health::from_def(&c, idx).max,
+            expect,
+            "{} HP pool = defense x hp_per_defense",
+            u.id
+        );
+        assert!(expect > 0, "{} has a real HP pool", u.id);
+    }
+    // Offense scales damage: against a zero-armor defender, damage == offense x
+    // damage_per_offense.
+    let worker = c.unit_index("worker").unwrap(); // armor 0
+    for u in &c.units {
+        let idx = c.unit_index(&u.id).unwrap();
+        if c.units[idx].nemesis.as_deref() == Some("worker") {
+            continue;
+        }
+        assert_eq!(
+            onus::sim::combat::damage_per_hit(&c, idx, worker),
+            u.offense * c.combat.damage_per_offense,
+            "{} damage = offense x damage_per_offense against 0 armor",
+            u.id
+        );
+    }
+}
+
+/// Armor is *flat mitigation per hit*, not a percentage, and never turns a hit
+/// into healing.
+#[test]
+fn armor_is_flat_mitigation_per_hit() {
+    let c = content();
+    let arclight = c.unit_index("arclight").unwrap();
+    // Arclight's nemesis is the Bulwark, so pick non-prey defenders here.
+    for def_id in ["sentinel", "ripper", "ravager"] {
+        let d = c.unit_index(def_id).unwrap();
+        let base = c.units[arclight].offense * c.combat.damage_per_offense;
+        let mitigation = c.units[d].armor * c.combat.mitigation_per_armor;
+        assert_eq!(
+            onus::sim::combat::damage_per_hit(&c, arclight, d),
+            base - mitigation,
+            "flat subtraction vs {def_id}"
+        );
+    }
+    // A hit that armor fully absorbs deals zero, never a wrapped-around amount.
+    let worker = c.unit_index("worker").unwrap();
+    let bulwark = c.unit_index("bulwark").unwrap();
+    assert_eq!(
+        onus::sim::combat::damage_per_hit(&c, worker, bulwark),
+        0,
+        "an unarmed worker cannot hurt a Bulwark"
+    );
+}
+
+/// Speed is per-unit data. The global `sim::SPEED` constant is retired: a fast
+/// unit and a slow one cover different ground in the same number of ticks, in
+/// the ratio their RON `speed` values dictate.
+#[test]
+fn movement_speed_comes_from_the_units_ron() {
+    let mut app = sim_app();
+    let slow = spawn_unit(&mut app, "bulwark", Faction::A, Vec2::ZERO); // speed 2
+    let fast = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO); // speed 9
+    let dest = Vec2::new(5000.0, 0.0);
+    for e in [slow, fast] {
+        app.world_mut().entity_mut(e).insert(MoveTarget(dest));
+    }
+    tick(&mut app, 60); // one second
+
+    let c = content();
+    let (s, f) = (
+        c.unit("bulwark").unwrap().speed as f32,
+        c.unit("ripper").unwrap().speed as f32,
+    );
+    let scale = c.combat.speed_per_point;
+    assert!(
+        (pos(&app, slow).unwrap().x - s * scale).abs() < 1.0,
+        "the Bulwark covers speed x speed_per_point in one second"
+    );
+    assert!(
+        (pos(&app, fast).unwrap().x - f * scale).abs() < 1.0,
+        "and the Ripper covers its own, larger, distance"
+    );
+}
+
 /// A cooldown component is sim state, not a wall-clock timer: it counts ticks.
 #[test]
 fn the_attack_cadence_counts_ticks() {
