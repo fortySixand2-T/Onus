@@ -70,3 +70,4 @@
 - [2026-08-29] Modified: src/lib.rs — M4a AC3: production system + attach_visuals + build hotkeys wired
 - [2026-08-29] Modified: tests/m1_selection.rs — M4a AC3: harness supplies Content + Stockpiles to apply_commands
 - [2026-08-29] Modified: tests/m4a_economy.rs — M4a AC3: placement/production cost tests + input-emits-orders tests
+- [2026-08-29] Modified: FINDINGS.md — F-003: Time<Fixed> outside FixedUpdate leaks wall-clock into the sim

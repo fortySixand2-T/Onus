@@ -75,3 +75,34 @@ over every cell of a sealed-pocket map and a random field) and
 `flow_field_next_steps_lead_to_goal` (following `next` reaches the goal in exactly
 the field distance over walkable, edge-adjacent cells). Reproduce:
 `cargo test --test m3_pathfind` and `cargo bench --bench pathfind`.
+
+## F-003 — `Time<Fixed>` outside `FixedUpdate` leaks wall-clock into the sim (M4a)
+
+**Wall hit.** The first M4a economy tests drove the sim chain from `Update` with
+`app.update()` and read `Time::<Fixed>::delta_secs()` in `movement`. Two
+byte-identical runs of the same setup diverged:
+`(alloy, in_deposits, carried) = (150, 50, 50)` vs `(150, 100, 0)` after 900
+steps — a whole gather trip out of phase.
+
+**Measurement.** `gather_loop_is_deterministic_across_identical_runs` (five
+workers, one deposit, no RNG) failed reproducibly. Cause: `Time<Fixed>` only has
+its `delta` set when Bevy's fixed-update accumulator actually consumes a step,
+and that accumulator is fed from **real elapsed time**. Systems reading
+`Time<Fixed>` outside the `FixedMain` loop therefore see a delta of `0` for a
+wall-clock-dependent number of frames — the sim's step size became a function of
+how fast the machine ran.
+
+**Decision.** The sim's notion of a tick is the fixed timestep, never a measured
+duration. The headless harness now advances time explicitly —
+`Time::<Fixed>::advance_by(timestep)` once per step, then `app.update()` — so one
+`step()` is exactly one 60 Hz sim tick, and the shipped app keeps its sim systems
+in `FixedUpdate` where the delta is the timestep by construction. Nothing in
+`src/sim/` reads a clock other than `Time<Fixed>`; the economy itself counts
+ticks (`mvp_gather_ticks`, `mvp_train_ticks` from the RON), not seconds.
+
+**Evidence.** `gather_loop_is_deterministic_across_identical_runs` and
+`placement_and_production_are_deterministic` (both in `tests/m4a_economy.rs`,
+commits `ea0fdc8` / `63a4c33`) fail before the fix and pass after; the
+tick-counted conservation test asserts the invariant on *every* tick, so a
+drifting step size shows up as a phase difference immediately. Reproduce:
+`cargo test --test m4a_economy`.
