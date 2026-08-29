@@ -164,6 +164,34 @@ is only the backstop for content built in memory. Evidence:
 `cargo test --test critic_m4b` and
 `out_of_scale_stats_are_rejected_and_the_bonus_never_wraps`, commit `d5f54f7`.
 
+**Extension 2 (M4b, second critic pass).** The *guard* was itself unguarded
+arithmetic: `validate` proved representability with
+`max_stat * damage_per_offense * mult_milli` in raw `u64` over three unbounded
+RON fields. Two faces of one defect, and the builds disagreed about which
+content was legal — the worst possible outcome for a determinism project:
+`max_stat: 4000000000` + `damage_per_offense: 4000000000` **panicked** in debug
+(where `load_from_dir` promises an `Err`), while
+`max_stat: 134217728`, `damage_per_offense: 67108864`, `damage_mult: 2.048`
+multiplied to exactly `2^64`, wrapped to `peak_damage == 0`, and **loaded** in
+release — admitting a roster whose base damage (9_007_199_254_740_992) only the
+saturating backstop could evaluate, which is precisely what the check exists to
+forbid. Fix: the validator uses `checked_mul` throughout and treats `None`
+(does not fit `u64`) exactly like a product that does not fit `u32` — a
+rejection. Peak HP, base damage, nemesis damage and armor mitigation are all
+proven this way. The same audit added `is_finite` to every float tunable
+(`f32::INFINITY > 0.0` is true, so a bare `> 0.0` admitted it) and made
+`Health::from_def` use `saturating_mul` like the rest of the derived stats.
+
+The general rule this ledger has now paid for three times: **an arithmetic
+check written in the same unchecked arithmetic it is checking is not a check.**
+Validators use `checked_*`; runtime derivations saturate; and a rejection is an
+`Err` in every build profile. Evidence: `tests/critic_m4b.rs`
+(`a_degenerate_scale_is_rejected_not_overflowed_inside_the_validator`,
+`accepted_content_never_needs_a_saturating_hit`) plus
+`a_scale_the_validator_cannot_multiply_is_an_error_not_a_panic`; both
+`cargo test` and `cargo test --release` are green — the release run is
+load-bearing here, since the wrap is invisible in debug. Commit `HEAD`.
+
 ## F-006 — Combat damage is integer arithmetic; the design stats are scaled in data (M4b)
 
 **Wall hit.** The roster's stats are a 1-10 *design* scale (`offense: 4`,

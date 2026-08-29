@@ -339,7 +339,7 @@ impl Content {
                 if u.mvp_attack_ticks == 0 {
                     return bad(format!("unit `{}` has offense but no attack cadence", u.id));
                 }
-                if u.mvp_attack_range <= 0.0 {
+                if !(u.mvp_attack_range.is_finite() && u.mvp_attack_range > 0.0) {
                     return bad(format!("unit `{}` has offense but no attack range", u.id));
                 }
                 if u.mvp_attack_range > self.combat.engage_range {
@@ -368,8 +368,16 @@ impl Content {
         if c.hp_per_defense == 0 || c.damage_per_offense == 0 || c.mitigation_per_armor == 0 {
             return bad("mvp_combat scaling factors must be positive".to_string());
         }
-        if !(c.speed_per_point > 0.0 && c.engage_range > 0.0) {
-            return bad("mvp_combat speed_per_point / engage_range must be positive".to_string());
+        // `is_finite` matters: `f32::INFINITY > 0.0` is true, and NaN compares
+        // false against everything, so a bare `> 0.0` admits both.
+        if !(c.speed_per_point.is_finite() && c.speed_per_point > 0.0) {
+            return bad("mvp_combat speed_per_point must be finite and positive".to_string());
+        }
+        if !(c.engage_range.is_finite() && c.engage_range > 0.0) {
+            return bad("mvp_combat engage_range must be finite and positive".to_string());
+        }
+        if !c.pursue_range.is_finite() {
+            return bad("mvp_combat pursue_range must be finite".to_string());
         }
         if c.pursue_range < c.engage_range {
             return bad("mvp_combat pursue_range must be >= engage_range".to_string());
@@ -382,20 +390,41 @@ impl Content {
             return bad("nemesis_bonus.damage_mult must be finite and >= 1.0".to_string());
         }
 
-        // Representability: the *largest* HP pool and the *largest* nemesis hit
-        // the bounded stats can produce must both fit in the u32 the sim counts
-        // them in. Data that can only be evaluated by saturating is data the
-        // loader should refuse, not data the formula should paper over.
+        // Representability: every product the sim will later derive from this
+        // data must fit the `u32` it counts in — at the largest stat the loader
+        // itself calls legal (`max_stat`).
+        //
+        // The arithmetic here is **checked**, not raw. A validator that can
+        // overflow is not a validator: in debug it panics where `load_from_dir`
+        // promises an `Err`, and in release it wraps and *accepts* content the
+        // sim cannot represent — the F-005 failure mode, one level up. `None`
+        // (the product does not even fit `u64`) is a rejection exactly like a
+        // product that does not fit `u32`, so the loader's notion of legal and
+        // the saturating backstop in `combat::damage_per_hit` can never
+        // disagree about what is legal.
         let max_stat = c.max_stat as u64;
-        let peak_hp = max_stat * c.hp_per_defense as u64;
-        let peak_damage =
-            max_stat * c.damage_per_offense as u64 * self.nemesis_bonus.mult_milli() as u64
-                / NemesisBonus::MULT_SCALE as u64;
-        if peak_hp > u32::MAX as u64 || peak_damage > u32::MAX as u64 {
-            return bad(format!(
-                "mvp_combat scaling overflows the sim's u32 arithmetic \
-                 (peak HP {peak_hp}, peak damage {peak_damage})"
-            ));
+        let milli = self.nemesis_bonus.mult_milli() as u64;
+        let peak_hp = max_stat.checked_mul(c.hp_per_defense as u64);
+        let peak_base = max_stat.checked_mul(c.damage_per_offense as u64);
+        let peak_damage = peak_base
+            .and_then(|b| b.checked_mul(milli))
+            .map(|p| p / NemesisBonus::MULT_SCALE as u64);
+        let peak_mitigation = max_stat.checked_mul(c.mitigation_per_armor as u64);
+        let representable = |v: Option<u64>| v.is_some_and(|v| v <= u32::MAX as u64);
+        for (what, value) in [
+            ("HP pool", peak_hp),
+            ("base damage", peak_base),
+            ("nemesis damage", peak_damage),
+            ("armor mitigation", peak_mitigation),
+        ] {
+            if !representable(value) {
+                return bad(format!(
+                    "mvp_combat scaling overflows the sim's u32 arithmetic: peak \
+                     {what} at max_stat {} is {}",
+                    c.max_stat,
+                    value.map_or("beyond u64".to_string(), |v| v.to_string())
+                ));
+            }
         }
 
         if self.resources.iter().all(|r| r.id != self.economy.currency) {
@@ -404,8 +433,12 @@ impl Content {
                 self.economy.currency
             ));
         }
-        if !(self.economy.gather_range > 0.0 && self.economy.deposit_range > 0.0) {
-            return bad("mvp_economy ranges must be positive".to_string());
+        if !(self.economy.gather_range.is_finite()
+            && self.economy.gather_range > 0.0
+            && self.economy.deposit_range.is_finite()
+            && self.economy.deposit_range > 0.0)
+        {
+            return bad("mvp_economy ranges must be finite and positive".to_string());
         }
         Ok(())
     }

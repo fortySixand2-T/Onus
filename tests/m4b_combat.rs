@@ -18,9 +18,9 @@ use bevy::prelude::*;
 
 use onus::sim::combat::{AttackCooldown, Casualties, Engaging, Health, Target};
 use onus::sim::content::Content;
-use onus::sim::economy::{Stockpiles, UnitDefIdx};
+use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use onus::sim::spatial::{brute_force_nearest_enemy, Faction, SplitMix64, Unit};
-use onus::sim::{CommandQueue, MoveTarget, Order, Position, RateReport, TileGrid};
+use onus::sim::{CommandQueue, MoveTarget, Order, Position, RateReport, ResourceNode, TileGrid};
 
 // ---- harness ----------------------------------------------------------------
 
@@ -35,10 +35,14 @@ fn content() -> Content {
 /// A headless app running the shipped sim chain on `Update`, so one
 /// `step()` == exactly one 60 Hz sim tick.
 fn sim_app() -> App {
+    sim_app_with(content())
+}
+
+fn sim_app_with(content: Content) -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .insert_resource(Time::<Fixed>::from_hz(60.0))
-        .insert_resource(content())
+        .insert_resource(content)
         .init_resource::<CommandQueue>()
         .init_resource::<RateReport>()
         .init_resource::<Casualties>()
@@ -609,6 +613,145 @@ fn no_engagement_points_at_a_unit_that_died_this_tick() {
             "tick {t}: dangling targets {dangling:?}"
         );
     }
+}
+
+/// The loader must *reject* content it cannot represent — and rejection means
+/// `Err`, in both debug and release. The check itself is checked arithmetic, so
+/// a degenerate scale can neither panic inside the validator nor wrap into a
+/// silent accept.
+#[test]
+fn a_scale_the_validator_cannot_multiply_is_an_error_not_a_panic() {
+    let load = |name: &str, edits: &[(&str, &str)]| {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target/m4b_scale_guard")
+            .join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut units = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
+        for (from, to) in edits {
+            assert!(units.contains(from), "anchor `{from}` missing");
+            units = units.replace(from, to);
+        }
+        std::fs::write(dir.join("units.ron"), units).unwrap();
+        std::fs::copy(data_dir().join("resources.ron"), dir.join("resources.ron")).unwrap();
+        Content::load_from_dir(&dir)
+    };
+
+    // Overflows u64 outright: must be Err, never an arithmetic panic.
+    assert!(load(
+        "u64_overflow",
+        &[
+            ("max_stat: 10,", "max_stat: 4000000000,"),
+            ("damage_per_offense: 5,", "damage_per_offense: 4000000000,"),
+        ],
+    )
+    .is_err());
+
+    // Wraps to exactly 2^64 (product == 0 under raw arithmetic): must be Err,
+    // otherwise the loader would admit content only saturation can evaluate.
+    assert!(load(
+        "wrap_to_zero",
+        &[
+            ("max_stat: 10,", "max_stat: 134217728,"),
+            ("damage_per_offense: 5,", "damage_per_offense: 67108864,"),
+            ("damage_mult: 1.3,", "damage_mult: 2.048,"),
+            ("hp_per_defense: 20,", "hp_per_defense: 1,"),
+        ],
+    )
+    .is_err());
+
+    // A non-finite tunable is not "positive", it is unusable.
+    assert!(load(
+        "inf_speed",
+        &[("speed_per_point: 36.0,", "speed_per_point: inf,")]
+    )
+    .is_err());
+
+    // ...and the shipped roster still loads.
+    assert!(load("shipped", &[]).is_ok());
+}
+
+/// A unit on a gather job is excluded from auto-engagement *by rule*, not by
+/// the accident that today's Worker has `offense: 0`. Given a worker that can
+/// fight, the economy still owns it: no chase, no hijacked MoveTarget, and the
+/// gather trip completes.
+#[test]
+fn a_gathering_unit_is_never_hijacked_by_auto_engagement() {
+    let mut c = content();
+    let w = c.unit_index("worker").unwrap();
+    // An armed gatherer — the case the roster does not contain today.
+    c.units[w].offense = 4;
+    c.units[w].mvp_attack_ticks = 60;
+    c.units[w].mvp_attack_range = 48.0;
+    // ...and a harmless enemy to stand next to it, so what the test observes is
+    // our worker's behaviour and not a fight it loses.
+    let mut dummy = c.units[w].clone();
+    dummy.id = "bystander".to_string();
+    dummy.offense = 0;
+    dummy.mvp_attack_ticks = 0;
+    dummy.mvp_attack_range = 0.0;
+    dummy.gathers = false;
+    c.units.push(dummy);
+    let mut app = sim_app_with(c);
+
+    let worker = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(-60.0, 0.0));
+    let enemy = spawn_unit(&mut app, "bystander", Faction::B, Vec2::new(-40.0, 0.0));
+    let hq = {
+        let def = app
+            .world()
+            .resource::<Content>()
+            .building_index("hq")
+            .unwrap();
+        app.world_mut()
+            .spawn((
+                Position(Vec2::new(-60.0, 0.0)),
+                Building { def },
+                Faction::A,
+                ProductionQueue::default(),
+            ))
+            .id()
+    };
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::new(60.0, 0.0)), ResourceNode { amount: 500 }))
+        .id();
+    app.world_mut()
+        .resource_mut::<CommandQueue>()
+        .0
+        .push_back(Order::Gather {
+            units: vec![worker],
+            node,
+            node_pos: Vec2::new(60.0, 0.0),
+        });
+
+    // Control: the *same* armed worker definition, with no gather job, does
+    // engage — so the exclusion below is the rule doing work, not the stats.
+    let idler = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(-60.0, 300.0));
+    spawn_unit(&mut app, "bystander", Faction::B, Vec2::new(-40.0, 300.0));
+
+    let full = hp(&app, enemy).unwrap();
+    for t in 0..600u32 {
+        step(&mut app);
+        if t == 0 {
+            assert!(
+                app.world().get::<Target>(idler).is_some(),
+                "control: an armed worker with no job does engage"
+            );
+        }
+        assert!(
+            app.world().get::<Engaging>(worker).is_none(),
+            "tick {t}: the economy's unit was hijacked into a chase"
+        );
+        assert!(
+            app.world().get::<Target>(worker).is_none(),
+            "tick {t}: a gathering unit must not auto-engage at all"
+        );
+        assert_eq!(hp(&app, enemy), Some(full), "tick {t}: and it never fires");
+    }
+    assert!(alive(&app, hq) && alive(&app, worker));
+    assert!(
+        app.world().resource::<Stockpiles>().alloy(Faction::A) > 0,
+        "the gather job actually ran to a deposit"
+    );
 }
 
 /// A cooldown component is sim state, not a wall-clock timer: it counts ticks.

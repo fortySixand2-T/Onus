@@ -42,7 +42,7 @@ use crate::sim::content::{Content, NemesisBonus};
 use crate::sim::economy::UnitDefIdx;
 use crate::sim::pathfind::{astar, TileGrid};
 use crate::sim::spatial::{Faction, SpatialGrid, Unit};
-use crate::sim::{MoveTarget, Position};
+use crate::sim::{GatherTarget, MoveTarget, Position};
 
 // ---- components ------------------------------------------------------------
 
@@ -61,7 +61,10 @@ impl Health {
         let max = content
             .units
             .get(unit)
-            .map(|u| u.defense * content.combat.hp_per_defense)
+            // Saturating like every other derived stat: `Content::validate`
+            // proves this product fits u32 for *loaded* content, so the clamp
+            // only ever bites on a `Content` assembled in memory.
+            .map(|u| u.defense.saturating_mul(content.combat.hp_per_defense))
             .unwrap_or(0);
         Self { current: max, max }
     }
@@ -228,6 +231,9 @@ struct Row {
     cooldown: u32,
     engaging: bool,
     has_move_target: bool,
+    /// On a gather job: the economy owns this unit's movement until the
+    /// commander says otherwise.
+    gathering: bool,
 }
 
 /// Resolve one tick of combat: pick targets with the M2 spatial index, close
@@ -249,6 +255,7 @@ pub fn combat(
         Option<&AttackCooldown>,
         Option<&Engaging>,
         Option<&MoveTarget>,
+        Option<&GatherTarget>,
     )>,
     mut commands: Commands,
 ) {
@@ -257,23 +264,26 @@ pub fn combat(
     // before anything is written, which is the whole point (see module docs).
     let mut rows: Vec<Row> = units
         .iter()
-        .map(|(entity, pos, def, faction, health, cd, engaging, mt)| {
-            let full = Health::from_def(&content, def.0);
-            Row {
-                entity,
-                pos: pos.0,
-                def: def.0,
-                faction: *faction,
-                // A unit that somehow reached the field without an HP pool is
-                // given its full one from the RON rather than being invulnerable.
-                hp: health.map(|h| h.current).unwrap_or(full.max),
-                max_hp: health.map(|h| h.max).unwrap_or(full.max),
-                has_health: health.is_some(),
-                cooldown: cd.map(|c| c.0).unwrap_or(0),
-                engaging: engaging.is_some(),
-                has_move_target: mt.is_some(),
-            }
-        })
+        .map(
+            |(entity, pos, def, faction, health, cd, engaging, mt, gather)| {
+                let full = Health::from_def(&content, def.0);
+                Row {
+                    entity,
+                    pos: pos.0,
+                    def: def.0,
+                    faction: *faction,
+                    // A unit that somehow reached the field without an HP pool is
+                    // given its full one from the RON rather than being invulnerable.
+                    hp: health.map(|h| h.current).unwrap_or(full.max),
+                    max_hp: health.map(|h| h.max).unwrap_or(full.max),
+                    has_health: health.is_some(),
+                    cooldown: cd.map(|c| c.0).unwrap_or(0),
+                    engaging: engaging.is_some(),
+                    has_move_target: mt.is_some(),
+                    gathering: gather.is_some(),
+                }
+            },
+        )
         .collect();
     rows.sort_unstable_by_key(|r| r.entity.to_bits());
     if rows.is_empty() {
@@ -304,7 +314,13 @@ pub fn combat(
             continue;
         };
         let next_cd = row.cooldown.saturating_sub(1);
-        let armed = def.offense > 0 && def.mvp_attack_range > 0.0;
+        // A unit on a gather job never auto-engages. Today's Worker is also
+        // unarmed (`offense: 0`), but that is a roster value, not a rule: a
+        // mid-harvest gatherer stands still, so without this it would look
+        // "idle" (no `MoveTarget`) and the chase branch below would hijack the
+        // economy's job the moment any gatherer were given offense. The rule is
+        // the guard; the stat is a coincidence.
+        let armed = def.offense > 0 && def.mvp_attack_range > 0.0 && !row.gathering;
 
         // Non-combatants (the Worker) never engage: no target, no chase.
         let engaged = if armed {
@@ -369,7 +385,7 @@ pub fn combat(
             continue;
         }
         if row.has_health {
-            if let Ok((.., Some(mut h), _, _, _)) = units.get_mut(row.entity) {
+            if let Ok((.., Some(mut h), _, _, _, _)) = units.get_mut(row.entity) {
                 h.current = current;
             }
         } else {
