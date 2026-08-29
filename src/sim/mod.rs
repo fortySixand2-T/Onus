@@ -11,7 +11,9 @@ use bevy::math::Vec2;
 use bevy::time::{Fixed, Time};
 use std::collections::VecDeque;
 
+pub mod pathfind;
 pub mod spatial;
+pub use pathfind::TileGrid;
 pub use spatial::{
     brute_force_nearest_enemy, random_layout, Faction, SpatialGrid, SplitMix64, Unit,
 };

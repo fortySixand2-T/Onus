@@ -33,3 +33,6 @@
 - [2026-08-29] Modified: src/sim/mod.rs — re-export SpatialGrid
 - [2026-08-29] Modified: FINDINGS.md — M2 AC4: F-001 before/after nearest-enemy timing (naive vs grid, N=1000/2000, ~4.8x/~17.6x)
 - [2026-08-29] Created: tests/critic_m2.rs — M2 adversarial critic suite (grid==brute differential over extreme/boundary/clamped/equidistant layouts, tie-break, order-independence, edge cases, deterministic speedup proof); all 18 pass
+- [2026-08-29] Created: src/sim/pathfind.rs — M3 AC1: TileGrid (walkable/blocked cells, world<->cell mapping, from_rows fixture + deterministic random generation); L1 tests
+- [2026-08-29] Modified: src/sim/mod.rs — M3: declare pathfind module, re-export TileGrid
+- [2026-08-29] Created: tests/m3_pathfind.rs — M3 AC1: L2 tests for tile grid (walkable/blocked, cell<->world centers, deterministic random)
