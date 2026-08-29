@@ -162,7 +162,7 @@ or peak nemesis hit does not fit the `u32` the sim counts in. Validation that
 admits values the arithmetic cannot represent is the actual defect; saturation
 is only the backstop for content built in memory. Evidence:
 `cargo test --test critic_m4b` and
-`out_of_scale_stats_are_rejected_and_the_bonus_never_wraps`, commit `bb3c2b1`.
+`out_of_scale_stats_are_rejected_and_the_bonus_never_wraps`, commit `d5f54f7`.
 
 ## F-006 — Combat damage is integer arithmetic; the design stats are scaled in data (M4b)
 

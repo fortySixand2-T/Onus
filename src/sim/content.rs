@@ -388,9 +388,9 @@ impl Content {
         // loader should refuse, not data the formula should paper over.
         let max_stat = c.max_stat as u64;
         let peak_hp = max_stat * c.hp_per_defense as u64;
-        let peak_damage = max_stat * c.damage_per_offense as u64 * self.nemesis_bonus.mult_milli()
-            as u64
-            / NemesisBonus::MULT_SCALE as u64;
+        let peak_damage =
+            max_stat * c.damage_per_offense as u64 * self.nemesis_bonus.mult_milli() as u64
+                / NemesisBonus::MULT_SCALE as u64;
         if peak_hp > u32::MAX as u64 || peak_damage > u32::MAX as u64 {
             return bad(format!(
                 "mvp_combat scaling overflows the sim's u32 arithmetic \

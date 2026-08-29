@@ -110,3 +110,6 @@
 - [2026-08-29] Modified: src/sim/content.rs, assets/data/units.ron — mvp_combat.max_stat bounds the design stats at load; peak HP / peak damage must fit u32
 - [2026-08-29] Modified: tests/m4b_combat.rs — out-of-scale stats are rejected at load and the bonus never inverts
 - [2026-08-29] Modified: FINDINGS.md — F-005 extended with the M4b truncating-cast case (same class, two-part fix)
+- [2026-08-29] Modified: src/sim/combat.rs — critic fix: Target is published after the death pass, so no engagement points at a unit that died this tick
+- [2026-08-29] Modified: tests/m4b_combat.rs — no_engagement_points_at_a_unit_that_died_this_tick
+- [2026-08-29] Modified: FINDINGS.md — corrected the F-005 extension commit reference

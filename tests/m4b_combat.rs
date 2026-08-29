@@ -586,6 +586,31 @@ fn out_of_scale_stats_are_rejected_and_the_bonus_never_wraps() {
     }
 }
 
+/// `Target` is sim state (M4c's AI and M5's state hash will read it), so it must
+/// be valid at every tick boundary — never pointing at a unit that died on the
+/// very tick that killed it.
+#[test]
+fn no_engagement_points_at_a_unit_that_died_this_tick() {
+    let mut app = sim_app();
+    spawn_unit(&mut app, "arclight", Faction::A, Vec2::ZERO);
+    spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(100.0, 0.0));
+
+    for t in 0..400u32 {
+        step(&mut app);
+        let dangling: Vec<_> = app
+            .world_mut()
+            .query::<(Entity, &Target)>()
+            .iter(app.world())
+            .filter(|(_, tgt)| app.world().get_entity(tgt.0).is_err())
+            .map(|(e, tgt)| (e, tgt.0))
+            .collect();
+        assert!(
+            dangling.is_empty(),
+            "tick {t}: dangling targets {dangling:?}"
+        );
+    }
+}
+
 /// A cooldown component is sim state, not a wall-clock timer: it counts ticks.
 #[test]
 fn the_attack_cadence_counts_ticks() {

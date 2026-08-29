@@ -152,8 +152,7 @@ pub fn damage_per_hit(content: &Content, attacker: usize, defender: usize) -> u3
         // arithmetic mangling a quantity) in a new place. `Content::validate`
         // also bounds the stats so shipped data can never reach the ceiling;
         // the saturation is the backstop for anything built in memory.
-        let boosted = (base as u64 * bonus.mult_milli() as u64
-            / NemesisBonus::MULT_SCALE as u64)
+        let boosted = (base as u64 * bonus.mult_milli() as u64 / NemesisBonus::MULT_SCALE as u64)
             .min(u32::MAX as u64) as u32;
         if bonus.ignore_armor {
             boosted
@@ -295,6 +294,10 @@ pub fn combat(
 
     // ---- resolve every attacker against the snapshot ------------------------
     let mut damage: Vec<u32> = vec![0; rows.len()];
+    // Who each unit engaged, as a snapshot row index. The `Target` component is
+    // written only after the death pass, so it can never end a tick pointing at
+    // an entity that died on that tick.
+    let mut chosen: Vec<Option<usize>> = vec![None; rows.len()];
     for i in 0..rows.len() {
         let row = &rows[i];
         let Some(def) = content.units.get(row.def) else {
@@ -322,7 +325,6 @@ pub fn combat(
                 commands.entity(row.entity).insert(AttackCooldown(next_cd));
             }
             let mut e = commands.entity(row.entity);
-            e.remove::<Target>();
             if row.engaging {
                 // Nothing left to chase: drop the order combat itself issued.
                 e.remove::<MoveTarget>().remove::<Engaging>();
@@ -330,8 +332,8 @@ pub fn combat(
             continue;
         };
 
+        chosen[i] = Some(j);
         let mut e = commands.entity(row.entity);
-        e.insert(Target(rows[j].entity));
 
         let mut cooldown = next_cd;
         if row.pos.distance(rows[j].pos) <= def.mvp_attack_range {
@@ -353,6 +355,7 @@ pub fn combat(
     }
 
     // ---- apply damage, then deaths: one pass, each entity exactly once ------
+    let mut died: Vec<bool> = vec![false; rows.len()];
     for (i, row) in rows.iter().enumerate() {
         if damage[i] == 0 && row.has_health {
             continue;
@@ -362,6 +365,7 @@ pub fn combat(
         if current == 0 {
             commands.entity(row.entity).despawn();
             casualties.record(row.faction);
+            died[i] = true;
             continue;
         }
         if row.has_health {
@@ -373,6 +377,24 @@ pub fn combat(
                 current,
                 max: row.max_hp,
             });
+        }
+    }
+
+    // ---- publish the engagement, now that the dead are known ---------------
+    // `Target` is sim state others read (M4c's AI, M5's state hash), so it must
+    // be valid at the tick boundary: a unit that died this tick is not a target,
+    // and a unit that died this tick holds no target.
+    for (i, row) in rows.iter().enumerate() {
+        if died[i] {
+            continue;
+        }
+        match chosen[i] {
+            Some(j) if !died[j] => {
+                commands.entity(row.entity).insert(Target(rows[j].entity));
+            }
+            _ => {
+                commands.entity(row.entity).remove::<Target>();
+            }
         }
     }
 }
