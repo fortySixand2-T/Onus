@@ -16,19 +16,22 @@ full "nearest enemy for every unit" pass over a deterministic uniform layout in 
 
 | N (units) | Naive (brute O(n²)) | Grid (build + query, end-to-end) | Speedup |
 |----------:|--------------------:|---------------------------------:|--------:|
-| 1000      | 2.1556 ms           | 453.05 µs                        | **4.76×** |
-| 2000      | 15.871 ms           | 907.22 µs                        | **17.5×** |
+| 1000      | 2.156 ms            | 449.8 µs                         | **~4.8×** |
+| 2000      | 15.84 ms            | 902.5 µs                         | **~17.6×** |
 
-Naive grows ~quadratically (2.16 → 15.9 ms) while the grid grows ~linearly
-(0.45 → 0.91 ms), so the speedup widens with N — exactly the O(n²) → ~O(n) story.
+Naive grows superlinearly (2.16 → 15.84 ms, ~7.3× for 2× units) while the grid
+grows ~linearly (449.8 → 902.5 µs, ~2× for 2× units), so the speedup widens with
+N — exactly the O(n²) → ~O(n) story.
 
 **Decision.** Replace the brute-force pass with `SpatialGrid` (uniform grid,
-ring-expanding query) as the nearest-enemy path. Keep `brute_force_nearest_enemy`
-as the differential oracle: the grid must return the byte-identical answer
-(ties broken to smallest index), verified over 80 seeds and the edge cases.
+ring-expanding query) as the nearest-enemy path (introduced in commit
+`020b12a`). Keep `brute_force_nearest_enemy` as the differential oracle: the grid
+must return the byte-identical answer (ties broken to smallest index), verified
+over 80 seeds and the edge cases.
 
-**Evidence.** The table above (real criterion medians on the box). Correctness is
-pinned by `grid_matches_brute_over_many_seeds` and the edge-case tests; the
+**Evidence.** The table above (criterion medians on the box). Correctness is
+pinned by the differential test `grid_matches_brute_over_many_seeds` (grid ==
+brute force over 80 seeds, commit `020b12a`) plus the edge-case tests; the
 speedup *mechanism* is pinned deterministically (not just wall-clock) by
 `grid_visits_far_fewer_candidates_than_brute` — at N=2000 the grid evaluates
 fewer than 1/10 the distances the naive scan does. Reproduce:

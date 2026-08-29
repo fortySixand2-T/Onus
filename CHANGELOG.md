@@ -31,4 +31,4 @@
 - [2026-08-29] Modified: src/sim/spatial.rs — M2 AC3: SpatialGrid (uniform grid, ring-expanding nearest_enemy, identical result); differential + edge-case + speedup L1 tests
 - [2026-08-29] Modified: benches/nearest_enemy.rs — M2 AC3: add end-to-end grid pass alongside naive
 - [2026-08-29] Modified: src/sim/mod.rs — re-export SpatialGrid
-- [2026-08-29] Modified: FINDINGS.md — M2 AC4: F-001 before/after nearest-enemy timing (naive vs grid, N=1000/2000, 4.76x/17.5x)
+- [2026-08-29] Modified: FINDINGS.md — M2 AC4: F-001 before/after nearest-enemy timing (naive vs grid, N=1000/2000, ~4.8x/~17.6x)
