@@ -1,0 +1,26 @@
+// assets/data/resources.ron
+// One resource per domain (single-tier mapping).
+// MVP scope guard: the first playable uses `alloy` only.
+(
+    resources: [
+        (
+            id: "alloy",   name: "Alloy",   domain: "machine",
+            building: "foundry",
+            acquisition: Mined,       // finite deposits; workers harvest and return
+            powers: ["bulwark", "sentinel"],
+        ),
+        (
+            id: "biomass", name: "Biomass", domain: "flesh",
+            building: "gene_vats",
+            acquisition: Grown,       // passive generation, storage-capped
+            powers: ["ripper", "ravager"],
+        ),
+        (
+            id: "aether",  name: "Aether",  domain: "energy",
+            building: "aether_spire",
+            acquisition: Channeled,   // scarce, contested ley-wells you must hold
+            powers: ["arclight"],
+        ),
+    ],
+    mvp_active: ["alloy"],   // first playable uses Alloy only
+)

@@ -1,0 +1,49 @@
+// assets/data/units.ron
+// Unit definitions consumed by the sim at startup (M4 deserializes these into Rust structs).
+// Stats are on a 1-10 design scale; the balance sim tunes the real numbers later.
+// `nemesis` = the one prey this unit gets the bonus against.
+(
+    workers: [
+        (
+            id: "worker",
+            name: "Worker",
+            source: "hq",
+            cost: (resource: "alloy", amount: 10),
+            speed: 5, offense: 0, defense: 3, armor: 0,
+            gathers: true,
+            builds: true,
+        ),
+    ],
+    combat: [
+        (
+            id: "bulwark",   name: "Bulwark",   barracks: "foundry",      // Machine
+            cost: (resource: "alloy",   amount: 110),
+            speed: 2, offense: 4, defense: 9, armor: 9, nemesis: "ravager",
+        ),
+        (
+            id: "sentinel",  name: "Sentinel",  barracks: "foundry",      // Machine
+            cost: (resource: "alloy",   amount: 70),
+            speed: 7, offense: 6, defense: 5, armor: 5, nemesis: "ripper",
+        ),
+        (
+            id: "ripper",    name: "Ripper",    barracks: "gene_vats",    // Flesh
+            cost: (resource: "biomass", amount: 40),
+            speed: 9, offense: 6, defense: 3, armor: 1, nemesis: "arclight",
+        ),
+        (
+            id: "ravager",   name: "Ravager",   barracks: "gene_vats",    // Flesh
+            cost: (resource: "biomass", amount: 90),
+            speed: 4, offense: 7, defense: 8, armor: 4, nemesis: "sentinel",
+        ),
+        (
+            id: "arclight",  name: "Arclight",  barracks: "aether_spire", // Energy
+            cost: (resource: "aether",  amount: 80),
+            speed: 5, offense: 9, defense: 2, armor: 2, nemesis: "bulwark",
+        ),
+    ],
+    // Applied when attacker.nemesis == defender.id
+    nemesis_bonus: (
+        damage_mult: 1.3,   // +30% vs the one prey
+        ignore_armor: true,
+    ),
+)

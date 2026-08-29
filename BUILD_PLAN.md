@@ -2,6 +2,11 @@
 
 Rust + Bevy 0.19. Build one milestone at a time. Each checkbox is one commit and must pass before moving on.
 
+Game content (roster, counter-pentagon, economy, campaign vision) lives in
+[DESIGN_BRIEF.md](DESIGN_BRIEF.md); MVP scope + definition of done in
+[MVP_PLAN.md](MVP_PLAN.md). Stats are data in `assets/data/*.ron`. M2 consumes only
+the two sides (mirror nation); M4 consumes units/resources/buildings/win condition.
+
 ## Environment (Ubuntu)
 
 ```bash
