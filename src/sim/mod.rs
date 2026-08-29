@@ -11,6 +11,9 @@ use bevy::math::Vec2;
 use bevy::time::{Fixed, Time};
 use std::collections::VecDeque;
 
+pub mod spatial;
+pub use spatial::{random_layout, Faction, SplitMix64, Unit};
+
 // ---- tunables --------------------------------------------------------------
 
 /// Unit move speed, world units per second.

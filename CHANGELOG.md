@@ -21,3 +21,6 @@
 - [2026-08-28] Created: tests/m1_selection.rs — L2 integration suite via onus:: public API
 - [2026-08-28] Created: benches/movement.rs — L4 criterion bench scaffold (step_toward)
 - [2026-08-29] Modified: src/input.rs — fix pre-existing clippy lints surfaced by clippy 0.1.98 (is_none_or; allow too_many_arguments on a Bevy system)
+- [2026-08-29] Created: src/sim/spatial.rs — M2 AC1: Faction component, Unit data, splitmix64 RNG, deterministic random_layout
+- [2026-08-29] Modified: src/sim/mod.rs — M2: declare and re-export the spatial module
+- [2026-08-29] Created: tests/m2_spatial.rs — M2 AC1: L2 test spawning 1000+ units across two factions; layout determinism
