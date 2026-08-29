@@ -36,3 +36,6 @@
 - [2026-08-29] Created: src/sim/pathfind.rs — M3 AC1: TileGrid (walkable/blocked cells, world<->cell mapping, from_rows fixture + deterministic random generation); L1 tests
 - [2026-08-29] Modified: src/sim/mod.rs — M3: declare pathfind module, re-export TileGrid
 - [2026-08-29] Created: tests/m3_pathfind.rs — M3 AC1: L2 tests for tile grid (walkable/blocked, cell<->world centers, deterministic random)
+- [2026-08-29] Modified: src/sim/pathfind.rs — M3 AC2: A* (astar + astar_counted nodes-expanded variant), deterministic (f,g,cell) open-set order, Vec-indexed came_from/g_score (no HashMap), Manhattan heuristic; None iff unreachable
+- [2026-08-29] Modified: src/sim/mod.rs — M3 AC2: re-export astar
+- [2026-08-29] Modified: tests/m3_pathfind.rs — M3 AC2: A* tests (walkable+contiguous+reaches goal, None iff unreachable, shortest length, determinism, unit follows waypoints via step_toward, counted variant)

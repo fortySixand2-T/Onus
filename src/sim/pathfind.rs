@@ -19,12 +19,13 @@
 //! which the M3 flow-field-vs-N×A* comparison is built on.
 
 use bevy::math::Vec2;
+use std::cmp::Reverse;
+use std::collections::BinaryHeap;
 
 use crate::sim::spatial::SplitMix64;
 
 /// The four edge-adjacent neighbour offsets, in a fixed order. "Contiguous" in
 /// M3 means edge-adjacent (4-connected); diagonals are *not* neighbours.
-#[allow(dead_code)] // consumed by A* (AC2) and the flow field (AC3)
 const DIRS: [(isize, isize); 4] = [(0, -1), (-1, 0), (1, 0), (0, 1)];
 
 // ---- tile grid -------------------------------------------------------------
@@ -170,7 +171,6 @@ impl TileGrid {
     /// Append the walkable edge-adjacent neighbours of `idx` to `out` (cleared
     /// first), in the fixed [`DIRS`] order. Shared by A* and the flow field so
     /// both agree exactly on what "contiguous" means.
-    #[allow(dead_code)] // consumed by A* (AC2) and the flow field (AC3)
     fn walkable_neighbors(&self, idx: usize, out: &mut Vec<usize>) {
         out.clear();
         let (x, y) = self.xy(idx);
@@ -185,6 +185,78 @@ impl TileGrid {
             }
         }
     }
+}
+
+/// Manhattan distance between two cells — admissible & consistent for unit-cost
+/// 4-connected movement, so A* returns a shortest path and never reopens.
+fn manhattan(grid: &TileGrid, a: usize, b: usize) -> u32 {
+    let (ax, ay) = grid.xy(a);
+    let (bx, by) = grid.xy(b);
+    (ax.abs_diff(bx) + ay.abs_diff(by)) as u32
+}
+
+// ---- A* --------------------------------------------------------------------
+
+/// Shortest 4-connected path of cell ids from `start` to `goal` over walkable
+/// cells, inclusive of both ends, or `None` **iff** the goal is unreachable
+/// (blocked start/goal, or no contiguous walkable route). See [`astar_counted`].
+pub fn astar(grid: &TileGrid, start: usize, goal: usize) -> Option<Vec<usize>> {
+    astar_counted(grid, start, goal).0
+}
+
+/// As [`astar`], but also returns the number of nodes *expanded* (popped and
+/// settled from the open set) — the search's deterministic work, used to prove
+/// the flow field solves a group move in far less work than N separate A* runs.
+pub fn astar_counted(grid: &TileGrid, start: usize, goal: usize) -> (Option<Vec<usize>>, usize) {
+    let n = grid.len();
+    // A path must start and end on walkable cells.
+    if start >= n || goal >= n || !grid.is_walkable(start) || !grid.is_walkable(goal) {
+        return (None, 0);
+    }
+
+    let mut g_score = vec![u32::MAX; n];
+    let mut came_from = vec![usize::MAX; n];
+    // Open set ordered by (f, g, cell) via `Reverse` so the min pops first — the
+    // deterministic tie-break that makes the path independent of push order.
+    let mut open: BinaryHeap<Reverse<(u32, u32, usize)>> = BinaryHeap::new();
+    let mut neighbors = Vec::with_capacity(4);
+    let mut expanded = 0usize;
+
+    g_score[start] = 0;
+    open.push(Reverse((manhattan(grid, start, goal), 0, start)));
+
+    while let Some(Reverse((_f, g, cell))) = open.pop() {
+        // Skip stale heap entries (a better path to `cell` was already settled).
+        if g > g_score[cell] {
+            continue;
+        }
+        expanded += 1;
+        if cell == goal {
+            return (Some(reconstruct(&came_from, start, goal)), expanded);
+        }
+        grid.walkable_neighbors(cell, &mut neighbors);
+        for &nb in &neighbors {
+            let tentative = g + 1;
+            if tentative < g_score[nb] {
+                g_score[nb] = tentative;
+                came_from[nb] = cell;
+                open.push(Reverse((tentative + manhattan(grid, nb, goal), tentative, nb)));
+            }
+        }
+    }
+    (None, expanded)
+}
+
+/// Walk `came_from` from `goal` back to `start`, producing `start..=goal`.
+fn reconstruct(came_from: &[usize], start: usize, goal: usize) -> Vec<usize> {
+    let mut path = vec![goal];
+    let mut cur = goal;
+    while cur != start {
+        cur = came_from[cur];
+        path.push(cur);
+    }
+    path.reverse();
+    path
 }
 
 // ---- L1 unit tests ---------------------------------------------------------
