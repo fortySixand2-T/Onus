@@ -9,7 +9,8 @@ Deterministic sim core first; game and campaign layered on top.
 - `DESIGN_BRIEF.md` — game content (roster, counter-pentagon, economy, campaign vision).
   Stats live in `assets/data/*.ron`.
 
-**Status:** M0 (fixed-timestep spine) and M1 (input & selection) done. Next: M2 (scale + spatial index).
+**Status:** M0–M3 and M4a (economy: content-as-data + Alloy gather/build/train loop) done —
+each harness-green with a critic PASS. Next: M4b (combat: 4-stat + nemesis).
 Build/test run on the Ubuntu box (`rohith@10.0.0.54`, clone at `~/projects/Games/Onus`); the Mac is
 for `cargo run` viewing only (the box is headless).
 

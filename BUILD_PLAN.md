@@ -104,17 +104,17 @@ right-click routes move-vs-gather by what's under the cursor; input→sim path t
 no sim component directly (`Selected` is client-side, not sim).
 
 ### M2 — scale + spatial index
-- [ ] Spawn 1000+ units across two factions.
-- [ ] Naive nearest-enemy pass, with timing logged.
-- [ ] Replace with a spatial grid; identical result, faster.
-- [ ] Before/after timing recorded.
+- [x] Spawn 1000+ units across two factions.
+- [x] Naive nearest-enemy pass, with timing logged.
+- [x] Replace with a spatial grid; identical result, faster.
+- [x] Before/after timing recorded.
 
 Critic probes: grid nearest-enemy == brute-force nearest-enemy over random seeds (differential); empty/edge cells handled; claimed speedup actually holds.
 
 ### M3 — pathfinding
-- [ ] Tile grid with blocked cells.
-- [ ] A* path; unit follows waypoints around obstacles.
-- [ ] Group move to one destination uses a flow field, not N× A*.
+- [x] Tile grid with blocked cells.
+- [x] A* path; unit follows waypoints around obstacles.
+- [x] Group move to one destination uses a flow field, not N× A*.
 
 Critic probes: path uses only walkable, contiguous cells and reaches the goal; returns none iff unreachable; flow field agrees with A* on reachability; group cost < N× A*.
 
@@ -127,9 +127,9 @@ Combat uses M2 nearest-enemy; movement uses M3 pathfinding. 1v1 vs scripted AI,
 mirror nation.
 
 #### M4a — economy (Alloy loop + content-as-data)
-- [ ] Load `units.ron` + `resources.ron` into sim structs at startup (no hardcoded costs/stats).
-- [ ] Worker gather/deposit loop: harvest Alloy from a deposit, return to HQ, deposit; per-faction stockpile.
-- [ ] Building placement consumes Alloy (HQ at start; Barracks placeable). Unit production (HQ→Worker, Barracks→its units) each costs Alloy.
+- [x] Load `units.ron` + `resources.ron` into sim structs at startup (no hardcoded costs/stats).
+- [x] Worker gather/deposit loop: harvest Alloy from a deposit, return to HQ, deposit; per-faction stockpile.
+- [x] Building placement consumes Alloy (HQ at start; Barracks placeable). Unit production (HQ→Worker, Barracks→its units) each costs Alloy.
 
 Critic probes: resource conserved (gathered == deposited + carried + in-flight); every building/unit cost deducted **exactly once**; costs come from the RON, not constants; deterministic given the seed.
 
