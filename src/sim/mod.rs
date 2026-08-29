@@ -37,10 +37,13 @@ pub const STOP_EPS: f32 = 1.0;
 #[derive(Component)]
 pub struct Position(pub Vec2);
 
-/// The kind of a unit. Its presence marks an entity as a commandable unit;
+/// The silhouette class of a unit — sim data, loaded from `units.ron`
+/// (`mvp_kind`) and written by the sim when it spawns a unit, never patched in
+/// later by the presentation layer. Its presence marks an entity as a
+/// commandable unit;
 /// resource nodes carry no `UnitKind`. Purely sim data — visuals (color/size)
 /// for a kind live in `client`.
-#[derive(Component, Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Component, Clone, Copy, PartialEq, Eq, Debug, serde::Deserialize)]
 pub enum UnitKind {
     Worker,
     Soldier,

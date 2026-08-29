@@ -43,16 +43,6 @@ pub fn unit_color(kind: UnitKind) -> Color {
     }
 }
 
-/// Presentation mapping: which sprite archetype a data-driven unit id gets.
-/// Purely visual — the sim knows only the `units.ron` definition index.
-pub fn kind_for_unit_id(id: &str) -> UnitKind {
-    match id {
-        "worker" => UnitKind::Worker,
-        "ripper" | "sentinel" => UnitKind::Scout,
-        _ => UnitKind::Soldier,
-    }
-}
-
 /// On-screen (and hit-box) side length for a unit of the given kind.
 pub fn unit_size(kind: UnitKind) -> f32 {
     match kind {

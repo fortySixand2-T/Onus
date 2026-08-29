@@ -15,6 +15,8 @@ use std::fmt;
 use std::path::Path;
 
 use bevy::ecs::prelude::Resource;
+
+use crate::sim::UnitKind;
 use ron::extensions::Extensions;
 use serde::Deserialize;
 
@@ -41,6 +43,9 @@ pub struct UnitDef {
     pub barracks: Option<String>,
     /// Post-MVP per-domain cost (unused by the MVP sim).
     pub cost: Cost,
+    /// Silhouette class (drives selection hit-boxes and, client-side, the
+    /// sprite). Data, so a new unit needs no code change.
+    pub mvp_kind: UnitKind,
     /// Alloy charged once when this unit's production is ordered.
     pub mvp_alloy_cost: u32,
     /// `FixedUpdate` ticks to finish the unit.
@@ -150,8 +155,20 @@ pub struct Content {
 /// failure is diagnosable without a debugger.
 #[derive(Debug)]
 pub enum ContentError {
-    Io { path: String, msg: String },
-    Parse { path: String, msg: String },
+    Io {
+        path: String,
+        msg: String,
+    },
+    Parse {
+        path: String,
+        msg: String,
+    },
+    /// The files parsed but the content is not playable (a gatherer with no
+    /// gather data, a free unit, a building producing an unknown unit, ...).
+    /// Caught at load so it can never surface as a worker mining nothing.
+    Invalid {
+        msg: String,
+    },
 }
 
 impl fmt::Display for ContentError {
@@ -159,6 +176,7 @@ impl fmt::Display for ContentError {
         match self {
             ContentError::Io { path, msg } => write!(f, "cannot read {path}: {msg}"),
             ContentError::Parse { path, msg } => write!(f, "cannot parse {path}: {msg}"),
+            ContentError::Invalid { msg } => write!(f, "invalid content: {msg}"),
         }
     }
 }
@@ -197,14 +215,63 @@ impl Content {
         let mut units = units_file.workers;
         units.extend(units_file.combat);
 
-        Ok(Content {
+        let content = Content {
             units,
             buildings: units_file.mvp_buildings,
             nemesis_bonus: units_file.nemesis_bonus,
             resources: resources_file.resources,
             mvp_active: resources_file.mvp_active,
             economy: resources_file.mvp_economy,
-        })
+        };
+        content.validate()?;
+        Ok(content)
+    }
+
+    /// Reject content the sim cannot run. Anything the sim *reads* must be
+    /// stated in the data: a serde default that silently becomes 0 would show up
+    /// as a worker mining nothing forever, or a unit that costs nothing.
+    fn validate(&self) -> Result<(), ContentError> {
+        let bad = |msg: String| Err(ContentError::Invalid { msg });
+
+        for b in &self.buildings {
+            if b.alloy_cost == 0 {
+                return bad(format!("building `{}` has no Alloy cost", b.id));
+            }
+            for p in &b.produces {
+                if self.unit_index(p).is_none() {
+                    return bad(format!("building `{}` produces unknown unit `{p}`", b.id));
+                }
+            }
+        }
+
+        for u in &self.units {
+            if u.mvp_alloy_cost == 0 {
+                return bad(format!("unit `{}` has no Alloy cost", u.id));
+            }
+            if u.mvp_train_ticks == 0 {
+                return bad(format!("unit `{}` has no training time", u.id));
+            }
+            if u.gathers && (u.mvp_carry_capacity == 0 || u.mvp_gather_ticks == 0) {
+                return bad(format!(
+                    "unit `{}` gathers but declares no mvp_carry_capacity / mvp_gather_ticks",
+                    u.id
+                ));
+            }
+            if !self.buildings.iter().any(|b| b.produces.contains(&u.id)) {
+                return bad(format!("unit `{}` has no producing building", u.id));
+            }
+        }
+
+        if self.resources.iter().all(|r| r.id != self.economy.currency) {
+            return bad(format!(
+                "mvp_economy currency `{}` is not a declared resource",
+                self.economy.currency
+            ));
+        }
+        if !(self.economy.gather_range > 0.0 && self.economy.deposit_range > 0.0) {
+            return bad("mvp_economy ranges must be positive".to_string());
+        }
+        Ok(())
     }
 
     /// Index of a unit definition by id (stable: the RON order).

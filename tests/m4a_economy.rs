@@ -117,7 +117,7 @@ use onus::sim::economy::{
     Building, Carrying, GatherPhase, ProductionQueue, Stockpiles, UnitDefIdx,
 };
 use onus::sim::spatial::Faction;
-use onus::sim::{CommandQueue, GatherTarget, Order, Position, RateReport, ResourceNode};
+use onus::sim::{CommandQueue, GatherTarget, Order, Position, RateReport, ResourceNode, UnitKind};
 
 /// A headless app running **the shipped sim chain** (`onus::add_sim_systems`,
 /// the same definition `build_app` installs on `FixedUpdate`) on `Update`, so
@@ -656,4 +656,107 @@ fn train_hotkey_targets_the_selected_building_and_its_ron_roster() {
     press(&mut app, TRAIN_KEYS[1]);
     app.update();
     assert!(app.world().resource::<CommandQueue>().0.is_empty());
+}
+
+// ---- review follow-ups: load-time validation, sim-owned kind, tick counts ---
+
+/// Write a content pair into a scratch dir, mutating `units.ron` by a textual
+/// substitution, and try to load it.
+fn load_mutated(dir_name: &str, from: &str, to: &str) -> Result<Content, String> {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target/content_probe")
+        .join(dir_name);
+    std::fs::create_dir_all(&dir).unwrap();
+    let units = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
+    assert!(units.contains(from), "the probe's anchor text still exists");
+    std::fs::write(dir.join("units.ron"), units.replace(from, to)).unwrap();
+    std::fs::copy(data_dir().join("resources.ron"), dir.join("resources.ron")).unwrap();
+    Content::load_from_dir(&dir).map_err(|e| e.to_string())
+}
+
+#[test]
+fn a_gatherer_missing_its_gather_data_is_rejected_at_load() {
+    // Silently defaulting these to 0 makes a worker loop forever mining nothing,
+    // so the loader must refuse the file instead.
+    let err = load_mutated("no_capacity", "mvp_carry_capacity: 10,", "")
+        .expect_err("a gatherer with no carry capacity is invalid content");
+    assert!(
+        err.contains("worker"),
+        "the error names the offender: {err}"
+    );
+
+    let err = load_mutated("no_gather_ticks", "mvp_gather_ticks: 90,", "")
+        .expect_err("a gatherer with no gather time is invalid content");
+    assert!(
+        err.contains("worker"),
+        "the error names the offender: {err}"
+    );
+}
+
+#[test]
+fn unbuildable_or_free_content_is_rejected_at_load() {
+    let err = load_mutated("free_unit", "mvp_alloy_cost: 70,", "mvp_alloy_cost: 0,")
+        .expect_err("a free unit is invalid content");
+    assert!(err.contains("sentinel"), "{err}");
+
+    let err = load_mutated(
+        "unknown_produces",
+        "\"bulwark\", \"sentinel\"",
+        "\"nonesuch\"",
+    )
+    .expect_err("a building producing an unknown unit is invalid content");
+    assert!(err.contains("nonesuch"), "{err}");
+}
+
+#[test]
+fn the_sim_owns_the_unit_kind_of_what_it_spawns() {
+    // No render/ui systems in this app at all: if `UnitKind` is present it was
+    // written by the sim, not completed later by the presentation layer.
+    let c = content();
+    let mut app = econ_app(c, 1000);
+    let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    train(&mut app, hq, "worker");
+    let ticks = app
+        .world()
+        .resource::<Content>()
+        .unit("worker")
+        .unwrap()
+        .mvp_train_ticks;
+    tick(&mut app, ticks + 2);
+
+    let mut q = app.world_mut().query::<(&UnitDefIdx, &UnitKind)>();
+    let (_, kind) = q.iter(app.world()).next().expect("the worker was produced");
+    assert_eq!(
+        *kind,
+        UnitKind::Worker,
+        "kind comes from units.ron via the sim"
+    );
+}
+
+#[test]
+fn a_load_takes_exactly_the_ron_gather_ticks() {
+    let c = content();
+    let g = c.unit("worker").unwrap().mvp_gather_ticks;
+    let cap = c.unit("worker").unwrap().mvp_carry_capacity;
+    let mut app = econ_app(c, 0);
+    spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    // Standing on the deposit: harvesting starts on the first tick after the
+    // order is applied, so the load lands exactly `g` ticks later.
+    let node = spawn_deposit(&mut app, Vec2::ZERO, 1000);
+    let w = spawn_worker(&mut app, Faction::A, Vec2::ZERO);
+    order_gather(&mut app, w, node);
+
+    tick(&mut app, 1); // order applied; the worker is in range and starts mining
+    tick(&mut app, g - 1);
+    assert_eq!(
+        carried(&mut app),
+        0,
+        "still mining one tick before the deadline"
+    );
+    tick(&mut app, 1);
+    assert_eq!(
+        carried(&mut app),
+        cap,
+        "a load lands on the {g}th tick of mining"
+    );
 }

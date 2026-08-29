@@ -19,18 +19,13 @@ pub fn sync_transform(mut query: Query<(&Position, &mut Transform)>) {
 /// creates them render-free; this is the driver catching up in `Update`.
 #[allow(clippy::type_complexity)] // a Bevy query filter reads worse as a type alias
 pub fn attach_visuals(
-    content: Res<Content>,
-    new_units: Query<(Entity, &Position, &UnitDefIdx), Without<Sprite>>,
+    new_units: Query<(Entity, &Position, &UnitKind), (With<UnitDefIdx>, Without<Sprite>)>,
     new_buildings: Query<(Entity, &Position), (With<Building>, Without<Sprite>)>,
     mut commands: Commands,
 ) {
-    for (e, pos, idx) in &new_units {
-        let Some(def) = content.units.get(idx.0) else {
-            continue;
-        };
-        let kind = kind_for_unit_id(&def.id);
+    for (e, pos, kind) in &new_units {
+        let kind = *kind;
         commands.entity(e).insert((
-            kind,
             Selectable,
             Sprite::from_color(unit_color(kind), Vec2::splat(unit_size(kind))),
             Transform::from_translation(pos.0.extend(0.0)),
@@ -155,7 +150,10 @@ pub fn report_rates(time: Res<Time>, mut report: ResMut<RateReport>) {
     report.frames += 1;
     report.elapsed += time.delta_secs();
     if report.elapsed >= 1.0 {
-        info!("sim ticks: {} | frames: {}", report.sim_ticks, report.frames);
+        info!(
+            "sim ticks: {} | frames: {}",
+            report.sim_ticks, report.frames
+        );
         report.sim_ticks = 0;
         report.frames = 0;
         report.elapsed = 0.0;

@@ -368,9 +368,19 @@ pub fn production(
             continue;
         }
         let done = queue.items.pop_front().expect("head exists");
+        let Some(def) = content.units.get(done.unit) else {
+            continue;
+        };
         let spawn_pos = pos + rally_offset(&content, done.unit);
-        let mut spawned = commands.spawn((Position(spawn_pos), UnitDefIdx(done.unit), faction));
-        if content.units.get(done.unit).is_some_and(|u| u.gathers) {
+        // The sim writes the whole unit — including its `UnitKind`, which comes
+        // from `units.ron`. The render layer only attaches a sprite to it.
+        let mut spawned = commands.spawn((
+            Position(spawn_pos),
+            UnitDefIdx(done.unit),
+            def.mvp_kind,
+            faction,
+        ));
+        if def.gathers {
             spawned.insert(Carrying(0));
         }
     }

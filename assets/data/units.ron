@@ -8,6 +8,7 @@
 // combat units + the Worker (MVP_PLAN.md). The per-domain `cost` fields below
 // are the *post-MVP* target and are kept intact; the `mvp_*` fields are what the
 // MVP sim actually charges and uses:
+//   mvp_kind         — silhouette class (Worker/Soldier/Scout), sim data
 //   mvp_alloy_cost   — Alloy deducted once when production is ordered
 //   mvp_train_ticks  — FixedUpdate ticks (60 Hz) to finish the unit
 //   mvp_carry_capacity / mvp_gather_ticks — worker gather loop (load size, and
@@ -21,6 +22,7 @@
             name: "Worker",
             source: "hq",
             cost: (resource: "alloy", amount: 10),
+            mvp_kind: Worker,
             mvp_alloy_cost: 10,
             mvp_train_ticks: 600,
             mvp_carry_capacity: 10,
@@ -34,30 +36,35 @@
         (
             id: "bulwark",   name: "Bulwark",   barracks: "foundry",      // Machine
             cost: (resource: "alloy",   amount: 110),
+            mvp_kind: Soldier,
             mvp_alloy_cost: 110, mvp_train_ticks: 1500,
             speed: 2, offense: 4, defense: 9, armor: 9, nemesis: "ravager",
         ),
         (
             id: "sentinel",  name: "Sentinel",  barracks: "foundry",      // Machine
             cost: (resource: "alloy",   amount: 70),
+            mvp_kind: Scout,
             mvp_alloy_cost: 70, mvp_train_ticks: 900,
             speed: 7, offense: 6, defense: 5, armor: 5, nemesis: "ripper",
         ),
         (
             id: "ripper",    name: "Ripper",    barracks: "gene_vats",    // Flesh
             cost: (resource: "biomass", amount: 40),
+            mvp_kind: Scout,
             mvp_alloy_cost: 40, mvp_train_ticks: 720,
             speed: 9, offense: 6, defense: 3, armor: 1, nemesis: "arclight",
         ),
         (
             id: "ravager",   name: "Ravager",   barracks: "gene_vats",    // Flesh
             cost: (resource: "biomass", amount: 90),
+            mvp_kind: Soldier,
             mvp_alloy_cost: 90, mvp_train_ticks: 1200,
             speed: 4, offense: 7, defense: 8, armor: 4, nemesis: "sentinel",
         ),
         (
             id: "arclight",  name: "Arclight",  barracks: "aether_spire", // Energy
             cost: (resource: "aether",  amount: 80),
+            mvp_kind: Soldier,
             mvp_alloy_cost: 80, mvp_train_ticks: 1080,
             speed: 5, offense: 9, defense: 2, armor: 2, nemesis: "bulwark",
         ),
