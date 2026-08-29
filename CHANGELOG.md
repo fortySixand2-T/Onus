@@ -47,3 +47,10 @@
 - [2026-08-29] Modified: FINDINGS.md — M3: record F-002 (group move N×A* -> one flow field; ~320x fewer nodes, ~1230x wall-clock)
 - [2026-08-29] Modified: FINDINGS.md — M3: pin F-002 commit reference to the AC3 commit (362a314)
 - [2026-08-29] Created: tests/critic_m3.rs — M3: adversarial critic tests (BFS oracle vs A*/flow field; None-iff-unreachable; flow reachability==A*; group cost << N×A* by node count; edge cases; all pass)
+- [2026-08-29] Created: src/sim/content.rs — M4a AC1: render-free RON loader for units/resources/buildings (serde+ron, no AssetServer)
+- [2026-08-29] Modified: assets/data/units.ron — M4a AC1: mvp_alloy_cost/mvp_train_ticks/gather params + mvp_buildings cost table (schema note)
+- [2026-08-29] Modified: assets/data/resources.ron — M4a AC1: mvp_economy block (currency, gather/deposit ranges)
+- [2026-08-29] Modified: Cargo.toml — M4a AC1: serde (derive) + ron deps for content-as-data
+- [2026-08-29] Modified: src/sim/mod.rs — M4a AC1: expose sim::content / Content
+- [2026-08-29] Modified: src/lib.rs — M4a AC1: insert Content resource at app build from assets/data
+- [2026-08-29] Created: tests/m4a_economy.rs — M4a AC1: L2 tests that units/resources load into sim structs

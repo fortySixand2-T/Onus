@@ -27,6 +27,10 @@ pub fn build_app() -> App {
     let mut app = App::new();
     app.add_plugins(DefaultPlugins)
         .insert_resource(Time::<Fixed>::from_hz(60.0))
+        // Content is data: costs/stats come from assets/data/*.ron, never from
+        // constants. Loaded render-free (plain file IO) before startup so both
+        // the driver and the sim see the same definitions.
+        .insert_resource(Content::load_default().expect("assets/data/*.ron load"))
         .init_resource::<CursorWorld>()
         .init_resource::<DragState>()
         .init_resource::<ClickTracker>()

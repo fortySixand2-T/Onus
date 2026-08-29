@@ -1,7 +1,19 @@
 // assets/data/units.ron
-// Unit definitions consumed by the sim at startup (M4 deserializes these into Rust structs).
-// Stats are on a 1-10 design scale; the balance sim tunes the real numbers later.
+// Unit definitions consumed by the sim at startup (M4a deserializes these into
+// Rust structs via `sim::content`). Stats are on a 1-10 design scale; the
+// balance sim tunes the real numbers later.
 // `nemesis` = the one prey this unit gets the bonus against.
+//
+// SCHEMA NOTE (M4a) — MVP is Alloy-only as the single currency funding all five
+// combat units + the Worker (MVP_PLAN.md). The per-domain `cost` fields below
+// are the *post-MVP* target and are kept intact; the `mvp_*` fields are what the
+// MVP sim actually charges and uses:
+//   mvp_alloy_cost   — Alloy deducted once when production is ordered
+//   mvp_train_ticks  — FixedUpdate ticks (60 Hz) to finish the unit
+//   mvp_carry_capacity / mvp_gather_ticks — worker gather loop (load size, and
+//                       ticks spent harvesting one load at a deposit)
+// `mvp_buildings` is the building cost table (HQ + the three barracks); each
+// lists the unit ids it can produce.
 (
     workers: [
         (
@@ -9,6 +21,10 @@
             name: "Worker",
             source: "hq",
             cost: (resource: "alloy", amount: 10),
+            mvp_alloy_cost: 10,
+            mvp_train_ticks: 600,
+            mvp_carry_capacity: 10,
+            mvp_gather_ticks: 90,
             speed: 5, offense: 0, defense: 3, armor: 0,
             gathers: true,
             builds: true,
@@ -18,28 +34,41 @@
         (
             id: "bulwark",   name: "Bulwark",   barracks: "foundry",      // Machine
             cost: (resource: "alloy",   amount: 110),
+            mvp_alloy_cost: 110, mvp_train_ticks: 1500,
             speed: 2, offense: 4, defense: 9, armor: 9, nemesis: "ravager",
         ),
         (
             id: "sentinel",  name: "Sentinel",  barracks: "foundry",      // Machine
             cost: (resource: "alloy",   amount: 70),
+            mvp_alloy_cost: 70, mvp_train_ticks: 900,
             speed: 7, offense: 6, defense: 5, armor: 5, nemesis: "ripper",
         ),
         (
             id: "ripper",    name: "Ripper",    barracks: "gene_vats",    // Flesh
             cost: (resource: "biomass", amount: 40),
+            mvp_alloy_cost: 40, mvp_train_ticks: 720,
             speed: 9, offense: 6, defense: 3, armor: 1, nemesis: "arclight",
         ),
         (
             id: "ravager",   name: "Ravager",   barracks: "gene_vats",    // Flesh
             cost: (resource: "biomass", amount: 90),
+            mvp_alloy_cost: 90, mvp_train_ticks: 1200,
             speed: 4, offense: 7, defense: 8, armor: 4, nemesis: "sentinel",
         ),
         (
             id: "arclight",  name: "Arclight",  barracks: "aether_spire", // Energy
             cost: (resource: "aether",  amount: 80),
+            mvp_alloy_cost: 80, mvp_train_ticks: 1080,
             speed: 5, offense: 9, defense: 2, armor: 2, nemesis: "bulwark",
         ),
+    ],
+    // MVP building cost table (Alloy). The HQ exists at match start; the three
+    // barracks are placeable and each trains its own units.
+    mvp_buildings: [
+        (id: "hq",           name: "HQ",           alloy_cost: 400, produces: ["worker"]),
+        (id: "foundry",      name: "Foundry",      alloy_cost: 150, produces: ["bulwark", "sentinel"]),
+        (id: "gene_vats",    name: "Gene-Vats",    alloy_cost: 150, produces: ["ripper", "ravager"]),
+        (id: "aether_spire", name: "Aether Spire", alloy_cost: 200, produces: ["arclight"]),
     ],
     // Applied when attacker.nemesis == defender.id
     nemesis_bonus: (

@@ -23,4 +23,13 @@
         ),
     ],
     mvp_active: ["alloy"],   // first playable uses Alloy only
+
+    // SCHEMA NOTE (M4a): MVP economy tunables the sim reads instead of
+    // hardcoding constants. `currency` is the single MVP resource; the ranges
+    // are world-unit radii for "close enough to harvest / to deposit".
+    mvp_economy: (
+        currency: "alloy",
+        gather_range: 40.0,
+        deposit_range: 48.0,
+    ),
 )

@@ -5,6 +5,10 @@ edition = "2021"
 
 [dependencies]
 bevy = "0.19"
+# Content-as-data: unit/economy definitions deserialize from assets/data/*.ron
+# into render-free sim structs (src/sim/content.rs).
+serde = { version = "1", features = ["derive"] }
+ron = "0.8"
 
 # Fast dev rebuilds (dev only): `cargo run --features bevy/dynamic_linking`
 # Pair with the `mold` linker on Linux for best iteration times.
