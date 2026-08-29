@@ -9,6 +9,14 @@ bevy = "0.19"
 # Fast dev rebuilds (dev only): `cargo run --features bevy/dynamic_linking`
 # Pair with the `mold` linker on Linux for best iteration times.
 
+[dev-dependencies]
+criterion = "0.5"
+
+# L4 performance benches (criterion). Run with `cargo bench`.
+[[bench]]
+name = "movement"
+harness = false
+
 [profile.dev]
 opt-level = 1
 

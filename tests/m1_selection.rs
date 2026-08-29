@@ -1,16 +1,16 @@
-//! Headless integration tests for M1 selection & command logic.
+//! L2 integration tests for M1 selection & command logic (see TESTING.md).
 //!
-//! These drive the real systems with a `MinimalPlugins` app (no window/renderer),
-//! injecting input and cursor state directly, then asserting on components. They
-//! verify the M1 acceptance criteria deterministically and seed M5's determinism
-//! checks.
+//! Drive the real systems with a `MinimalPlugins` app (no window/renderer),
+//! injecting input and cursor state directly, then assert on components. These
+//! verify the M1 acceptance criteria deterministically and seed M5's
+//! determinism checks.
 
 use bevy::input::ButtonInput;
 use bevy::prelude::*;
 
-use crate::core::*;
-use crate::input::{emit_commands, selection};
-use crate::sim::{apply_commands, step_toward};
+use onus::client::*;
+use onus::input::{emit_commands, selection};
+use onus::sim::*;
 
 // ---- harness ---------------------------------------------------------------
 
@@ -213,16 +213,4 @@ fn right_click_resource_assigns_gather() {
 
     assert_eq!(move_target(&app, w), Some(node_pos), "gather moves the unit to the node");
     assert!(has_gather_target(&app, w), "gather order records the gather target");
-}
-
-#[test]
-fn step_toward_snaps_on_arrival() {
-    // Overshoot within one step → snap to target and report arrival.
-    let (pos, arrived) = step_toward(Vec2::ZERO, Vec2::new(1.0, 0.0), 100.0);
-    assert!(arrived && pos == Vec2::new(1.0, 0.0));
-
-    // Far away → advance exactly `step` along the direction, not arrived.
-    let (pos, arrived) = step_toward(Vec2::ZERO, Vec2::new(100.0, 0.0), 10.0);
-    assert!(!arrived);
-    assert!((pos.x - 10.0).abs() < 1e-4 && pos.y.abs() < 1e-4);
 }

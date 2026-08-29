@@ -3,7 +3,8 @@
 
 use bevy::prelude::*;
 
-use crate::core::*;
+use crate::client::*;
+use crate::sim::*;
 
 /// Copy sim-space `Position` into the render `Transform`. One-way, every frame.
 pub fn sync_transform(mut query: Query<(&Position, &mut Transform)>) {
@@ -22,7 +23,7 @@ pub fn draw_selection(
     mouse: Res<ButtonInput<MouseButton>>,
 ) {
     for (pos, kind) in &selected {
-        let size = kind.map(|k| k.size()).unwrap_or(RESOURCE_SIZE) + 6.0;
+        let size = kind.map(|k| unit_size(*k)).unwrap_or(RESOURCE_SIZE) + 6.0;
         gizmos.rect_2d(
             Isometry2d::from_translation(pos.0),
             Vec2::splat(size),

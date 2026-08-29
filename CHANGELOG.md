@@ -9,3 +9,14 @@
 - [2026-08-28] Created: src/sim.rs — M1: apply_commands, movement, step_toward
 - [2026-08-28] Created: src/ui.rs — M1: transform sync, selection gizmos, options panel, rate report
 - [2026-08-28] Created: src/tests.rs — M1: headless integration tests for selection & commands
+- [2026-08-28] Modified: Cargo.toml — add criterion dev-dep + [[bench]] movement (harness=false)
+- [2026-08-28] Created: src/lib.rs — library root + build_app(); bin is now a thin shell
+- [2026-08-28] Modified: src/main.rs — reduced to onus::build_app().run()
+- [2026-08-28] Created: src/sim/mod.rs — render-free sim core (moved from core.rs/sim.rs; ECS+math+time only), L1 unit test
+- [2026-08-28] Created: src/client.rs — client-side state & presentation constants (selection markers, colors, sizes)
+- [2026-08-28] Modified: src/input.rs — import from sim+client after render-free split
+- [2026-08-28] Modified: src/ui.rs — import from sim+client after render-free split
+- [2026-08-28] Modified: src/setup.rs — driver-side spawn; unit_color/unit_size from client
+- [2026-08-28] Deleted: src/core.rs, src/sim.rs (old), src/tests.rs — superseded by sim/, client.rs, tests/
+- [2026-08-28] Created: tests/m1_selection.rs — L2 integration suite via onus:: public API
+- [2026-08-28] Created: benches/movement.rs — L4 criterion bench scaffold (step_toward)

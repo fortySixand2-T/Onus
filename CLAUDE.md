@@ -1,72 +1,34 @@
-# RTS in Bevy — Build Instructions
+# Onus — RTS in Bevy 0.19
 
-Rust + Bevy 0.19. Build one milestone at a time. Each checkbox is one commit and must pass before moving on.
+**Canonical build spec, milestones, harness, and agent orchestration live in
+[BUILD_PLAN.md](BUILD_PLAN.md).** This file is the quick-reference loaded into
+context each session — keep it short; don't duplicate the milestone list here.
 
-## Environment (Ubuntu)
+## Environment
+
+Ubuntu deps (CI / Linux dev):
 
 ```bash
 sudo apt-get install -y g++ pkg-config libx11-dev libasound2-dev libudev-dev libxkbcommon-dev libwayland-dev
-cargo new rts_game && cd rts_game
-cargo add bevy@0.19
-cargo run
 ```
 
-First build is slow (5–15 min). For fast dev rebuilds: `cargo run --features bevy/dynamic_linking` plus the `mold` linker (dev only).
+On the Mac dev box, Rust is installed via rustup (`~/.cargo`); run
+`source "$HOME/.cargo/env"` before `cargo`. Bevy runs natively on macOS — the
+apt packages above are Linux-only. First build is slow (5–15 min); for fast dev
+rebuilds use `cargo run --features bevy/dynamic_linking` (+ `mold` on Linux).
 
-## Bevy 0.19 (don't regress)
+## Invariants (don't regress)
 
-- Spawn component tuples — `Camera2d`, `Sprite::from_color(Color::srgb(..), Vec2::new(..))`, `Transform::from_xyz(..)`. The old `*Bundle` types are removed.
-- Simulation runs in `FixedUpdate` (`Time::<Fixed>::from_hz(60.0)`); rendering runs in `Update`. Sim owns its own state; `Transform` is written from it, never read as truth.
+- Sim owns truth and is **render-free** (`src/sim/`, ECS + math + time only); Bevy is a thin driver.
+- Sim runs in `FixedUpdate` @ 60 Hz (`Time::<Fixed>::from_hz(60.0)`); presentation in `Update`. `Transform` is written from sim `Position`, never read as truth.
+- Input never mutates sim directly — it emits `Order`s applied in `FixedUpdate`. Selection is client-side (`client` module), not sim.
+- Determinism (for M5/M6): seeded RNG stepped only in the sim; no wall-clock in sim logic; stable iteration order wherever outcomes depend on it; never let HashMap iteration order affect sim outcomes.
+- Bevy 0.19: spawn component tuples (`Camera2d`, `Sprite::from_color`, `Transform::from_xyz`); the old `*Bundle` types are gone.
 
-## Tests (acceptance criteria)
+## Layout
 
-### M0 — fixed-timestep spine
-- [ ] Window opens with a `Camera2d`.
-- [ ] One entity with `Position`, `Velocity`, `Sprite`, `Transform`.
-- [ ] Motion integrated in `FixedUpdate` at 60 Hz; bounces off bounds.
-- [ ] `Transform` synced from `Position` in `Update`.
-- [ ] Log shows ~60 sim ticks vs monitor frame count per second.
-
-### M1 — input & selection
-Real RTS interaction: left-click selects, units come from production later (M4),
-so M1 units are **pre-placed at startup**. Selection is client-side/presentation;
-only movement/gather orders touch the sim (via the command queue → `FixedUpdate`).
-- [ ] Cursor resolves to a world position.
-- [ ] Units pre-placed at startup across a few types (real spawning deferred to M4).
-- [ ] Left-click selects the unit under the cursor; click empty ground deselects.
-- [ ] Box-drag selects all own units inside the rectangle.
-- [ ] Double-click a unit selects all units of that type (camera is static in M1,
-      so all are on-screen; viewport-limited once panning lands).
-- [ ] Shift+click adds/removes a single unit from the selection.
-- [ ] Right-click on ground moves the selection there and stops; on a resource,
-      assigns a gather target (the gather loop itself lands in M4).
-- [ ] Selecting a resource shows a minimal options panel (debug text for now).
-- [ ] Input never mutates sim state directly — clicks emit intents consumed in `FixedUpdate`.
-
-### M2 — scale + spatial index
-- [ ] Spawn 1000+ units across two factions.
-- [ ] Naive nearest-enemy pass, with timing logged.
-- [ ] Replace with a spatial grid; identical result, faster.
-- [ ] Before/after timing recorded.
-
-### M3 — pathfinding
-- [ ] Tile grid with blocked cells.
-- [ ] A* path; unit follows waypoints around obstacles.
-- [ ] Group move to one destination uses a flow field, not N× A*.
-
-### M4 — economy, combat, AI
-- [ ] Resource gather/deposit loop.
-- [ ] Building placement consumes the resource.
-- [ ] Health + attack; engages nearest enemy in range; death despawns.
-- [ ] Scripted AI builds and attacks on a timer.
-
-### M5 — deterministic replay
-- [ ] `Command` enum tagged with a target tick; applied only in `FixedUpdate`.
-- [ ] Command log persisted to disk.
-- [ ] Replay reproduces identical final state (per-tick state hash matches).
-- [ ] Seeded RNG stepped only inside the sim.
-
-### M6 — lockstep networking (optional)
-- [ ] Commands exchanged between two clients.
-- [ ] A tick advances only when all inputs for it are present.
-- [ ] Periodic state-hash exchange detects desync.
+- `src/sim/` — render-free simulation core (the harness-judged unit); L1 unit tests co-located.
+- `src/client.rs` — client-side state & presentation constants (selection, colors, sizes).
+- `src/input.rs` · `src/ui.rs` · `src/setup.rs` — the Bevy driver.
+- `src/lib.rs` — `build_app()`; `src/main.rs` — thin entry.
+- `tests/` — L2 headless integration (`MinimalPlugins`); `benches/` — L4 criterion.

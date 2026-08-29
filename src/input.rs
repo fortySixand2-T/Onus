@@ -4,7 +4,8 @@
 
 use bevy::prelude::*;
 
-use crate::core::*;
+use crate::client::*;
+use crate::sim::*;
 
 /// Resolve the OS cursor to a world position via the 2D camera.
 pub fn update_cursor(
@@ -21,9 +22,9 @@ pub fn update_cursor(
         .and_then(|p| camera.viewport_to_world_2d(cam_tf, p).ok());
 }
 
-/// Half-extent of a selectable's hit box.
+/// Half-extent of a selectable's hit box (unit size, or resource size).
 fn half_extent(kind: Option<&UnitKind>) -> f32 {
-    kind.map(|k| k.size()).unwrap_or(RESOURCE_SIZE) * 0.5
+    kind.map(|k| unit_size(*k)).unwrap_or(RESOURCE_SIZE) * 0.5
 }
 
 fn within(cursor: Vec2, center: Vec2, half: f32) -> bool {
@@ -142,7 +143,7 @@ pub fn selection(
 }
 
 /// Right-mouse command: move the selected units, or gather if a resource is under
-/// the cursor. Emits a [`Command`]; the sim applies it in `FixedUpdate`.
+/// the cursor. Emits an [`Order`]; the sim applies it in `FixedUpdate`.
 pub fn emit_commands(
     mouse: Res<ButtonInput<MouseButton>>,
     cursor: Res<CursorWorld>,
