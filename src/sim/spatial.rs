@@ -201,9 +201,7 @@ impl SpatialGrid {
     pub fn nearest_enemy_counted(&self, units: &[Unit], i: usize) -> (Option<usize>, usize) {
         let me = units[i];
         let (c0, r0) = self.cell_of(me.pos);
-        let max_ring = c0
-            .max(self.cols - 1 - c0)
-            .max(r0.max(self.rows - 1 - r0));
+        let max_ring = c0.max(self.cols - 1 - c0).max(r0.max(self.rows - 1 - r0));
 
         let mut best_d2 = f32::INFINITY;
         let mut best_idx: Option<usize> = None;
@@ -303,8 +301,16 @@ mod tests {
             unit(10.0, 0.0, Faction::B), // 1 (far enemy)
             unit(5.0, 0.0, Faction::B),  // 2 (near enemy)
         ];
-        assert_eq!(brute_force_nearest_enemy(&units, 0), Some(2), "nearest enemy, not just any");
-        assert_eq!(brute_force_nearest_enemy(&units, 2), Some(0), "B's nearest enemy is the A");
+        assert_eq!(
+            brute_force_nearest_enemy(&units, 0),
+            Some(2),
+            "nearest enemy, not just any"
+        );
+        assert_eq!(
+            brute_force_nearest_enemy(&units, 2),
+            Some(0),
+            "B's nearest enemy is the A"
+        );
     }
 
     #[test]
@@ -321,7 +327,11 @@ mod tests {
             unit(9.0, 9.0, Faction::A),
         ];
         for i in 0..units.len() {
-            assert_eq!(brute_force_nearest_enemy(&units, i), None, "no enemy anywhere");
+            assert_eq!(
+                brute_force_nearest_enemy(&units, i),
+                None,
+                "no enemy anywhere"
+            );
         }
     }
 
@@ -400,9 +410,9 @@ mod tests {
         let units = [
             unit(0.0, 0.0, Faction::A),
             unit(5.0, 5.0, Faction::B),
-            unit(9000.0, -9000.0, Faction::B),  // far outside
-            unit(-9000.0, 9000.0, Faction::A),  // far outside
-            unit(3.0, -4000.0, Faction::B),     // outside on one axis
+            unit(9000.0, -9000.0, Faction::B), // far outside
+            unit(-9000.0, 9000.0, Faction::A), // far outside
+            unit(3.0, -4000.0, Faction::B),    // outside on one axis
             unit(-2.0, 2.0, Faction::A),
         ];
         assert_grid_eq_brute(&units, 15.0, Vec2::new(-10.0, -10.0), Vec2::new(10.0, 10.0));

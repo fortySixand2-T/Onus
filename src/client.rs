@@ -12,6 +12,8 @@ use crate::sim::UnitKind;
 
 pub const RESOURCE_SIZE: f32 = 34.0;
 pub const RESOURCE_COLOR: Color = Color::srgb(0.95, 0.85, 0.20);
+pub const BUILDING_SIZE: f32 = 56.0;
+pub const BUILDING_COLOR: Color = Color::srgb(0.55, 0.60, 0.75);
 pub const SELECT_COLOR: Color = Color::srgb(1.0, 1.0, 1.0);
 pub const DRAG_COLOR: Color = Color::srgb(0.50, 0.90, 0.55);
 

@@ -65,7 +65,7 @@
     // MVP building cost table (Alloy). The HQ exists at match start; the three
     // barracks are placeable and each trains its own units.
     mvp_buildings: [
-        (id: "hq",           name: "HQ",           alloy_cost: 400, produces: ["worker"]),
+        (id: "hq",           name: "HQ",           alloy_cost: 400, produces: ["worker"], dropoff: true),
         (id: "foundry",      name: "Foundry",      alloy_cost: 150, produces: ["bulwark", "sentinel"]),
         (id: "gene_vats",    name: "Gene-Vats",    alloy_cost: 150, produces: ["ripper", "ravager"]),
         (id: "aether_spire", name: "Aether Spire", alloy_cost: 200, produces: ["arclight"]),

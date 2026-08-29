@@ -6,7 +6,7 @@ use bevy::prelude::*;
 use crate::client::*;
 use crate::sim::*;
 
-pub fn setup(mut commands: Commands) {
+pub fn setup(mut commands: Commands, content: Res<Content>) {
     commands.spawn(Camera2d);
 
     // Options / status panel (bottom-left).
@@ -37,9 +37,30 @@ pub fn setup(mut commands: Commands) {
         (UnitKind::Scout, Vec2::new(-40.0, 170.0)),
         (UnitKind::Scout, Vec2::new(10.0, 200.0)),
     ];
+    let worker_def = content.unit_index("worker").expect("worker in units.ron");
     for (kind, pos) in placements {
-        spawn_unit(&mut commands, kind, pos);
+        let e = spawn_unit(&mut commands, kind, pos);
+        // Workers are data-driven from `units.ron` and gather for faction A.
+        if kind == UnitKind::Worker {
+            commands
+                .entity(e)
+                .insert((UnitDefIdx(worker_def), Faction::A));
+        }
     }
+
+    // The player HQ: exists at match start (its cost is not charged), accepts
+    // worker deposits, and trains workers. Cost/roster come from the RON.
+    let hq_def = content.building_index("hq").expect("hq in units.ron");
+    let hq_pos = Vec2::new(-120.0, 120.0);
+    commands.spawn((
+        Position(hq_pos),
+        Building { def: hq_def },
+        Faction::A,
+        ProductionQueue::default(),
+        Selectable,
+        Sprite::from_color(BUILDING_COLOR, Vec2::splat(BUILDING_SIZE)),
+        Transform::from_translation(hq_pos.extend(0.0)),
+    ));
 
     // Resource nodes.
     for pos in [Vec2::new(300.0, 180.0), Vec2::new(-320.0, -170.0)] {
@@ -53,12 +74,14 @@ pub fn setup(mut commands: Commands) {
     }
 }
 
-fn spawn_unit(commands: &mut Commands, kind: UnitKind, pos: Vec2) {
-    commands.spawn((
-        Position(pos),
-        kind,
-        Selectable,
-        Sprite::from_color(unit_color(kind), Vec2::splat(unit_size(kind))),
-        Transform::from_translation(pos.extend(0.0)),
-    ));
+fn spawn_unit(commands: &mut Commands, kind: UnitKind, pos: Vec2) -> Entity {
+    commands
+        .spawn((
+            Position(pos),
+            kind,
+            Selectable,
+            Sprite::from_color(unit_color(kind), Vec2::splat(unit_size(kind))),
+            Transform::from_translation(pos.extend(0.0)),
+        ))
+        .id()
 }

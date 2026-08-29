@@ -12,9 +12,11 @@ use bevy::time::{Fixed, Time};
 use std::collections::VecDeque;
 
 pub mod content;
+pub mod economy;
 pub mod pathfind;
 pub mod spatial;
 pub use content::Content;
+pub use economy::{Building, Carrying, GatherPhase, ProductionQueue, Stockpiles, UnitDefIdx};
 pub use pathfind::{astar, FlowField, TileGrid};
 pub use spatial::{
     brute_force_nearest_enemy, random_layout, Faction, SpatialGrid, SplitMix64, Unit,
@@ -63,10 +65,8 @@ pub struct ResourceNode {
 #[derive(Component)]
 pub struct MoveTarget(pub Vec2);
 
-/// The node a unit is assigned to gather. The gather loop itself is M4;
-/// for now this just records intent alongside a `MoveTarget` to the node.
+/// The deposit a unit is assigned to gather from. Read by `economy::gather`.
 #[derive(Component)]
-#[allow(dead_code)] // read by the gather loop in M4
 pub struct GatherTarget(pub Entity);
 
 // ---- resources -------------------------------------------------------------
@@ -108,10 +108,13 @@ pub fn apply_commands(mut queue: ResMut<CommandQueue>, mut commands: Commands) {
         match cmd {
             Order::MoveTo { units, dest } => {
                 for e in units {
+                    // A move order cancels gathering, but a carried load is
+                    // kept (it stays "in flight" — Alloy is never destroyed).
                     commands
                         .entity(e)
                         .insert(MoveTarget(dest))
-                        .remove::<GatherTarget>();
+                        .remove::<GatherTarget>()
+                        .remove::<GatherPhase>();
                 }
             }
             Order::Gather {
@@ -120,12 +123,15 @@ pub fn apply_commands(mut queue: ResMut<CommandQueue>, mut commands: Commands) {
                 node_pos,
             } => {
                 for e in units {
-                    // Move to the node and record the gather intent. The actual
-                    // gather/deposit loop arrives in M4.
+                    // Move to the node and start the gather loop (`economy`).
+                    // `insert_if_new` on `Carrying` so re-tasking a worker that
+                    // is already holding a load never zeroes that load.
                     commands
                         .entity(e)
                         .insert(MoveTarget(node_pos))
-                        .insert(GatherTarget(node));
+                        .insert(GatherTarget(node))
+                        .insert(GatherPhase::ToNode)
+                        .insert_if_new(Carrying(0));
                 }
             }
         }

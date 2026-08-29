@@ -36,6 +36,7 @@ pub fn build_app() -> App {
         .init_resource::<ClickTracker>()
         .init_resource::<CommandQueue>()
         .init_resource::<RateReport>()
+        .init_resource::<Stockpiles>()
         .add_systems(Startup, setup::setup)
         .add_systems(
             Update,
@@ -49,6 +50,9 @@ pub fn build_app() -> App {
                 ui::report_rates,
             ),
         )
-        .add_systems(FixedUpdate, (sim::apply_commands, sim::movement).chain());
+        .add_systems(
+            FixedUpdate,
+            (sim::apply_commands, sim::economy::gather, sim::movement).chain(),
+        );
     app
 }

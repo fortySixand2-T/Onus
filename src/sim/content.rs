@@ -73,6 +73,9 @@ pub struct BuildingDef {
     pub alloy_cost: u32,
     /// Unit ids this building can produce.
     pub produces: Vec<String>,
+    /// Workers may deposit their load here (the HQ).
+    #[serde(default)]
+    pub dropoff: bool,
 }
 
 /// The nemesis rule (consumed by combat in M4b).

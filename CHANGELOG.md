@@ -54,3 +54,11 @@
 - [2026-08-29] Modified: src/sim/mod.rs — M4a AC1: expose sim::content / Content
 - [2026-08-29] Modified: src/lib.rs — M4a AC1: insert Content resource at app build from assets/data
 - [2026-08-29] Created: tests/m4a_economy.rs — M4a AC1: L2 tests that units/resources load into sim structs
+- [2026-08-29] Created: src/sim/economy.rs — M4a AC2: per-faction Stockpiles + worker gather/harvest/deposit loop (conserving, deterministic)
+- [2026-08-29] Modified: src/sim/mod.rs — M4a AC2: economy module, gather state on Gather/MoveTo orders
+- [2026-08-29] Modified: assets/data/units.ron — M4a AC2: hq marked dropoff: true
+- [2026-08-29] Modified: src/sim/content.rs — M4a AC2: BuildingDef.dropoff flag
+- [2026-08-29] Modified: src/setup.rs — M4a AC2: spawn the HQ; workers carry UnitDefIdx + Faction
+- [2026-08-29] Modified: src/client.rs — M4a AC2: building color/size presentation constants
+- [2026-08-29] Modified: src/lib.rs — M4a AC2: Stockpiles resource + gather in FixedUpdate
+- [2026-08-29] Modified: tests/m4a_economy.rs — M4a AC2: gather loop, conservation, determinism tests
