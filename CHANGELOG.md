@@ -20,3 +20,4 @@
 - [2026-08-28] Deleted: src/core.rs, src/sim.rs (old), src/tests.rs — superseded by sim/, client.rs, tests/
 - [2026-08-28] Created: tests/m1_selection.rs — L2 integration suite via onus:: public API
 - [2026-08-28] Created: benches/movement.rs — L4 criterion bench scaffold (step_toward)
+- [2026-08-29] Modified: src/input.rs — fix pre-existing clippy lints surfaced by clippy 0.1.98 (is_none_or; allow too_many_arguments on a Bevy system)

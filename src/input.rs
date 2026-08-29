@@ -53,7 +53,7 @@ fn pick(
     for (e, pos, kind, _res) in selectables {
         if within(cursor, pos.0, half_extent(kind)) {
             let d = pos.0.distance_squared(cursor);
-            if best.map_or(true, |(_, _, bd)| d < bd) {
+            if best.is_none_or(|(_, _, bd)| d < bd) {
                 best = Some((e, kind.copied(), d));
             }
         }
@@ -62,6 +62,7 @@ fn pick(
 }
 
 /// Left-mouse selection: click, box-drag, double-click type-select, shift-toggle.
+#[allow(clippy::too_many_arguments)] // a Bevy system's params are its dependency injection
 pub fn selection(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
