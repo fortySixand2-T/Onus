@@ -84,3 +84,4 @@
 - [2026-08-29] Modified: src/ui.rs, src/client.rs — M4a critic fix: attach_visuals no longer writes the sim's UnitKind
 - [2026-08-29] Modified: BUILD_PLAN.md — M4a deferrals note (order ownership → M4c, movement speed → M4b)
 - [2026-08-29] Modified: FINDINGS.md — F-004 (one shared sim-chain definition), F-005 (saturating add destroys resource)
+- [2026-08-29] Modified: tests/critic_m4a.rs — M4a critic pass 2: 17 probes on the fix diff (shared sim chain, partial-accept deposits, content validation, RON tick/price fidelity, sim-owned UnitKind)
