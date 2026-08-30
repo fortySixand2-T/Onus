@@ -1259,3 +1259,543 @@ fn a_nemesis_multiplier_is_rejected_or_applied_as_written() {
          multiplier (wanted {want}, got {got})"
     );
 }
+
+// ---- P32-P44: critic pass 4 — the gather-ownership fix and the multiplier ----
+
+use onus::sim::economy::{Building, Carrying, GatherPhase, ProductionQueue};
+use onus::sim::GatherTarget;
+
+fn has_job(app: &App, e: Entity) -> bool {
+    app.world().get::<GatherTarget>(e).is_some()
+}
+
+fn phase(app: &App, e: Entity) -> Option<GatherPhase> {
+    app.world().get::<GatherPhase>(e).copied()
+}
+
+fn carried(app: &App, e: Entity) -> u32 {
+    app.world().get::<Carrying>(e).map(|c| c.0).unwrap_or(0)
+}
+
+fn node_amount(app: &App, e: Entity) -> u32 {
+    app.world().get::<ResourceNode>(e).map(|n| n.amount).unwrap_or(0)
+}
+
+fn spawn_node(app: &mut App, pos: Vec2, amount: u32) -> Entity {
+    app.world_mut()
+        .spawn((Position(pos), ResourceNode { amount }))
+        .id()
+}
+
+fn spawn_hq(app: &mut App, pos: Vec2, faction: Faction) -> Entity {
+    let def = app
+        .world()
+        .resource::<Content>()
+        .building_index("hq")
+        .expect("hq");
+    app.world_mut()
+        .spawn((
+            Position(pos),
+            Building { def },
+            faction,
+            ProductionQueue::default(),
+        ))
+        .id()
+}
+
+/// P32. `Order::Gather` now looks the unit's definition up in a read-only query.
+/// An entity with no `UnitDefIdx` at all must simply take the move half: it may
+/// never be handed a gather claim the economy can never see (the economy's
+/// worker query *requires* `UnitDefIdx`, so a marker planted on such an entity
+/// is unreleasable — the exact F-008 shape).
+#[test]
+fn a_gather_order_to_an_entity_without_a_definition_hands_out_no_claim() {
+    let mut app = sim_app();
+    let e = app
+        .world_mut()
+        .spawn((Position(Vec2::ZERO), Faction::A))
+        .id();
+    let node = spawn_node(&mut app, Vec2::new(100.0, 0.0), 500);
+    push(
+        &mut app,
+        Order::Gather {
+            units: vec![e],
+            node,
+            node_pos: Vec2::new(100.0, 0.0),
+        },
+    );
+    tick(&mut app, 5);
+    assert!(
+        !has_job(&app, e) && phase(&app, e).is_none(),
+        "an entity with no definition was given an unreleasable gather claim"
+    );
+    assert!(
+        app.world().get::<MoveTarget>(e).is_some(),
+        "the move half of the order must still apply"
+    );
+}
+
+/// P33. Same, for a definition index that is out of range: `content.units.get`
+/// returns `None`, so the sim has no data saying this thing gathers.
+#[test]
+fn a_gather_order_with_an_out_of_range_definition_hands_out_no_claim() {
+    let mut app = sim_app();
+    let e = app
+        .world_mut()
+        .spawn((Position(Vec2::ZERO), UnitDefIdx(9_999), Faction::A))
+        .id();
+    let node = spawn_node(&mut app, Vec2::new(100.0, 0.0), 500);
+    push(
+        &mut app,
+        Order::Gather {
+            units: vec![e],
+            node,
+            node_pos: Vec2::new(100.0, 0.0),
+        },
+    );
+    tick(&mut app, 5);
+    assert!(
+        !has_job(&app, e) && phase(&app, e).is_none(),
+        "an out-of-range definition index was given a gather claim"
+    );
+}
+
+/// P34. A claim planted straight onto a soldier — bypassing `Order::Gather`
+/// entirely — must be taken back by the economy *before* combat can read it, on
+/// the very tick it appears. F-008: the owner releases a claim that does not
+/// hold; the reader is never allowed to act on a stale one.
+#[test]
+fn a_planted_claim_on_a_soldier_is_taken_back_before_combat_reads_it() {
+    let mut app = sim_app();
+    let soldier = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    let enemy = spawn_unit(&mut app, "worker", Faction::B, Vec2::new(30.0, 0.0));
+    let node = spawn_node(&mut app, Vec2::ZERO, 500);
+    app.world_mut()
+        .entity_mut(soldier)
+        .insert((GatherTarget(node), GatherPhase::ToNode));
+    let full = hp(&app, enemy).unwrap();
+
+    step(&mut app);
+    assert!(
+        !has_job(&app, soldier) && phase(&app, soldier).is_none(),
+        "the economy did not take back a claim it will never service"
+    );
+    assert!(
+        !alive(&app, enemy) || hp(&app, enemy).unwrap() < full,
+        "the planted claim disarmed the soldier for the tick it existed"
+    );
+}
+
+/// P35. A claim planted on a *building* and on a *resource node*: neither is
+/// something the economy's worker query can ever see, so neither may be left
+/// holding a claim, and — more importantly — the widened (`Option<&mut
+/// Carrying>`) query must not have started touching non-units. The building's
+/// production queue and the node's contents must be untouched.
+#[test]
+fn a_planted_claim_never_makes_the_economy_touch_a_non_unit() {
+    let mut app = sim_app();
+    let node = spawn_node(&mut app, Vec2::ZERO, 500);
+    let hq = spawn_hq(&mut app, Vec2::ZERO, Faction::A);
+    app.world_mut()
+        .entity_mut(hq)
+        .insert((GatherTarget(node), GatherPhase::ToNode));
+    app.world_mut()
+        .entity_mut(node)
+        .insert((GatherTarget(node), GatherPhase::ToNode));
+    tick(&mut app, 30);
+    assert_eq!(node_amount(&app, node), 500, "a node was mined by nobody");
+    assert_eq!(
+        app.world().resource::<Stockpiles>().alloy(Faction::A),
+        0,
+        "Alloy was minted for an entity that never gathered"
+    );
+    assert_eq!(carried(&app, hq), 0, "a building was given hands");
+    assert_eq!(carried(&app, node), 0, "a deposit was given hands");
+}
+
+/// P36. AC1 for the mixed selection, across the whole walk: the soldier keeps
+/// the *move* half of the order, fires on the tick the order lands, never
+/// acquires a gather claim, arrives at the node, and — its order discharged —
+/// goes back to auto-engaging. Meanwhile the worker in the same order gathers.
+#[test]
+fn a_soldier_in_a_mixed_gather_order_walks_and_keeps_firing() {
+    let mut app = sim_app();
+    let node_pos = Vec2::new(120.0, 0.0);
+    let soldier = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(0.0, 0.0));
+    let worker = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, 20.0));
+    // An unarmed enemy: what this measures is the soldier still shooting, not
+    // who wins a duel.
+    let enemy = spawn_unit(&mut app, "worker", Faction::B, Vec2::new(20.0, 0.0));
+    let node = spawn_node(&mut app, node_pos, 500);
+    let _hq = spawn_hq(&mut app, Vec2::new(0.0, 20.0), Faction::A);
+    push(
+        &mut app,
+        Order::Gather {
+            units: vec![soldier, worker],
+            node,
+            node_pos,
+        },
+    );
+    let full = hp(&app, enemy).unwrap();
+    step(&mut app);
+    assert!(
+        !has_job(&app, soldier),
+        "the soldier was handed a gather claim"
+    );
+    assert!(has_job(&app, worker), "the worker lost its gather claim");
+    assert!(
+        hp(&app, enemy).unwrap() < full,
+        "the soldier did not fire on the tick the order landed"
+    );
+    let mut reached_node = false;
+    for t in 0..600 {
+        step(&mut app);
+        assert!(
+            !has_job(&app, soldier),
+            "tick {t}: a gather claim appeared on the soldier"
+        );
+        assert_eq!(carried(&app, soldier), 0, "tick {t}: the soldier gathered");
+        if let Some(p) = pos(&app, soldier) {
+            reached_node |= p.distance(node_pos) < 1.0;
+        }
+    }
+    assert!(
+        reached_node,
+        "the soldier never obeyed the move half of the order"
+    );
+    assert!(
+        !alive(&app, enemy),
+        "the soldier never re-engaged after its order was discharged"
+    );
+    assert!(
+        node_amount(&app, node) < 500,
+        "the worker's loop stopped working"
+    );
+}
+
+/// P37. Alloy conservation (F-005) across the full loop, with the new
+/// clear-the-claim pass running every tick and a mixed selection driving it.
+/// `stockpile + carried + still-in-deposit` is invariant at every tick.
+#[test]
+fn alloy_is_conserved_across_a_mixed_selection_gather_loop() {
+    let mut app = sim_app();
+    let node_pos = Vec2::new(400.0, 0.0);
+    let node = spawn_node(&mut app, node_pos, 1_000);
+    let _hq = spawn_hq(&mut app, Vec2::ZERO, Faction::A);
+    let mut units = Vec::new();
+    for i in 0..3 {
+        units.push(spawn_unit(
+            &mut app,
+            "worker",
+            Faction::A,
+            Vec2::new(0.0, i as f32 * 6.0),
+        ));
+    }
+    for i in 0..2 {
+        units.push(spawn_unit(
+            &mut app,
+            "bulwark",
+            Faction::A,
+            Vec2::new(0.0, -6.0 * (i + 1) as f32),
+        ));
+    }
+    push(
+        &mut app,
+        Order::Gather {
+            units: units.clone(),
+            node,
+            node_pos,
+        },
+    );
+    let total = 1_000u32;
+    let mut banked_ever = 0u32;
+    for t in 0..2_000 {
+        step(&mut app);
+        let stock = app.world().resource::<Stockpiles>().alloy(Faction::A);
+        let hands: u32 = units.iter().map(|&e| carried(&app, e)).sum();
+        let left = node_amount(&app, node);
+        assert_eq!(
+            stock + hands + left,
+            total,
+            "tick {t}: Alloy was minted or destroyed (stock {stock} + hands \
+             {hands} + node {left})"
+        );
+        assert_eq!(
+            app.world().resource::<Stockpiles>().alloy(Faction::B),
+            0,
+            "tick {t}: the other faction was paid"
+        );
+        banked_ever = banked_ever.max(stock);
+    }
+    assert!(banked_ever > 0, "no Alloy was ever banked: the loop is dead");
+}
+
+/// P38. The clearing pass must never confiscate a *real* gatherer's job or its
+/// carried load: a worker mid-return, re-tasked to the same node on the very
+/// tick it is holding Alloy, keeps every unit of it.
+#[test]
+fn a_carrying_worker_is_never_stripped_by_the_clearing_pass() {
+    let mut app = sim_app();
+    let node_pos = Vec2::new(200.0, 0.0);
+    let node = spawn_node(&mut app, node_pos, 1_000);
+    let _hq = spawn_hq(&mut app, Vec2::ZERO, Faction::A);
+    let w = spawn_unit(&mut app, "worker", Faction::A, node_pos);
+    push(
+        &mut app,
+        Order::Gather {
+            units: vec![w],
+            node,
+            node_pos,
+        },
+    );
+    // Walk it up to a full load.
+    for _ in 0..200 {
+        step(&mut app);
+        if carried(&app, w) > 0 {
+            break;
+        }
+    }
+    assert_eq!(carried(&app, w), 10, "the worker never picked up a load");
+    // Re-task every tick while it walks home; the load must survive all of it.
+    for t in 0..120 {
+        push(
+            &mut app,
+            Order::Gather {
+                units: vec![w],
+                node,
+                node_pos,
+            },
+        );
+        step(&mut app);
+        let banked = app.world().resource::<Stockpiles>().alloy(Faction::A);
+        assert_eq!(
+            carried(&app, w) + banked,
+            10,
+            "tick {t}: the load was destroyed by re-tasking"
+        );
+        assert!(
+            has_job(&app, w),
+            "tick {t}: a real gatherer's job was confiscated"
+        );
+    }
+}
+
+/// P39. Re-issuing the order every tick to a non-gatherer must not make the
+/// claim flicker on and off (a marker that exists for part of a tick is a
+/// marker combat can read). The soldier is never on a job at any tick boundary,
+/// and it keeps fighting throughout.
+#[test]
+fn a_repeated_gather_order_never_oscillates_a_soldiers_claim() {
+    let mut app = sim_app();
+    let soldier = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    let enemy = spawn_unit(&mut app, "bulwark", Faction::B, Vec2::new(20.0, 0.0));
+    let node = spawn_node(&mut app, Vec2::ZERO, 500);
+    let full = hp(&app, enemy).unwrap();
+    for t in 0..200 {
+        push(
+            &mut app,
+            Order::Gather {
+                units: vec![soldier],
+                node,
+                node_pos: Vec2::ZERO,
+            },
+        );
+        step(&mut app);
+        assert!(
+            !has_job(&app, soldier) && phase(&app, soldier).is_none(),
+            "tick {t}: the claim flickered onto a unit that cannot gather"
+        );
+        if !alive(&app, enemy) {
+            break;
+        }
+    }
+    assert!(
+        !alive(&app, enemy) || hp(&app, enemy).unwrap() < full,
+        "200 re-issued gather orders disarmed the soldier"
+    );
+}
+
+/// P41. Exactness of the nemesis multiplier. For every multiplier the loader
+/// *accepts*, `mult_milli` must equal `round(damage_mult * 1000)` computed from
+/// the stored `f32` — never the `u32::MAX` stand-in — and per-hit damage must
+/// equal `floor(base * milli / 1000)` exactly. Values it cannot represent must
+/// be refused, not silently substituted.
+#[test]
+fn every_accepted_multiplier_is_applied_exactly_as_written() {
+    use onus::sim::content::NemesisBonus;
+    let cases = [
+        ("m_one", "1.0", 1.0f32),
+        ("m_1p0005", "1.0005", 1.0005f32),
+        ("m_1p0625", "1.0625", 1.0625f32),
+        ("m_1p15", "1.15", 1.15f32),
+        ("m_1p3", "1.3", 1.3f32),
+        ("m_two", "2.0", 2.0f32),
+        ("m_4e6", "4000000.0", 4_000_000.0f32),
+        ("m_4294967p5", "4294967.5", 4_294_967.5f32),
+        ("m_1e30", "1e30", 1e30f32),
+    ];
+    for (name, text, value) in cases {
+        let loaded = load_mutated(name, "damage_mult: 1.3,", &format!("damage_mult: {text},"));
+        let Ok(c) = loaded else { continue }; // a refusal is a correct answer
+        let want = (value as f64 * 1_000.0f64).round();
+        assert!(
+            want.is_finite() && want <= u32::MAX as f64,
+            "`{text}` was accepted but cannot be held as an integer per-mille"
+        );
+        assert_eq!(
+            c.nemesis_bonus.milli_exact(),
+            Some(want as u32),
+            "`{text}`: milli_exact disagrees with round(mult * 1000)"
+        );
+        assert_eq!(
+            c.nemesis_bonus.mult_milli(),
+            want as u32,
+            "`{text}`: mult_milli disagrees with milli_exact for accepted content"
+        );
+        assert_ne!(
+            c.nemesis_bonus.mult_milli(),
+            u32::MAX,
+            "`{text}`: accepted content is applied with the saturated stand-in"
+        );
+        // Bulwark preys on the Ravager; armor is skipped, so damage is exactly
+        // floor(base * milli / 1000).
+        let (a, d) = (
+            c.unit_index("bulwark").unwrap(),
+            c.unit_index("ravager").unwrap(),
+        );
+        let base = c.units[a].offense as u64 * c.combat.damage_per_offense as u64;
+        let want_dmg = base * want as u64 / NemesisBonus::MULT_SCALE as u64;
+        assert_eq!(
+            damage_per_hit(&c, a, d) as u64,
+            want_dmg,
+            "`{text}`: per-hit damage is not the documented formula"
+        );
+    }
+}
+
+/// P42. The shipped multiplier is exactly 1300 per-mille, and the widening to
+/// `f64` did not move it.
+#[test]
+fn the_shipped_multiplier_is_exactly_1300_per_mille() {
+    let c = content();
+    assert_eq!(c.nemesis_bonus.milli_exact(), Some(1_300));
+    assert_eq!(c.nemesis_bonus.mult_milli(), 1_300);
+}
+
+/// P43. Nemesis is an *iff* over the whole roster, still, with the checked
+/// multiplier in place: bonus + armor bypass exactly when
+/// `attacker.nemesis == defender.id`, plain flat-armor math otherwise.
+#[test]
+fn nemesis_remains_an_iff_over_every_roster_pair() {
+    let c = content();
+    let milli = c.nemesis_bonus.milli_exact().expect("accepted content") as u64;
+    for a in 0..c.units.len() {
+        for d in 0..c.units.len() {
+            let base = c.units[a].offense as u64 * c.combat.damage_per_offense as u64;
+            let mit = c.units[d].armor as u64 * c.combat.mitigation_per_armor as u64;
+            let is_nem = c.units[a].nemesis.as_deref() == Some(c.units[d].id.as_str());
+            let want = if is_nem {
+                let boosted = base * milli / 1_000;
+                if c.nemesis_bonus.ignore_armor {
+                    boosted
+                } else {
+                    boosted.saturating_sub(mit)
+                }
+            } else {
+                base.saturating_sub(mit)
+            };
+            assert_eq!(
+                damage_per_hit(&c, a, d) as u64,
+                want,
+                "{} -> {}",
+                c.units[a].id,
+                c.units[d].id
+            );
+            if is_nem {
+                assert!(
+                    damage_per_hit(&c, a, d) as u64 >= base,
+                    "{} preys on {} but is punished by the bonus",
+                    c.units[a].id,
+                    c.units[d].id
+                );
+            }
+        }
+    }
+}
+
+/// P44. Determinism regression over a world that exercises *both* halves of the
+/// fix at once: economy claims being handed out and taken back while combat
+/// runs. Per-tick hashes and the Alloy ledger must be identical across runs and
+/// independent of archetype iteration order.
+#[test]
+fn a_mixed_economy_and_combat_run_is_deterministic_and_order_independent() {
+    #[derive(Component)]
+    struct Tag(#[allow(dead_code)] u64);
+
+    fn run(tagged: bool) -> (Vec<u64>, Vec<(u32, u32)>) {
+        let mut app = sim_app();
+        let node_pos = Vec2::new(260.0, 0.0);
+        let node = spawn_node(&mut app, node_pos, 800);
+        let def = app
+            .world()
+            .resource::<Content>()
+            .building_index("hq")
+            .unwrap();
+        app.world_mut().spawn((
+            Position(Vec2::ZERO),
+            Building { def },
+            Faction::A,
+            ProductionQueue::default(),
+        ));
+        let ids = ["worker", "bulwark", "ripper", "sentinel", "worker", "ravager"];
+        let mut mine = Vec::new();
+        for (i, id) in ids.iter().enumerate() {
+            let f = if i % 2 == 0 { Faction::A } else { Faction::B };
+            let e = spawn_unit(
+                &mut app,
+                id,
+                f,
+                Vec2::new(i as f32 * 31.0 - 60.0, (i % 3) as f32 * 25.0 - 25.0),
+            );
+            if tagged && i % 2 == 1 {
+                app.world_mut().entity_mut(e).insert(Tag(i as u64));
+            }
+            if i % 2 == 0 {
+                mine.push(e);
+            }
+        }
+        push(
+            &mut app,
+            Order::Gather {
+                units: mine,
+                node,
+                node_pos,
+            },
+        );
+        let mut hashes = Vec::new();
+        let mut ledger = Vec::new();
+        for _ in 0..600 {
+            step(&mut app);
+            hashes.push(state_hash(&mut app));
+            ledger.push((
+                app.world().resource::<Stockpiles>().alloy(Faction::A),
+                node_amount(&app, node),
+            ));
+        }
+        (hashes, ledger)
+    }
+
+    let a = run(false);
+    let b = run(false);
+    assert_eq!(a.0, b.0, "identical runs diverged");
+    assert_eq!(a.1, b.1, "the Alloy ledger diverged between identical runs");
+    let c = run(true);
+    assert_eq!(
+        a.1, c.1,
+        "an extra component changed the economy outcome (archetype order leaked in)"
+    );
+    assert_eq!(
+        a.0, c.0,
+        "adding an unrelated component changed the per-tick state hashes"
+    );
+}

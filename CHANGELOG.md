@@ -127,3 +127,4 @@
 - [2026-08-29] Modified: src/sim/content.rs — critic fix: NemesisBonus::milli_exact; a damage_mult whose per-mille does not fit u32 is rejected at load, and the peak-damage bound reads the checked value
 - [2026-08-29] Modified: tests/m4b_combat.rs — a_nemesis_multiplier_is_exact_or_refused (exactness for 1.0/1.15/1.3/2.0, rejection for 5e6)
 - [2026-08-29] Modified: FINDINGS.md — F-005 extension 3 (the last raw cast on the damage path)
+- [2026-08-29] Modified: tests/critic_m4b.rs — M4b critic pass 4: 12 probes on the gather-ownership fix, multiplier exactness, and the standing regression sweep (all green)
