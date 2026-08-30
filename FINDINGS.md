@@ -207,7 +207,7 @@ per-mille, so the formula documented in `units.ron` holds as written rather
 than approximately. Evidence:
 `tests/critic_m4b.rs::a_nemesis_multiplier_is_rejected_or_applied_as_written`
 and `a_nemesis_multiplier_is_exact_or_refused` (which also pins 1.0/1.15/2.0),
-commit `HEAD`.
+commit `b48be41`.
 
 ## F-006 — Combat damage is integer arithmetic; the design stats are scaled in data (M4b)
 
