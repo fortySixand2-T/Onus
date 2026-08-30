@@ -150,8 +150,16 @@ pub type SplitClaim = Or<(
 ///
 /// So the release side is structural too, in the only way that covers writers
 /// the economy does not control: the owner **sweeps** for split claims each
-/// tick, before the tick's gather and combat passes run. A claim the economy did
-/// not author is not a job; dropping it returns the unit to its commander.
+/// tick. A claim the economy did not author is not a job; dropping it returns
+/// the unit to its commander.
+///
+/// The guarantee is only as wide as this system's **position**, so state it
+/// exactly: it runs first among the systems that play the match, and the readers of
+/// `GatherTarget` it therefore protects are the three that exist —
+/// [`crate::sim::ai::ai_commanders`], [`gather`] and [`crate::sim::combat::combat`].
+/// It protects nothing ordered before it. Adding a fourth reader means ordering
+/// it after this system (F-008); that constraint is the reason this sweep is not
+/// simply folded into [`gather`].
 pub fn repair_gather_claims(split: Query<Entity, SplitClaim>, mut commands: Commands) {
     // Stable order: the work is per-entity and order-independent, but the
     // *commands* it queues are not, and determinism is cheaper than an argument.

@@ -164,3 +164,7 @@
 - [2026-08-29] Modified: tests/m4c_ai.rs — cross-faction unsigned orders refused (both orderings); signed orders still command their own; the queue only holds attributed orders; every legitimate order still applies across a 6000-tick AI match; deleted the evadable source text scan
 - [2026-08-29] Modified: FINDINGS.md — F-009 extension: "self-signed" made a checked property, and why the text-scan test was deleted
 - [2026-08-30] Modified: tests/critic_m4c.rs — M4c critic pass 2: 12 probes on the engaged gate, the F-008 sweep and order attribution; 2 fail (a half claim still reaches `ai_commanders`, which runs before the sweep)
+- [2026-08-30] Modified: src/lib.rs — critic fix: repair_gather_claims runs first among the match-playing systems, ahead of every reader of GatherTarget (the AI reads it too)
+- [2026-08-30] Modified: src/sim/mod.rs, src/sim/economy.rs — the claim's docs now quantify over exactly the readers the sweep's position protects, and state the ordering constraint
+- [2026-08-30] Modified: tests/m4c_ai.rs — the AI never reads a half claim; no reader observes one during a live match (per tick); a claim created this tick survives the next tick's sweep
+- [2026-08-30] Modified: FINDINGS.md — F-008 extension 2: the sweep is worth its schedule position; any new reader of GatherTarget must be ordered after it

@@ -1420,3 +1420,123 @@ fn every_legitimate_order_still_applies_under_coherent_self_signing() {
         "the match stopped functioning entirely"
     );
 }
+
+// ---- critic pass 2: the sweep must precede *every* reader of the claim ------
+
+/// The property the fix establishes. The sweep is worth its position in the
+/// schedule and nothing more: it used to sit after `ai_commanders`, which reads
+/// `GatherTarget` to decide who is idle, so a lone target was still read as a
+/// live job by that one reader and the worker sat unemployed for a whole
+/// `think_interval_ticks`. Sweeping first means no reader sees a half-claim.
+#[test]
+fn the_ai_never_reads_a_half_claim_as_a_job() {
+    let mut app = sim_app();
+    spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    let node = app
+        .world_mut()
+        .spawn((
+            Position(Vec2::new(200.0, 0.0)),
+            ResourceNode { amount: 10_000 },
+        ))
+        .id();
+    let split = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, 20.0));
+    app.world_mut()
+        .entity_mut(split)
+        .insert((GatherTarget(node), GatherPhase::ToNode));
+    app.world_mut().entity_mut(split).remove::<GatherPhase>();
+    app.insert_resource(AiCommanders::new(1, &[Faction::A]));
+
+    // One tick: swept, then seen as idle, then re-tasked — all before the tick
+    // ends, because the sweep is upstream of the commander.
+    step(&mut app);
+    assert!(
+        journal(&app, Faction::A)
+            .iter()
+            .any(|(_, a)| matches!(a, AiAction::Gather { unit, .. } if *unit == split)),
+        "the commander read a lone GatherTarget as a job and skipped the worker"
+    );
+    assert!(
+        app.world().get::<GatherTarget>(split).is_some()
+            && app.world().get::<GatherPhase>(split).is_some(),
+        "the worker ended the tick with anything other than a whole claim"
+    );
+}
+
+/// The invariant behind that, asserted where it actually has to hold: **at the
+/// point each reader runs**, not merely at the tick boundary. `repair` is the
+/// first system that plays the match, so a claim planted split between ticks is
+/// already whole-or-gone by the time anything reads it — checked per tick over a
+/// live match with an AI, a gather loop and combat all running.
+#[test]
+fn no_reader_ever_observes_a_half_claim_during_a_live_match() {
+    let mut app = ai_match(11);
+    let enemy = spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(120.0, 0.0));
+    let _ = enemy;
+    for t in 0..900u32 {
+        // Plant the F-008 shape between ticks, on whichever worker is on a job.
+        let victim: Option<Entity> = {
+            let mut q = app.world_mut().query::<(Entity, &GatherTarget)>();
+            q.iter(app.world()).map(|(e, _)| e).next()
+        };
+        if let Some(e) = victim {
+            if t % 7 == 0 {
+                app.world_mut().entity_mut(e).remove::<GatherPhase>();
+            }
+        }
+        step(&mut app);
+        assert!(
+            split_claims(&mut app).is_empty(),
+            "tick {t}: a half claim was still on the field at the tick boundary"
+        );
+    }
+    assert!(
+        alloy(&app, Faction::A) > 0,
+        "the economy died: the sweep is eating real jobs, not repairing splits"
+    );
+}
+
+/// The property the reordering could break. `repair_gather_claims` now runs
+/// *before* `apply_commands`, so a claim created this tick is only swept on the
+/// next one — that is sound exactly because every writer writes the pair, and
+/// this pins it: a freshly ordered gather job survives the following tick's
+/// sweep, and a full mine → return → bank loop is never interrupted.
+#[test]
+fn a_claim_created_this_tick_survives_the_next_ticks_sweep() {
+    let mut app = sim_app();
+    let node_pos = Vec2::new(150.0, 0.0);
+    let node = app
+        .world_mut()
+        .spawn((Position(node_pos), ResourceNode { amount: 1_000 }))
+        .id();
+    spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    let w = spawn_unit(&mut app, "worker", Faction::A, Vec2::ZERO);
+    push(
+        &mut app,
+        Order::Gather {
+            units: vec![w],
+            node,
+            node_pos,
+        }
+        .issued_by(Faction::A),
+    );
+    step(&mut app); // the order lands (after the sweep)
+    assert!(
+        app.world().get::<GatherTarget>(w).is_some(),
+        "the order never took"
+    );
+    step(&mut app); // the next tick's sweep runs first — it must not confiscate
+    assert!(
+        app.world().get::<GatherTarget>(w).is_some() && app.world().get::<GatherPhase>(w).is_some(),
+        "the sweep confiscated a job created on the previous tick"
+    );
+    let mut banked = false;
+    for t in 0..900 {
+        step(&mut app);
+        assert!(
+            app.world().get::<GatherTarget>(w).is_some(),
+            "tick {t}: the loop lost its job to the sweep"
+        );
+        banked |= alloy(&app, Faction::A) > 0;
+    }
+    assert!(banked, "the worker kept its job but never banked");
+}

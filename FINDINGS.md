@@ -333,6 +333,54 @@ implementation of each direction:
 `the_ai_puts_its_workers_on_a_deposit_and_banks_alloy` (600 ticks of AI mining,
 asserting `has_target == has_phase` every tick). Commit: M4c order-ownership.
 
+**Extension 2 (M4c critic, twice) — the claim carries a scheduling constraint,
+and a doc must quantify over what was verified.** `#[require(GatherPhase)]`
+covers *insertion* only; a bare `remove::<GatherPhase>()` still leaves a lone
+`GatherTarget`, which `economy::gather` cannot see (its query needs both halves)
+while other systems still read the surviving target. The release side is now
+structural too: `economy::repair_gather_claims` sweeps every entity holding
+exactly one half and drops the claim.
+
+**A sweep is worth exactly its position in the schedule.** The first version ran
+after `apply_commands` and was documented as running "before the tick's gather
+and combat passes" — and then concluded "a half-claim therefore cannot survive
+into any reader". The premise named two passes; the conclusion quantified over
+all readers, and there was a third: `ai::ai_commanders` reads `GatherTarget` to
+decide which workers are idle, and it ran *upstream* of the sweep, so a lone
+target was read as a live job and the worker sat unemployed for a whole
+`think_interval_ticks`. Same defect, one reader further out — F-008's third
+recurrence, caught because the doc's own absolute claim invited the check.
+
+So the rule for this component is now explicit, and this entry is where it lives:
+
+- **`GatherTarget` has an ordering constraint.** `economy::repair_gather_claims`
+  runs first among the systems that play the match (only `victory::match_watch`
+  precedes it, and it reads no claim).
+- **The readers it protects are exactly the ones ordered after it**, today:
+  `ai::ai_commanders` (who is idle), `economy::gather` (run the job),
+  `combat::combat` (the economy owns this unit).
+- **Any new reader of `GatherTarget` must be ordered after the sweep.** A reader
+  placed before it sees half-claims, and no amount of `#[require]` or
+  single-release discipline will save it. This is also why the sweep is a
+  separate system rather than folded into `gather`.
+
+And the process lesson, which cost three passes: *state a doc claim over exactly
+what you verified.* "Cannot survive into `gather` or `combat`" would have been
+true and would have made the missing reader obvious; "cannot survive into any
+reader" was false and stopped the next person from checking. Where a fix depends
+on system order, the constraint belongs in FINDINGS — the `src/` comment alone
+did not stop a new reader from being added upstream of it.
+
+**Evidence.** Red: `tests/critic_m4c.rs::a_split_gather_claim_is_still_read_as_a_job_by_the_ai`
+and `a_worker_with_a_half_claim_is_not_left_idle_for_a_whole_think_interval`
+(`FAILED. 25 passed; 2 failed`). Green after the reorder, plus, in our suite,
+`the_ai_never_reads_a_half_claim_as_a_job`,
+`no_reader_ever_observes_a_half_claim_during_a_live_match` (a claim split every
+7th tick of a live AI match; no half-claim ever survives a tick and the economy
+keeps banking) and — the direction the reorder could break, since the sweep now
+precedes `apply_commands` — `a_claim_created_this_tick_survives_the_next_ticks_sweep`
+and `the_sweep_never_confiscates_a_real_gather_job`.
+
 ## F-009 — An order with no issuer is a capability, not an intent (M4c)
 
 **Wall hit.** Through M4b every `Order` was anonymous: `Order::Train` charged the

@@ -92,8 +92,17 @@ pub struct MoveTarget(pub Vec2);
 ///   of dropping it — and, because `#[require]` says nothing about removal and a
 ///   bare `remove::<GatherPhase>()` elsewhere would still split the pair, the
 ///   economy *sweeps* for split claims every tick in
-///   [`economy::repair_gather_claims`], which runs before the tick's gather and
-///   combat passes. A half-claim therefore cannot survive into any reader.
+///   [`economy::repair_gather_claims`].
+///
+/// That sweep is worth exactly its **position in the schedule**, so the claim
+/// carries an ordering constraint: `repair_gather_claims` runs first among the
+/// systems that play the match (only the win-condition watch precedes it, and it
+/// reads no claim), ahead of all three readers of `GatherTarget` that exist today
+/// — `ai::ai_commanders` (who is idle), `economy::gather` (run the job) and
+/// `combat::combat` (the economy owns this unit). A half-claim therefore reaches
+/// none of *those*; a reader ordered before the sweep would see one, so **a new
+/// reader of this component must be ordered after `repair_gather_claims`**
+/// (F-008).
 #[derive(Component)]
 #[require(GatherPhase)]
 pub struct GatherTarget(pub Entity);

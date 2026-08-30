@@ -94,11 +94,14 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
             // Playing the match — off the moment it is decided, so nothing keeps
             // running that could change the recorded outcome.
             (
+                // **First, ahead of every reader of `GatherTarget`** (F-008):
+                // the AI reads it to decide who is idle, the economy runs the
+                // job, combat reads it as "the economy owns this one". A
+                // half-claim swept here therefore reaches none of them. Any new
+                // reader of the claim belongs after this system — see F-008.
+                sim::economy::repair_gather_claims,
                 sim::ai::ai_commanders,
                 sim::apply_commands,
-                // Before anything *reads* a gather claim: no half-claims survive
-                // into this tick's gather or combat pass (F-008).
-                sim::economy::repair_gather_claims,
                 sim::economy::production,
                 sim::economy::gather,
                 sim::combat::combat,
