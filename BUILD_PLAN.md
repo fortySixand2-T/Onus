@@ -143,11 +143,22 @@ Critic probes: resource conserved (gathered == deposited + carried + in-flight);
 >   and retires the constant.
 
 #### M4b — combat (4-stat + nemesis)
-- [ ] Health + attack; a unit engages the nearest enemy in range (M2), pathing via M3; death despawns.
-- [ ] 4-stat model: Offense = damage/hit, Armor = flat mitigation per hit, Defense = HP pool, Speed = movement.
-- [ ] Nemesis override: +30% damage **ignoring armor** iff `attacker.nemesis == defender.id` (from RON).
+- [x] Health + attack; a unit engages the nearest enemy in range (M2), pathing via M3; death despawns.
+- [x] 4-stat model: Offense = damage/hit, Armor = flat mitigation per hit, Defense = HP pool, Speed = movement.
+- [x] Nemesis override: +30% damage **ignoring armor** iff `attacker.nemesis == defender.id` (from RON).
 
 Critic probes: damage/armor math matches the spec; nemesis applies iff prey matches and ignores armor; death despawns **exactly once** (no double-death); HP never underflows; deterministic.
+
+> **Inherited into M4c (from M4a/M4b reviews — reachable once the AI issues orders).**
+> - **Order ownership.** `Order::Train` charges the *targeted building's* faction and orders carry
+>   no issuer. M4c adds the second commander: tag orders with their issuer and reject cross-faction ones.
+> - **Orders against dead entities.** `apply_commands` uses `commands.entity(e).insert(..)` for
+>   `MoveTo`/`Gather`, which **panics** on an already-despawned entity. Unreachable today (the queue's
+>   only producer is a live query, consumed by the first system of the chain), but an AI issuing orders
+>   against remembered entities makes it reachable — use `try_insert`.
+> - **Claim shape (F-008).** `GatherTarget`/`GatherPhase` must always be written and released as a
+>   pair: combat reads `GatherTarget` alone, while the economy can only release the pair, so a lone
+>   `GatherTarget` disarms a unit forever. Every site in `src/` pairs them today; keep it that way.
 
 #### M4c — scripted AI + win condition
 - [ ] Scripted AI: gathers, builds a Barracks, trains a mixed force, attack-moves — on a timer, **deterministic given the seed**.

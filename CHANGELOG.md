@@ -128,3 +128,5 @@
 - [2026-08-29] Modified: tests/m4b_combat.rs — a_nemesis_multiplier_is_exact_or_refused (exactness for 1.0/1.15/1.3/2.0, rejection for 5e6)
 - [2026-08-29] Modified: FINDINGS.md — F-005 extension 3 (the last raw cast on the damage path)
 - [2026-08-29] Modified: tests/critic_m4b.rs — M4b critic pass 4: 12 probes on the gather-ownership fix, multiplier exactness, and the standing regression sweep (all green)
+- [2026-08-29] Modified: BUILD_PLAN.md — Ticked M4b acceptance criteria (critic PASS); recorded findings inherited into M4c
+- [2026-08-29] Modified: CLAUDE.md — Status now M0–M4b done; next milestone M4c (scripted AI + win)
