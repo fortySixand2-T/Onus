@@ -383,6 +383,58 @@ refused by the same code. Anything the AI can do, a player could have done.
 `the_ai_commands_only_its_own_side` asserting it per tick for 3000 ticks.
 Reproduce: `cargo test --test m4c_ai`.
 
+**Extension (M4c critic) — "self-signed" was a label, not a property.** The
+first cut resolved an unsigned order to `None` and had `commandable` return
+`true` for every entity it named. That is not "attributed to what it touches",
+it is *unchecked*: one `Order::MoveTo { units: [a_unit, b_unit] }` commanded both
+factions at once, which no commander may do. Worse, the only thing standing
+behind the claim was `every_order_emitted_in_src_is_signed` — a **text scan** for
+the substring `Order` in the pushed expression, evaded by binding the order to a
+local first, by a helper that returns one, by a macro, or by an alias. A test
+that scans source text for a spelling is not a guarantee about values.
+
+Both are now closed in the types and in the check:
+
+- The queue's element type is `SignedOrder` — an `Order` **plus** its
+  `Attribution` (`By(faction)` / `SelfSigned` / `Void`). `CommandQueue.0` is an
+  `OrderQueue` whose `push_back` takes `impl Into<SignedOrder>`, so attribution
+  happens once, at the boundary, for every producer: there is no way to enqueue
+  an order carrying no attribution at all, whatever the call site is spelled
+  like.
+- `SelfSigned` is a *checked* mode. `subject_issuer` derives the issuer from the
+  entities the order names: one faction (plus unowned entities) ⇒ that faction;
+  **two factions ⇒ the order is refused whole**, because there is no commander it
+  could have come from and half-applying it is precisely the "commands both
+  sides" bug. A *signed* order naming both sides still commands the signer's own
+  units and ignores the rest — it says who it is from, so the foreign entries are
+  noise rather than ambiguity.
+- Signatures that disagree resolve to `Void`, which `apply_commands` drops.
+
+The text-scan test was **deleted**: keeping it would imply the weaker check still
+carries weight. What it was standing in for — "a producer that forgets to sign
+cannot do damage" — is now true by construction, since a forgotten signature
+yields a coherently self-signed order that can only command one side.
+
+The residual limit, stated plainly: `Order::issued_by` must keep returning
+`Order` and `CommandQueue.0.push_back` must keep accepting a bare `Order`,
+because `tests/critic_m4a.rs`, `critic_m4b.rs` and `critic_m4c.rs` construct and
+push order values literally (`fn push(app: &mut App, order: Order)`, and
+`push(&mut app, o.issued_by(Faction::A))`). So an unsigned `Order` *value*
+remains constructible; what is no longer possible is an unsigned order reaching
+the sim **unattributed**, or any order — signed, unsigned or re-signed —
+commanding two factions.
+
+**Evidence.** Red: `tests/critic_m4c.rs::one_unsigned_order_cannot_command_both_factions_at_once`
+failed (`FAILED. 14 passed; 1 failed`) with the old `commandable(.., None, ..) =>
+true`. Green after, plus, in our suite,
+`an_unsigned_order_naming_two_factions_is_refused_whole` (both list orders, both
+list orderings, neither unit commanded),
+`a_signed_order_naming_two_factions_still_commands_its_own`,
+`the_queue_can_only_hold_attributed_orders`, and — the direction a too-strict fix
+would break — `every_legitimate_order_still_applies_under_coherent_self_signing`,
+which runs a 6000-tick AI match and requires all four order variants (gather,
+train worker, place barracks, train army) to still land.
+
 ## F-010 — Ending a match is a run condition, not a flag every system checks (M4c)
 
 **Wall hit.** "Win = destroy the enemy HQ; the match then terminates" has three

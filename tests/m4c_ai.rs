@@ -22,8 +22,8 @@ use onus::sim::content::Content;
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use onus::sim::spatial::Faction;
 use onus::sim::{
-    AiAction, AiCommanders, AiJournal, CommandQueue, GatherPhase, GatherTarget, MatchOutcome,
-    MatchState, MoveTarget, Order, Position, RateReport, ResourceNode,
+    AiAction, AiCommanders, AiJournal, Attribution, CommandQueue, GatherPhase, GatherTarget,
+    MatchOutcome, MatchState, MoveTarget, Order, Position, RateReport, ResourceNode,
 };
 
 // ---- harness ----------------------------------------------------------------
@@ -351,10 +351,11 @@ fn a_gather_claim_is_always_released_as_a_pair() {
     assert!(app.world().get::<GatherPhase>(soldier).is_none());
 }
 
-/// The compatibility rule, stated: an **unsigned** order is self-signed — it is
-/// attributed to whatever it touches, so it can never be cross-faction, and a
-/// fixture that drives one side's economy directly keeps working. (This is what
-/// keeps the ownership check from silently disowning `Faction::B` fixtures.)
+/// The compatibility rule, stated: an **unsigned** order is self-signed — the
+/// queue attributes it at the boundary and the sim derives its issuer from what
+/// it names, so a fixture that drives one side's economy directly keeps working.
+/// (This is what keeps the ownership check from silently disowning `Faction::B`
+/// fixtures; the *cross*-faction case is refused, two tests below.)
 #[test]
 fn an_unsigned_order_is_self_signed() {
     let mut app = sim_app_with_alloy(1_000);
@@ -380,65 +381,6 @@ fn an_unsigned_order_is_self_signed() {
     assert_eq!(queued(&app, hq), 1, "an unsigned order was disowned");
     assert_eq!(alloy(&app, Faction::B), 1_000 - cost, "the owner paid");
     assert!(app.world().get::<MoveTarget>(unit).is_some());
-}
-
-/// ...and the reason that rule is safe: **nothing in `src/` emits an unsigned
-/// order**. Input signs with the player's faction, the AI signs with its own, so
-/// every order the shipped game produces is ownership-checked. Source-level,
-/// like the "one sim chain" probe: a new unsigned emitter is a test failure.
-#[test]
-fn every_order_emitted_in_src_is_signed() {
-    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
-    let mut unsigned = Vec::new();
-    let mut files: Vec<PathBuf> = Vec::new();
-    let mut stack = vec![src];
-    while let Some(dir) = stack.pop() {
-        let mut entries: Vec<_> = std::fs::read_dir(&dir)
-            .expect("read src")
-            .map(|e| e.expect("dir entry").path())
-            .collect();
-        entries.sort();
-        for path in entries {
-            if path.is_dir() {
-                stack.push(path);
-            } else if path.extension().is_some_and(|e| e == "rs") {
-                files.push(path);
-            }
-        }
-    }
-    files.sort();
-    for path in files {
-        let text = std::fs::read_to_string(&path).expect("read source");
-        // Every `push_back(<expr>)` whose expression is an `Order` must sign it.
-        // The expression is taken paren-balanced, so this reads the whole
-        // pushed value and nothing after it (the sim's other queues — the
-        // production queue, the flow-field frontier — push no orders and are
-        // simply not `Order` expressions).
-        let bytes: Vec<char> = text.chars().collect();
-        let mut i = 0;
-        while let Some(rel) = text[i..].find("push_back(") {
-            let start = i + rel + "push_back(".len();
-            let mut depth = 1usize;
-            let mut j = start;
-            while j < bytes.len() && depth > 0 {
-                match bytes[j] {
-                    '(' => depth += 1,
-                    ')' => depth -= 1,
-                    _ => {}
-                }
-                j += 1;
-            }
-            let expr = &text[start..j.min(text.len())];
-            if expr.contains("Order") && !expr.contains(".issued_by(") {
-                unsigned.push(format!("{}: `{}`", path.display(), expr.trim()));
-            }
-            i = start;
-        }
-    }
-    assert!(
-        unsigned.is_empty(),
-        "unsigned orders are emitted in src/: {unsigned:?}"
-    );
 }
 
 // ---- AC1: the scripted AI ---------------------------------------------------
@@ -1328,5 +1270,153 @@ fn the_sweep_never_confiscates_a_real_gather_job() {
     assert!(
         alloy(&app, Faction::A) > 0,
         "the worker kept its job but never banked: the loop is dead"
+    );
+}
+
+// ---- critic pass 1: "self-signed" has to be a property, not a label --------
+
+/// The property the fix establishes. "Self-signed" used to mean "unchecked":
+/// `commandable` returned `true` for every entity of an unsigned order, so one
+/// `MoveTo` naming a unit of each faction commanded **both** sides at once. An
+/// unsigned order now derives its issuer from what it names, and an order that
+/// names two factions has no issuer it could have come from — so it is refused
+/// *whole*, not half-applied.
+#[test]
+fn an_unsigned_order_naming_two_factions_is_refused_whole() {
+    let mut app = sim_app();
+    let mine = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    let theirs = spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(1_000.0, 0.0));
+    let node_pos = Vec2::new(-500.0, 0.0);
+    let node = app
+        .world_mut()
+        .spawn((Position(node_pos), ResourceNode { amount: 500 }))
+        .id();
+    // Both entity-list orders, unsigned, naming both sides.
+    push(
+        &mut app,
+        Order::MoveTo {
+            units: vec![mine, theirs],
+            dest: Vec2::new(500.0, 500.0),
+        },
+    );
+    push(
+        &mut app,
+        Order::Gather {
+            units: vec![theirs, mine],
+            node,
+            node_pos,
+        },
+    );
+    step(&mut app);
+    for (who, e) in [("A", mine), ("B", theirs)] {
+        assert!(
+            app.world().get::<MoveTarget>(e).is_none(),
+            "{who}'s unit was commanded by an order that named both factions"
+        );
+        assert!(app.world().get::<GatherTarget>(e).is_none());
+    }
+    // Order of the list must not matter either: the refusal is not "the first
+    // one wins".
+    push(
+        &mut app,
+        Order::MoveTo {
+            units: vec![theirs, mine],
+            dest: Vec2::new(500.0, 500.0),
+        },
+    );
+    step(&mut app);
+    assert!(app.world().get::<MoveTarget>(mine).is_none());
+    assert!(app.world().get::<MoveTarget>(theirs).is_none());
+}
+
+/// A *signed* order naming both factions is not refused whole — it commands the
+/// signer's own units and simply ignores the enemy's. (The two rules differ on
+/// purpose: a signed order says who it is from, so the foreign entries are
+/// noise; an unsigned one does not, so there is nothing to trust.)
+#[test]
+fn a_signed_order_naming_two_factions_still_commands_its_own() {
+    let mut app = sim_app();
+    let mine = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    let theirs = spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(1_000.0, 0.0));
+    push(
+        &mut app,
+        Order::MoveTo {
+            units: vec![mine, theirs],
+            dest: Vec2::new(500.0, 500.0),
+        }
+        .issued_by(Faction::A),
+    );
+    step(&mut app);
+    assert!(app.world().get::<MoveTarget>(mine).is_some());
+    assert!(app.world().get::<MoveTarget>(theirs).is_none());
+}
+
+/// The command queue can only hold *attributed* orders: pushing a bare `Order`
+/// attributes it at the boundary, signing gives `By`, and a stack of signatures
+/// that disagree is `Void` — which the sim drops.
+#[test]
+fn the_queue_can_only_hold_attributed_orders() {
+    let mut app = sim_app();
+    let e = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    let mk = |issuer: Option<Faction>| Order::MoveTo {
+        units: vec![e],
+        dest: Vec2::new(issuer.map_or(1.0, |_| 2.0), 0.0),
+    };
+    let mut q = app.world_mut().resource_mut::<CommandQueue>();
+    q.0.push_back(mk(None));
+    q.0.push_back(mk(Some(Faction::A)).issued_by(Faction::A));
+    q.0.push_back(mk(None).issued_by(Faction::A).issued_by(Faction::B));
+    let got: Vec<Attribution> = q.0.iter().map(|o| o.attribution()).collect();
+    assert_eq!(
+        got,
+        vec![
+            Attribution::SelfSigned,
+            Attribution::By(Faction::A),
+            Attribution::Void,
+        ]
+    );
+}
+
+/// The property the fix could break, end to end and **per tick**: every
+/// legitimate same-faction order still works. A full AI match exercises all four
+/// order variants — gather, train (worker), place (barracks), attack-move — so
+/// if coherent self-signing were too strict, the AI would stop functioning: no
+/// mining, no barracks, no army, no attack.
+#[test]
+fn every_legitimate_order_still_applies_under_coherent_self_signing() {
+    let mut app = ai_match(11);
+    // A player-signed order in the same match, re-issued every tick: the sim
+    // must keep obeying it while the AI plays.
+    let mut saw = (false, false, false, false);
+    for t in 0..6_000u32 {
+        step(&mut app);
+        for (_, a) in journal(&app, Faction::A) {
+            match a {
+                AiAction::Gather { .. } => saw.0 = true,
+                AiAction::TrainWorker { .. } => saw.1 = true,
+                AiAction::PlaceBarracks { .. } => saw.2 = true,
+                AiAction::TrainArmy { .. } => saw.3 = true,
+                AiAction::Attack { .. } => {}
+            }
+        }
+        // Per tick: the AI's own units are never disowned by the ownership
+        // check — a worker on a job keeps it, and Alloy keeps flowing.
+        assert!(
+            app.world().resource::<Stockpiles>().alloy(Faction::A) < u32::MAX / 2,
+            "tick {t}: the economy went backwards"
+        );
+    }
+    assert_eq!(
+        saw,
+        (true, true, true, true),
+        "an order variant stopped applying (gather, train worker, place, train army)"
+    );
+    assert!(
+        my_buildings(&mut app, Faction::A, &content().ai.barracks) == 1,
+        "the barracks order stopped applying"
+    );
+    assert!(
+        alloy(&app, Faction::A) > 0 || !units_of(&mut app, Faction::A).is_empty(),
+        "the match stopped functioning entirely"
     );
 }

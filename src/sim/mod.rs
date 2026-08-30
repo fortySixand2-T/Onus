@@ -104,26 +104,141 @@ pub struct GatherTarget(pub Entity);
 /// tick-tagged, loggable command stream. (Named `Order` to avoid Bevy's
 /// prelude `Command` trait.)
 #[derive(Resource, Default)]
-pub struct CommandQueue(pub VecDeque<Order>);
+pub struct CommandQueue(pub OrderQueue);
+
+/// The queue itself. It holds [`SignedOrder`]s, **not** bare [`Order`]s: the
+/// element type is the witness that every order in flight has an attribution the
+/// sim will check it against. Pushing takes anything that can become one, so a
+/// caller may push a signed order (`.issued_by(f)`) or a bare order (which is
+/// attributed at the boundary, [`Attribution::SelfSigned`]) — what it cannot do
+/// is enqueue an order with no attribution at all, because no such value exists
+/// on the other side of `push_back`.
+#[derive(Default)]
+pub struct OrderQueue(VecDeque<SignedOrder>);
+
+impl OrderQueue {
+    /// Enqueue an order. `impl Into<SignedOrder>` is the whole point: the
+    /// attribution is decided here, once, for every producer.
+    pub fn push_back(&mut self, order: impl Into<SignedOrder>) {
+        self.0.push_back(order.into());
+    }
+
+    pub fn pop_front(&mut self) -> Option<SignedOrder> {
+        self.0.pop_front()
+    }
+
+    pub fn front(&self) -> Option<&SignedOrder> {
+        self.0.front()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &SignedOrder> {
+        self.0.iter()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+}
+
+/// Who an order is to be held to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Attribution {
+    /// Signed by this faction ([`Order::issued_by`]). Checked against
+    /// everything the order touches.
+    By(Faction),
+    /// Unsigned: attributed to the faction of whatever it touches. Not
+    /// "unchecked" — an order that touches *two* factions has no coherent
+    /// self-signature and is refused whole, so a self-signed order can never
+    /// command more than one commander's side.
+    SelfSigned,
+    /// Signed by two different factions, which is not a signature at all. Such
+    /// an order is dropped: re-signing someone else's order voids it rather
+    /// than laundering ownership.
+    Void,
+}
+
+/// An [`Order`] together with its [`Attribution`] — the only thing the command
+/// queue can hold.
+#[derive(Debug)]
+pub struct SignedOrder {
+    attribution: Attribution,
+    order: Order,
+}
+
+impl SignedOrder {
+    pub fn attribution(&self) -> Attribution {
+        self.attribution
+    }
+
+    /// The signing faction, if the order was explicitly signed.
+    pub fn issuer(&self) -> Option<Faction> {
+        match self.attribution {
+            Attribution::By(f) => Some(f),
+            _ => None,
+        }
+    }
+
+    pub fn order(&self) -> &Order {
+        &self.order
+    }
+
+    pub fn into_parts(self) -> (Attribution, Order) {
+        (self.attribution, self.order)
+    }
+}
+
+impl From<Order> for SignedOrder {
+    /// Attribute an order at the queue boundary: peel any [`Order::By`]
+    /// wrappers, and refuse (as [`Attribution::Void`]) a stack of signatures
+    /// that disagree.
+    fn from(order: Order) -> Self {
+        let mut issuer: Option<Faction> = None;
+        let mut conflict = false;
+        let mut inner = order;
+        while let Order::By { issuer: f, order } = inner {
+            conflict |= issuer.is_some_and(|prev| prev != f);
+            issuer = Some(f);
+            inner = *order;
+        }
+        let attribution = match (conflict, issuer) {
+            (true, _) => Attribution::Void,
+            (false, Some(f)) => Attribution::By(f),
+            (false, None) => Attribution::SelfSigned,
+        };
+        SignedOrder {
+            attribution,
+            order: inner,
+        }
+    }
+}
 
 /// A sim-affecting order. Emitted by input (or by the scripted AI, which is
 /// held to exactly the same discipline) and applied in `FixedUpdate`.
 ///
 /// ## Ownership (M4c)
 /// An order is only legitimate from the commander that owns what it touches, so
-/// every order carries its **issuer**: [`Order::issued_by`] signs it, and
-/// [`apply_commands`] refuses anything cross-faction — training from another
-/// side's building, moving another side's units, or placing a building for
-/// someone else.
+/// every order carries its **issuer**: [`Order::issued_by`] signs it, the queue
+/// stores it as a [`SignedOrder`] (there is no way to enqueue an order with no
+/// attribution), and [`apply_commands`] refuses anything cross-faction —
+/// training from another side's building, moving another side's units, or
+/// placing a building for someone else.
 ///
 /// The signature is a wrapper variant ([`Order::By`]) rather than a field on
-/// each variant, which leaves an **unsigned** order expressible. An unsigned
-/// order is *self-signed*: it is attributed to the faction of whatever it
-/// touches (the building that pays, the unit that moves), so it can never be
-/// cross-faction — it is the pre-second-commander behaviour, kept for fixtures
-/// that drive one side's economy directly. Nothing in `src/` emits one: every
-/// producer (input, the scripted AI) signs, which is what
-/// `every_order_emitted_in_src_is_signed` pins down.
+/// each variant, so a bare order value is still constructible; the attribution
+/// is decided for it at the queue boundary ([`Attribution::SelfSigned`]).
+/// Self-signed is a *checked* mode, not an exemption: the issuer is derived
+/// from what the order names, and an order naming two factions' entities has no
+/// coherent issuer and is refused **whole**. So no order — signed, unsigned or
+/// re-signed — can ever command two sides at once.
+#[derive(Debug)]
 pub enum Order {
     MoveTo {
         units: Vec<Entity>,
@@ -164,41 +279,6 @@ impl Order {
         }
     }
 
-    /// [`Order::signed`] by reference, for inspecting a queued order without
-    /// consuming it (what the input tests assert on).
-    pub fn signature(&self) -> Option<(Option<Faction>, &Order)> {
-        let mut issuer: Option<Faction> = None;
-        let mut inner = self;
-        while let Order::By { issuer: f, order } = inner {
-            if issuer.is_some_and(|prev| prev != *f) {
-                return None;
-            }
-            issuer = Some(*f);
-            inner = order;
-        }
-        Some((issuer, inner))
-    }
-
-    /// Peel the signature(s) off, yielding `(issuer, inner order)`, where a
-    /// `None` issuer means the order is unsigned — self-signed, see the type
-    /// docs.
-    ///
-    /// The whole result is `None` for an order signed by two *different*
-    /// factions: a signature that can be overwritten is not a signature, so
-    /// re-signing someone else's order voids it rather than laundering
-    /// ownership.
-    pub fn signed(self) -> Option<(Option<Faction>, Order)> {
-        let mut issuer: Option<Faction> = None;
-        let mut inner = self;
-        while let Order::By { issuer: f, order } = inner {
-            if issuer.is_some_and(|prev| prev != f) {
-                return None;
-            }
-            issuer = Some(f);
-            inner = *order;
-        }
-        Some((issuer, inner))
-    }
 }
 
 /// Counters for the once-per-second sim-tick vs. frame report. `sim_ticks` is
@@ -223,15 +303,23 @@ pub fn apply_commands(
     owners: Query<&Faction>,
     mut commands: Commands,
 ) {
-    while let Some(cmd) = queue.0.pop_front() {
-        // Ownership first: an order nobody can be held to (signed twice by
-        // different factions) is dropped, and the issuer is the faction the rest
-        // of this loop checks everything against.
-        let Some((issuer, cmd)) = cmd.signed() else {
+    while let Some(signed) = queue.0.pop_front() {
+        // Ownership first. `Void` is an order nobody can be held to (signed by
+        // two different factions); everything else yields the faction the rest
+        // of this loop checks against.
+        let (attribution, cmd) = signed.into_parts();
+        if attribution == Attribution::Void {
             continue;
-        };
+        }
         match cmd {
             Order::MoveTo { units, dest } => {
+                // An unsigned order is self-signed *coherently* or not at all:
+                // if it names entities of two factions there is no commander it
+                // could have come from, so the whole order is refused rather
+                // than half-applied.
+                let Some(issuer) = subject_issuer(&owners, attribution, &units) else {
+                    continue;
+                };
                 for e in units {
                     // Two guards, and both are load-bearing once a *second*
                     // commander exists. `commandable` refuses another faction's
@@ -260,6 +348,9 @@ pub fn apply_commands(
                 node,
                 node_pos,
             } => {
+                let Some(issuer) = subject_issuer(&owners, attribution, &units) else {
+                    continue;
+                };
                 for e in units {
                     if !commandable(&owners, issuer, e) {
                         continue;
@@ -306,8 +397,9 @@ pub fn apply_commands(
             } => {
                 // A commander places buildings for itself only — the order names
                 // the faction that gets (and pays for) the building, so it must
-                // be the faction that signed it.
-                if issuer.is_some_and(|by| by != faction) {
+                // be the faction that signed it. (Unsigned: the named faction is
+                // itself the self-signature, and there is only one of them.)
+                if matches!(attribution, Attribution::By(by) if by != faction) {
                     continue;
                 }
                 economy::place_building(
@@ -324,7 +416,7 @@ pub fn apply_commands(
                 // may order: this is what stops one side spending the other's
                 // Alloy (and filling their queue).
                 if let Ok((b, faction, mut queue)) = producers.get_mut(building) {
-                    if issuer.is_some_and(|by| by != *faction) {
+                    if matches!(attribution, Attribution::By(by) if by != *faction) {
                         continue;
                     }
                     economy::enqueue_unit(&content, &mut stock, b.def, *faction, &mut queue, unit);
@@ -336,11 +428,44 @@ pub fn apply_commands(
     }
 }
 
-/// May `issuer` command `e`? Only if `e` is not somebody else's. An unsigned
-/// order (`None`) is self-signed and commands whatever it names; an entity with
-/// no `Faction` (a resource node, or a bare test entity) belongs to nobody, so
-/// no commander is overriding another by touching it. Whether the entity
-/// *exists* is a separate question, asked with `Commands::get_entity`.
+/// The faction an entity-list order is to be checked against, or `None` if the
+/// order must be refused outright.
+///
+/// - Signed: the signer, always.
+/// - Unsigned: derived from the units it names. One faction (plus any unowned
+///   entities) ⇒ that faction. **Two factions ⇒ refused**: there is no commander
+///   who could have issued it, and half-applying it would let one order command
+///   both sides — which is exactly what "self-signed" must not mean.
+/// - `Some(None)`: the order names nothing owned by anybody (bare test
+///   entities, a resource node), so there is no ownership to violate.
+fn subject_issuer(
+    owners: &Query<&Faction>,
+    attribution: Attribution,
+    units: &[Entity],
+) -> Option<Option<Faction>> {
+    match attribution {
+        Attribution::Void => None,
+        Attribution::By(f) => Some(Some(f)),
+        Attribution::SelfSigned => {
+            let mut seen: Option<Faction> = None;
+            for e in units {
+                let Ok(f) = owners.get(*e) else { continue };
+                match seen {
+                    None => seen = Some(*f),
+                    Some(prev) if prev != *f => return None,
+                    _ => {}
+                }
+            }
+            Some(seen)
+        }
+    }
+}
+
+/// May `issuer` command `e`? Only if `e` is not somebody else's. `None` means
+/// the order named nothing owned (see [`subject_issuer`]); an entity with no
+/// `Faction` (a resource node, or a bare test entity) belongs to nobody, so no
+/// commander is overriding another by touching it. Whether the entity *exists*
+/// is a separate question, asked with `Commands::get_entity`.
 fn commandable(owners: &Query<&Faction>, issuer: Option<Faction>, e: Entity) -> bool {
     match issuer {
         None => true,

@@ -606,9 +606,9 @@ fn build_hotkeys_emit_orders_and_never_touch_sim_state() {
     let queue = app.world().resource::<CommandQueue>();
     assert_eq!(queue.0.len(), 1, "one order emitted");
     // M4c: input signs what it emits, so the sim can refuse cross-faction orders.
-    let (issuer, order) = queue.0.front().unwrap().signature().expect("one signature");
-    assert_eq!(issuer, Some(Faction::A), "the player's order is signed");
-    match order {
+    let signed = queue.0.front().unwrap();
+    assert_eq!(signed.issuer(), Some(Faction::A), "the player's order is signed");
+    match signed.order() {
         Order::Place {
             faction,
             building,
@@ -646,9 +646,9 @@ fn train_hotkey_targets_the_selected_building_and_its_ron_roster() {
 
     let queue = app.world().resource::<CommandQueue>();
     assert_eq!(queue.0.len(), 1);
-    let (issuer, order) = queue.0.front().unwrap().signature().expect("one signature");
-    assert_eq!(issuer, Some(Faction::A), "the player's order is signed");
-    match order {
+    let signed = queue.0.front().unwrap();
+    assert_eq!(signed.issuer(), Some(Faction::A), "the player's order is signed");
+    match signed.order() {
         Order::Train { building, unit } => {
             assert_eq!(*building, hq);
             assert_eq!(*unit, worker, "slot 1 = the HQ's first `produces` entry");

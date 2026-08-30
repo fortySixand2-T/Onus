@@ -159,3 +159,7 @@
 - [2026-08-29] Modified: src/lib.rs — repair_gather_claims runs after apply_commands, before production/gather/combat
 - [2026-08-29] Modified: src/sim/mod.rs — the GatherTarget doc now states what the code does at both ends (require on write, single release + per-tick sweep on removal)
 - [2026-08-29] Modified: tests/m4c_ai.rs — a split claim is swept and the unit re-arms; a lone phase is swept; the sweep never confiscates a real job (per tick)
+- [2026-08-29] Modified: src/sim/mod.rs — critic fix: the command queue holds SignedOrder (Attribution: By/SelfSigned/Void); an unsigned order's issuer is derived from what it names and one naming two factions is refused whole
+- [2026-08-29] Modified: tests/m4a_economy.rs — the input tests read SignedOrder::issuer()/order()
+- [2026-08-29] Modified: tests/m4c_ai.rs — cross-faction unsigned orders refused (both orderings); signed orders still command their own; the queue only holds attributed orders; every legitimate order still applies across a 6000-tick AI match; deleted the evadable source text scan
+- [2026-08-29] Modified: FINDINGS.md — F-009 extension: "self-signed" made a checked property, and why the text-scan test was deleted
