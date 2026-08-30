@@ -39,7 +39,7 @@ use bevy::ecs::prelude::*;
 use bevy::math::Vec2;
 
 use crate::sim::content::{Content, NemesisBonus};
-use crate::sim::economy::UnitDefIdx;
+use crate::sim::economy::{Building, UnitDefIdx};
 use crate::sim::pathfind::{astar, TileGrid};
 use crate::sim::spatial::{Faction, SpatialGrid, Unit};
 use crate::sim::{GatherTarget, MoveTarget, Position};
@@ -65,6 +65,23 @@ impl Health {
             // proves this product fits u32 for *loaded* content, so the clamp
             // only ever bites on a `Content` assembled in memory.
             .map(|u| u.defense.saturating_mul(content.combat.hp_per_defense))
+            .unwrap_or(0);
+        Self { current: max, max }
+    }
+}
+
+impl Health {
+    /// A full pool for the *building* definition at `def` (index into
+    /// [`Content::buildings`]). Same rule as units — Defense is the pool — with
+    /// the buildings' own scale factor from the RON.
+    pub fn from_building_def(content: &Content, def: usize) -> Self {
+        let max = content
+            .buildings
+            .get(def)
+            // Saturating for the same reason as the unit pool: `validate` proves
+            // the product fits u32 for loaded content, so this only bites on a
+            // `Content` assembled in memory.
+            .map(|b| b.mvp_defense.saturating_mul(content.combat.building_hp_per_defense))
             .unwrap_or(0);
         Self { current: max, max }
     }
@@ -167,6 +184,18 @@ pub fn damage_per_hit(content: &Content, attacker: usize, defender: usize) -> u3
     }
 }
 
+/// Damage one hit from unit definition `attacker` deals to the *building*
+/// definition `defender`: the same integer rule as unit-vs-unit, minus the
+/// nemesis clause (a nemesis names a unit id, and a building is not a unit).
+pub fn damage_per_hit_to_building(content: &Content, attacker: usize, defender: usize) -> u32 {
+    let (Some(a), Some(d)) = (content.units.get(attacker), content.buildings.get(defender)) else {
+        return 0;
+    };
+    let base = a.offense.saturating_mul(content.combat.damage_per_offense);
+    let mitigation = d.mvp_armor.saturating_mul(content.combat.mitigation_per_armor);
+    base.saturating_sub(mitigation)
+}
+
 /// Movement speed of a unit definition in world units per second — Speed is
 /// per-unit RON data (`speed * combat.speed_per_point`), which is what retires
 /// the old global `sim::SPEED` constant.
@@ -219,11 +248,23 @@ pub fn approach_waypoint(grid: Option<&TileGrid>, from: Vec2, to: Vec2) -> Vec2 
 
 // ---- the combat system -----------------------------------------------------
 
+/// What a snapshot row *is*: a unit of the roster, or a building. Buildings
+/// take part in combat as **targets only** — they are killable (M4c's win
+/// condition is a dead HQ) but they never attack, and they are never on a
+/// gather job.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RowKind {
+    /// Index into [`Content::units`].
+    Unit(usize),
+    /// Index into [`Content::buildings`].
+    Building(usize),
+}
+
 /// One unit as this tick's snapshot sees it.
 struct Row {
     entity: Entity,
     pos: Vec2,
-    def: usize,
+    kind: RowKind,
     faction: Faction,
     hp: u32,
     max_hp: u32,
@@ -249,7 +290,8 @@ pub fn combat(
     mut units: Query<(
         Entity,
         &Position,
-        &UnitDefIdx,
+        Option<&UnitDefIdx>,
+        Option<&Building>,
         &Faction,
         Option<&mut Health>,
         Option<&AttackCooldown>,
@@ -264,13 +306,22 @@ pub fn combat(
     // before anything is written, which is the whole point (see module docs).
     let mut rows: Vec<Row> = units
         .iter()
-        .map(
-            |(entity, pos, def, faction, health, cd, engaging, mt, gather)| {
-                let full = Health::from_def(&content, def.0);
-                Row {
+        .filter_map(
+            |(entity, pos, def, building, faction, health, cd, engaging, mt, gather)| {
+                // A unit if it has a definition, else a building if it is one;
+                // anything that is neither takes no part in combat at all.
+                let (kind, full) = match (def, building) {
+                    (Some(d), _) => (RowKind::Unit(d.0), Health::from_def(&content, d.0)),
+                    (None, Some(b)) => (
+                        RowKind::Building(b.def),
+                        Health::from_building_def(&content, b.def),
+                    ),
+                    (None, None) => return None,
+                };
+                Some(Row {
                     entity,
                     pos: pos.0,
-                    def: def.0,
+                    kind,
                     faction: *faction,
                     // A unit that somehow reached the field without an HP pool is
                     // given its full one from the RON rather than being invulnerable.
@@ -281,7 +332,7 @@ pub fn combat(
                     engaging: engaging.is_some(),
                     has_move_target: mt.is_some(),
                     gathering: gather.is_some(),
-                }
+                })
             },
         )
         .collect();
@@ -310,7 +361,12 @@ pub fn combat(
     let mut chosen: Vec<Option<usize>> = vec![None; rows.len()];
     for i in 0..rows.len() {
         let row = &rows[i];
-        let Some(def) = content.units.get(row.def) else {
+        // Buildings are targets, never attackers: they have no offense, no
+        // cadence and no reach, so the whole attacker branch simply skips them.
+        let RowKind::Unit(unit_def) = row.kind else {
+            continue;
+        };
+        let Some(def) = content.units.get(unit_def) else {
             continue;
         };
         let next_cd = row.cooldown.saturating_sub(1);
@@ -358,7 +414,10 @@ pub fn combat(
                 e.remove::<MoveTarget>().remove::<Engaging>();
             }
             if cooldown == 0 {
-                damage[j] += damage_per_hit(&content, row.def, rows[j].def);
+                damage[j] += match rows[j].kind {
+                    RowKind::Unit(prey) => damage_per_hit(&content, unit_def, prey),
+                    RowKind::Building(b) => damage_per_hit_to_building(&content, unit_def, b),
+                };
                 cooldown = def.mvp_attack_ticks;
             }
         } else if row.engaging || !row.has_move_target {
@@ -380,7 +439,12 @@ pub fn combat(
         let current = row.hp.saturating_sub(damage[i]);
         if current == 0 {
             commands.entity(row.entity).despawn();
-            casualties.record(row.faction);
+            // `Casualties` counts *units* lost, which is what it has always
+            // meant; a razed building is not a casualty, it is a lost position
+            // (and the win condition reads the buildings themselves).
+            if matches!(row.kind, RowKind::Unit(_)) {
+                casualties.record(row.faction);
+            }
             died[i] = true;
             continue;
         }

@@ -73,7 +73,9 @@ pub fn build_app() -> App {
 /// tick boundary), then orders are applied (and paid for), then production
 /// advances queues, then gatherers decide where to go, then combat picks its
 /// targets and fires, then everything moves — so a chase order issued this tick
-/// is followed on this tick.
+/// is followed on this tick. The win check comes last, on the state the tick
+/// actually ended in, and is the one system that keeps running after the match
+/// is over (to keep saying it is over).
 pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
     // Sim-owned state that the chain *requires* is installed with the chain, for
     // the same reason the chain itself is defined once (F-004): a caller that
@@ -82,15 +84,24 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
     app.init_resource::<Casualties>();
     app.init_resource::<sim::AiCommanders>();
     app.init_resource::<sim::AiJournal>();
+    app.init_resource::<sim::MatchState>();
     app.add_systems(
         schedule,
         (
-            sim::ai::ai_commanders,
-            sim::apply_commands,
-            sim::economy::production,
-            sim::economy::gather,
-            sim::combat::combat,
-            sim::movement,
+            // Playing the match — off the moment it is decided, so nothing keeps
+            // running that could change the recorded outcome.
+            (
+                sim::ai::ai_commanders,
+                sim::apply_commands,
+                sim::economy::production,
+                sim::economy::gather,
+                sim::combat::combat,
+                sim::movement,
+            )
+                .chain()
+                .run_if(sim::match_running),
+            // Deciding it: always runs, and writes the outcome exactly once.
+            sim::victory::match_end,
         )
             .chain(),
     );

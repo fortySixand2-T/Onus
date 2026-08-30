@@ -312,3 +312,117 @@ claim true.
 fires on the order tick, still walks to the node, and the real gatherer's loop
 still banks Alloy) and `the_economy_clears_a_gather_marker_it_will_not_service`.
 Reproduce: `cargo test --test critic_m4b --test m4b_combat`.
+
+**Extension (M4c) — the pairing is now structural, not a convention.** F-008's
+fix left "always write and release `GatherTarget` + `GatherPhase` together" as a
+rule every call site had to remember; combat reads the target alone, so a lone
+target is still a permanently disarmed unit. A rule maintained by discipline is
+a rule that a new call site (an AI issuing gather orders) will eventually break.
+So the pairing is now enforced by the type system and by having exactly one
+implementation of each direction:
+
+- `GatherPhase` is a **required component** of `GatherTarget`
+  (`#[require(GatherPhase)]`, default `ToNode`), so *whoever* writes the claim —
+  the order path, a test, a future system — writes at least a phase with it;
+- `economy::release_gather_job` is the only place either half is removed, and
+  every release site in `src/` calls it.
+
+**Evidence.** `tests/m4c_ai.rs::a_gather_claim_can_never_be_written_without_its_phase`
+(inserting the target alone still yields a phase) and
+`a_gather_claim_is_always_released_as_a_pair`, plus the per-tick invariant in
+`the_ai_puts_its_workers_on_a_deposit_and_banks_alloy` (600 ticks of AI mining,
+asserting `has_target == has_phase` every tick). Commit: M4c order-ownership.
+
+## F-009 — An order with no issuer is a capability, not an intent (M4c)
+
+**Wall hit.** Through M4b every `Order` was anonymous: `Order::Train` charged the
+*targeted building's* faction, and `MoveTo`/`Gather` commanded whatever entities
+they named. With one commander that is invisible; the moment M4c put a second
+commander on the field it becomes "spend the enemy's Alloy, fill the enemy's
+production queue, walk the enemy's army off a cliff". The queue was a bag of
+capabilities — holding an `Entity` *was* the authority to command it.
+
+Two smaller versions of the same shape came with it: `apply_commands` used
+`Commands::entity(e).insert(..)`, which **panics** on an already-despawned
+entity (unreachable while the only producer was a live query in the same tick;
+immediately reachable once an AI issues orders against entities it remembered),
+and the sim had no notion of "who is playing" at all.
+
+**Decision.** Orders carry their issuer, and ownership is checked in the one
+place orders are applied.
+
+- `Order::By { issuer, order }`, built with `.issued_by(faction)`, is a
+  *signature* around an order. `apply_commands` peels it, then refuses: a
+  `Train` against another faction's building, a `MoveTo`/`Gather` naming another
+  faction's units (per unit — a mixed list still commands the issuer's own), and
+  a `Place` for a faction other than the signer.
+- An order signed twice by different factions is voided rather than resolved to
+  either: a signature that can be overwritten is not a signature.
+- A wrapper variant, not a field on every variant, so an **unsigned** order stays
+  expressible. Unsigned means *self-signed*: attributed to whatever it touches,
+  which is exactly the pre-second-commander behaviour, which is why fixtures
+  that drive one faction's economy directly still work. That is only safe
+  because nothing in `src/` emits one — pinned by
+  `every_order_emitted_in_src_is_signed`, a source-level test that reads every
+  paren-balanced `push_back(<expr>)` in `src/` and requires an `Order`
+  expression to be signed.
+- Every order path takes `Commands::get_entity` + `try_insert`, so an order
+  against a dead entity is inert instead of fatal.
+
+The scripted AI then needs **no** privileged path into the sim: it pushes signed
+orders onto the same `CommandQueue` the mouse writes to, and is charged and
+refused by the same code. Anything the AI can do, a player could have done.
+
+**Evidence.** Red first: with the signature type present but the checks removed,
+`tests/m4c_ai.rs` fails 6/9 (`a_train_order_against_another_factions_building_is_refused`,
+`a_place_order_cannot_build_for_another_faction`, `a_gather_order_never_tasks_another_factions_worker`,
+`a_move_order_commands_only_the_issuers_own_units`, `a_doubly_signed_order_is_refused`,
+`a_gather_claim_can_never_be_written_without_its_phase`). Green after, with
+`a_train_order_against_ones_own_building_still_trains` and
+`an_unsigned_order_is_self_signed` guarding the other direction, and
+`the_ai_commands_only_its_own_side` asserting it per tick for 3000 ticks.
+Reproduce: `cargo test --test m4c_ai`.
+
+## F-010 — Ending a match is a run condition, not a flag every system checks (M4c)
+
+**Wall hit.** "Win = destroy the enemy HQ; the match then terminates" has three
+ways to go wrong, and all three are determinism bugs rather than gameplay bugs:
+the end fires twice (or fires on a different tick depending on which HQ the
+query yields first); the sim keeps running afterwards, so the *recorded* outcome
+stops matching the state; or the end check declares a winner in every fixture
+that only spawns one side's base, freezing 100+ existing tests.
+
+**Decision.**
+- The outcome is **sim state** (`MatchState`, holding the tick, whether the
+  match is contested, and `Option<MatchOutcome>`), not a driver flag. The driver
+  reads it; the headless AI-vs-AI run reads the same thing.
+- The check counts standing victory buildings per faction into a fixed-size
+  `[u32; 2]` and decides from the two counts — no iteration order, no early
+  return on "the first HQ I found". Both HQs falling on one tick is a *draw*,
+  not a race.
+- Termination is a **run condition**: the whole play chain is
+  `.run_if(match_running)` and only the check itself runs afterwards. Nothing
+  can move, spend or shoot after the result is recorded, which makes "exactly
+  once" and "the recorded outcome stays true" the same statement.
+- A match becomes decidable only once both sides have had a victory building at
+  the same time (`engaged`). Every one-sided fixture in M1–M4b keeps running.
+- What counts as the victory building is content (`victory: true` in
+  `mvp_buildings`), and `Content::validate` requires exactly one — zero makes the
+  match unwinnable, two make "the enemy HQ" ambiguous.
+
+**Measurement (the ≤ ~8 min target).** AI-vs-AI on the symmetric fixture, three
+seeds, decision tick: seed 1 → 4880 (A), seed 7 → 4625 (B), seed 99 → 4852 (B).
+That is 77–81 s of sim time against a 28 800-tick (8 min) budget, so the target
+holds with ~6× headroom; the test asserts the budget and prints the measurement
+rather than hardcoding a length.
+
+**Evidence.** Red first: with `match_end` unregistered and buildings excluded
+from the combat snapshot, 6 tests fail (including "no decision in 28800 ticks").
+Green after: `destroying_the_enemy_hq_ends_the_match`,
+`nothing_runs_after_the_match_is_decided` (per-tick freeze of position, HP, the
+sim tick counter, Alloy and production for 300 ticks past the end),
+`losing_both_hqs_on_one_tick_is_a_draw_in_either_order`,
+`a_match_with_only_one_hq_never_ends`,
+`an_ai_vs_ai_match_is_decided_within_eight_minutes`, and
+`an_ai_vs_ai_match_replays_identically_from_its_seed`.
+Reproduce: `cargo test --test m4c_ai`.

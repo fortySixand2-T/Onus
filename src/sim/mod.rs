@@ -17,6 +17,7 @@ pub mod content;
 pub mod economy;
 pub mod pathfind;
 pub mod spatial;
+pub mod victory;
 pub use ai::{AiAction, AiCommander, AiCommanders, AiJournal};
 pub use combat::{AttackCooldown, Casualties, Engaging, Health, Target};
 pub use content::Content;
@@ -24,6 +25,7 @@ pub use economy::{
     Building, Carrying, GatherPhase, ProductionQueue, QueuedUnit, Stockpiles, UnitDefIdx,
 };
 pub use pathfind::{astar, FlowField, TileGrid};
+pub use victory::{match_running, MatchOutcome, MatchState};
 pub use spatial::{
     brute_force_nearest_enemy, random_layout, Faction, SpatialGrid, SplitMix64, Unit,
 };

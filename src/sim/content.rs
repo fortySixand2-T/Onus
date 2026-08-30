@@ -92,6 +92,14 @@ pub struct BuildingDef {
     /// string: the win condition is content.
     #[serde(default)]
     pub victory: bool,
+    /// Design-scale Defense — the building's HP pool, through
+    /// `mvp_combat.building_hp_per_defense` (M4c). Buildings are killable or
+    /// there is no win condition, so this is **not** `#[serde(default)]`: a
+    /// missing pool must be a load error, not a building with 0 HP.
+    pub mvp_defense: u32,
+    /// Design-scale Armor — flat mitigation per hit, on the same
+    /// `mvp_combat.mitigation_per_armor` scale the units use.
+    pub mvp_armor: u32,
 }
 
 /// One entry of the scripted AI's repeating army build order.
@@ -221,6 +229,10 @@ pub struct CombatDef {
     /// load: validation that admits values the per-hit arithmetic cannot
     /// represent is worse than no validation at all.
     pub max_stat: u32,
+    /// Buildings' HP pool = `building.mvp_defense * building_hp_per_defense`.
+    /// Separate from `hp_per_defense` because a base is meant to outlast a
+    /// soldier without leaving the 1-10 design scale.
+    pub building_hp_per_defense: u32,
     /// Leash: how far a unit already chasing will follow before giving up. At
     /// least `engage_range` — pathing around an obstacle legitimately opens the
     /// straight-line gap, and a unit that dropped its target there would
@@ -383,6 +395,19 @@ impl Content {
             if b.alloy_cost == 0 {
                 return bad(format!("building `{}` has no Alloy cost", b.id));
             }
+            // A building is killable (M4c: the win condition is a dead HQ), so
+            // it needs a real pool, on the same design scale the units use.
+            if b.mvp_defense == 0 {
+                return bad(format!("building `{}` has no HP pool (mvp_defense 0)", b.id));
+            }
+            for (stat, value) in [("mvp_defense", b.mvp_defense), ("mvp_armor", b.mvp_armor)] {
+                if value > self.combat.max_stat {
+                    return bad(format!(
+                        "building `{}` has {stat} {value}, above the design scale max {}",
+                        b.id, self.combat.max_stat
+                    ));
+                }
+            }
             for p in &b.produces {
                 if self.unit_index(p).is_none() {
                     return bad(format!("building `{}` produces unknown unit `{p}`", b.id));
@@ -459,6 +484,9 @@ impl Content {
         // to be stated and non-degenerate — a 0 here would silently produce
         // units with no HP, no damage, or no movement.
         let c = &self.combat;
+        if c.building_hp_per_defense == 0 {
+            return bad("mvp_combat building_hp_per_defense must be positive".to_string());
+        }
         if c.hp_per_defense == 0 || c.damage_per_offense == 0 || c.mitigation_per_armor == 0 {
             return bad("mvp_combat scaling factors must be positive".to_string());
         }
@@ -515,12 +543,14 @@ impl Content {
             .and_then(|b| b.checked_mul(milli))
             .map(|p| p / NemesisBonus::MULT_SCALE as u64);
         let peak_mitigation = max_stat.checked_mul(c.mitigation_per_armor as u64);
+        let peak_building_hp = max_stat.checked_mul(c.building_hp_per_defense as u64);
         let representable = |v: Option<u64>| v.is_some_and(|v| v <= u32::MAX as u64);
         for (what, value) in [
             ("HP pool", peak_hp),
             ("base damage", peak_base),
             ("nemesis damage", peak_damage),
             ("armor mitigation", peak_mitigation),
+            ("building HP pool", peak_building_hp),
         ] {
             if !representable(value) {
                 return bad(format!(

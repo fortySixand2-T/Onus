@@ -97,10 +97,13 @@
     // MVP building cost table (Alloy). The HQ exists at match start; the three
     // barracks are placeable and each trains its own units.
     mvp_buildings: [
-        (id: "hq",           name: "HQ",           alloy_cost: 400, produces: ["worker"], dropoff: true, victory: true),
-        (id: "foundry",      name: "Foundry",      alloy_cost: 150, produces: ["bulwark", "sentinel"]),
-        (id: "gene_vats",    name: "Gene-Vats",    alloy_cost: 150, produces: ["ripper", "ravager"]),
-        (id: "aether_spire", name: "Aether Spire", alloy_cost: 200, produces: ["arclight"]),
+        // `victory: true` marks the building whose loss ends the match (M4c);
+        // mvp_defense / mvp_armor put buildings on the same 1-10 design scale as
+        // units (pool = mvp_defense * mvp_combat.building_hp_per_defense).
+        (id: "hq",           name: "HQ",           alloy_cost: 400, produces: ["worker"], dropoff: true, victory: true, mvp_defense: 10, mvp_armor: 4),
+        (id: "foundry",      name: "Foundry",      alloy_cost: 150, produces: ["bulwark", "sentinel"], mvp_defense: 6, mvp_armor: 3),
+        (id: "gene_vats",    name: "Gene-Vats",    alloy_cost: 150, produces: ["ripper", "ravager"], mvp_defense: 6, mvp_armor: 3),
+        (id: "aether_spire", name: "Aether Spire", alloy_cost: 200, produces: ["arclight"], mvp_defense: 5, mvp_armor: 2),
     ],
     // M4b: how the 1-10 design stats become sim numbers. Change balance here,
     // never in Rust.
@@ -109,6 +112,9 @@
         damage_per_offense: 5,     // Offense -> damage per hit
         mitigation_per_armor: 2,   // Armor  -> flat mitigation per hit
         speed_per_point: 36.0,     // Speed  -> world units per second
+        building_hp_per_defense: 40,   // buildings' Defense -> HP pool (a base
+                                       // outlasts a soldier without leaving the
+                                       // 1-10 design scale)
         max_stat: 10,              // the design scale is 1-10; stats above this
                                    // are a load error (the per-hit arithmetic is
                                    // u32 and must be able to represent them)

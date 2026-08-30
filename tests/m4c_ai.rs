@@ -22,8 +22,8 @@ use onus::sim::content::Content;
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use onus::sim::spatial::Faction;
 use onus::sim::{
-    AiAction, AiCommanders, AiJournal, CommandQueue, GatherPhase, GatherTarget, MoveTarget, Order,
-    Position, RateReport, ResourceNode,
+    AiAction, AiCommanders, AiJournal, CommandQueue, GatherPhase, GatherTarget, MatchOutcome,
+    MatchState, MoveTarget, Order, Position, RateReport, ResourceNode,
 };
 
 // ---- harness ----------------------------------------------------------------
@@ -861,4 +861,268 @@ fn the_ai_script_comes_from_the_ron_not_from_constants() {
     for (t, a) in acts {
         assert_eq!(t % 97, 0, "decision {a:?} at tick {t} ignores the edited RON");
     }
+}
+
+// ---- AC2: destroy the enemy HQ, and the match terminates --------------------
+
+fn outcome(app: &App) -> Option<MatchOutcome> {
+    app.world().resource::<MatchState>().outcome()
+}
+
+/// Buildings are killable, on the same 1-10 design scale as units: the pool is
+/// `mvp_defense * mvp_combat.building_hp_per_defense` and armor is flat
+/// mitigation per hit. Without this there is no win condition to check.
+#[test]
+fn a_building_takes_damage_from_the_ron_and_falls() {
+    let c = content();
+    let hq_def = c.building_index("hq").unwrap();
+    let pool = c.buildings[hq_def].mvp_defense * c.combat.building_hp_per_defense;
+    let per_hit = c.units[c.unit_index("ripper").unwrap()].offense * c.combat.damage_per_offense
+        - c.buildings[hq_def].mvp_armor * c.combat.mitigation_per_armor;
+
+    let mut app = sim_app();
+    let hq = spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
+    spawn_building(&mut app, "hq", Faction::A, Vec2::new(2_000.0, 0.0));
+    let attacker = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(30.0, 0.0));
+    let _ = attacker;
+    step(&mut app);
+    assert_eq!(
+        app.world().get::<Health>(hq).map(|h| (h.current, h.max)),
+        Some((pool - per_hit, pool)),
+        "a building's pool/mitigation do not match the RON"
+    );
+    // It dies, exactly once, after the right number of hits.
+    let cadence = c.units[c.unit_index("ripper").unwrap()].mvp_attack_ticks;
+    let hits_needed = pool.div_ceil(per_hit);
+    tick(&mut app, cadence * hits_needed);
+    assert!(
+        app.world().get_entity(hq).is_err(),
+        "the HQ survived {hits_needed} hits of {per_hit} into a {pool} pool"
+    );
+    // A razed building is not a unit casualty.
+    assert_eq!(app.world().resource::<Casualties>().lost(Faction::B), 0);
+}
+
+/// A building never *attacks*: it is a target only.
+#[test]
+fn a_building_never_attacks() {
+    let mut app = sim_app();
+    spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    spawn_building(&mut app, "hq", Faction::B, Vec2::new(2_000.0, 0.0));
+    let victim = spawn_unit(&mut app, "worker", Faction::B, Vec2::new(20.0, 0.0));
+    let full = app.world().get::<Health>(victim).unwrap().current;
+    tick(&mut app, 600);
+    assert_eq!(
+        app.world().get::<Health>(victim).map(|h| h.current),
+        Some(full),
+        "a building shot at a unit standing next to it"
+    );
+}
+
+/// AC2: destroying the enemy HQ ends the match — with the right winner, on the
+/// tick it happened, and the sim stops.
+#[test]
+fn destroying_the_enemy_hq_ends_the_match() {
+    let mut app = sim_app();
+    let enemy_hq = spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
+    spawn_building(&mut app, "hq", Faction::A, Vec2::new(3_000.0, 0.0));
+    spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(30.0, 0.0));
+    let mut decided = None;
+    for t in 0..3_000u32 {
+        step(&mut app);
+        let hq_alive = app.world().get_entity(enemy_hq).is_ok();
+        match outcome(&app) {
+            None => assert!(hq_alive, "tick {t}: the HQ fell and the match ran on"),
+            Some(o) => {
+                assert!(!hq_alive);
+                decided = Some((t, o));
+                break;
+            }
+        }
+    }
+    let (t, o) = decided.expect("the match never ended");
+    assert_eq!(o.winner, Some(Faction::A), "the wrong side won");
+    assert_eq!(o.tick, t, "the outcome is tagged with the wrong tick");
+}
+
+/// ...and after it ends, nothing changes: the outcome is written exactly once,
+/// and the rest of the sim is off (per-tick, so a single stray tick is caught).
+#[test]
+fn nothing_runs_after_the_match_is_decided() {
+    let mut app = sim_app_with_alloy(1_000);
+    spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
+    let my_hq = spawn_building(&mut app, "hq", Faction::A, Vec2::new(3_000.0, 0.0));
+    let killer = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(30.0, 0.0));
+    // A worker walking somewhere, so "the sim froze" is observable.
+    let walker = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(3_000.0, 0.0));
+    let worker = unit_index(&app, "worker");
+    push(
+        &mut app,
+        Order::MoveTo {
+            units: vec![walker],
+            dest: Vec2::new(3_000.0, 5_000.0),
+        }
+        .issued_by(Faction::A),
+    );
+    for _ in 0..3_000 {
+        step(&mut app);
+        if outcome(&app).is_some() {
+            break;
+        }
+    }
+    let decided = outcome(&app).expect("the match never ended");
+    let frozen_pos = app.world().get::<Position>(walker).map(|p| p.0);
+    let frozen_hp = app.world().get::<Health>(killer).map(|h| h.current);
+    let frozen_tick = app.world().resource::<MatchState>().tick();
+    // Try to keep playing: an order after the end must do nothing at all.
+    push(
+        &mut app,
+        Order::Train {
+            building: my_hq,
+            unit: worker,
+        }
+        .issued_by(Faction::A),
+    );
+    for t in 0..300 {
+        step(&mut app);
+        assert_eq!(outcome(&app), Some(decided), "tick {t}: the outcome moved");
+        assert_eq!(
+            app.world().resource::<MatchState>().tick(),
+            frozen_tick,
+            "tick {t}: the sim clock ran on after the match"
+        );
+        assert_eq!(
+            app.world().get::<Position>(walker).map(|p| p.0),
+            frozen_pos,
+            "tick {t}: a unit moved after the match ended"
+        );
+        assert_eq!(
+            app.world().get::<Health>(killer).map(|h| h.current),
+            frozen_hp
+        );
+        assert_eq!(alloy(&app, Faction::A), 1_000, "Alloy was spent after the end");
+        assert_eq!(queued(&app, my_hq), 0, "production ran after the end");
+    }
+}
+
+/// A one-sided fixture (only one faction has an HQ — every M4a/M4b test) is not
+/// a decided match: the sim must keep running.
+#[test]
+fn a_match_with_only_one_hq_never_ends() {
+    let mut app = sim_app();
+    spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    tick(&mut app, 500);
+    assert!(outcome(&app).is_none(), "a solitary HQ won a match by itself");
+    assert!(!app.world().resource::<MatchState>().engaged());
+}
+
+/// Mutual destruction on the same tick is a draw, and the check does not depend
+/// on which HQ the query happens to see first: spawning them in either order
+/// gives the same answer.
+#[test]
+fn losing_both_hqs_on_one_tick_is_a_draw_in_either_order() {
+    let run = |a_first: bool| {
+        let mut app = sim_app();
+        // Two HQs, each with an enemy Ripper the same distance away, so the two
+        // kills land on the same tick.
+        let (p0, p1) = (Vec2::ZERO, Vec2::new(4_000.0, 0.0));
+        if a_first {
+            spawn_building(&mut app, "hq", Faction::A, p0);
+            spawn_building(&mut app, "hq", Faction::B, p1);
+        } else {
+            spawn_building(&mut app, "hq", Faction::B, p1);
+            spawn_building(&mut app, "hq", Faction::A, p0);
+        }
+        spawn_unit(&mut app, "ripper", Faction::B, p0 + Vec2::new(30.0, 0.0));
+        spawn_unit(&mut app, "ripper", Faction::A, p1 + Vec2::new(30.0, 0.0));
+        for _ in 0..3_000 {
+            step(&mut app);
+            if outcome(&app).is_some() {
+                break;
+            }
+        }
+        outcome(&app).expect("no decision")
+    };
+    let first = run(true);
+    assert_eq!(first.winner, None, "simultaneous loss is a draw");
+    assert_eq!(first, run(false), "the end check depends on spawn order");
+}
+
+// ---- AC2: a full AI-vs-AI match, and how long it takes ----------------------
+
+/// A symmetric 1v1: two scripted commanders, mirrored bases and deposits.
+fn ai_vs_ai(seed: u64) -> App {
+    let mut app = sim_app_with_alloy(starting_alloy());
+    for (faction, base) in [
+        (Faction::A, Vec2::new(-750.0, 0.0)),
+        (Faction::B, Vec2::new(750.0, 0.0)),
+    ] {
+        spawn_building(&mut app, "hq", faction, base);
+        app.world_mut().spawn((
+            Position(base + Vec2::new(0.0, 250.0)),
+            ResourceNode { amount: 100_000 },
+        ));
+        for i in 0..3 {
+            spawn_unit(&mut app, "worker", faction, base + Vec2::new(0.0, 20.0 * i as f32));
+        }
+    }
+    app.insert_resource(AiCommanders::new(seed, &[Faction::A, Faction::B]));
+    app
+}
+
+/// AC2's design target: an AI-vs-AI match reaches a decision inside ~8 minutes
+/// of sim time (8 * 60 * 60 = 28_800 ticks). Measured, not hardcoded — the
+/// budget is the assertion, the length is reported.
+#[test]
+fn an_ai_vs_ai_match_is_decided_within_eight_minutes() {
+    const BUDGET: u32 = 8 * 60 * 60;
+    let mut lengths = Vec::new();
+    for seed in [1u64, 7, 99] {
+        let mut app = ai_vs_ai(seed);
+        let mut decided = None;
+        for _ in 0..BUDGET {
+            step(&mut app);
+            if let Some(o) = outcome(&app) {
+                decided = Some(o);
+                break;
+            }
+        }
+        let o = decided.unwrap_or_else(|| {
+            panic!("seed {seed}: no decision in {BUDGET} ticks (~8 min)");
+        });
+        lengths.push((seed, o.tick, o.winner));
+    }
+    println!("match lengths (seed, tick, winner): {lengths:?}");
+    for (seed, ticks, _) in &lengths {
+        assert!(
+            *ticks <= BUDGET,
+            "seed {seed}: {ticks} ticks is over the ~8 min target"
+        );
+    }
+}
+
+/// The whole match is deterministic given the seed: same seed ⇒ same journal,
+/// same winner, same tick. (A different seed is allowed to differ; what must not
+/// differ is a rerun.)
+#[test]
+fn an_ai_vs_ai_match_replays_identically_from_its_seed() {
+    let run = |seed: u64| {
+        let mut app = ai_vs_ai(seed);
+        for _ in 0..8 * 60 * 60 {
+            step(&mut app);
+            if outcome(&app).is_some() {
+                break;
+            }
+        }
+        (
+            outcome(&app),
+            app.world().resource::<AiJournal>().0.len(),
+            journal(&app, Faction::A),
+            journal(&app, Faction::B),
+            app.world().resource::<Casualties>().total(),
+        )
+    };
+    let a = run(7);
+    assert!(a.0.is_some(), "the match did not finish");
+    assert_eq!(a, run(7), "the same seed produced a different match");
 }

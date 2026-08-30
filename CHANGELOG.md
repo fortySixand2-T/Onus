@@ -142,3 +142,12 @@
 - [2026-08-29] Modified: src/lib.rs — the shipped sim chain runs ai_commanders first; AiCommanders/AiJournal installed with the chain
 - [2026-08-29] Modified: src/sim/mod.rs — sim::ai module re-exports
 - [2026-08-29] Modified: tests/m4c_ai.rs — AC1: mining, one barracks on its tick, the RON build order, the attack wave, the think timer, seed determinism, own-side-only, and content refusals
+- [2026-08-29] Created: src/sim/victory.rs — MatchState/MatchOutcome + the order-independent, exactly-once win check; match_running gates the play chain
+- [2026-08-29] Modified: src/sim/combat.rs — buildings are combat targets (never attackers): Health::from_building_def, damage_per_hit_to_building, RowKind
+- [2026-08-29] Modified: src/sim/content.rs — buildings carry mvp_defense/mvp_armor; mvp_combat.building_hp_per_defense; all validated with checked products
+- [2026-08-29] Modified: assets/data/units.ron — building defense/armor + the buildings' HP scale factor
+- [2026-08-29] Modified: src/sim/economy.rs — a placed building enters the world with its HP pool
+- [2026-08-29] Modified: src/setup.rs — the shipped app is a match: two HQs, an AI commander for Faction B, mirrored deposits, fixed MATCH_SEED
+- [2026-08-29] Modified: src/lib.rs — the play chain runs under match_running; match_end runs last and always
+- [2026-08-29] Modified: tests/m4c_ai.rs — AC2: building damage/death, the win + termination invariants, the draw, and the measured AI-vs-AI match length
+- [2026-08-29] Modified: FINDINGS.md — F-008 extension (structural claim pairing), F-009 (orders carry their issuer), F-010 (terminating a match is a run condition)

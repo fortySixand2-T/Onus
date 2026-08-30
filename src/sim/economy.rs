@@ -331,6 +331,9 @@ pub fn place_building(
         Building { def: building },
         faction,
         ProductionQueue::default(),
+        // Buildings are killable (M4c): a building enters the world with the HP
+        // pool its `mvp_defense` buys, exactly as a unit does.
+        Health::from_building_def(content, building),
     ));
     true
 }
