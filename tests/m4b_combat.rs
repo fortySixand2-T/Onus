@@ -20,7 +20,10 @@ use onus::sim::combat::{AttackCooldown, Casualties, Engaging, Health, Target};
 use onus::sim::content::Content;
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use onus::sim::spatial::{brute_force_nearest_enemy, Faction, SplitMix64, Unit};
-use onus::sim::{CommandQueue, MoveTarget, Order, Position, RateReport, ResourceNode, TileGrid};
+use onus::sim::{
+    CommandQueue, GatherPhase, GatherTarget, MoveTarget, Order, Position, RateReport, ResourceNode,
+    TileGrid,
+};
 
 // ---- harness ----------------------------------------------------------------
 
@@ -751,6 +754,102 @@ fn a_gathering_unit_is_never_hijacked_by_auto_engagement() {
     assert!(
         app.world().resource::<Stockpiles>().alloy(Faction::A) > 0,
         "the gather job actually ran to a deposit"
+    );
+}
+
+/// A mixed-selection right-click on a deposit sends `Order::Gather` to soldiers
+/// too. The unit that cannot gather must (a) still obey the move half of the
+/// order and (b) **stay armed** — it never acquires a gather job at all, so
+/// nothing can leave it disarmed. This is the property the gather-exclusion
+/// rule is supposed to establish; the previous version of the rule broke it.
+#[test]
+fn a_gather_order_to_a_mixed_selection_leaves_the_soldier_armed() {
+    let mut app = sim_app();
+    let soldier = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(0.0, 0.0));
+    let worker = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, -200.0));
+    let enemy = spawn_unit(&mut app, "worker", Faction::B, Vec2::new(30.0, 0.0));
+    let node_pos = Vec2::new(0.0, -260.0);
+    let node = app
+        .world_mut()
+        .spawn((Position(node_pos), ResourceNode { amount: 500 }))
+        .id();
+    // A drop-off, so the gather half of the order can actually complete.
+    let hq_def = app
+        .world()
+        .resource::<Content>()
+        .building_index("hq")
+        .unwrap();
+    app.world_mut().spawn((
+        Position(Vec2::new(0.0, -200.0)),
+        Building { def: hq_def },
+        Faction::A,
+        ProductionQueue::default(),
+    ));
+    app.world_mut()
+        .resource_mut::<CommandQueue>()
+        .0
+        .push_back(Order::Gather {
+            units: vec![soldier, worker],
+            node,
+            node_pos,
+        });
+
+    // Captured before the order tick: the soldier is expected to fire on it.
+    let full = hp(&app, enemy).unwrap();
+    step(&mut app);
+    // The non-gatherer never takes the job...
+    assert!(
+        app.world().get::<GatherTarget>(soldier).is_none(),
+        "a unit that cannot gather is never given a gather job"
+    );
+    // ...but it does take the move half of the order.
+    assert_eq!(
+        app.world().get::<MoveTarget>(soldier).map(|m| m.0),
+        Some(node_pos)
+    );
+    // ...and the real gatherer does take the job (the fix breaks nothing).
+    assert!(app.world().get::<GatherTarget>(worker).is_some());
+
+    assert!(
+        hp(&app, enemy).is_none_or(|h| h < full),
+        "the soldier must still fight after a Gather order it cannot execute"
+    );
+    tick(&mut app, 1100);
+    assert!(
+        app.world().resource::<Stockpiles>().alloy(Faction::A) > 0,
+        "and the worker's gather loop still runs"
+    );
+}
+
+/// `GatherTarget` asserts "the economy owns this unit", so the economy — and
+/// nobody else — maintains it: a marker it will not service is cleared, not
+/// skipped, and the unit is armed again on the spot.
+#[test]
+fn the_economy_clears_a_gather_marker_it_will_not_service() {
+    let mut app = sim_app();
+    let soldier = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(0.0, 0.0));
+    let enemy = spawn_unit(&mut app, "worker", Faction::B, Vec2::new(30.0, 0.0));
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::ZERO), ResourceNode { amount: 500 }))
+        .id();
+    // Plant the stale marker directly, as M4a's order path used to.
+    app.world_mut()
+        .entity_mut(soldier)
+        .insert((GatherTarget(node), GatherPhase::ToNode));
+
+    let full = hp(&app, enemy).unwrap();
+    step(&mut app);
+    assert!(
+        app.world().get::<GatherTarget>(soldier).is_none()
+            && app.world().get::<GatherPhase>(soldier).is_none(),
+        "the economy releases a unit it cannot service"
+    );
+
+    tick(&mut app, 200);
+    assert!(
+        hp(&app, enemy).is_none_or(|h| h < full),
+        "and the released unit fights again"
     );
 }
 

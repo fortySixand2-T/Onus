@@ -119,3 +119,8 @@
 - [2026-08-29] Modified: tests/m4b_combat.rs — validator-overflow probes (Err not panic, no silent release accept) and an armed-gatherer non-hijack test with a control
 - [2026-08-29] Modified: FINDINGS.md — F-005 extension 2: a check written in the arithmetic it is checking is not a check
 - [2026-08-29] Modified: tests/critic_m4b.rs — M4b critic pass 3: 4 probes (gather-exclusion regression, gatherer still targetable, re-arm on job end, nemesis multiplier cast); 2 fail
+- [2026-08-29] Modified: src/sim/mod.rs — critic fix: Order::Gather only gives a gather job to a unit whose RON says it gathers (the move half still applies to everyone)
+- [2026-08-29] Modified: src/sim/economy.rs — the economy clears a gather marker it will not service instead of skipping it; Carrying is optional in the query so stale markers are visible
+- [2026-08-29] Modified: tests/m1_selection.rs — fixture: units spawn with their roster definition index (M4b makes stats/def-driven behaviour real)
+- [2026-08-29] Modified: tests/m4b_combat.rs — mixed-selection gather order leaves the soldier armed; the economy releases a marker it cannot service
+- [2026-08-29] Modified: FINDINGS.md — F-008 (a component asserting ownership is maintained by its owner alone)

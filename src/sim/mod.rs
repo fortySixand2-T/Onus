@@ -131,6 +131,7 @@ pub fn apply_commands(
     content: Res<Content>,
     mut stock: ResMut<Stockpiles>,
     mut producers: Query<(&Building, &Faction, &mut ProductionQueue)>,
+    defs: Query<&UnitDefIdx>,
     mut commands: Commands,
 ) {
     while let Some(cmd) = queue.0.pop_front() {
@@ -158,17 +159,31 @@ pub fn apply_commands(
                 node_pos,
             } => {
                 for e in units {
-                    // Move to the node and start the gather loop (`economy`).
-                    // `insert_if_new` on `Carrying` so re-tasking a worker that
-                    // is already holding a load never zeroes that load.
-                    // Also an explicit order, so it likewise ends any chase.
-                    commands
-                        .entity(e)
-                        .insert(MoveTarget(node_pos))
-                        .insert(GatherTarget(node))
-                        .insert(GatherPhase::ToNode)
-                        .remove::<Engaging>()
-                        .insert_if_new(Carrying(0));
+                    // A gather job is only ever handed to a unit whose
+                    // definition says it gathers. Right-clicking a deposit with
+                    // a mixed selection sends this order to soldiers too; giving
+                    // them a `GatherTarget` they can never act on would leave
+                    // the marker stuck on them forever (`economy::gather` has no
+                    // reason to touch a non-gatherer), and anything that reads
+                    // it — combat's "the economy owns this unit" rule — would
+                    // then be reading a lie. A unit with no definition is not
+                    // tasked either: the sim only gives jobs it has data for.
+                    let gathers = defs
+                        .get(e)
+                        .ok()
+                        .and_then(|d| content.units.get(d.0))
+                        .is_some_and(|def| def.gathers);
+                    let mut ent = commands.entity(e);
+                    // The move half of the order applies to everyone in the
+                    // selection, and — being an explicit order — ends any chase.
+                    ent.insert(MoveTarget(node_pos)).remove::<Engaging>();
+                    if gathers {
+                        // `insert_if_new` on `Carrying` so re-tasking a worker
+                        // that is already holding a load never zeroes it.
+                        ent.insert(GatherTarget(node))
+                            .insert(GatherPhase::ToNode)
+                            .insert_if_new(Carrying(0));
+                    }
                 }
             }
 

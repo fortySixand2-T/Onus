@@ -257,3 +257,41 @@ tests were run red first with the nemesis branch stubbed out
 (20 mixed units, 900 ticks, byte-identical survivor state) and the wall test
 (the attacker's cell is asserted walkable on *every* tick of the approach), all
 in `tests/m4b_combat.rs`, commit `4509ab1`. Reproduce: `cargo test --test m4b_combat`.
+
+## F-008 — A component that asserts ownership must be maintained by its owner alone (M4b)
+
+**Wall hit.** M4b's combat rule "a unit on a gather job never auto-engages" read
+the `GatherTarget` component as the claim *"the economy owns this unit"*. The
+claim was not maintained: `Order::Gather` stamped `GatherTarget`/`GatherPhase`
+onto **every** entity in the order (right-clicking a deposit with a mixed
+selection sends it to soldiers too), and `economy::gather` skipped a
+non-gatherer with `if !def.gathers { continue; }` without ever clearing it. The
+marker therefore stuck forever, and the moment combat started reading it, one
+mixed-selection right-click **permanently disarmed every combat unit in the
+selection** — they never acquired a target, never fired, never defended
+themselves, until some unrelated `MoveTo` happened to strip the component. AC1
+broken by a component that lied. Found by the M4b critic; the stale-marker jank
+was pre-existing M4a behaviour that was harmless only while nothing read it.
+
+**Decision.** The claim is now true by construction, fixed at both ends rather
+than at the reader:
+- `apply_commands` gates the gather half of `Order::Gather` on the unit's
+  `gathers` flag from the RON — a unit that cannot gather is never given a job
+  (it still obeys the *move* half of the order, which is what the commander
+  meant);
+- `economy::gather` **clears** any marker it declines to service instead of
+  skipping past it, and its query takes `Carrying` as `Option` precisely so it
+  can see — and take back — a marker held by an entity that has no business
+  with one.
+
+Generalised: if system A's behaviour depends on a component that means "system B
+owns this entity", then B must be the only writer of that component *and* must
+release it whenever the claim stops holding. A reader can never make a stale
+claim true.
+
+**Evidence.** `tests/critic_m4b.rs::a_gather_order_does_not_permanently_disarm_a_non_gathering_soldier`
+(red before, green after) plus, in our suite,
+`a_gather_order_to_a_mixed_selection_leaves_the_soldier_armed` (the soldier
+fires on the order tick, still walks to the node, and the real gatherer's loop
+still banks Alloy) and `the_economy_clears_a_gather_marker_it_will_not_service`.
+Reproduce: `cargo test --test critic_m4b --test m4b_combat`.

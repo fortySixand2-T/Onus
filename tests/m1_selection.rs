@@ -33,9 +33,20 @@ fn test_app() -> App {
     app
 }
 
+/// Spawn a commandable unit of `kind`. Since M4b every unit in the sim is a
+/// real roster entry — its definition index is what carries speed, stats and
+/// (here) whether it may take a gather job — so the fixture attaches the first
+/// definition of that kind, exactly as `setup`/production do.
 fn spawn_unit(app: &mut App, kind: UnitKind, pos: Vec2) -> Entity {
+    let def = app
+        .world()
+        .resource::<Content>()
+        .units
+        .iter()
+        .position(|u| u.mvp_kind == kind)
+        .unwrap_or_else(|| panic!("a `{kind:?}` in units.ron"));
     app.world_mut()
-        .spawn((Position(pos), kind, Selectable))
+        .spawn((Position(pos), kind, UnitDefIdx(def), Selectable))
         .id()
 }
 

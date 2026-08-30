@@ -159,13 +159,16 @@ pub fn gather(
     mut stock: ResMut<Stockpiles>,
     mut nodes: Query<(&Position, &mut ResourceNode)>,
     buildings: Query<(Entity, &Position, &Building, &Faction)>,
+    // `Carrying` is optional here on purpose: the query must *see* every entity
+    // that carries a gather marker, including one that has no business holding
+    // it, so the economy can take the marker back (below).
     mut workers: Query<(
         Entity,
         &Position,
         &UnitDefIdx,
         &Faction,
         &GatherTarget,
-        &mut Carrying,
+        Option<&mut Carrying>,
         &mut GatherPhase,
     )>,
     mut commands: Commands,
@@ -184,17 +187,30 @@ pub fn gather(
     acting.sort_unstable_by_key(|e| e.to_bits());
 
     for entity in acting {
-        let Ok((_, pos, def_idx, faction, target, mut carrying, mut phase)) =
-            workers.get_mut(entity)
+        let Ok((_, pos, def_idx, faction, target, carrying, mut phase)) = workers.get_mut(entity)
         else {
             continue;
         };
-        let Some(def) = content.units.get(def_idx.0) else {
+        // A job the economy will not service is a job the economy must **clear**.
+        // `GatherTarget`/`GatherPhase` assert "the economy owns this unit", and
+        // other systems act on that claim — combat refuses to auto-engage a unit
+        // that carries them — so they are maintained by the economy alone and
+        // never left stale. An entity that cannot gather (no definition, or one
+        // with `gathers: false`) is released here rather than skipped past;
+        // skipping is what let a soldier keep a marker it could never act on.
+        let Some(def) = content.units.get(def_idx.0).filter(|d| d.gathers) else {
+            commands
+                .entity(entity)
+                .remove::<GatherTarget>()
+                .remove::<GatherPhase>();
             continue;
         };
-        if !def.gathers {
+        // A real gatherer that somehow lacks its hands gets them from the
+        // economy, not from whoever handed out the job.
+        let Some(mut carrying) = carrying else {
+            commands.entity(entity).insert(Carrying(0));
             continue;
-        }
+        };
         let (pos, faction, node_entity) = (pos.0, *faction, target.0);
 
         // The assigned deposit may have been consumed/despawned: drop the job.
