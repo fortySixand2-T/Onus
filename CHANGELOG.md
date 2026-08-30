@@ -151,3 +151,4 @@
 - [2026-08-29] Modified: src/lib.rs — the play chain runs under match_running; match_end runs last and always
 - [2026-08-29] Modified: tests/m4c_ai.rs — AC2: building damage/death, the win + termination invariants, the draw, and the measured AI-vs-AI match length
 - [2026-08-29] Modified: FINDINGS.md — F-008 extension (structural claim pairing), F-009 (orders carry their issuer), F-010 (terminating a match is a run condition)
+- [2026-08-29] Created: tests/critic_m4c.rs — M4c adversarial critic probes (win condition, F-008 pair, order issuer, AI determinism, content validation)
