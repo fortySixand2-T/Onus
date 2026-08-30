@@ -130,3 +130,9 @@
 - [2026-08-29] Modified: tests/critic_m4b.rs — M4b critic pass 4: 12 probes on the gather-ownership fix, multiplier exactness, and the standing regression sweep (all green)
 - [2026-08-29] Modified: BUILD_PLAN.md — Ticked M4b acceptance criteria (critic PASS); recorded findings inherited into M4c
 - [2026-08-29] Modified: CLAUDE.md — Status now M0–M4b done; next milestone M4c (scripted AI + win)
+- [2026-08-29] Created: tests/m4c_ai.rs — M4c L2 suite; first: the three items inherited from M4a/M4b (order ownership, orders vs dead entities, the gather-claim pair)
+- [2026-08-29] Modified: src/sim/mod.rs — orders carry their issuer (Order::By / issued_by / signed); cross-faction orders refused; order paths use get_entity + try_insert; GatherTarget requires GatherPhase
+- [2026-08-29] Modified: src/sim/economy.rs — release_gather_job is the single paired release of the economy's claim; GatherPhase gains Default (ToNode) for the requirement
+- [2026-08-29] Modified: src/input.rs — every emitted order is signed with the player's faction
+- [2026-08-29] Modified: src/sim/spatial.rs — SplitMix64 derives Debug (the AI commander holds one)
+- [2026-08-29] Modified: tests/m4a_economy.rs — the input tests read the order's signature before matching its shape

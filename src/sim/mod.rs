@@ -76,7 +76,17 @@ pub struct ResourceNode {
 pub struct MoveTarget(pub Vec2);
 
 /// The deposit a unit is assigned to gather from. Read by `economy::gather`.
+///
+/// **Half of a pair (F-008).** `GatherTarget` and [`GatherPhase`] together are
+/// the economy's claim on a unit; combat reads the target alone ("the economy
+/// owns this one"), while only the economy can release the claim — so a lone
+/// `GatherTarget` disarms a unit forever. The pairing is therefore *structural*
+/// rather than a convention every call site has to remember: `GatherPhase` is a
+/// **required component** of `GatherTarget`, so writing the claim always writes
+/// (at least) a phase, whoever writes it. Releasing is the mirror image, and has
+/// exactly one implementation: [`economy::release_gather_job`].
 #[derive(Component)]
+#[require(GatherPhase)]
 pub struct GatherTarget(pub Entity);
 
 // ---- resources -------------------------------------------------------------
@@ -87,7 +97,24 @@ pub struct GatherTarget(pub Entity);
 #[derive(Resource, Default)]
 pub struct CommandQueue(pub VecDeque<Order>);
 
-/// A sim-affecting order. Emitted by input in `Update`, applied in `FixedUpdate`.
+/// A sim-affecting order. Emitted by input (or by the scripted AI, which is
+/// held to exactly the same discipline) and applied in `FixedUpdate`.
+///
+/// ## Ownership (M4c)
+/// An order is only legitimate from the commander that owns what it touches, so
+/// every order carries its **issuer**: [`Order::issued_by`] signs it, and
+/// [`apply_commands`] refuses anything cross-faction — training from another
+/// side's building, moving another side's units, or placing a building for
+/// someone else.
+///
+/// The signature is a wrapper variant ([`Order::By`]) rather than a field on
+/// each variant, which leaves an **unsigned** order expressible. An unsigned
+/// order is *self-signed*: it is attributed to the faction of whatever it
+/// touches (the building that pays, the unit that moves), so it can never be
+/// cross-faction — it is the pre-second-commander behaviour, kept for fixtures
+/// that drive one side's economy directly. Nothing in `src/` emits one: every
+/// producer (input, the scripted AI) signs, which is what
+/// `every_order_emitted_in_src_is_signed` pins down.
 pub enum Order {
     MoveTo {
         units: Vec<Entity>,
@@ -105,12 +132,64 @@ pub enum Order {
         pos: Vec2,
     },
     /// Train a unit (index into `Content::units`) at a building — costs Alloy.
-    /// The *building's* faction pays; the order carries no issuer, so ownership
-    /// is unchecked. Deferred to M4c with the second commander (BUILD_PLAN.md).
+    /// The building's faction pays, and (M4c) must *be* the issuer: a commander
+    /// cannot spend the enemy's Alloy or fill the enemy's queue.
     Train {
         building: Entity,
         unit: usize,
     },
+    /// `order`, signed by the faction that issued it. Built with
+    /// [`Order::issued_by`].
+    By {
+        issuer: Faction,
+        order: Box<Order>,
+    },
+}
+
+impl Order {
+    /// Sign this order: `Order::MoveTo { .. }.issued_by(Faction::B)`.
+    pub fn issued_by(self, issuer: Faction) -> Order {
+        Order::By {
+            issuer,
+            order: Box::new(self),
+        }
+    }
+
+    /// [`Order::signed`] by reference, for inspecting a queued order without
+    /// consuming it (what the input tests assert on).
+    pub fn signature(&self) -> Option<(Option<Faction>, &Order)> {
+        let mut issuer: Option<Faction> = None;
+        let mut inner = self;
+        while let Order::By { issuer: f, order } = inner {
+            if issuer.is_some_and(|prev| prev != *f) {
+                return None;
+            }
+            issuer = Some(*f);
+            inner = order;
+        }
+        Some((issuer, inner))
+    }
+
+    /// Peel the signature(s) off, yielding `(issuer, inner order)`, where a
+    /// `None` issuer means the order is unsigned — self-signed, see the type
+    /// docs.
+    ///
+    /// The whole result is `None` for an order signed by two *different*
+    /// factions: a signature that can be overwritten is not a signature, so
+    /// re-signing someone else's order voids it rather than laundering
+    /// ownership.
+    pub fn signed(self) -> Option<(Option<Faction>, Order)> {
+        let mut issuer: Option<Faction> = None;
+        let mut inner = self;
+        while let Order::By { issuer: f, order } = inner {
+            if issuer.is_some_and(|prev| prev != f) {
+                return None;
+            }
+            issuer = Some(f);
+            inner = *order;
+        }
+        Some((issuer, inner))
+    }
 }
 
 /// Counters for the once-per-second sim-tick vs. frame report. `sim_ticks` is
@@ -132,12 +211,30 @@ pub fn apply_commands(
     mut stock: ResMut<Stockpiles>,
     mut producers: Query<(&Building, &Faction, &mut ProductionQueue)>,
     defs: Query<&UnitDefIdx>,
+    owners: Query<&Faction>,
     mut commands: Commands,
 ) {
     while let Some(cmd) = queue.0.pop_front() {
+        // Ownership first: an order nobody can be held to (signed twice by
+        // different factions) is dropped, and the issuer is the faction the rest
+        // of this loop checks everything against.
+        let Some((issuer, cmd)) = cmd.signed() else {
+            continue;
+        };
         match cmd {
             Order::MoveTo { units, dest } => {
                 for e in units {
+                    // Two guards, and both are load-bearing once a *second*
+                    // commander exists. `commandable` refuses another faction's
+                    // unit; `get_entity` refuses an entity that is already gone
+                    // (an AI issues orders against entities it remembered, and
+                    // `Commands::entity` on a despawned entity panics).
+                    if !commandable(&owners, issuer, e) {
+                        continue;
+                    }
+                    let Ok(mut ent) = commands.get_entity(e) else {
+                        continue;
+                    };
                     // A move order cancels gathering, but a carried load is
                     // kept (it stays "in flight" — Alloy is never destroyed).
                     // It also cancels an auto-engagement: `Engaging` marks a
@@ -145,12 +242,8 @@ pub fn apply_commands(
                     // tick's combat pass overwrite the commander's destination.
                     // Orders come from the commander; the sim only ever
                     // auto-chases a unit that has none.
-                    commands
-                        .entity(e)
-                        .insert(MoveTarget(dest))
-                        .remove::<GatherTarget>()
-                        .remove::<GatherPhase>()
-                        .remove::<Engaging>();
+                    ent.try_insert(MoveTarget(dest)).remove::<Engaging>();
+                    economy::release_gather_job(&mut ent);
                 }
             }
             Order::Gather {
@@ -159,6 +252,9 @@ pub fn apply_commands(
                 node_pos,
             } => {
                 for e in units {
+                    if !commandable(&owners, issuer, e) {
+                        continue;
+                    }
                     // A gather job is only ever handed to a unit whose
                     // definition says it gathers. Right-clicking a deposit with
                     // a mixed selection sends this order to soldiers too; giving
@@ -173,16 +269,21 @@ pub fn apply_commands(
                         .ok()
                         .and_then(|d| content.units.get(d.0))
                         .is_some_and(|def| def.gathers);
-                    let mut ent = commands.entity(e);
+                    let Ok(mut ent) = commands.get_entity(e) else {
+                        continue;
+                    };
                     // The move half of the order applies to everyone in the
                     // selection, and — being an explicit order — ends any chase.
-                    ent.insert(MoveTarget(node_pos)).remove::<Engaging>();
+                    ent.try_insert(MoveTarget(node_pos)).remove::<Engaging>();
                     if gathers {
                         // `insert_if_new` on `Carrying` so re-tasking a worker
-                        // that is already holding a load never zeroes it.
-                        ent.insert(GatherTarget(node))
-                            .insert(GatherPhase::ToNode)
-                            .insert_if_new(Carrying(0));
+                        // that is already holding a load never zeroes it. The
+                        // claim is written as a pair (F-008) — `GatherPhase` is
+                        // a required component of `GatherTarget`, and is named
+                        // here too so the phase is an explicit `ToNode` rather
+                        // than a default nobody reads.
+                        ent.try_insert((GatherTarget(node), GatherPhase::ToNode))
+                            .try_insert_if_new(Carrying(0));
                     }
                 }
             }
@@ -194,6 +295,12 @@ pub fn apply_commands(
                 building,
                 pos,
             } => {
+                // A commander places buildings for itself only — the order names
+                // the faction that gets (and pays for) the building, so it must
+                // be the faction that signed it.
+                if issuer.is_some_and(|by| by != faction) {
+                    continue;
+                }
                 economy::place_building(
                     &content,
                     &mut stock,
@@ -204,11 +311,31 @@ pub fn apply_commands(
                 );
             }
             Order::Train { building, unit } => {
+                // The building's faction pays, so only the building's faction
+                // may order: this is what stops one side spending the other's
+                // Alloy (and filling their queue).
                 if let Ok((b, faction, mut queue)) = producers.get_mut(building) {
+                    if issuer.is_some_and(|by| by != *faction) {
+                        continue;
+                    }
                     economy::enqueue_unit(&content, &mut stock, b.def, *faction, &mut queue, unit);
                 }
             }
+            // Peeled off above; `signed` never returns a wrapper.
+            Order::By { .. } => {}
         }
+    }
+}
+
+/// May `issuer` command `e`? Only if `e` is not somebody else's. An unsigned
+/// order (`None`) is self-signed and commands whatever it names; an entity with
+/// no `Faction` (a resource node, or a bare test entity) belongs to nobody, so
+/// no commander is overriding another by touching it. Whether the entity
+/// *exists* is a separate question, asked with `Commands::get_entity`.
+fn commandable(owners: &Query<&Faction>, issuer: Option<Faction>, e: Entity) -> bool {
+    match issuer {
+        None => true,
+        Some(by) => owners.get(e).map(|f| *f == by).unwrap_or(true),
     }
 }
 

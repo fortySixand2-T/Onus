@@ -94,9 +94,15 @@ pub struct UnitDefIdx(pub usize);
 pub struct Carrying(pub u32);
 
 /// Where a gathering worker is in its loop.
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// The other half of the economy's claim on a unit (F-008): it is a **required
+/// component** of [`GatherTarget`], so the claim can never be written without
+/// it, and `Default` (= `ToNode`, the start of the loop) is what that
+/// requirement inserts.
+#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum GatherPhase {
     /// Heading to the assigned deposit.
+    #[default]
     ToNode,
     /// Standing at the deposit, mining one load.
     Harvesting { ticks_left: u32 },
@@ -123,6 +129,15 @@ pub struct QueuedUnit {
 #[derive(Component, Debug, Default)]
 pub struct ProductionQueue {
     pub items: VecDeque<QueuedUnit>,
+}
+
+/// Release the economy's claim on a unit — **the** implementation, so the pair
+/// is always dropped together (F-008). A lone `GatherTarget` disarms a unit
+/// forever (combat reads it as "the economy owns this one" and the economy's own
+/// query needs both halves to ever release it), and a lone `GatherPhase` is a
+/// phase for a job that no longer exists.
+pub fn release_gather_job(ent: &mut EntityCommands) {
+    ent.remove::<GatherTarget>().remove::<GatherPhase>();
 }
 
 // ---- the gather loop -------------------------------------------------------
@@ -199,10 +214,7 @@ pub fn gather(
         // with `gathers: false`) is released here rather than skipped past;
         // skipping is what let a soldier keep a marker it could never act on.
         let Some(def) = content.units.get(def_idx.0).filter(|d| d.gathers) else {
-            commands
-                .entity(entity)
-                .remove::<GatherTarget>()
-                .remove::<GatherPhase>();
+            release_gather_job(&mut commands.entity(entity));
             continue;
         };
         // A real gatherer that somehow lacks its hands gets them from the
@@ -222,10 +234,7 @@ pub fn gather(
         match *phase {
             GatherPhase::ToNode => {
                 let Some(node_pos) = node_pos else {
-                    commands
-                        .entity(entity)
-                        .remove::<GatherTarget>()
-                        .remove::<GatherPhase>();
+                    release_gather_job(&mut commands.entity(entity));
                     continue;
                 };
                 if pos.distance(node_pos) <= gather_range {
@@ -264,10 +273,7 @@ pub fn gather(
                     *phase = GatherPhase::ToDropoff;
                 } else {
                     // Nothing left here and nothing in hand: the job is over.
-                    commands
-                        .entity(entity)
-                        .remove::<GatherTarget>()
-                        .remove::<GatherPhase>();
+                    release_gather_job(&mut commands.entity(entity));
                 }
             }
 
@@ -288,10 +294,7 @@ pub fn gather(
                     match node_pos {
                         Some(_) => *phase = GatherPhase::ToNode,
                         None => {
-                            commands
-                                .entity(entity)
-                                .remove::<GatherTarget>()
-                                .remove::<GatherPhase>();
+                            release_gather_job(&mut commands.entity(entity));
                         }
                     }
                     commands.entity(entity).remove::<MoveTarget>();

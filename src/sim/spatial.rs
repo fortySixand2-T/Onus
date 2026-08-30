@@ -40,7 +40,7 @@ pub struct Unit {
 /// A tiny dependency-free splitmix64 generator. Seeded and reproducible: the
 /// same seed always yields the same stream, so layouts used in tests and benches
 /// are byte-for-byte repeatable without pulling in the `rand` crate.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct SplitMix64(u64);
 
 impl SplitMix64 {

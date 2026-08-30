@@ -171,13 +171,20 @@ pub fn emit_commands(
         }
     }
 
+    // Every order carries its issuer (M4c): the local player commands the
+    // player's faction and nobody else's.
     match node {
-        Some((node, node_pos)) => queue.0.push_back(Order::Gather {
-            units,
-            node,
-            node_pos,
-        }),
-        None => queue.0.push_back(Order::MoveTo { units, dest: cur }),
+        Some((node, node_pos)) => queue.0.push_back(
+            Order::Gather {
+                units,
+                node,
+                node_pos,
+            }
+            .issued_by(PLAYER_FACTION),
+        ),
+        None => queue
+            .0
+            .push_back(Order::MoveTo { units, dest: cur }.issued_by(PLAYER_FACTION)),
     }
 }
 
@@ -202,11 +209,14 @@ pub fn emit_build_commands(
             .map(|(i, _)| i);
         for (slot, building) in placeable.enumerate() {
             if PLACE_KEYS.get(slot).is_some_and(|k| keys.just_pressed(*k)) {
-                queue.0.push_back(Order::Place {
-                    faction: PLAYER_FACTION,
-                    building,
-                    pos: cur,
-                });
+                queue.0.push_back(
+                    Order::Place {
+                        faction: PLAYER_FACTION,
+                        building,
+                        pos: cur,
+                    }
+                    .issued_by(PLAYER_FACTION),
+                );
             }
         }
     }
@@ -219,10 +229,13 @@ pub fn emit_build_commands(
         for (slot, unit_id) in def.produces.iter().enumerate() {
             if TRAIN_KEYS.get(slot).is_some_and(|k| keys.just_pressed(*k)) {
                 if let Some(unit) = content.unit_index(unit_id) {
-                    queue.0.push_back(Order::Train {
-                        building: entity,
-                        unit,
-                    });
+                    queue.0.push_back(
+                        Order::Train {
+                            building: entity,
+                            unit,
+                        }
+                        .issued_by(PLAYER_FACTION),
+                    );
                 }
             }
         }
