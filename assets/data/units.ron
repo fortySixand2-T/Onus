@@ -97,7 +97,7 @@
     // MVP building cost table (Alloy). The HQ exists at match start; the three
     // barracks are placeable and each trains its own units.
     mvp_buildings: [
-        (id: "hq",           name: "HQ",           alloy_cost: 400, produces: ["worker"], dropoff: true),
+        (id: "hq",           name: "HQ",           alloy_cost: 400, produces: ["worker"], dropoff: true, victory: true),
         (id: "foundry",      name: "Foundry",      alloy_cost: 150, produces: ["bulwark", "sentinel"]),
         (id: "gene_vats",    name: "Gene-Vats",    alloy_cost: 150, produces: ["ripper", "ravager"]),
         (id: "aether_spire", name: "Aether Spire", alloy_cost: 200, produces: ["arclight"]),
@@ -116,6 +116,34 @@
         pursue_range: 400.0,       // leash: how far it will chase before giving
                                    // up (>= engage_range, because walking around
                                    // an obstacle legitimately opens the gap)
+    ),
+    // M4c: the scripted AI's whole script. Build order, thresholds and timings
+    // are content — there are no AI tuning constants in Rust — and every
+    // duration is counted in FixedUpdate ticks (60 Hz), never seconds.
+    //   think_interval_ticks  — ticks between two decisions (the commander's APM)
+    //   worker_target         — workers it keeps mining
+    //   barracks / barracks_at_tick / barracks_offset
+    //                         — which barracks it opens with, the earliest tick
+    //                           it places one, and how far from its HQ (the
+    //                           seeded RNG picks only the direction)
+    //   army                  — the repeating build order; every unit must be
+    //                           producible by `barracks`
+    //   attack_at_army        — combat units it wants before the first wave
+    //   attack_interval_ticks — ticks between waves
+    //   attack_spread         — seeded scatter around the enemy HQ per wave
+    mvp_ai: (
+        think_interval_ticks: 30,
+        worker_target: 6,
+        barracks: "foundry",
+        barracks_at_tick: 300,
+        barracks_offset: 130.0,
+        army: [
+            (unit: "sentinel", count: 2),   // fast, cheap pressure
+            (unit: "bulwark",  count: 1),   // the armoured front
+        ],
+        attack_at_army: 3,
+        attack_interval_ticks: 600,
+        attack_spread: 60.0,
     ),
     // Applied when attacker.nemesis == defender.id
     nemesis_bonus: (

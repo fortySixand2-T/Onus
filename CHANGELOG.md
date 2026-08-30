@@ -136,3 +136,9 @@
 - [2026-08-29] Modified: src/input.rs — every emitted order is signed with the player's faction
 - [2026-08-29] Modified: src/sim/spatial.rs — SplitMix64 derives Debug (the AI commander holds one)
 - [2026-08-29] Modified: tests/m4a_economy.rs — the input tests read the order's signature before matching its shape
+- [2026-08-29] Created: src/sim/ai.rs — the scripted AI commander: mines, opens a barracks, trains the RON build order, attack-moves; ticks only, seeded RNG, orders signed like a player's
+- [2026-08-29] Modified: src/sim/content.rs — mvp_ai (AiDef/ArmyItem) + BuildingDef.victory, both validated (checked cycle length, ids resolve, exactly one victory target)
+- [2026-08-29] Modified: assets/data/units.ron — mvp_ai script block; the HQ is the victory target
+- [2026-08-29] Modified: src/lib.rs — the shipped sim chain runs ai_commanders first; AiCommanders/AiJournal installed with the chain
+- [2026-08-29] Modified: src/sim/mod.rs — sim::ai module re-exports
+- [2026-08-29] Modified: tests/m4c_ai.rs — AC1: mining, one barracks on its tick, the RON build order, the attack wave, the think timer, seed determinism, own-side-only, and content refusals

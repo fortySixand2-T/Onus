@@ -88,6 +88,76 @@ pub struct BuildingDef {
     /// Workers may deposit their load here (the HQ).
     #[serde(default)]
     pub dropoff: bool,
+    /// Losing this building loses the match (M4c). Data, not a hardcoded "hq"
+    /// string: the win condition is content.
+    #[serde(default)]
+    pub victory: bool,
+}
+
+/// One entry of the scripted AI's repeating army build order.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ArmyItem {
+    /// Unit id, which the barracks below must be able to produce.
+    pub unit: String,
+    /// How many of this unit per cycle of the build order.
+    pub count: u32,
+}
+
+/// The scripted AI's whole script (M4c) — build order, thresholds and timings.
+/// **Every duration is in `FixedUpdate` ticks**, never seconds, and every number
+/// here is content: there are no AI tuning constants in Rust.
+#[derive(Debug, Clone, Deserialize)]
+pub struct AiDef {
+    /// Ticks between two decisions (the commander's "APM").
+    pub think_interval_ticks: u32,
+    /// Workers it keeps mining before spending on anything else.
+    pub worker_target: u32,
+    /// Building id it tech-opens with.
+    pub barracks: String,
+    /// Earliest tick it will place that barracks.
+    pub barracks_at_tick: u32,
+    /// How far from its HQ the barracks goes (world units; the direction is the
+    /// only thing the seeded RNG picks).
+    pub barracks_offset: f32,
+    /// The repeating army build order.
+    pub army: Vec<ArmyItem>,
+    /// Combat units it wants before it attacks.
+    pub attack_at_army: u32,
+    /// Ticks between two attack waves.
+    pub attack_interval_ticks: u32,
+    /// Radius of the seeded scatter around the enemy HQ each wave aims at.
+    pub attack_spread: f32,
+}
+
+impl AiDef {
+    /// Total units in one cycle of the build order, or `None` if the counts do
+    /// not fit a `u32`. Checked, not wrapping: the cursor arithmetic below
+    /// divides by this, and `Content::validate` refuses content it cannot hold
+    /// (F-005 — a sum that wraps in release is content the loader must reject,
+    /// not a number the sim quietly mangles).
+    pub fn cycle_len(&self) -> Option<u32> {
+        self.army
+            .iter()
+            .try_fold(0u32, |acc, item| acc.checked_add(item.count))
+    }
+
+    /// The `n`-th unit id of the endlessly repeating build order. Pure integer
+    /// walk over the RON order — no allocation, so a build order of a million
+    /// units costs nothing, and no iteration order to leak.
+    pub fn army_at(&self, n: u32) -> Option<&str> {
+        let cycle = self.cycle_len()?;
+        if cycle == 0 {
+            return None;
+        }
+        let mut k = n % cycle;
+        for item in &self.army {
+            if k < item.count {
+                return Some(&item.unit);
+            }
+            k -= item.count;
+        }
+        None
+    }
 }
 
 /// The nemesis rule (consumed by combat in M4b).
@@ -196,6 +266,7 @@ struct UnitsFile {
     mvp_buildings: Vec<BuildingDef>,
     mvp_combat: CombatDef,
     nemesis_bonus: NemesisBonus,
+    mvp_ai: AiDef,
 }
 
 #[derive(Deserialize)]
@@ -217,6 +288,8 @@ pub struct Content {
     /// Stat scaling for combat (M4b).
     pub combat: CombatDef,
     pub nemesis_bonus: NemesisBonus,
+    /// The scripted AI's script (M4c).
+    pub ai: AiDef,
     pub resources: Vec<ResourceDef>,
     pub mvp_active: Vec<String>,
     pub economy: EconomyDef,
@@ -291,6 +364,7 @@ impl Content {
             buildings: units_file.mvp_buildings,
             combat: units_file.mvp_combat,
             nemesis_bonus: units_file.nemesis_bonus,
+            ai: units_file.mvp_ai,
             resources: resources_file.resources,
             mvp_active: resources_file.mvp_active,
             economy: resources_file.mvp_economy,
@@ -456,6 +530,80 @@ impl Content {
                     value.map_or("beyond u64".to_string(), |v| v.to_string())
                 ));
             }
+        }
+
+        // The win condition is data (M4c): exactly one building id is the thing
+        // whose loss ends the match. Zero would make the match unwinnable and
+        // two would make "the enemy HQ" ambiguous.
+        let victory: Vec<&str> = self
+            .buildings
+            .iter()
+            .filter(|b| b.victory)
+            .map(|b| b.id.as_str())
+            .collect();
+        if victory.len() != 1 {
+            return bad(format!(
+                "exactly one building must be the victory target; found {:?}",
+                victory
+            ));
+        }
+
+        // The AI script (M4c). Everything it counts is ticks, and every id it
+        // names has to resolve — a script with a typo would show up as an AI
+        // that quietly never builds anything.
+        let ai = &self.ai;
+        if ai.think_interval_ticks == 0 {
+            return bad("mvp_ai think_interval_ticks must be positive".to_string());
+        }
+        if ai.attack_interval_ticks == 0 {
+            return bad("mvp_ai attack_interval_ticks must be positive".to_string());
+        }
+        if ai.worker_target == 0 {
+            return bad("mvp_ai worker_target must be positive".to_string());
+        }
+        if ai.attack_at_army == 0 {
+            return bad("mvp_ai attack_at_army must be positive".to_string());
+        }
+        if !(ai.barracks_offset.is_finite() && ai.barracks_offset > 0.0) {
+            return bad("mvp_ai barracks_offset must be finite and positive".to_string());
+        }
+        if !(ai.attack_spread.is_finite() && ai.attack_spread >= 0.0) {
+            return bad("mvp_ai attack_spread must be finite and non-negative".to_string());
+        }
+        let Some(barracks) = self.building_index(&ai.barracks) else {
+            return bad(format!(
+                "mvp_ai barracks `{}` is not a building",
+                ai.barracks
+            ));
+        };
+        if self.buildings[barracks].victory {
+            return bad(format!(
+                "mvp_ai barracks `{}` is the victory target, not a placeable barracks",
+                ai.barracks
+            ));
+        }
+        if ai.army.is_empty() {
+            return bad("mvp_ai army build order is empty".to_string());
+        }
+        for item in &ai.army {
+            if item.count == 0 {
+                return bad(format!("mvp_ai army entry `{}` has count 0", item.unit));
+            }
+            let Some(unit) = self.unit_index(&item.unit) else {
+                return bad(format!("mvp_ai army names unknown unit `{}`", item.unit));
+            };
+            if !self.produces(barracks, unit) {
+                return bad(format!(
+                    "mvp_ai army names `{}`, which `{}` cannot produce",
+                    item.unit, ai.barracks
+                ));
+            }
+        }
+        // Checked, in the arithmetic the sim will actually do: the build-order
+        // cursor is taken modulo this sum, and a sum that wraps would silently
+        // re-point the AI at a different unit (F-005).
+        if ai.cycle_len().is_none() {
+            return bad("mvp_ai army counts overflow u32".to_string());
         }
 
         if self.resources.iter().all(|r| r.id != self.economy.currency) {

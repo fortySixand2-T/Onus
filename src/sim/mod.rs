@@ -11,11 +11,13 @@ use bevy::math::Vec2;
 use bevy::time::{Fixed, Time};
 use std::collections::VecDeque;
 
+pub mod ai;
 pub mod combat;
 pub mod content;
 pub mod economy;
 pub mod pathfind;
 pub mod spatial;
+pub use ai::{AiAction, AiCommander, AiCommanders, AiJournal};
 pub use combat::{AttackCooldown, Casualties, Engaging, Health, Target};
 pub use content::Content;
 pub use economy::{

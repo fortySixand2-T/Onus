@@ -68,7 +68,9 @@ pub fn build_app() -> App {
 /// exactly one fixed timestep per step). Nothing may hand-roll this list — that
 /// is how a system like `production` ends up tested but never shipped.
 ///
-/// Order matters: orders are applied (and paid for) first, then production
+/// Order matters: the scripted commanders decide first (so an AI order is
+/// applied on the tick it is taken, exactly like a click that lands before the
+/// tick boundary), then orders are applied (and paid for), then production
 /// advances queues, then gatherers decide where to go, then combat picks its
 /// targets and fires, then everything moves — so a chase order issued this tick
 /// is followed on this tick.
@@ -78,9 +80,12 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
     // has to remember a resource is a caller that will eventually forget one.
     // (Content and the starting Stockpiles are match setup — the caller's.)
     app.init_resource::<Casualties>();
+    app.init_resource::<sim::AiCommanders>();
+    app.init_resource::<sim::AiJournal>();
     app.add_systems(
         schedule,
         (
+            sim::ai::ai_commanders,
             sim::apply_commands,
             sim::economy::production,
             sim::economy::gather,
