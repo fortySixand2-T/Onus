@@ -118,3 +118,4 @@
 - [2026-08-29] Modified: src/sim/combat.rs — a unit on a gather job is excluded from auto-engagement by rule, not by the Worker's offense being 0; Health::from_def saturates
 - [2026-08-29] Modified: tests/m4b_combat.rs — validator-overflow probes (Err not panic, no silent release accept) and an armed-gatherer non-hijack test with a control
 - [2026-08-29] Modified: FINDINGS.md — F-005 extension 2: a check written in the arithmetic it is checking is not a check
+- [2026-08-29] Modified: tests/critic_m4b.rs — M4b critic pass 3: 4 probes (gather-exclusion regression, gatherer still targetable, re-arm on job end, nemesis multiplier cast); 2 fail

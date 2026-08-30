@@ -1097,3 +1097,165 @@ fn casualties_equal_the_units_that_actually_despawned() {
         );
     }
 }
+
+// ---- P28-P31: critic pass 3 — the gather exclusion and the last raw cast ----
+
+use onus::sim::ResourceNode;
+
+/// AC1 says a unit engages the nearest enemy in range. The new gather rule
+/// excludes a unit that is *on a gather job* — but `Order::Gather` is accepted
+/// for any entity, and `input::emit_commands` sends it to the whole selection
+/// (right-clicking a node with a mixed group). A unit whose definition has
+/// `gathers: false` gets a `GatherTarget` it can never act on: `economy::gather`
+/// skips it (`if !def.gathers { continue; }`) *without clearing the component*.
+/// So the marker sticks forever and the soldier is permanently disarmed — it
+/// never acquires a target, never fires, and stands there being killed. The
+/// rule must key on "has a job the economy is actually running", not "carries a
+/// GatherTarget".
+#[test]
+fn a_gather_order_does_not_permanently_disarm_a_non_gathering_soldier() {
+    // Control: no order at all — the soldier engages, as AC1 requires.
+    let mut ctl = sim_app();
+    let a0 = spawn_unit(&mut ctl, "ripper", Faction::A, Vec2::new(0.0, 0.0));
+    let b0 = spawn_unit(&mut ctl, "worker", Faction::B, Vec2::new(30.0, 0.0));
+    let full = hp(&ctl, b0).unwrap();
+    tick(&mut ctl, 120);
+    assert!(
+        !alive(&ctl, b0) || hp(&ctl, b0).unwrap() < full,
+        "control: an idle soldier next to an enemy must fight"
+    );
+    assert!(alive(&ctl, a0));
+
+    // Now the same soldier, handed a Gather order it can never execute.
+    let mut app = sim_app();
+    let soldier = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(0.0, 0.0));
+    let enemy = spawn_unit(&mut app, "worker", Faction::B, Vec2::new(30.0, 0.0));
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::new(0.0, 0.0)), ResourceNode { amount: 500 }))
+        .id();
+    push(
+        &mut app,
+        Order::Gather {
+            units: vec![soldier],
+            node,
+            node_pos: Vec2::new(0.0, 0.0),
+        },
+    );
+    let full = hp(&app, enemy).unwrap();
+    tick(&mut app, 300);
+
+    assert!(
+        !alive(&app, enemy) || hp(&app, enemy).unwrap() < full,
+        "a soldier that cannot gather was permanently disarmed by a Gather order: \
+         300 ticks next to an enemy and it never fired"
+    );
+}
+
+/// The exclusion must remove the gatherer as an *attacker*, never as a
+/// *target*: a worker mid-harvest is still killable (AC1 — death despawns).
+#[test]
+fn a_gathering_unit_is_still_a_valid_target() {
+    let mut app = sim_app();
+    let worker = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, 0.0));
+    let killer = spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(30.0, 0.0));
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::new(0.0, 0.0)), ResourceNode { amount: 500 }))
+        .id();
+    push(
+        &mut app,
+        Order::Gather {
+            units: vec![worker],
+            node,
+            node_pos: Vec2::new(0.0, 0.0),
+        },
+    );
+    tick(&mut app, 200);
+    assert!(
+        !alive(&app, worker),
+        "a gathering worker must still be killable"
+    );
+    assert!(alive(&app, killer));
+    assert_eq!(app.world().resource::<Casualties>().lost(Faction::A), 1);
+}
+
+/// An armed gatherer whose job *ends* re-arms: the exclusion is scoped to the
+/// job, not permanent. Here the node is emptied, so `economy::gather` drops the
+/// job and the unit must go back to engaging.
+#[test]
+fn a_gatherer_re_arms_when_the_job_ends() {
+    let mut c = content();
+    let w = c.unit_index("worker").unwrap();
+    c.units[w].offense = 6;
+    c.units[w].mvp_attack_ticks = 40;
+    c.units[w].mvp_attack_range = 40.0;
+    c.units[w].mvp_carry_capacity = 10;
+    // A harmless enemy, so what this measures is our gatherer re-arming and not
+    // a duel it loses first.
+    let mut dummy = c.units[w].clone();
+    dummy.id = "bystander".to_string();
+    dummy.offense = 0;
+    dummy.mvp_attack_ticks = 0;
+    dummy.mvp_attack_range = 0.0;
+    dummy.gathers = false;
+    c.units.push(dummy);
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(Time::<Fixed>::from_hz(60.0))
+        .insert_resource(c)
+        .init_resource::<CommandQueue>()
+        .init_resource::<RateReport>()
+        .insert_resource(Stockpiles::default());
+    onus::add_sim_systems(&mut app, Update);
+
+    let worker = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, 0.0));
+    let enemy = spawn_unit(&mut app, "bystander", Faction::B, Vec2::new(30.0, 0.0));
+    // A node with nothing in it: the first harvest ends the job on the spot.
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::new(0.0, 0.0)), ResourceNode { amount: 0 }))
+        .id();
+    push(
+        &mut app,
+        Order::Gather {
+            units: vec![worker],
+            node,
+            node_pos: Vec2::new(0.0, 0.0),
+        },
+    );
+    let full = hp(&app, enemy).unwrap();
+    tick(&mut app, 300);
+    assert!(
+        !alive(&app, enemy) || hp(&app, enemy).unwrap() < full,
+        "the gather job ended; the unit must be armed again"
+    );
+}
+
+/// `NemesisBonus::mult_milli` is a **raw saturating cast of an unbounded RON
+/// float** — the last one on the damage path. `validate` only requires
+/// `damage_mult` to be finite and >= 1.0, so `damage_mult: 5000000.0` is
+/// "legal", but `(5e6 * 1000.0).round() as u32` saturates to `u32::MAX` and the
+/// sim quietly applies a 4_294_967.295x multiplier instead. The loader and the
+/// arithmetic disagree about what the data means: either the value must be
+/// rejected, or the documented formula
+/// `floor(base * round(damage_mult * 1000) / 1000)` must hold.
+#[test]
+fn a_nemesis_multiplier_is_rejected_or_applied_as_written() {
+    let big = 5_000_000.0f64;
+    let Ok(c) = load_mutated("huge_mult", "damage_mult: 1.3,", "damage_mult: 5000000.0,") else {
+        return; // rejected at load — also a correct answer.
+    };
+    let (attacker, defender) = (
+        c.unit_index("ripper").unwrap(),
+        c.unit_index("arclight").unwrap(),
+    );
+    let base = c.units[attacker].offense as f64 * c.combat.damage_per_offense as f64;
+    let want = (base * big).floor();
+    let got = damage_per_hit(&c, attacker, defender) as f64;
+    assert_eq!(
+        got, want,
+        "content the loader called legal is applied with a silently truncated \
+         multiplier (wanted {want}, got {got})"
+    );
+}
