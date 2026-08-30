@@ -88,6 +88,9 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
     app.add_systems(
         schedule,
         (
+            // Is this a contested match? Observed *before* the tick is played,
+            // so an HQ lost on the first tick decides like any other (F-010).
+            sim::victory::match_watch,
             // Playing the match — off the moment it is decided, so nothing keeps
             // running that could change the recorded outcome.
             (

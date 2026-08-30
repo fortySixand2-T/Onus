@@ -152,3 +152,6 @@
 - [2026-08-29] Modified: tests/m4c_ai.rs — AC2: building damage/death, the win + termination invariants, the draw, and the measured AI-vs-AI match length
 - [2026-08-29] Modified: FINDINGS.md — F-008 extension (structural claim pairing), F-009 (orders carry their issuer), F-010 (terminating a match is a run condition)
 - [2026-08-29] Created: tests/critic_m4c.rs — M4c adversarial critic probes (win condition, F-008 pair, order issuer, AI determinism, content validation)
+- [2026-08-29] Modified: src/sim/victory.rs — critic fix: `engaged` is observed before the tick is played (match_watch), so an HQ lost on tick 0 decides like any other
+- [2026-08-29] Modified: src/lib.rs — match_watch runs first in the sim chain
+- [2026-08-29] Modified: tests/m4c_ai.rs — first-tick loss decides; the decision is delay-independent; one-sided fixtures never terminate (per tick); a late second HQ still makes the match decidable

@@ -1126,3 +1126,102 @@ fn an_ai_vs_ai_match_replays_identically_from_its_seed() {
     assert!(a.0.is_some(), "the match did not finish");
     assert_eq!(a, run(7), "the same seed produced a different match");
 }
+
+// ---- critic pass 1: when a loss lands must not decide *whether* it counts ---
+
+/// The property the fix establishes: a match is contested from its *starting*
+/// configuration, so an HQ destroyed on the very first tick ends the match like
+/// any other. (Latching "both sides have an HQ" from what was left standing at
+/// the end of a tick made the first tick undecidable.)
+#[test]
+fn an_hq_lost_on_the_first_tick_decides_the_match() {
+    let mut app = sim_app();
+    spawn_building(&mut app, "hq", Faction::A, Vec2::new(-300.0, 0.0));
+    let doomed = spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
+    app.world_mut()
+        .entity_mut(doomed)
+        .insert(Health { current: 1, max: 400 });
+    spawn_unit(&mut app, "arclight", Faction::A, Vec2::new(-60.0, 0.0));
+    step(&mut app);
+    assert!(
+        app.world().get_entity(doomed).is_err(),
+        "fixture: the HQ was supposed to fall on tick 0"
+    );
+    assert_eq!(
+        outcome(&app).map(|o| (o.winner, o.tick)),
+        Some((Some(Faction::A), 0)),
+        "an HQ lost on tick 0 left the match undecidable"
+    );
+}
+
+/// Differential form: the same loss, at every delay, decides the same way — only
+/// the tick it is recorded on moves.
+#[test]
+fn the_decision_does_not_depend_on_which_tick_the_loss_lands_on() {
+    let decide = |delay: u32| {
+        let mut app = sim_app();
+        spawn_building(&mut app, "hq", Faction::A, Vec2::new(-300.0, 0.0));
+        let doomed = spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
+        app.world_mut()
+            .entity_mut(doomed)
+            .insert(Health { current: 1, max: 400 });
+        tick(&mut app, delay);
+        spawn_unit(&mut app, "arclight", Faction::A, Vec2::new(-60.0, 0.0));
+        tick(&mut app, 300);
+        outcome(&app).map(|o| o.winner)
+    };
+    for delay in [0, 1, 2, 7, 50] {
+        assert_eq!(
+            decide(delay),
+            Some(Some(Faction::A)),
+            "the loss stopped counting at delay {delay}"
+        );
+    }
+}
+
+/// The property the fix could break: a one-sided fixture (M1-M4b's whole
+/// suite) must still never terminate — asserted **per tick**, not at the end.
+#[test]
+fn a_one_sided_fixture_never_terminates_on_any_tick() {
+    let mut app = sim_app();
+    spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    let walker = spawn_unit(&mut app, "worker", Faction::A, Vec2::ZERO);
+    push(
+        &mut app,
+        Order::MoveTo {
+            units: vec![walker],
+            dest: Vec2::new(0.0, 10_000.0),
+        }
+        .issued_by(Faction::A),
+    );
+    let mut moved = 0.0f32;
+    for t in 0..600 {
+        let before = app.world().get::<Position>(walker).map(|p| p.0).unwrap();
+        step(&mut app);
+        let after = app.world().get::<Position>(walker).map(|p| p.0).unwrap();
+        moved += after.distance(before);
+        assert!(
+            outcome(&app).is_none(),
+            "tick {t}: a solitary HQ decided a match"
+        );
+        assert!(!app.world().resource::<MatchState>().engaged());
+    }
+    assert!(moved > 0.0, "the sim was frozen, so 'still running' proves nothing");
+}
+
+/// And the other side of that: a second HQ arriving late makes the match
+/// contested from then on — the latch is not a one-shot chance at tick 0.
+#[test]
+fn a_second_hq_arriving_late_makes_the_match_decidable() {
+    let mut app = sim_app();
+    spawn_building(&mut app, "hq", Faction::A, Vec2::new(-300.0, 0.0));
+    tick(&mut app, 100);
+    assert!(!app.world().resource::<MatchState>().engaged());
+    let doomed = spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
+    app.world_mut()
+        .entity_mut(doomed)
+        .insert(Health { current: 1, max: 400 });
+    spawn_unit(&mut app, "arclight", Faction::A, Vec2::new(-60.0, 0.0));
+    tick(&mut app, 300);
+    assert_eq!(outcome(&app).map(|o| o.winner), Some(Some(Faction::A)));
+}
