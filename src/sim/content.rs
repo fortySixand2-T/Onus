@@ -106,10 +106,30 @@ impl NemesisBonus {
 
     /// `damage_mult` as an integer per-mille (`1.3` → `1300`). The one and only
     /// float→int conversion in the damage path; rounding is half-away-from-zero
-    /// (`f32::round`) and happens on a constant from the RON, so every machine
-    /// gets the same integer and per-hit damage is bit-identical everywhere.
+    /// (`f64::round`, computed in `f64` so `1.3 * 1000` is not first mangled by
+    /// `f32`), so every machine gets the same integer and per-hit damage is
+    /// bit-identical everywhere.
+    ///
+    /// The cast can only saturate for a multiplier `Content::validate` refuses
+    /// to load ([`NemesisBonus::milli_exact`] is the check), so for any content
+    /// the loader accepted this *is* `round(damage_mult * 1000)` — the formula
+    /// documented in `units.ron` holds as written rather than approximately.
     pub fn mult_milli(&self) -> u32 {
-        (self.damage_mult * Self::MULT_SCALE as f32).round() as u32
+        self.milli_exact().unwrap_or(u32::MAX)
+    }
+
+    /// `round(damage_mult * 1000)` when it is finite and fits a `u32`, else
+    /// `None`. A multiplier the sim cannot represent is content the loader must
+    /// reject: silently applying `u32::MAX` per-mille (≈4_294_967×) in place of
+    /// the stated number would make the loader and the arithmetic disagree
+    /// about what the data means.
+    pub fn milli_exact(&self) -> Option<u32> {
+        let scaled = (self.damage_mult as f64 * Self::MULT_SCALE as f64).round();
+        if scaled.is_finite() && (0.0..=u32::MAX as f64).contains(&scaled) {
+            Some(scaled as u32)
+        } else {
+            None
+        }
     }
 }
 
@@ -389,6 +409,17 @@ impl Content {
         if !(mult.is_finite() && mult >= 1.0) {
             return bad("nemesis_bonus.damage_mult must be finite and >= 1.0".to_string());
         }
+        // The multiplier is used as an integer per-mille. If `round(mult * 1000)`
+        // does not fit a `u32` the sim cannot apply the number the data states,
+        // and the representability proof below would be computed from a
+        // saturated stand-in rather than from the content. Reject it here.
+        let Some(milli) = self.nemesis_bonus.milli_exact() else {
+            return bad(format!(
+                "nemesis_bonus.damage_mult {mult} cannot be held as an integer \
+                 per-mille (round(mult * {}) must fit u32)",
+                NemesisBonus::MULT_SCALE
+            ));
+        };
 
         // Representability: every product the sim will later derive from this
         // data must fit the `u32` it counts in — at the largest stat the loader
@@ -403,7 +434,7 @@ impl Content {
         // the saturating backstop in `combat::damage_per_hit` can never
         // disagree about what is legal.
         let max_stat = c.max_stat as u64;
-        let milli = self.nemesis_bonus.mult_milli() as u64;
+        let milli = milli as u64;
         let peak_hp = max_stat.checked_mul(c.hp_per_defense as u64);
         let peak_base = max_stat.checked_mul(c.damage_per_offense as u64);
         let peak_damage = peak_base

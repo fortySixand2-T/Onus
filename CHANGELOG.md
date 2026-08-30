@@ -124,3 +124,6 @@
 - [2026-08-29] Modified: tests/m1_selection.rs — fixture: units spawn with their roster definition index (M4b makes stats/def-driven behaviour real)
 - [2026-08-29] Modified: tests/m4b_combat.rs — mixed-selection gather order leaves the soldier armed; the economy releases a marker it cannot service
 - [2026-08-29] Modified: FINDINGS.md — F-008 (a component asserting ownership is maintained by its owner alone)
+- [2026-08-29] Modified: src/sim/content.rs — critic fix: NemesisBonus::milli_exact; a damage_mult whose per-mille does not fit u32 is rejected at load, and the peak-damage bound reads the checked value
+- [2026-08-29] Modified: tests/m4b_combat.rs — a_nemesis_multiplier_is_exact_or_refused (exactness for 1.0/1.15/1.3/2.0, rejection for 5e6)
+- [2026-08-29] Modified: FINDINGS.md — F-005 extension 3 (the last raw cast on the damage path)

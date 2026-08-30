@@ -192,6 +192,23 @@ Validators use `checked_*`; runtime derivations saturate; and a rejection is an
 `cargo test` and `cargo test --release` are green — the release run is
 load-bearing here, since the wrap is invisible in debug. Commit `d861f23`.
 
+**Extension 3 (M4b, third critic pass).** The last raw cast on the damage path:
+`mult_milli` was `(damage_mult * 1000.0).round() as u32` over a float `validate`
+only required to be finite and `>= 1.0`. `damage_mult: 5000000.0` loaded
+happily, saturated to `u32::MAX` per-mille, and the sim applied ≈4_294_967×
+instead of the stated 5_000_000× — and the representability proof above then
+read *through* that saturated stand-in, bounding the content against a number
+the data never contained. Fix: `NemesisBonus::milli_exact` returns
+`round(damage_mult * 1000)` only when it is finite and fits `u32` (computed in
+`f64`, so the shipped `1.3f32` still rounds to exactly 1300), `validate` rejects
+content where it is `None`, and the peak-damage bound is computed from that
+checked value. For anything the loader accepts, `mult_milli` *is* the exact
+per-mille, so the formula documented in `units.ron` holds as written rather
+than approximately. Evidence:
+`tests/critic_m4b.rs::a_nemesis_multiplier_is_rejected_or_applied_as_written`
+and `a_nemesis_multiplier_is_exact_or_refused` (which also pins 1.0/1.15/2.0),
+commit `HEAD`.
+
 ## F-006 — Combat damage is integer arithmetic; the design stats are scaled in data (M4b)
 
 **Wall hit.** The roster's stats are a 1-10 *design* scale (`offense: 4`,

@@ -853,6 +853,51 @@ fn the_economy_clears_a_gather_marker_it_will_not_service() {
     );
 }
 
+/// The nemesis multiplier is applied exactly as written or refused at load —
+/// never silently saturated into a different number. And the values the game
+/// actually ships keep their exact per-mille (the property the fix might break).
+#[test]
+fn a_nemesis_multiplier_is_exact_or_refused() {
+    let load = |name: &str, from: &str, to: &str| {
+        let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target/m4b_mult")
+            .join(name);
+        std::fs::create_dir_all(&dir).unwrap();
+        let units = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
+        assert!(units.contains(from), "anchor `{from}` missing");
+        std::fs::write(dir.join("units.ron"), units.replace(from, to)).unwrap();
+        std::fs::copy(data_dir().join("resources.ron"), dir.join("resources.ron")).unwrap();
+        Content::load_from_dir(&dir)
+    };
+
+    // Too large to hold as an integer per-mille: refused, not truncated.
+    assert!(load("huge", "damage_mult: 1.3,", "damage_mult: 5000000.0,").is_err());
+
+    // Anything the loader accepts is applied exactly as `round(mult * 1000)`.
+    for (name, mult, milli) in [
+        ("shipped", "1.3", 1_300u32),
+        ("m115", "1.15", 1_150),
+        ("m2", "2.0", 2_000),
+        ("m1", "1.0", 1_000),
+    ] {
+        let c = load(name, "damage_mult: 1.3,", &format!("damage_mult: {mult},"))
+            .unwrap_or_else(|e| panic!("{name} should load: {e}"));
+        assert_eq!(c.nemesis_bonus.milli_exact(), Some(milli), "{name}");
+        assert_eq!(c.nemesis_bonus.mult_milli(), milli, "{name}");
+        // ...and the damage the sim deals follows that exact per-mille.
+        let (b, r) = (
+            c.unit_index("bulwark").unwrap(),
+            c.unit_index("ravager").unwrap(),
+        );
+        let base = c.units[b].offense * c.combat.damage_per_offense;
+        assert_eq!(
+            onus::sim::combat::damage_per_hit(&c, b, r),
+            (base as u64 * milli as u64 / 1_000) as u32,
+            "{name}: the documented formula holds as written"
+        );
+    }
+}
+
 /// A cooldown component is sim state, not a wall-clock timer: it counts ticks.
 #[test]
 fn the_attack_cadence_counts_ticks() {
