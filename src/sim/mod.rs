@@ -84,11 +84,16 @@ pub struct MoveTarget(pub Vec2);
 /// **Half of a pair (F-008).** `GatherTarget` and [`GatherPhase`] together are
 /// the economy's claim on a unit; combat reads the target alone ("the economy
 /// owns this one"), while only the economy can release the claim — so a lone
-/// `GatherTarget` disarms a unit forever. The pairing is therefore *structural*
-/// rather than a convention every call site has to remember: `GatherPhase` is a
-/// **required component** of `GatherTarget`, so writing the claim always writes
-/// (at least) a phase, whoever writes it. Releasing is the mirror image, and has
-/// exactly one implementation: [`economy::release_gather_job`].
+/// `GatherTarget` disarms a unit forever. The pairing is enforced at both ends,
+/// because a rule kept by discipline is a rule that gets broken:
+/// - **writing**: `GatherPhase` is a *required component* of `GatherTarget`, so
+///   whoever writes the claim writes at least a phase with it;
+/// - **removing**: [`economy::release_gather_job`] is the single implementation
+///   of dropping it — and, because `#[require]` says nothing about removal and a
+///   bare `remove::<GatherPhase>()` elsewhere would still split the pair, the
+///   economy *sweeps* for split claims every tick in
+///   [`economy::repair_gather_claims`], which runs before the tick's gather and
+///   combat passes. A half-claim therefore cannot survive into any reader.
 #[derive(Component)]
 #[require(GatherPhase)]
 pub struct GatherTarget(pub Entity);

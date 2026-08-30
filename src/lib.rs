@@ -96,6 +96,9 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
             (
                 sim::ai::ai_commanders,
                 sim::apply_commands,
+                // Before anything *reads* a gather claim: no half-claims survive
+                // into this tick's gather or combat pass (F-008).
+                sim::economy::repair_gather_claims,
                 sim::economy::production,
                 sim::economy::gather,
                 sim::combat::combat,

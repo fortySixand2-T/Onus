@@ -155,3 +155,7 @@
 - [2026-08-29] Modified: src/sim/victory.rs — critic fix: `engaged` is observed before the tick is played (match_watch), so an HQ lost on tick 0 decides like any other
 - [2026-08-29] Modified: src/lib.rs — match_watch runs first in the sim chain
 - [2026-08-29] Modified: tests/m4c_ai.rs — first-tick loss decides; the decision is delay-independent; one-sided fixtures never terminate (per tick); a late second HQ still makes the match decidable
+- [2026-08-29] Modified: src/sim/economy.rs — critic fix (F-008 recurrence): repair_gather_claims sweeps any split GatherTarget/GatherPhase before the tick's readers
+- [2026-08-29] Modified: src/lib.rs — repair_gather_claims runs after apply_commands, before production/gather/combat
+- [2026-08-29] Modified: src/sim/mod.rs — the GatherTarget doc now states what the code does at both ends (require on write, single release + per-tick sweep on removal)
+- [2026-08-29] Modified: tests/m4c_ai.rs — a split claim is swept and the unit re-arms; a lone phase is swept; the sweep never confiscates a real job (per tick)

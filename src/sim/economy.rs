@@ -131,6 +131,37 @@ pub struct ProductionQueue {
     pub items: VecDeque<QueuedUnit>,
 }
 
+/// Query filter for a **half** claim: exactly one of the two components.
+pub type SplitClaim = Or<(
+    (With<GatherTarget>, Without<GatherPhase>),
+    (With<GatherPhase>, Without<GatherTarget>),
+)>;
+
+/// Repair the invariant that the economy's claim is a **pair**: any entity
+/// holding exactly one of `GatherTarget` / `GatherPhase` has its claim dropped
+/// entirely, before anything reads it.
+///
+/// `#[require(GatherPhase)]` makes the claim a pair at *insertion*; it says
+/// nothing about removal, so a bare `remove::<GatherPhase>()` leaves a lone
+/// `GatherTarget` — and that is the F-008 shape exactly: [`gather`]'s query needs
+/// both halves, so the economy can never see the unit again, while combat reads
+/// the surviving target as "the economy owns this one" and refuses to let the
+/// unit fight. Forever.
+///
+/// So the release side is structural too, in the only way that covers writers
+/// the economy does not control: the owner **sweeps** for split claims each
+/// tick, before the tick's gather and combat passes run. A claim the economy did
+/// not author is not a job; dropping it returns the unit to its commander.
+pub fn repair_gather_claims(split: Query<Entity, SplitClaim>, mut commands: Commands) {
+    // Stable order: the work is per-entity and order-independent, but the
+    // *commands* it queues are not, and determinism is cheaper than an argument.
+    let mut broken: Vec<Entity> = split.iter().collect();
+    broken.sort_unstable_by_key(|e| e.to_bits());
+    for e in broken {
+        release_gather_job(&mut commands.entity(e));
+    }
+}
+
 /// Release the economy's claim on a unit — **the** implementation, so the pair
 /// is always dropped together (F-008). A lone `GatherTarget` disarms a unit
 /// forever (combat reads it as "the economy owns this one" and the economy's own

@@ -1225,3 +1225,108 @@ fn a_second_hq_arriving_late_makes_the_match_decidable() {
     tick(&mut app, 300);
     assert_eq!(outcome(&app).map(|o| o.winner), Some(Some(Faction::A)));
 }
+
+// ---- critic pass 1: a split gather claim cannot survive a tick --------------
+
+/// Every entity in the world holds either both halves of the economy's claim or
+/// neither. The invariant readers depend on, checked directly.
+fn split_claims(app: &mut App) -> Vec<Entity> {
+    let mut q = app
+        .world_mut()
+        .query::<(Entity, Option<&GatherTarget>, Option<&GatherPhase>)>();
+    q.iter(app.world())
+        .filter(|(_, t, p)| t.is_some() != p.is_some())
+        .map(|(e, _, _)| e)
+        .collect()
+}
+
+/// The property the fix establishes: `#[require]` only covers *insertion*, so a
+/// bare `remove::<GatherPhase>()` used to leave a lone `GatherTarget` — the
+/// economy could never see the unit again (its query needs both halves) and
+/// combat still refused to let it fight. The economy now sweeps split claims
+/// before anything reads them, so the unit is released and **fights again**.
+#[test]
+fn a_split_gather_claim_is_swept_and_the_unit_re_arms() {
+    let mut app = sim_app();
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::new(30.0, 0.0)), ResourceNode { amount: 500 }))
+        .id();
+    // An armed gatherer, so "disarmed forever" is observable: give the worker
+    // teeth via content, not by planting components.
+    let soldier = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    let enemy = spawn_unit(&mut app, "worker", Faction::B, Vec2::new(20.0, 0.0));
+    // Plant a complete claim by hand (the shape F-008 names), then split it.
+    app.world_mut()
+        .entity_mut(soldier)
+        .insert((GatherTarget(node), GatherPhase::ToNode));
+    app.world_mut().entity_mut(soldier).remove::<GatherPhase>();
+    assert_eq!(split_claims(&mut app), vec![soldier], "fixture: not split");
+
+    let full = app.world().get::<Health>(enemy).unwrap().current;
+    step(&mut app);
+    assert!(
+        split_claims(&mut app).is_empty(),
+        "a split claim survived a whole tick"
+    );
+    assert!(
+        app.world().get::<GatherTarget>(soldier).is_none(),
+        "the lone half of the claim was left on the unit"
+    );
+    tick(&mut app, 120);
+    assert!(
+        !app.world().get_entity(enemy).is_ok() || app.world().get::<Health>(enemy).unwrap().current < full,
+        "the unit was still disarmed by a claim the economy could not see"
+    );
+}
+
+/// The mirror image: a lone `GatherPhase` is a phase for a job that no longer
+/// exists, and is swept the same way.
+#[test]
+fn a_lone_gather_phase_is_swept_too() {
+    let mut app = sim_app();
+    let w = spawn_unit(&mut app, "worker", Faction::A, Vec2::ZERO);
+    app.world_mut().entity_mut(w).insert(GatherPhase::ToNode);
+    step(&mut app);
+    assert!(app.world().get::<GatherPhase>(w).is_none());
+    assert!(split_claims(&mut app).is_empty());
+}
+
+/// The property the sweep could break: a **healthy** gatherer's job is never
+/// confiscated, and no tick of a full mine → return → bank loop ever shows a
+/// split claim. Per tick, so a one-tick flicker fails here.
+#[test]
+fn the_sweep_never_confiscates_a_real_gather_job() {
+    let mut app = sim_app();
+    let node_pos = Vec2::new(200.0, 0.0);
+    let node = app
+        .world_mut()
+        .spawn((Position(node_pos), ResourceNode { amount: 1_000 }))
+        .id();
+    spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    let w = spawn_unit(&mut app, "worker", Faction::A, Vec2::ZERO);
+    push(
+        &mut app,
+        Order::Gather {
+            units: vec![w],
+            node,
+            node_pos,
+        }
+        .issued_by(Faction::A),
+    );
+    for t in 0..1_200 {
+        step(&mut app);
+        assert!(
+            split_claims(&mut app).is_empty(),
+            "tick {t}: the claim was split mid-loop"
+        );
+        assert!(
+            app.world().get::<GatherTarget>(w).is_some(),
+            "tick {t}: a real gatherer's job was confiscated"
+        );
+    }
+    assert!(
+        alloy(&app, Faction::A) > 0,
+        "the worker kept its job but never banked: the loop is dead"
+    );
+}
