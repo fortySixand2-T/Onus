@@ -163,3 +163,4 @@
 - [2026-08-29] Modified: tests/m4a_economy.rs — the input tests read SignedOrder::issuer()/order()
 - [2026-08-29] Modified: tests/m4c_ai.rs — cross-faction unsigned orders refused (both orderings); signed orders still command their own; the queue only holds attributed orders; every legitimate order still applies across a 6000-tick AI match; deleted the evadable source text scan
 - [2026-08-29] Modified: FINDINGS.md — F-009 extension: "self-signed" made a checked property, and why the text-scan test was deleted
+- [2026-08-30] Modified: tests/critic_m4c.rs — M4c critic pass 2: 12 probes on the engaged gate, the F-008 sweep and order attribution; 2 fail (a half claim still reaches `ai_commanders`, which runs before the sweep)

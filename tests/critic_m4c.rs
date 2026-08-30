@@ -760,3 +760,449 @@ fn changing_the_ron_changes_the_ai() {
     assert!((300..600).contains(&fast), "shipped script: barracks at {fast}");
     assert!(late >= 1_200, "the RON's barracks_at_tick was ignored: {late}");
 }
+
+// ============================================================================
+// Critic pass 2 — the three fixes themselves
+// ============================================================================
+
+/// **F-008, second pass.** The fix's own documentation states the property
+/// absolutely: the sweep "runs before the tick's gather and combat passes", so
+/// "a half-claim therefore cannot survive into any reader". `ai_commanders` is a
+/// reader of `GatherTarget` — it snapshots `on_a_job: job.is_some()` and skips
+/// any unit that looks employed — and it runs **first** in the sim chain,
+/// *before* `repair_gather_claims`. So a lone `GatherTarget` still survives into
+/// a reader, and that reader still believes the lie: the economy cannot see the
+/// worker (its query needs both halves) and the commander will not re-task it,
+/// which is F-008's shape one reader further out.
+///
+/// Two identical idle workers; one carries a half claim. Both are idle as far as
+/// the economy is concerned, so the commander must task both on its first
+/// decision.
+#[test]
+fn a_split_gather_claim_is_still_read_as_a_job_by_the_ai() {
+    let mut app = sim_app_with_alloy(0);
+    spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::new(200.0, 0.0)), ResourceNode { amount: 10_000 }))
+        .id();
+    let clean = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, 10.0));
+    let split = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, 20.0));
+    // The F-008 shape: the pair written, then one half removed.
+    app.world_mut()
+        .entity_mut(split)
+        .insert((GatherTarget(node), GatherPhase::ToNode));
+    app.world_mut().entity_mut(split).remove::<GatherPhase>();
+    app.insert_resource(AiCommanders::new(1, &[Faction::A]));
+
+    step(&mut app);
+
+    let tasked: Vec<Entity> = app
+        .world()
+        .resource::<AiJournal>()
+        .0
+        .iter()
+        .filter_map(|(_, _, a)| match a {
+            onus::sim::AiAction::Gather { unit, .. } => Some(*unit),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        tasked.contains(&clean),
+        "fixture: an idle worker was never tasked at all"
+    );
+    assert!(
+        tasked.contains(&split),
+        "a half claim survived into a reader: the commander read a lone \
+         `GatherTarget` as a job and left the worker idle (tasked={tasked:?})"
+    );
+}
+
+/// The same defect measured in its consequence rather than in the journal: the
+/// worker with the half claim must start mining on the same decision as its
+/// twin, not a whole `think_interval_ticks` later.
+#[test]
+fn a_worker_with_a_half_claim_is_not_left_idle_for_a_whole_think_interval() {
+    let mut app = sim_app_with_alloy(0);
+    spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::new(200.0, 0.0)), ResourceNode { amount: 10_000 }))
+        .id();
+    let split = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, 20.0));
+    app.world_mut()
+        .entity_mut(split)
+        .insert((GatherTarget(node), GatherPhase::ToNode));
+    app.world_mut().entity_mut(split).remove::<GatherPhase>();
+    app.insert_resource(AiCommanders::new(1, &[Faction::A]));
+
+    step(&mut app);
+    assert!(
+        app.world().get::<GatherTarget>(split).is_some()
+            && app.world().get::<GatherPhase>(split).is_some(),
+        "the worker was still unemployed after the tick that was supposed to \
+         both sweep the half claim and re-task it"
+    );
+}
+
+/// The sweep queues `remove` commands against entities it saw in its own query.
+/// If those commands are not flushed before `combat` despawns one of them, the
+/// deferred removal lands on a despawned entity — which is an error (panic) in
+/// Bevy 0.19, not a no-op. A doomed unit carrying a half claim exercises exactly
+/// that ordering.
+#[test]
+fn sweeping_a_half_claim_off_a_unit_that_dies_this_tick_is_not_fatal() {
+    let mut app = sim_app();
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::new(500.0, 0.0)), ResourceNode { amount: 100 }))
+        .id();
+    let doomed = spawn_unit(&mut app, "worker", Faction::A, Vec2::ZERO);
+    app.world_mut()
+        .entity_mut(doomed)
+        .insert(Health { current: 1, max: 40 });
+    app.world_mut()
+        .entity_mut(doomed)
+        .insert((GatherTarget(node), GatherPhase::ToNode));
+    app.world_mut().entity_mut(doomed).remove::<GatherPhase>();
+    spawn_unit(&mut app, "arclight", Faction::B, Vec2::new(30.0, 0.0));
+
+    tick(&mut app, 10);
+    assert!(
+        app.world().get_entity(doomed).is_err(),
+        "fixture: the doomed unit never died"
+    );
+}
+
+// ---- the `engaged` gate ----------------------------------------------------
+
+/// Both HQs razed on the same tick is a **draw**, not a race — and the gate
+/// moving to the start of the tick must not turn the draw into a winner.
+#[test]
+fn both_hqs_falling_on_the_same_tick_is_a_draw() {
+    let mut app = sim_app();
+    let a_hq = spawn_building(&mut app, "hq", Faction::A, Vec2::new(-1_000.0, 0.0));
+    let b_hq = spawn_building(&mut app, "hq", Faction::B, Vec2::new(1_000.0, 0.0));
+    for e in [a_hq, b_hq] {
+        app.world_mut()
+            .entity_mut(e)
+            .insert(Health { current: 1, max: 400 });
+    }
+    spawn_unit(&mut app, "arclight", Faction::B, Vec2::new(-940.0, 0.0));
+    spawn_unit(&mut app, "arclight", Faction::A, Vec2::new(940.0, 0.0));
+
+    tick(&mut app, 60);
+    assert!(
+        app.world().get_entity(a_hq).is_err() && app.world().get_entity(b_hq).is_err(),
+        "fixture: both HQs were supposed to fall"
+    );
+    let o = outcome(&app).expect("simultaneous loss left the match undecided");
+    assert_eq!(o.winner, None, "a simultaneous loss picked a winner");
+}
+
+/// The property the gate exists to protect, in its harshest form: a fixture with
+/// only one side on the board never terminates — **even when that side's own
+/// only HQ is destroyed**. (An M1-M4b fixture is not a match.)
+#[test]
+fn a_one_sided_fixture_is_never_decided_even_when_its_lone_hq_dies() {
+    let mut app = sim_app();
+    let lone = spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    app.world_mut()
+        .entity_mut(lone)
+        .insert(Health { current: 1, max: 400 });
+    spawn_unit(&mut app, "arclight", Faction::B, Vec2::new(60.0, 0.0));
+    for t in 0..300 {
+        step(&mut app);
+        assert!(
+            outcome(&app).is_none(),
+            "tick {t}: a match with only one HQ on the board was decided"
+        );
+    }
+    assert!(app.world().get_entity(lone).is_err(), "fixture: HQ survived");
+}
+
+/// Nothing the sim owns may move after the outcome is recorded — positions,
+/// stockpiles, casualties, the AI's journal, a production queue mid-build, and
+/// the tick counter itself. Checked over a live AI commander with work pending,
+/// so "frozen" is not an artefact of an empty world.
+#[test]
+fn nothing_the_sim_owns_moves_after_the_match_is_recorded() {
+    let mut app = sim_app_with_alloy(content().economy.starting_alloy);
+    spawn_building(&mut app, "hq", Faction::A, Vec2::new(-300.0, 0.0));
+    let doomed = spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
+    app.world_mut()
+        .entity_mut(doomed)
+        .insert(Health { current: 1, max: 400 });
+    app.world_mut().spawn((
+        Position(Vec2::new(-200.0, 0.0)),
+        ResourceNode { amount: 100_000 },
+    ));
+    for i in 0..3 {
+        spawn_unit(
+            &mut app,
+            "worker",
+            Faction::A,
+            Vec2::new(-300.0, 20.0 * i as f32),
+        );
+    }
+    spawn_unit(&mut app, "arclight", Faction::A, Vec2::new(-60.0, 0.0));
+    app.insert_resource(AiCommanders::new(9, &[Faction::A]));
+
+    let mut decided_at = None;
+    for t in 0..600u32 {
+        step(&mut app);
+        if outcome(&app).is_some() {
+            decided_at = Some(t);
+            break;
+        }
+    }
+    decided_at.expect("the match never terminated");
+
+    let snapshot = |app: &mut App| {
+        let h = state_hash(app);
+        let queued: usize = {
+            let mut q = app.world_mut().query::<&ProductionQueue>();
+            q.iter(app.world()).map(|p| p.items.len()).sum()
+        };
+        let s = *app.world().resource::<MatchState>();
+        let j = app.world().resource::<AiJournal>().0.len();
+        (h, queued, s, j)
+    };
+    let before = snapshot(&mut app);
+    tick(&mut app, 300);
+    let after = snapshot(&mut app);
+    assert_eq!(before.0, after.0, "world state changed after termination");
+    assert_eq!(before.1, after.1, "a production queue advanced after termination");
+    assert_eq!(before.2, after.2, "MatchState changed after termination");
+    assert_eq!(before.3, after.3, "the AI kept issuing orders after termination");
+}
+
+// ---- order attribution -----------------------------------------------------
+
+/// Re-signing cannot launder ownership, however deep the stack and whichever
+/// signature is outermost: the order is `Void` and is dropped whole.
+#[test]
+fn a_re_signed_order_is_void_and_cannot_be_laundered() {
+    let mut app = sim_app();
+    let mine = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    let theirs = spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(500.0, 0.0));
+    let mk = |units: Vec<Entity>| Order::MoveTo {
+        units,
+        dest: Vec2::new(900.0, 900.0),
+    };
+    push(&mut app, mk(vec![mine]).issued_by(Faction::A).issued_by(Faction::B));
+    push(&mut app, mk(vec![theirs]).issued_by(Faction::B).issued_by(Faction::A));
+    push(
+        &mut app,
+        mk(vec![mine, theirs])
+            .issued_by(Faction::A)
+            .issued_by(Faction::B)
+            .issued_by(Faction::A),
+    );
+    step(&mut app);
+    for (who, e) in [("A", mine), ("B", theirs)] {
+        assert!(
+            app.world().get::<MoveTarget>(e).is_none(),
+            "{who}'s unit obeyed a void (re-signed) order"
+        );
+    }
+}
+
+/// "Refused whole" must be whole for every entity-list variant, every list
+/// ordering, and regardless of where the foreign entity sits (first, last, or
+/// between unowned entities) — and regardless of which faction was spawned
+/// first, so the refusal cannot be an artefact of entity-index order.
+#[test]
+fn an_unsigned_two_faction_order_is_refused_for_every_ordering() {
+    for a_first in [true, false] {
+        let mut app = sim_app();
+        let (a_unit, b_unit) = if a_first {
+            let a = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+            let b = spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(600.0, 0.0));
+            (a, b)
+        } else {
+            let b = spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(600.0, 0.0));
+            let a = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+            (a, b)
+        };
+        let node_pos = Vec2::new(-400.0, 0.0);
+        let node = app
+            .world_mut()
+            .spawn((Position(node_pos), ResourceNode { amount: 500 }))
+            .id();
+        let bare = app.world_mut().spawn(Position(Vec2::ZERO)).id();
+        let lists = [
+            vec![a_unit, b_unit],
+            vec![b_unit, a_unit],
+            vec![bare, a_unit, node, b_unit],
+            vec![b_unit, node, a_unit, bare],
+        ];
+        for units in lists {
+            push(
+                &mut app,
+                Order::MoveTo {
+                    units: units.clone(),
+                    dest: Vec2::new(900.0, 900.0),
+                },
+            );
+            push(
+                &mut app,
+                Order::Gather {
+                    units,
+                    node,
+                    node_pos,
+                },
+            );
+            step(&mut app);
+            for (who, e) in [("A", a_unit), ("B", b_unit)] {
+                assert!(
+                    app.world().get::<MoveTarget>(e).is_none(),
+                    "a_first={a_first}: {who}'s unit was commanded by a two-faction order"
+                );
+                assert!(
+                    app.world().get::<GatherTarget>(e).is_none(),
+                    "a_first={a_first}: {who}'s unit was tasked by a two-faction order"
+                );
+            }
+        }
+    }
+}
+
+/// An unsigned order that names only entities nobody owns has no faction to
+/// derive, and must not become a licence over anything else: it commands the
+/// unowned entities it named and nothing more.
+#[test]
+fn an_unsigned_order_over_unowned_entities_commands_nothing_owned() {
+    let mut app = sim_app();
+    let a_unit = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    let b_unit = spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(600.0, 0.0));
+    let bare = app.world_mut().spawn(Position(Vec2::ZERO)).id();
+    push(
+        &mut app,
+        Order::MoveTo {
+            units: vec![bare],
+            dest: Vec2::new(50.0, 50.0),
+        },
+    );
+    step(&mut app);
+    assert!(app.world().get::<MoveTarget>(a_unit).is_none());
+    assert!(app.world().get::<MoveTarget>(b_unit).is_none());
+    assert!(
+        app.world().get::<MoveTarget>(bare).is_some(),
+        "the unowned entity the order actually named was not commanded"
+    );
+}
+
+/// An order whose named entities have all died is inert, signed or not, and
+/// leaves the derivation with nothing to disagree about.
+#[test]
+fn an_order_whose_named_entities_died_is_inert() {
+    let mut app = sim_app();
+    let a_unit = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    let ghost_a = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(-600.0, 0.0));
+    let ghost_b = spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(600.0, 0.0));
+    app.world_mut().entity_mut(ghost_a).despawn();
+    app.world_mut().entity_mut(ghost_b).despawn();
+    push(
+        &mut app,
+        Order::MoveTo {
+            units: vec![ghost_a, ghost_b],
+            dest: Vec2::new(9.0, 9.0),
+        },
+    );
+    push(
+        &mut app,
+        Order::MoveTo {
+            units: vec![ghost_b],
+            dest: Vec2::new(9.0, 9.0),
+        }
+        .issued_by(Faction::A),
+    );
+    step(&mut app);
+    assert!(
+        app.world().get::<MoveTarget>(a_unit).is_none(),
+        "an order naming only dead entities reached a live one"
+    );
+}
+
+/// A signed order may name the enemy, but it commands only the signer — checked
+/// on both entity-list variants, so `Gather` is not the looser of the two.
+#[test]
+fn a_signed_order_commands_only_the_signers_units_in_both_variants() {
+    let mut app = sim_app();
+    let mine = spawn_unit(&mut app, "worker", Faction::A, Vec2::ZERO);
+    let theirs = spawn_unit(&mut app, "worker", Faction::B, Vec2::new(600.0, 0.0));
+    let node_pos = Vec2::new(-200.0, 0.0);
+    let node = app
+        .world_mut()
+        .spawn((Position(node_pos), ResourceNode { amount: 500 }))
+        .id();
+    push(
+        &mut app,
+        Order::Gather {
+            units: vec![theirs, mine],
+            node,
+            node_pos,
+        }
+        .issued_by(Faction::A),
+    );
+    step(&mut app);
+    assert!(
+        app.world().get::<GatherTarget>(mine).is_some(),
+        "the signer's own worker was not tasked"
+    );
+    assert!(
+        app.world().get::<GatherTarget>(theirs).is_none(),
+        "a signed order tasked the enemy's worker"
+    );
+    assert!(
+        app.world().get::<MoveTarget>(theirs).is_none(),
+        "a signed order moved the enemy's worker"
+    );
+}
+
+/// No order may spend or train on another faction's account. `Train` is the
+/// sharp one: it charges the *building's* faction, so a signature that does not
+/// match must cost the target nothing at all.
+#[test]
+fn no_order_spends_or_trains_on_another_factions_account() {
+    let mut app = sim_app_with_alloy(10_000);
+    let a_hq = spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    let b_hq = spawn_building(&mut app, "hq", Faction::B, Vec2::new(2_000.0, 0.0));
+    let worker = content().unit_index("worker").unwrap();
+    let before = (alloy(&app, Faction::A), alloy(&app, Faction::B));
+    push(
+        &mut app,
+        Order::Train {
+            building: b_hq,
+            unit: worker,
+        }
+        .issued_by(Faction::A),
+    );
+    push(
+        &mut app,
+        Order::Place {
+            faction: Faction::B,
+            building: content().building_index("foundry").unwrap(),
+            pos: Vec2::new(2_100.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
+    step(&mut app);
+    assert_eq!(
+        (alloy(&app, Faction::A), alloy(&app, Faction::B)),
+        before,
+        "a cross-faction order moved Alloy"
+    );
+    let queued = app
+        .world()
+        .get::<ProductionQueue>(b_hq)
+        .map(|q| q.items.len())
+        .unwrap_or(0);
+    assert_eq!(queued, 0, "A filled B's production queue");
+    let _ = a_hq;
+}
+
+fn alloy(app: &App, f: Faction) -> u32 {
+    app.world().resource::<Stockpiles>().alloy(f)
+}
