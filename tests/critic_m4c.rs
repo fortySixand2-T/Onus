@@ -1206,3 +1206,563 @@ fn no_order_spends_or_trains_on_another_factions_account() {
 fn alloy(app: &App, f: Faction) -> u32 {
     app.world().resource::<Stockpiles>().alloy(f)
 }
+
+// ============================================================================
+// M4c critic, pass 3 — the reordered sweep (`repair_gather_claims` first)
+// ============================================================================
+
+/// Every entity currently holding exactly one half of the claim.
+fn half_claims(app: &mut App) -> Vec<Entity> {
+    let mut q = app
+        .world_mut()
+        .query_filtered::<Entity, onus::sim::economy::SplitClaim>();
+    let mut v: Vec<Entity> = q.iter(app.world()).collect();
+    v.sort_unstable_by_key(|e| e.to_bits());
+    v
+}
+
+fn split_the_claim(app: &mut App, e: Entity) {
+    app.world_mut().entity_mut(e).remove::<GatherPhase>();
+}
+
+/// A one-sided AI fixture with a deposit, an HQ and workers.
+fn ai_solo(seed: u64) -> (App, Entity) {
+    let mut app = sim_app_with_alloy(content().economy.starting_alloy);
+    spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    let node = app
+        .world_mut()
+        .spawn((
+            Position(Vec2::new(200.0, 0.0)),
+            ResourceNode { amount: 100_000 },
+        ))
+        .id();
+    for i in 0..3 {
+        spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, 20.0 * i as f32));
+    }
+    app.insert_resource(AiCommanders::new(seed, &[Faction::A]));
+    (app, node)
+}
+
+/// **The sweep's guarantee must not depend on *when* in the think interval the
+/// claim breaks.** F-008's third recurrence was a phase relationship: a half
+/// claim that landed just before the commander's think tick was read as a live
+/// job. Split at every offset within two whole think intervals; on the very next
+/// tick no half claim may exist anywhere, and the worker must be back at work
+/// within one think interval.
+#[test]
+fn no_reader_sees_a_half_claim_at_any_offset_in_the_think_interval() {
+    let interval = content().ai.think_interval_ticks;
+    for offset in 0..(2 * interval) {
+        let (mut app, _node) = ai_solo(7);
+        tick(&mut app, offset);
+        // Pick a worker the AI has already tasked, and break its claim.
+        let victim = {
+            let mut q = app.world_mut().query_filtered::<Entity, With<GatherTarget>>();
+            let mut v: Vec<Entity> = q.iter(app.world()).collect();
+            v.sort_unstable_by_key(|e| e.to_bits());
+            v.first().copied()
+        };
+        let Some(victim) = victim else { continue };
+        split_the_claim(&mut app, victim);
+        step(&mut app);
+        assert!(
+            half_claims(&mut app).is_empty(),
+            "offset {offset}: a half claim survived the tick after the split"
+        );
+        // And the worker is not stranded: within one more think interval it is
+        // either re-tasked or given something to do.
+        let mut employed = false;
+        for _ in 0..(interval + 2) {
+            if app.world().get::<GatherTarget>(victim).is_some() {
+                employed = true;
+                break;
+            }
+            step(&mut app);
+            assert!(
+                half_claims(&mut app).is_empty(),
+                "offset {offset}: a half claim appeared while re-employing"
+            );
+        }
+        assert!(
+            employed,
+            "offset {offset}: the worker was left idle for longer than a think interval"
+        );
+    }
+}
+
+/// **A half claim on something that is not a gatherer is still a half claim.**
+/// The sweep is filtered on the components alone, so a lone `GatherTarget`
+/// parked on a building, a resource node or a soldier must be gone before any
+/// reader runs — and must not panic anything on the way.
+#[test]
+fn a_half_claim_on_a_building_node_or_soldier_is_swept() {
+    let mut app = sim_app();
+    let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::new(200.0, 0.0)), ResourceNode { amount: 500 }))
+        .id();
+    let soldier = spawn_unit(&mut app, "bulwark", Faction::A, Vec2::new(10.0, 0.0));
+    for e in [hq, node, soldier] {
+        app.world_mut()
+            .entity_mut(e)
+            .insert((GatherTarget(node), GatherPhase::ToNode));
+        app.world_mut().entity_mut(e).remove::<GatherPhase>();
+    }
+    // And the mirror shape: a lone phase.
+    let lone_phase = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, 40.0));
+    app.world_mut()
+        .entity_mut(lone_phase)
+        .insert((GatherTarget(node), GatherPhase::ToNode));
+    app.world_mut().entity_mut(lone_phase).remove::<GatherTarget>();
+
+    step(&mut app);
+    assert!(
+        half_claims(&mut app).is_empty(),
+        "a half claim on a non-gatherer survived a tick"
+    );
+    for e in [hq, node, soldier, lone_phase] {
+        assert!(
+            app.world().get::<GatherTarget>(e).is_none() && app.world().get::<GatherPhase>(e).is_none(),
+            "{e:?}: the claim was not dropped as a pair"
+        );
+    }
+}
+
+/// **A half claim must not disarm a soldier for even one tick.** Combat reads
+/// `GatherTarget` as "the economy owns this unit"; the sweep runs ahead of
+/// combat, so a soldier carrying a lone target at the tick boundary must still
+/// fire on that very tick.
+#[test]
+fn a_half_claim_does_not_cost_a_soldier_a_single_tick_of_fire() {
+    let mut app = sim_app();
+    spawn_building(&mut app, "hq", Faction::A, Vec2::new(-400.0, 0.0));
+    spawn_building(&mut app, "hq", Faction::B, Vec2::new(400.0, 0.0));
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::new(0.0, 300.0)), ResourceNode { amount: 10 }))
+        .id();
+    let atk = spawn_unit(&mut app, "bulwark", Faction::A, Vec2::new(0.0, 0.0));
+    let def = spawn_unit(&mut app, "bulwark", Faction::B, Vec2::new(8.0, 0.0));
+    app.world_mut()
+        .entity_mut(atk)
+        .insert((GatherTarget(node), GatherPhase::ToNode));
+    app.world_mut().entity_mut(atk).remove::<GatherPhase>();
+    let before = hp(&app, def).unwrap();
+
+    step(&mut app);
+
+    assert!(
+        half_claims(&mut app).is_empty(),
+        "the half claim survived the tick"
+    );
+    assert!(
+        hp(&app, def).unwrap() < before,
+        "a lone `GatherTarget` disarmed a soldier for a tick: enemy hp {before} unchanged"
+    );
+}
+
+/// **Alloy is never destroyed by the sweep.** A claim split while the worker is
+/// holding a load must keep the load (it is "in flight"), and banked + carried +
+/// still-in-the-ground must equal the starting total on *every* tick.
+#[test]
+fn splitting_a_claim_conserves_alloy_every_tick() {
+    use onus::sim::economy::Carrying;
+    let mut app = sim_app();
+    let node_pos = Vec2::new(120.0, 0.0);
+    let node = app
+        .world_mut()
+        .spawn((Position(node_pos), ResourceNode { amount: 2_000 }))
+        .id();
+    spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    let w = spawn_unit(&mut app, "worker", Faction::A, Vec2::ZERO);
+    push(
+        &mut app,
+        Order::Gather {
+            units: vec![w],
+            node,
+            node_pos,
+        }
+        .issued_by(Faction::A),
+    );
+    let total = 2_000u32;
+    for t in 0..900u32 {
+        // Break the claim once per round trip, so the cycle still completes.
+        if t % 120 == 3 && app.world().get::<GatherPhase>(w).is_some() {
+            split_the_claim(&mut app, w);
+        }
+        let carried_before = app.world().get::<Carrying>(w).map(|c| c.0).unwrap_or(0);
+        let banked_before = alloy(&app, Faction::A);
+        step(&mut app);
+        let carried = app.world().get::<Carrying>(w).map(|c| c.0).unwrap_or(0);
+        let banked = alloy(&app, Faction::A);
+        assert!(
+            carried >= carried_before || banked - banked_before == carried_before - carried,
+            "tick {t}: a carried load vanished without being banked \
+             ({carried_before} -> {carried}, banked {banked_before} -> {banked})"
+        );
+        let in_ground = app
+            .world()
+            .get::<ResourceNode>(node)
+            .map(|n| n.amount)
+            .unwrap_or(0);
+        assert_eq!(
+            banked + carried + in_ground,
+            total,
+            "tick {t}: Alloy was created or destroyed (banked {banked}, carried {carried}, ground {in_ground})"
+        );
+        assert!(
+            half_claims(&mut app).is_empty(),
+            "tick {t}: a half claim survived into the readers"
+        );
+        // Re-task if the sweep confiscated: a split claim is not the economy's.
+        if app.world().get::<GatherTarget>(w).is_none() {
+            push(
+                &mut app,
+                Order::Gather {
+                    units: vec![w],
+                    node,
+                    node_pos,
+                }
+                .issued_by(Faction::A),
+            );
+        }
+    }
+    assert!(alloy(&app, Faction::A) > 0, "nothing was ever banked");
+}
+
+/// **The sweep must be inert in a clean match.** No system in `src/` splits a
+/// claim, so across a whole AI-vs-AI match the sweep's query must never match:
+/// that is what makes moving it to the head of the chain a no-op for every other
+/// system, rather than a behaviour change hidden inside a fix.
+#[test]
+fn the_sweep_never_fires_in_a_clean_ai_match() {
+    for seed in [2u64, 13, 1234] {
+        let mut app = ai_vs_ai(seed);
+        for t in 0..3_000u32 {
+            step(&mut app);
+            let broken = half_claims(&mut app);
+            assert!(
+                broken.is_empty(),
+                "seed {seed} tick {t}: the sim itself produced a half claim {broken:?}"
+            );
+            if outcome(&app).is_some() {
+                break;
+            }
+        }
+    }
+}
+
+/// **The doc is a claim about the code, so check it.** `repair_gather_claims`
+/// documents that the readers of the gather claim are exactly three
+/// (`ai_commanders`, `gather`, `combat`), all ordered after it. A fourth reader
+/// anywhere in `src/` — or the same three moving — silently voids the guarantee.
+#[test]
+fn the_only_readers_of_the_gather_claim_are_the_three_the_doc_names() {
+    use std::fs;
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let allowed = ["sim/economy.rs", "sim/ai.rs", "sim/combat.rs", "sim/mod.rs"];
+    let mut offenders: Vec<String> = Vec::new();
+    let mut stack = vec![src.clone()];
+    while let Some(dir) = stack.pop() {
+        for entry in fs::read_dir(&dir).expect("read src") {
+            let p = entry.expect("entry").path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            if p.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let rel = p
+                .strip_prefix(&src)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            let text = fs::read_to_string(&p).expect("read");
+            for (i, line) in text.lines().enumerate() {
+                let code = line.trim_start();
+                if code.starts_with("//") {
+                    continue;
+                }
+                let reads = code.contains("&GatherTarget")
+                    || code.contains("&GatherPhase")
+                    || code.contains("With<GatherTarget>")
+                    || code.contains("With<GatherPhase>");
+                if reads && !allowed.contains(&rel.as_str()) {
+                    offenders.push(format!("{rel}:{}: {}", i + 1, code));
+                }
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "a reader of the gather claim lives outside the three the doc names \
+         (and outside the sweep's protection): {offenders:#?}"
+    );
+}
+
+/// **Training still charges exactly once with the sweep at the head of the
+/// chain.** Reordering systems is exactly how a charge gets applied twice or
+/// zero times; assert the Alloy trace per tick, not just the end state.
+#[test]
+fn training_charges_exactly_once_with_the_sweep_first() {
+    let cost = {
+        let c = content();
+        c.units[c.unit_index("worker").unwrap()].mvp_alloy_cost
+    };
+    let mut app = sim_app_with_alloy(1_000);
+    let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    push(
+        &mut app,
+        Order::Train {
+            building: hq,
+            unit: content().unit_index("worker").unwrap(),
+        }
+        .issued_by(Faction::A),
+    );
+    let mut drops = 0u32;
+    let mut prev = alloy(&app, Faction::A);
+    for _ in 0..600 {
+        step(&mut app);
+        let now = alloy(&app, Faction::A);
+        if now < prev {
+            drops += 1;
+            assert_eq!(prev - now, cost, "a charge that was not the unit's cost");
+        }
+        assert!(now <= prev, "Alloy appeared from nowhere");
+        prev = now;
+    }
+    assert_eq!(drops, 1, "the unit was charged {drops} times, not once");
+}
+
+/// **The ≤8 minute target, over a wider seed sweep than the suite's.** A
+/// scheduling change that starved the economy would show up here first.
+#[test]
+fn every_seed_decides_inside_eight_minutes_on_a_dead_hq() {
+    const BUDGET: u32 = 8 * 60 * 60;
+    let victory_def = content().building_index("hq").unwrap();
+    for seed in [1u64, 5, 7, 9, 17, 42, 99, 256, 777, 4_242, 31_337, 65_535] {
+        let mut app = ai_vs_ai(seed);
+        let mut decided = None;
+        for _ in 0..BUDGET {
+            step(&mut app);
+            if let Some(o) = outcome(&app) {
+                decided = Some(o);
+                break;
+            }
+        }
+        let o = decided.unwrap_or_else(|| panic!("seed {seed}: undecided in {BUDGET} ticks"));
+        let winner = o.winner.expect("a symmetric match ended in a draw");
+        let standing: Vec<Faction> = {
+            let mut q = app.world_mut().query::<(&Building, &Faction)>();
+            q.iter(app.world())
+                .filter(|(b, _)| b.def == victory_def)
+                .map(|(_, f)| *f)
+                .collect()
+        };
+        assert_eq!(standing, vec![winner], "seed {seed}: the win was not earned");
+        assert!(o.tick <= BUDGET, "seed {seed}: decided at tick {}", o.tick);
+    }
+}
+
+/// **Determinism, per tick, over a long match, with the sweep in its new slot.**
+/// Same seed: identical state hash on every tick. Different seed: divergence.
+#[test]
+fn the_reordered_chain_is_still_deterministic_tick_for_tick() {
+    let mut a = ai_vs_ai(21);
+    let mut b = ai_vs_ai(21);
+    let mut c = ai_vs_ai(22);
+    let mut diverged = false;
+    for t in 0..2_000u32 {
+        step(&mut a);
+        step(&mut b);
+        step(&mut c);
+        assert_eq!(
+            state_hash(&mut a),
+            state_hash(&mut b),
+            "tick {t}: the same seed produced two different worlds"
+        );
+        if state_hash(&mut a) != state_hash(&mut c) {
+            diverged = true;
+        }
+        if outcome(&a).is_some() && outcome(&b).is_some() {
+            break;
+        }
+    }
+    assert!(diverged, "two different seeds played an identical match");
+}
+
+/// **A claim split on the tick its holder dies.** The sweep now runs before
+/// combat, so it queues a removal against a unit that is despawned later in the
+/// same tick — the classic use-after-despawn shape.
+#[test]
+fn a_half_claim_on_a_unit_that_dies_this_tick_is_not_fatal() {
+    let mut app = sim_app();
+    spawn_building(&mut app, "hq", Faction::A, Vec2::new(-400.0, 0.0));
+    spawn_building(&mut app, "hq", Faction::B, Vec2::new(400.0, 0.0));
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::new(0.0, 400.0)), ResourceNode { amount: 10 }))
+        .id();
+    let victim = spawn_unit(&mut app, "worker", Faction::A, Vec2::ZERO);
+    for i in 0..6 {
+        spawn_unit(&mut app, "ravager", Faction::B, Vec2::new(6.0, i as f32));
+    }
+    app.world_mut()
+        .entity_mut(victim)
+        .insert((GatherTarget(node), GatherPhase::ToNode));
+    app.world_mut().entity_mut(victim).remove::<GatherPhase>();
+    // Also re-split it every tick for as long as it lives.
+    for _ in 0..600 {
+        if app.world().get_entity(victim).is_ok() && app.world().get::<GatherPhase>(victim).is_some()
+        {
+            split_the_claim(&mut app, victim);
+        }
+        step(&mut app);
+        if app.world().get_entity(victim).is_err() {
+            return;
+        }
+    }
+    panic!("fixture: the victim never died, so the race was never run");
+}
+
+/// **The sweep must not run after the match is recorded.** It is inside the
+/// play chain; once the outcome is written nothing the sim owns may change,
+/// half claim or not.
+#[test]
+fn a_half_claim_present_at_match_end_changes_nothing_afterwards() {
+    let mut app = sim_app();
+    spawn_building(&mut app, "hq", Faction::A, Vec2::new(-400.0, 0.0));
+    let b_hq = spawn_building(&mut app, "hq", Faction::B, Vec2::new(400.0, 0.0));
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::new(0.0, 300.0)), ResourceNode { amount: 10 }))
+        .id();
+    let w = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(-380.0, 0.0));
+    step(&mut app); // engage the latch on a contested field
+    app.world_mut().entity_mut(b_hq).despawn();
+    step(&mut app);
+    assert!(outcome(&app).is_some(), "fixture: the match never ended");
+    app.world_mut()
+        .entity_mut(w)
+        .insert((GatherTarget(node), GatherPhase::ToNode));
+    app.world_mut().entity_mut(w).remove::<GatherPhase>();
+    let before = state_hash(&mut app);
+    tick(&mut app, 120);
+    assert_eq!(
+        state_hash(&mut app),
+        before,
+        "the sim kept running after the outcome was recorded"
+    );
+    assert!(
+        app.world().get::<GatherTarget>(w).is_some(),
+        "the sweep ran after the match was decided"
+    );
+}
+
+/// **Targeting still matches the M2 brute-force oracle with half claims on the
+/// field.** The sweep clears them first, so every unit is a combatant and the
+/// choice must be the naive nearest enemy.
+#[test]
+fn targeting_matches_the_oracle_with_half_claims_on_the_field() {
+    let mut app = sim_app();
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::new(0.0, 900.0)), ResourceNode { amount: 10 }))
+        .id();
+    let mut placed: Vec<(Entity, Vec2, Faction)> = Vec::new();
+    for i in 0..8 {
+        let fa = Vec2::new(-40.0 + 9.0 * i as f32, 3.0 * i as f32);
+        let fb = Vec2::new(45.0 - 7.0 * i as f32, -4.0 * i as f32);
+        let a = spawn_unit(&mut app, "bulwark", Faction::A, fa);
+        let b = spawn_unit(&mut app, "ripper", Faction::B, fb);
+        placed.push((a, fa, Faction::A));
+        placed.push((b, fb, Faction::B));
+        if i % 2 == 0 {
+            for e in [a, b] {
+                app.world_mut()
+                    .entity_mut(e)
+                    .insert((GatherTarget(node), GatherPhase::ToNode));
+                app.world_mut().entity_mut(e).remove::<GatherPhase>();
+            }
+        }
+    }
+    step(&mut app);
+    assert!(half_claims(&mut app).is_empty(), "half claims survived");
+
+    let mut rows: Vec<(Entity, Vec2, Faction)> = placed.clone();
+    rows.sort_unstable_by_key(|(e, _, _)| e.to_bits());
+    let layout: Vec<Unit> = rows
+        .iter()
+        .map(|(_, p, f)| Unit {
+            pos: *p,
+            faction: *f,
+        })
+        .collect();
+    for (i, (e, _, _)) in rows.iter().enumerate() {
+        let want = brute_force_nearest_enemy(&layout, i).map(|j| rows[j].0);
+        let got = app.world().get::<Target>(*e).map(|t| t.0);
+        assert_eq!(
+            got, want,
+            "{e:?}: target disagreed with the brute-force oracle after a sweep"
+        );
+    }
+}
+
+/// **Two commanders touching the same worker on the same tick.** The sweep now
+/// runs *before* `apply_commands`, so a claim written this tick is only swept
+/// next tick; the argument for that is "every writer writes the pair". Push
+/// every same-tick combination of Gather/Move/Gather-again at one worker and
+/// assert the claim is a pair (or absent) at every tick boundary — never a half.
+#[test]
+fn same_tick_orders_from_two_sources_never_leave_a_half_claim() {
+    let node_pos = Vec2::new(150.0, 0.0);
+    let combos: Vec<Vec<u8>> = vec![
+        vec![0],
+        vec![1],
+        vec![0, 1],
+        vec![1, 0],
+        vec![0, 0],
+        vec![0, 1, 0],
+        vec![1, 0, 1],
+    ];
+    for (i, combo) in combos.iter().enumerate() {
+        let mut app = sim_app_with_alloy(500);
+        let node = app
+            .world_mut()
+            .spawn((Position(node_pos), ResourceNode { amount: 1_000 }))
+            .id();
+        spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+        let w = spawn_unit(&mut app, "worker", Faction::A, Vec2::ZERO);
+        for t in 0..240u32 {
+            if t % 20 == 0 {
+                for kind in combo {
+                    let o = match kind {
+                        0 => Order::Gather {
+                            units: vec![w],
+                            node,
+                            node_pos,
+                        },
+                        _ => Order::MoveTo {
+                            units: vec![w],
+                            dest: Vec2::new(-100.0, 0.0),
+                        },
+                    };
+                    push(&mut app, o.issued_by(Faction::A));
+                }
+            }
+            step(&mut app);
+            let has_t = app.world().get::<GatherTarget>(w).is_some();
+            let has_p = app.world().get::<GatherPhase>(w).is_some();
+            assert_eq!(
+                has_t, has_p,
+                "combo {i} tick {t}: the claim was observed split (target={has_t}, phase={has_p})"
+            );
+            assert!(
+                half_claims(&mut app).is_empty(),
+                "combo {i} tick {t}: a half claim exists somewhere on the field"
+            );
+        }
+    }
+}

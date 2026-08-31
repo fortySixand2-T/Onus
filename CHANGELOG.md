@@ -168,3 +168,4 @@
 - [2026-08-30] Modified: src/sim/mod.rs, src/sim/economy.rs — the claim's docs now quantify over exactly the readers the sweep's position protects, and state the ordering constraint
 - [2026-08-30] Modified: tests/m4c_ai.rs — the AI never reads a half claim; no reader observes one during a live match (per tick); a claim created this tick survives the next tick's sweep
 - [2026-08-30] Modified: FINDINGS.md — F-008 extension 2: the sweep is worth its schedule position; any new reader of GatherTarget must be ordered after it
+- [2026-08-30] Modified: tests/critic_m4c.rs — M4c critic pass 3: 13 adversarial probes for the reordered gather-claim sweep (offsets, non-gatherers, conservation, oracle, determinism, doc-as-claim)
