@@ -169,3 +169,6 @@
 - [2026-08-30] Modified: tests/m4c_ai.rs — the AI never reads a half claim; no reader observes one during a live match (per tick); a claim created this tick survives the next tick's sweep
 - [2026-08-30] Modified: FINDINGS.md — F-008 extension 2: the sweep is worth its schedule position; any new reader of GatherTarget must be ordered after it
 - [2026-08-30] Modified: tests/critic_m4c.rs — M4c critic pass 3: 13 adversarial probes for the reordered gather-claim sweep (offsets, non-gatherers, conservation, oracle, determinism, doc-as-claim)
+- [2026-08-30] Modified: src/sim/ai.rs, src/lib.rs — Corrected stale doc claims about chain position after the sweep reorder
+- [2026-08-30] Modified: BUILD_PLAN.md — Ticked M4c acceptance criteria (critic PASS, box-verified)
+- [2026-08-30] Modified: CLAUDE.md — Status now M0–M4 done; next milestone M5 (deterministic replay)

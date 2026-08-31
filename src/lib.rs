@@ -68,7 +68,8 @@ pub fn build_app() -> App {
 /// exactly one fixed timestep per step). Nothing may hand-roll this list — that
 /// is how a system like `production` ends up tested but never shipped.
 ///
-/// Order matters: the scripted commanders decide first (so an AI order is
+/// Order matters: the gather-claim sweep runs first, so no reader downstream
+/// can observe a split claim (F-008); then the scripted commanders decide (so an AI order is
 /// applied on the tick it is taken, exactly like a click that lands before the
 /// tick boundary), then orders are applied (and paid for), then production
 /// advances queues, then gatherers decide where to go, then combat picks its

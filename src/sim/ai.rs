@@ -172,8 +172,10 @@ fn nearest(candidates: &[(Entity, Vec2)], from: Vec2) -> Option<(Entity, Vec2)> 
 
 // ---- the system -------------------------------------------------------------
 
-/// One tick of every scripted commander. Runs **first** in the sim chain, so the
-/// orders it issues are applied by `apply_commands` on the same tick — exactly
+/// One tick of every scripted commander. Runs **first among the deciders**:
+/// only `economy::repair_gather_claims` precedes it, so no commander can read a
+/// split gather claim as a live job (F-008). The orders it issues are applied
+/// by `apply_commands` on the same tick — exactly
 /// like a click that lands before the tick boundary.
 #[allow(clippy::too_many_arguments)]
 pub fn ai_commanders(

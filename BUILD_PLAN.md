@@ -161,8 +161,8 @@ Critic probes: damage/armor math matches the spec; nemesis applies iff prey matc
 >   `GatherTarget` disarms a unit forever. Every site in `src/` pairs them today; keep it that way.
 
 #### M4c — scripted AI + win condition
-- [ ] Scripted AI: gathers, builds a Barracks, trains a mixed force, attack-moves — on a timer, **deterministic given the seed**.
-- [ ] Win = destroy the enemy **HQ**; the match then terminates. Target ≤ ~8 min.
+- [x] Scripted AI: gathers, builds a Barracks, trains a mixed force, attack-moves — on a timer, **deterministic given the seed**.
+- [x] Win = destroy the enemy **HQ**; the match then terminates. Target ≤ ~8 min.
 
 Critic probes: AI is deterministic given the seed (same seed ⇒ same actions); the match terminates on HQ destruction; no wall-clock / iteration-order nondeterminism in the AI or end check.
 
