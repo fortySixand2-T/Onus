@@ -1193,6 +1193,203 @@ fn every_command_a_shipped_match_applies_is_signed() {
     );
 }
 
+// ---- the hash sees the state that has not fired yet -------------------------
+
+/// A command the sim has accepted and is holding for a future tick is state the
+/// sim owns. Two worlds identical but for one of them must not hash equal:
+/// waiting until it fires is waiting until after the divergence.
+#[test]
+fn the_hash_sees_a_command_held_for_a_future_tick() {
+    let mut a = sim_app();
+    let unit_a = spawn_unit(&mut a, "ripper", Faction::A, Vec2::ZERO);
+    let mut b = sim_app();
+    let _unit_b = spawn_unit(&mut b, "ripper", Faction::A, Vec2::ZERO);
+    tick(&mut a, 5);
+    tick(&mut b, 5);
+    assert_eq!(
+        onus::sim::state_hash(a.world_mut()),
+        onus::sim::state_hash(b.world_mut()),
+        "the fixtures were not identical to begin with"
+    );
+    push_at(
+        &mut a,
+        400,
+        Order::MoveTo {
+            units: vec![unit_a],
+            dest: Vec2::new(9.0, 9.0),
+        }
+        .issued_by(Faction::A),
+    );
+    step(&mut a);
+    step(&mut b);
+    let (ha, hb) = (
+        onus::sim::state_hash(a.world_mut()),
+        onus::sim::state_hash(b.world_mut()),
+    );
+    assert_ne!(ha, hb, "a held command is invisible to the state hash");
+
+    // ...and it stays visible for every tick it is held, not just the first.
+    for t in 0..50 {
+        step(&mut a);
+        step(&mut b);
+        assert_ne!(
+            onus::sim::state_hash(a.world_mut()),
+            onus::sim::state_hash(b.world_mut()),
+            "the held command became invisible again {t} ticks later"
+        );
+    }
+}
+
+/// Same for the registry: a difference in the next id to be issued is invisible
+/// until the next spawn, which is one spawn too late.
+#[test]
+fn the_hash_sees_the_next_sim_id_to_be_issued() {
+    let mut a = sim_app();
+    let mut b = sim_app();
+    spawn_unit(&mut a, "ripper", Faction::A, Vec2::ZERO);
+    spawn_unit(&mut b, "ripper", Faction::A, Vec2::ZERO);
+    tick(&mut a, 2);
+    tick(&mut b, 2);
+    assert_eq!(
+        onus::sim::state_hash(a.world_mut()),
+        onus::sim::state_hash(b.world_mut())
+    );
+    // One world has issued an id the other has not: the entity that took it is
+    // gone, so *nothing else* distinguishes the two worlds.
+    let ghost = a
+        .world_mut()
+        .spawn(Position(Vec2::new(1.0, 1.0)))
+        .id();
+    step(&mut a);
+    step(&mut b);
+    a.world_mut().despawn(ghost);
+    assert_ne!(
+        onus::sim::state_hash(a.world_mut()),
+        onus::sim::state_hash(b.world_mut()),
+        "the registry's next id is invisible to the state hash"
+    );
+}
+
+/// The direction the new rows could break: identical worlds *with* pending
+/// commands still hash equal, and the rows are sensitive to the order the sim
+/// will apply them in (a queue is a sequence, not a set).
+#[test]
+fn pending_command_rows_are_equal_for_equal_queues_and_ordered() {
+    let build = |swap: bool| {
+        let mut app = sim_app();
+        let u = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+        tick(&mut app, 3);
+        let first = Order::MoveTo {
+            units: vec![u],
+            dest: Vec2::new(1.0, 0.0),
+        }
+        .issued_by(Faction::A);
+        let second = Order::MoveTo {
+            units: vec![u],
+            dest: Vec2::new(2.0, 0.0),
+        }
+        .issued_by(Faction::A);
+        if swap {
+            push_at(&mut app, 300, second);
+            push_at(&mut app, 300, first);
+        } else {
+            push_at(&mut app, 300, first);
+            push_at(&mut app, 300, second);
+        }
+        step(&mut app);
+        app
+    };
+    let mut plain = build(false);
+    let mut same = build(false);
+    let mut swapped = build(true);
+    assert_eq!(
+        onus::sim::state_hash(plain.world_mut()),
+        onus::sim::state_hash(same.world_mut()),
+        "two identical queues hash differently"
+    );
+    assert_ne!(
+        onus::sim::state_hash(plain.world_mut()),
+        onus::sim::state_hash(swapped.world_mut()),
+        "the order the sim will apply held commands in is not hashed"
+    );
+}
+
+/// The other direction the new rows could break, and the one that matters most:
+/// a recorded match still replays hash for hash. (It does because no shipped
+/// producer schedules ahead — the queue is empty at the end of every tick in
+/// both runs — which the next test pins.)
+#[test]
+fn the_new_rows_do_not_disturb_a_recorded_replay() {
+    const TICKS: u32 = 1_500;
+    let (recorded, log, _) = recorded_run(4, TICKS);
+    let (replayed, app) = replay_run(log, TICKS);
+    assert_eq!(recorded.first_divergence(&replayed), None);
+    assert!(
+        app.world().resource::<CommandQueue>().0.is_empty(),
+        "a replay ended a tick still holding a command"
+    );
+}
+
+/// **The limit of the pending-command rows, made unreachable rather than
+/// documented.** The log records a command by the tick it *applied* on, not the
+/// tick it was queued on, so a producer that scheduled a command many ticks
+/// ahead would make a recording hold it while the replay of that recording does
+/// not — identical worlds, different hashes, until it fires. Nothing in `src/`
+/// schedules ahead: `push_at` is called only by the replay itself (which pushes
+/// for the current tick), and every other producer pushes `Asap`. If M6 adds
+/// ahead-scheduling, the log has to record the queued tick as well as the
+/// applied one.
+#[test]
+fn nothing_in_src_schedules_a_command_ahead_of_the_tick_it_applies_on() {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut stack = vec![src.clone()];
+    let mut callers: Vec<String> = Vec::new();
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("read src") {
+            let p = entry.expect("entry").path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            if p.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let rel = p
+                .strip_prefix(&src)
+                .unwrap()
+                .to_string_lossy()
+                .replace('\\', "/");
+            for (i, line) in std::fs::read_to_string(&p).expect("read").lines().enumerate() {
+                let code = line.split("//").next().unwrap_or("");
+                // The definition itself is not a call site.
+                if code.contains("push_at(") && !code.contains("pub fn push_at") {
+                    callers.push(format!("{rel}:{}: {}", i + 1, code.trim()));
+                }
+            }
+        }
+    }
+    assert_eq!(
+        callers.len(),
+        1,
+        "exactly one caller of `push_at` is expected (the replay, pushing for \
+         the current tick); found {callers:#?}"
+    );
+    assert!(
+        callers[0].starts_with("sim/replay.rs"),
+        "something other than the replay schedules a command: {callers:?}"
+    );
+    // And what it schedules is *this* tick, never a later one.
+    let replay = std::fs::read_to_string(src.join("sim/replay.rs")).expect("replay.rs");
+    assert!(
+        replay.contains(".push_at(entry.tick,"),
+        "the replay no longer pushes each command for the tick it was logged on"
+    );
+    assert!(
+        replay.contains("if entry.tick > now {"),
+        "the replay no longer stops at the first command past the current tick"
+    );
+}
+
 // ---- the two boundaries agree ----------------------------------------------
 
 /// Adversarial logs, each either accepted by **both** boundaries or refused by

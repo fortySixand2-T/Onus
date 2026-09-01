@@ -643,3 +643,65 @@ by pushing an unsigned order by hand and requiring the log to record it as
 `SelfSigned`, so the test can actually fail. `SelfSigned` stays constructible
 (M1-M4 fixtures push bare orders and F-009's residual limit still stands); what
 is now checked is that nothing shipped produces one.
+
+**Extension (M5 critic) — four ways the milestone's guarantees were narrower
+than their prose, and one thing left open on purpose.**
+
+1. **A file-granular allowlist cannot express a per-system rule.** Admitting
+   `sim/replay.rs` to F-008's reader allowlist admitted a file that also
+   contained `replay::identify`, registered *before* `repair_gather_claims` —
+   and the assertion written to justify the admission enumerated only the
+   systems that already ran after the sweep. Two fixes: `identify` now runs
+   after the sweep (it reads no claim, and the only ordering it needs is
+   "before anything that addresses an entity by `SimId`"), and the ordering
+   check is **derived from the chain** rather than hand-listed — it walks the
+   systems registered in `src/lib.rs`, resolves each to its function body, and
+   requires that none registered before the sweep so much as names
+   `GatherTarget`/`GatherPhase`/`SplitClaim`. Demonstrated by putting
+   `identify` back ahead of the sweep with a `&GatherPhase` query in it: the
+   new check fails by name, the old enumeration passed. The rule generalises:
+   *a guard whose assertion lists the cases that pass is not a guard.*
+
+2. **A comment's position is part of its meaning.** The M5 prose was appended
+   to the bottom of the F-008 comment block, which left "any new reader of the
+   claim belongs after **this** system" sitting directly above `identify`
+   rather than above the sweep — one system too early, and per (1) nothing
+   would have caught someone who followed it. Each comment now sits above the
+   system it describes. Fifth defect in this project to hide behind a doc
+   comment; the pattern is now specific enough to name: *prose that says "this"
+   is only true where it is.*
+
+3. **A write-side check that admits what the read side refuses is not a
+   check.** `to_ron` enforced finite coordinates; `from_ron` also refused
+   backwards ticks and commands naming `SimId::UNIDENTIFIED` — a value the sim
+   itself mints. So the sim could write a log that would then never load: the
+   log destroyed exactly when it is wanted. `MatchLog::validate` is now one
+   predicate both boundaries call. (F-005's rule, one boundary further out.)
+
+4. **The state hash missed the state that has not fired yet.** `take_due`
+   retains `At(t > now)` commands across ticks — sim-owned state, written by
+   the sim, read by it later — and no row covered them; two worlds differing by
+   one pending command hashed equal until it applied, which for an M6 desync
+   check is "in sync, right up until divergence". Same shape, weaker, for
+   `SimIds::issued()`: a drifted registry is invisible until the next spawn.
+   Both are hashed now — pending commands keyed by *queue position*, since the
+   order they will apply in is state too.
+
+**Known-open, deliberately (for M6 to close, not to inherit silently):**
+
+- **A log has no fingerprint of the content it was recorded against.**
+  `MatchLog` carries a format version and a seed, but `Place { building }` and
+  `Train { unit }` are *indices* into `Content`. Content is data and those
+  indices will move; a log replayed against a reordered `units.ron` silently
+  builds different things, with no error anywhere. Suggested closure: hash the
+  loaded content (ids in RON order plus the stats the sim reads) into the log
+  and refuse a replay whose content hash differs.
+- **The log records a command by the tick it *applied* on, not the tick it was
+  queued on.** So a producer that scheduled far ahead would make a recording
+  hold a command that the replay of that recording does not — identical worlds,
+  different hashes, until it fires. Nothing does today, and that is enforced,
+  not assumed: `nothing_in_src_schedules_a_command_ahead_of_the_tick_it_applies_on`
+  requires `push_at` to have exactly one caller in `src/` (the replay, pushing
+  for the current tick). M6 introduces ahead-scheduling by construction, and
+  must record the queued tick alongside the applied one — and decide what to do
+  with commands queued but never applied, which are in no log at all.

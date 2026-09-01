@@ -196,3 +196,6 @@
 - [2026-08-31] Modified: tests/m5_replay.rs — per-system F-008 boundary probe, identify's real ordering constraint, tick-0 order logs a real sim id
 - [2026-08-31] Modified: src/sim/replay.rs — F3: MatchLog::validate is one predicate both boundaries call, so save never writes a log load refuses
 - [2026-08-31] Modified: tests/m5_replay.rs — F3: writer/reader symmetry over adversarial logs; every log the sim records still saves and loads
+- [2026-08-31] Modified: src/sim/replay.rs — F4: the state hash covers held commands (by queue position) and the next SimId to be issued
+- [2026-08-31] Modified: tests/m5_replay.rs — F4 probes both ways, plus a guard that nothing in src/ schedules a command ahead
+- [2026-08-31] Modified: FINDINGS.md — F-012 extension: the four critic findings and the two known-open items left for M6

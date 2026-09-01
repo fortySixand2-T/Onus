@@ -660,6 +660,74 @@ mod tag {
     pub const CASUALTIES: u64 = 17;
     pub const MATCH_STATE: u64 = 18;
     pub const UNIDENTIFIED: u64 = 19;
+    pub const PENDING_COMMAND: u64 = 20;
+    pub const NEXT_SIM_ID: u64 = 21;
+}
+
+/// A 64-bit digest of one command the sim is holding. Everything about it that
+/// could differ between two worlds: when it is to apply, who it is held to, and
+/// what it says (entities as `SimId`s, coordinates as exact bits).
+fn command_digest(cmd: &crate::sim::Command, id_of: impl Fn(Entity) -> SimId) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut mix = |v: u64| {
+        h ^= v;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    };
+    match cmd.when() {
+        crate::sim::CommandTick::Asap => mix(0),
+        crate::sim::CommandTick::At(t) => {
+            mix(1);
+            mix(t as u64);
+        }
+    }
+    mix(match cmd.attribution() {
+        Attribution::By(f) => 1 + faction_bits(f),
+        Attribution::SelfSigned => 3,
+        Attribution::Void => 4,
+    });
+    match LoggedOrder::of(cmd.order(), id_of) {
+        // Unreachable: the queue peels `Order::By` at the boundary. Hashed as a
+        // distinct value rather than skipped, so it could never be a silent
+        // match with something else.
+        None => mix(u64::MAX),
+        Some(order) => {
+            let (variant, ids, floats, indices) = match &order {
+                LoggedOrder::MoveTo { units, dest } => (1u64, units.clone(), vec![dest.0, dest.1], vec![]),
+                LoggedOrder::Gather {
+                    units,
+                    node,
+                    node_pos,
+                } => {
+                    let mut ids = units.clone();
+                    ids.push(*node);
+                    (2, ids, vec![node_pos.0, node_pos.1], vec![])
+                }
+                LoggedOrder::Place {
+                    faction,
+                    building,
+                    pos,
+                } => (
+                    3,
+                    vec![faction_bits(*faction)],
+                    vec![pos.0, pos.1],
+                    vec![*building],
+                ),
+                LoggedOrder::Train { building, unit } => (4, vec![*building], vec![], vec![*unit]),
+            };
+            mix(variant);
+            mix(ids.len() as u64);
+            for id in ids {
+                mix(id);
+            }
+            for f in floats {
+                mix(f.to_bits() as u64);
+            }
+            for i in indices {
+                mix(i as u64);
+            }
+        }
+    }
+    h
 }
 
 /// A `SimId` lookup for entities named by *other* entities' components.
@@ -688,7 +756,11 @@ fn faction_bits(f: Faction) -> u64 {
 /// It covers every piece of state the sim owns and writes: positions, health,
 /// ownership, unit/building definitions, carried and banked Alloy, the gather
 /// claim (both halves), move and combat targets, attack cooldowns, resource
-/// nodes, production queues, the casualty ledger and the match state.
+/// nodes, production queues, the casualty ledger and the match state — **plus
+/// the two pieces of sim state that are not components**: the commands the
+/// queue is still holding for a future tick, and the next `SimId` to be issued.
+/// Both are things a difference in which is invisible until it fires, which is
+/// exactly what a desync check must not wait for.
 ///
 /// **Order-independent, and allocation-independent.** Every fact is emitted as
 /// a row keyed by `(SimId, field tag, ..)` and the rows are *sorted* before they
@@ -826,8 +898,44 @@ pub fn state_hash(world: &mut World) -> u64 {
         rows.push((u64::MAX, tag::UNIDENTIFIED, n, 0));
     }
 
+    // Commands the sim has **accepted and is still holding**: `take_due` keeps
+    // an `At(t > now)` command across ticks, so it is state the sim owns, wrote,
+    // and will read later. Two worlds identical but for one pending command
+    // must not hash equal — that is a divergence that has not happened yet, and
+    // the hash is what M6 peers exchange to notice one. Keyed by queue
+    // *position*, because the order the sim will apply them in is part of the
+    // state too.
+    {
+        let w: &World = world;
+        let pending: Vec<(u64, u64)> = match w.get_resource::<CommandQueue>() {
+            None => Vec::new(),
+            Some(queue) => queue
+                .0
+                .iter()
+                .enumerate()
+                .map(|(i, cmd)| {
+                    let digest = command_digest(cmd, |e| {
+                        w.get::<SimId>(e).copied().unwrap_or(SimId::UNIDENTIFIED)
+                    });
+                    (i as u64, digest)
+                })
+                .collect(),
+        };
+        rows.extend(
+            pending
+                .into_iter()
+                .map(|(i, d)| (u64::MAX, tag::PENDING_COMMAND, i, d)),
+        );
+    }
+
     // Sim resources, in a constant slot; the tag is what distinguishes them.
     let slot = u64::MAX;
+    if let Some(ids) = world.get_resource::<SimIds>() {
+        // The next id to be issued. Without it, two worlds whose registries
+        // have drifted hash equal until the next spawn — the same
+        // "invisible until it fires" gap as a pending command.
+        rows.push((slot, tag::NEXT_SIM_ID, ids.issued(), 0));
+    }
     if let Some(stock) = world.get_resource::<Stockpiles>() {
         rows.push((
             slot,
