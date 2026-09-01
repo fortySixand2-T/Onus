@@ -203,3 +203,5 @@
 - [2026-08-31] Modified: src/lib.rs — critic pass 2 F1/F2: the chain names sim::victory::match_running (no re-export); the identify comment no longer claims the sweep is first
 - [2026-08-31] Modified: tests/critic_m4c.rs — the F-008 guard resolves by definition across src/sim (re-exports, submodules), fails loudly on unresolvable, and checks run conditions
 - [2026-08-31] Modified: tests/m5_replay.rs — the same strict resolver, plus a probe that every chain name resolves to exactly one readable body
+- [2026-08-31] Modified: src/sim/replay.rs, src/sim/mod.rs — critic pass 2 F3: SimIds is a two-way registry; the log is written through id_for, so the sim never records UNIDENTIFIED
+- [2026-08-31] Modified: tests/m5_replay.rs — F3 probes: a dead unit is logged by the id it had; a bare entity gets one; a replay into a world that lost units still writes

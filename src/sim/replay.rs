@@ -62,10 +62,15 @@ pub const LOG_FORMAT_VERSION: u32 = 1;
 pub struct SimId(pub u64);
 
 impl SimId {
-    /// The id of an entity the sim never identified — a bare entity from a test
-    /// fixture, say, which has no `Position` and so is not a thing in the world.
-    /// A log containing one is refused on load: it names something a replay
-    /// cannot resolve.
+    /// "No id". A log containing one is refused by [`MatchLog::validate`] — at
+    /// **both** boundaries — because it names something no replay can resolve.
+    ///
+    /// The sim itself never records it: the command log is written through
+    /// [`SimIds::id_for`], which issues an id for anything that lacks one, so
+    /// this value reaches a log only if something builds one by hand. What it
+    /// is still used for is the state hash's *reference* lookups (the entity a
+    /// `GatherTarget` or a combat `Target` points at), where "no id" is a fact
+    /// worth hashing rather than an error.
     pub const UNIDENTIFIED: SimId = SimId(u64::MAX);
 
     pub fn is_identified(self) -> bool {
@@ -73,17 +78,37 @@ impl SimId {
     }
 }
 
-/// The sim's own entity registry: `SimId` → the entity currently holding it.
+/// The sim's own entity registry, both ways round: `SimId` → entity, and entity
+/// → `SimId`.
 ///
-/// A `Vec` indexed by id, never a map — the lookup is by key and the iteration
-/// (in [`identify`]) is over a sorted `Vec`, so no hash order can reach an
-/// outcome. A slot whose entity has been despawned keeps the dead `Entity`
-/// value: entity *generations* make that a lookup miss rather than a collision
-/// with whatever later reused the index, and every order path resolves through
-/// `Commands::get_entity` anyway (F-009).
+/// Neither direction is a hash map. Forward is a `Vec` indexed by id; backward
+/// is a `BTreeMap` keyed by `Entity::to_bits()`, which is *ordered*, so the only
+/// iteration it could ever have is in sorted order and no hash order can reach
+/// an outcome. (`identify`, the only thing that iterates candidates, walks a
+/// sorted `Vec`.)
+///
+/// A slot whose entity has been despawned keeps the dead `Entity` value on
+/// purpose: an order can name a unit that has since died, and the log has to
+/// record *which* unit. Entity *generations* keep a recycled index from
+/// colliding with the entry of the entity that used to hold it, and every order
+/// path resolves through `Commands::get_entity` anyway (F-009).
 #[derive(Resource, Debug, Default)]
 pub struct SimIds {
+    /// `SimId` → the entity it was issued to. A `Vec` indexed by id, never a
+    /// map.
     slots: Vec<Entity>,
+    /// `Entity::to_bits()` → its `SimId`. A `BTreeMap`, so it is *ordered*: a
+    /// lookup by key is fine anywhere, and the only iteration of it is in
+    /// sorted order, so no hash order can reach an outcome.
+    ///
+    /// This half exists because **a despawned entity still has to be
+    /// nameable**. An order can name a unit that died before the order applied
+    /// (a click one tick, a death the next; or a replay fed into a world where
+    /// the unit is already gone), and the command log has to record *which*
+    /// unit it named. The `SimId` component dies with its entity; this does
+    /// not. Entity generations keep a recycled index from colliding with the
+    /// entry of the entity that used to hold it.
+    by_entity: std::collections::BTreeMap<u64, SimId>,
 }
 
 impl SimIds {
@@ -95,6 +120,27 @@ impl SimIds {
             .copied()
     }
 
+    /// The id issued to `e`, alive or dead, if it was ever issued one.
+    pub fn id_of(&self, e: Entity) -> Option<SimId> {
+        self.by_entity.get(&e.to_bits()).copied()
+    }
+
+    /// The id for `e`, **issuing one if it has none**.
+    ///
+    /// The log is written through this, so the sim can never record
+    /// [`SimId::UNIDENTIFIED`] — a value its own [`MatchLog::validate`] refuses,
+    /// which would make the log unwritable exactly when something unusual had
+    /// happened and the log was the report. An entity the sim has never seen in
+    /// the world (a bare fixture entity with no `Position`) gets a real id here
+    /// rather than a sentinel: it is a thing an order named, so it is a thing
+    /// the log can name.
+    pub fn id_for(&mut self, e: Entity) -> SimId {
+        match self.id_of(e) {
+            Some(id) => id,
+            None => self.assign(e),
+        }
+    }
+
     /// How many ids have been issued.
     pub fn issued(&self) -> u64 {
         self.slots.len() as u64
@@ -103,6 +149,7 @@ impl SimIds {
     fn assign(&mut self, e: Entity) -> SimId {
         let id = SimId(self.slots.len() as u64);
         self.slots.push(e);
+        self.by_entity.insert(e.to_bits(), id);
         id
     }
 }
@@ -116,12 +163,13 @@ impl SimIds {
 /// things in the same tick issue the same ids.
 ///
 /// It is an **exclusive** system, so the ids exist the moment it returns rather
-/// than at the next sync point, and it runs **twice** in the chain: once at the
-/// head (so everything the tick reads has an identity) and once at the tail
-/// (so everything the tick *created* — a placed building, a trained unit — has
-/// one before that tick's state hash is taken, and before the next tick's
-/// orders can name it). It is idempotent: the second run does nothing unless
-/// the tick spawned something.
+/// than at the next sync point, and it runs **twice** in the chain: once early
+/// (immediately after the gather-claim sweep, and before everything that
+/// addresses an entity by its id — `apply_commands` logs by it, `feed_replay`
+/// resolves by it) and once at the tail (so everything the tick *created* — a
+/// placed building, a trained unit — has an id before that tick's state hash is
+/// taken, and before the next tick's orders can name it). It is idempotent: the
+/// second run does nothing unless the tick spawned something.
 pub fn identify(world: &mut World) {
     if !world.contains_resource::<SimIds>() {
         world.init_resource::<SimIds>();
@@ -193,22 +241,27 @@ impl LoggedOrder {
     /// [`SimId`] by `id_of`. `None` only for [`Order::By`], which the queue has
     /// already peeled off before a command is ever applied — a signature is an
     /// [`Attribution`], not an order.
-    pub fn of(order: &Order, id_of: impl Fn(Entity) -> SimId) -> Option<Self> {
-        let ids = |es: &[Entity]| es.iter().map(|e| id_of(*e).0).collect::<Vec<u64>>();
+    pub fn of(order: &Order, mut id_of: impl FnMut(Entity) -> SimId) -> Option<Self> {
+        let ids = |es: &[Entity], id_of: &mut dyn FnMut(Entity) -> SimId| {
+            es.iter().map(|e| id_of(*e).0).collect::<Vec<u64>>()
+        };
         Some(match order {
             Order::MoveTo { units, dest } => LoggedOrder::MoveTo {
-                units: ids(units),
+                units: ids(units, &mut id_of),
                 dest: xy(*dest),
             },
             Order::Gather {
                 units,
                 node,
                 node_pos,
-            } => LoggedOrder::Gather {
-                units: ids(units),
-                node: id_of(*node).0,
-                node_pos: xy(*node_pos),
-            },
+            } => {
+                let units = ids(units, &mut id_of);
+                LoggedOrder::Gather {
+                    units,
+                    node: id_of(*node).0,
+                    node_pos: xy(*node_pos),
+                }
+            }
             Order::Place {
                 faction,
                 building,
@@ -442,6 +495,12 @@ pub struct CommandLog {
     /// Commands dropped because their tick had already gone by. Never applied
     /// late; counted so a desync has a number attached to it.
     late: u32,
+    /// Commands applied while no [`SimIds`] registry was in the world, so they
+    /// could not be named in the sim's own coordinates. Always zero for the
+    /// shipped chain, which installs the registry with itself; non-zero only in
+    /// a hand-composed app, where it is the honest count of what this log is
+    /// missing.
+    unrecorded: u32,
 }
 
 impl CommandLog {
@@ -450,6 +509,7 @@ impl CommandLog {
         Self {
             log: MatchLog::new(seed),
             late: 0,
+            unrecorded: 0,
         }
     }
 
@@ -469,12 +529,18 @@ impl CommandLog {
         self.late
     }
 
+    /// Commands that were applied but could not be logged (no registry). The
+    /// gap between what the sim did and what this log says it did.
+    pub fn unrecorded(&self) -> u32 {
+        self.unrecorded
+    }
+
     pub(crate) fn record(
         &mut self,
         tick: u32,
         attribution: Attribution,
         order: &Order,
-        id_of: impl Fn(Entity) -> SimId,
+        id_of: impl FnMut(Entity) -> SimId,
     ) {
         if let Some(order) = LoggedOrder::of(order, id_of) {
             self.log.commands.push(LoggedCommand {
@@ -483,6 +549,10 @@ impl CommandLog {
                 order,
             });
         }
+    }
+
+    pub(crate) fn record_unrecordable(&mut self) {
+        self.unrecorded = self.unrecorded.saturating_add(1);
     }
 
     pub(crate) fn record_late(&mut self, late: u32) {
@@ -667,7 +737,7 @@ mod tag {
 /// A 64-bit digest of one command the sim is holding. Everything about it that
 /// could differ between two worlds: when it is to apply, who it is held to, and
 /// what it says (entities as `SimId`s, coordinates as exact bits).
-fn command_digest(cmd: &crate::sim::Command, id_of: impl Fn(Entity) -> SimId) -> u64 {
+fn command_digest(cmd: &crate::sim::Command, id_of: impl FnMut(Entity) -> SimId) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     let mut mix = |v: u64| {
         h ^= v;
@@ -757,10 +827,13 @@ fn faction_bits(f: Faction) -> u64 {
 /// ownership, unit/building definitions, carried and banked Alloy, the gather
 /// claim (both halves), move and combat targets, attack cooldowns, resource
 /// nodes, production queues, the casualty ledger and the match state — **plus
-/// the two pieces of sim state that are not components**: the commands the
-/// queue is still holding for a future tick, and the next `SimId` to be issued.
-/// Both are things a difference in which is invisible until it fires, which is
-/// exactly what a desync check must not wait for.
+/// the two pieces of sim state that are not components**: the commands the queue
+/// is holding for a *later* tick, and the next `SimId` to be issued. Both are
+/// things a difference in which is invisible until it fires, which is exactly
+/// what a desync check must not wait for. An `Asap` command is **not** one of
+/// them — it is drained before any hash is taken, and once the match is decided
+/// it can never be applied at all, so hashing it would invent a divergence out
+/// of a click.
 ///
 /// **Order-independent, and allocation-independent.** Every fact is emitted as
 /// a row keyed by `(SimId, field tag, ..)` and the rows are *sorted* before they
@@ -898,13 +971,23 @@ pub fn state_hash(world: &mut World) -> u64 {
         rows.push((u64::MAX, tag::UNIDENTIFIED, n, 0));
     }
 
-    // Commands the sim has **accepted and is still holding**: `take_due` keeps
-    // an `At(t > now)` command across ticks, so it is state the sim owns, wrote,
-    // and will read later. Two worlds identical but for one pending command
-    // must not hash equal — that is a divergence that has not happened yet, and
-    // the hash is what M6 peers exchange to notice one. Keyed by queue
-    // *position*, because the order the sim will apply them in is part of the
-    // state too.
+    // Commands the sim has **accepted and is still holding**:
+    // `take_due` keeps an `At(t > now)` command across ticks, so it is state the
+    // sim owns, wrote, and will read later. Two worlds identical but for one
+    // held command must not hash equal — that is a divergence that has not
+    // happened yet, and the hash is what M6 peers exchange to notice one. Keyed
+    // by position among the held commands, because the order the sim will apply
+    // them in is state too.
+    //
+    // **`Asap` commands are deliberately not here.** An `Asap` command is not
+    // held: it is drained by the very next `apply_commands`, which runs before
+    // the hash is taken, so in a running sim it never survives to be hashed at
+    // all. Where it *can* survive is a sim that is over — the chain is gated
+    // off, so a click on a finished match sits in the queue forever with no
+    // causal reach whatever. Hashing that would make a client-side event read
+    // as a state divergence, which is the one thing a desync check must never
+    // invent (and it would contradict `record_state_hash`'s promise that a
+    // frozen sim is visibly frozen).
     {
         let w: &World = world;
         let pending: Vec<(u64, u64)> = match w.get_resource::<CommandQueue>() {
@@ -915,7 +998,10 @@ pub fn state_hash(world: &mut World) -> u64 {
                 .enumerate()
                 .map(|(i, cmd)| {
                     let digest = command_digest(cmd, |e| {
-                        w.get::<SimId>(e).copied().unwrap_or(SimId::UNIDENTIFIED)
+                        w.get::<SimId>(e)
+                            .copied()
+                            .or_else(|| w.get_resource::<SimIds>().and_then(|ids| ids.id_of(e)))
+                            .unwrap_or(SimId::UNIDENTIFIED)
                     });
                     (i as u64, digest)
                 })

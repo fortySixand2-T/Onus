@@ -19,7 +19,7 @@ use onus::sim::combat::{Casualties, Health};
 use onus::sim::content::Content;
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use onus::sim::spatial::Faction;
-use onus::sim::replay::{LoggedCommand, LoggedOrder, MatchLog, SimId};
+use onus::sim::replay::{LoggedCommand, LoggedOrder, MatchLog, SimId, SimIds};
 use onus::sim::{
     AiCommanders, AiJournal, Attribution, CommandLog, CommandQueue, CommandTick, MatchState,
     MoveTarget, Order, Position, RateReport, ReplaySource, ResourceNode, StateHashLog,
@@ -1387,6 +1387,114 @@ fn nothing_in_src_schedules_a_command_ahead_of_the_tick_it_applies_on() {
     assert!(
         replay.contains("if entry.tick > now {"),
         "the replay no longer stops at the first command past the current tick"
+    );
+}
+
+// ---- the producer, not just the boundary ------------------------------------
+
+/// **The sim must never record a log its own validator refuses.** Unifying the
+/// two boundaries turned a latent read failure into a live write failure until
+/// the *producer* was fixed too: `apply_commands` used to mint
+/// `SimId::UNIDENTIFIED` for any entity it could not resolve — including one
+/// that had simply died before the command applied — and `validate` refuses
+/// that value, so the log could not be written at exactly the moment it was the
+/// report.
+#[test]
+fn a_command_naming_a_dead_unit_is_logged_by_the_id_it_had() {
+    let mut app = sim_app();
+    let unit = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    tick(&mut app, 2);
+    let id = app.world().get::<SimId>(unit).copied().expect("identified");
+    // It dies, and only then does the order reach the sim.
+    app.world_mut().despawn(unit);
+    app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+        Order::MoveTo {
+            units: vec![unit],
+            dest: Vec2::new(5.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
+    step(&mut app);
+    let log = app.world().resource::<CommandLog>();
+    assert_eq!(log.commands().len(), 1, "the command was not logged");
+    assert_eq!(
+        log.commands()[0].order.sim_ids(),
+        vec![id],
+        "a command naming a dead unit was not logged by the id that unit had"
+    );
+    assert!(
+        log.log().validate().is_ok(),
+        "the sim recorded a log it calls invalid: {:?}",
+        log.log().validate().err()
+    );
+    assert_eq!(log.unrecorded(), 0);
+}
+
+/// The same, for an entity the sim never saw in the world at all (no
+/// `Position`, so `identify` never touched it): it is *given* an id when the
+/// log needs to name it, rather than recorded as the sentinel.
+#[test]
+fn an_order_naming_something_the_world_never_held_is_still_logged_by_an_id() {
+    let mut app = sim_app();
+    let bare = app.world_mut().spawn_empty().id();
+    app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+        Order::MoveTo {
+            units: vec![bare],
+            dest: Vec2::new(1.0, 2.0),
+        }
+        .issued_by(Faction::A),
+    );
+    step(&mut app);
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert!(
+        log.commands[0].order.sim_ids().iter().all(|i| i.is_identified()),
+        "a bare entity was logged as UNIDENTIFIED"
+    );
+    let path = scratch("bare-entity");
+    log.save(&path).expect("the sim's log must be writable");
+    assert_eq!(MatchLog::load(&path).expect("load"), log);
+}
+
+/// End to end, and per sample as the log grows: a match whose world moves out
+/// from under a replay — units named by the log dying before their commands —
+/// still produces a log that saves, and the re-recorded log is the one it was
+/// given (the fixed point survives dead entities).
+#[test]
+fn a_replay_into_a_world_that_lost_units_still_records_a_writable_log() {
+    const TICKS: u32 = 900;
+    let (_, log, _) = recorded_run(4, TICKS);
+    let named: Vec<(u32, SimId)> = log
+        .commands
+        .iter()
+        .filter(|c| c.tick > 100)
+        .filter_map(|c| c.order.sim_ids().first().copied().map(|id| (c.tick, id)))
+        .take(3)
+        .collect();
+    assert!(!named.is_empty(), "the recording named no entity after tick 100");
+
+    let mut app = ai_vs_ai(log.seed);
+    app.insert_resource(CommandLog::new(log.seed));
+    app.insert_resource(ReplaySource::new(log.clone()));
+    for t in 0..TICKS {
+        for (at, id) in &named {
+            if t + 1 == *at {
+                if let Some(e) = app.world().resource::<SimIds>().entity(*id) {
+                    app.world_mut().despawn(e);
+                }
+            }
+        }
+        step(&mut app);
+        let produced = app.world().resource::<CommandLog>().log().clone();
+        produced
+            .validate()
+            .unwrap_or_else(|e| panic!("tick {t}: the sim recorded an invalid log: {e}"));
+    }
+    let produced = app.world().resource::<CommandLog>().log().clone();
+    let path = scratch("replay-lost-units");
+    produced.save(&path).expect("the log of a damaged replay must still save");
+    assert_eq!(
+        produced.commands, log.commands,
+        "killing a named unit changed the stream the replay recorded"
     );
 }
 

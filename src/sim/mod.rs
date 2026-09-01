@@ -433,11 +433,12 @@ pub fn apply_commands(
     mut producers: Query<(&Building, &Faction, &mut ProductionQueue)>,
     defs: Query<&UnitDefIdx>,
     owners: Query<&Faction>,
-    sim_ids: Query<&replay::SimId>,
+    ids: Option<ResMut<replay::SimIds>>,
     mut commands: Commands,
 ) {
     let now = state.map(|s| s.tick()).unwrap_or(0);
     let mut log = log;
+    let mut ids = ids;
     let (due, late) = queue.0.take_due(now);
     if let Some(log) = log.as_mut() {
         log.record_late(late);
@@ -447,15 +448,21 @@ pub fn apply_commands(
         // two different factions); everything else yields the faction the rest
         // of this loop checks against.
         let (attribution, cmd) = signed.into_parts();
-        if let Some(log) = log.as_mut() {
-            // Logged by `SimId`, the sim's own coordinate — an `Entity` is an
-            // allocation detail that does not survive into another app.
-            log.record(tick, attribution, &cmd, |e| {
-                sim_ids
-                    .get(e)
-                    .copied()
-                    .unwrap_or(replay::SimId::UNIDENTIFIED)
-            });
+        // Logged by `SimId`, the sim's own coordinate — an `Entity` is an
+        // allocation detail that does not survive into another app. The id
+        // comes from the **registry**, not from the entity's component, for two
+        // reasons: an order can name an entity that has already been despawned
+        // (its component died with it, the registry entry did not), and the
+        // registry issues an id for anything that has none, so this path can
+        // never write `SimId::UNIDENTIFIED` — a value `MatchLog::validate`
+        // refuses, which would leave the sim recording a log it cannot save.
+        // Both resources are installed with the chain (F-004); a hand-composed
+        // app missing the registry records nothing rather than something it
+        // could not write, and says so in `CommandLog::unrecorded`.
+        match (log.as_mut(), ids.as_mut()) {
+            (Some(log), Some(ids)) => log.record(tick, attribution, &cmd, |e| ids.id_for(e)),
+            (Some(log), None) => log.record_unrecordable(),
+            (None, _) => {}
         }
         if attribution == Attribution::Void {
             continue;
