@@ -58,6 +58,13 @@ impl SplitMix64 {
         Self(seed)
     }
 
+    /// The generator's current state — the thing that must not move except
+    /// inside the sim. Exposed so "the RNG is stepped only in the sim" is a
+    /// property a test can *watch*, rather than one a doc comment asserts.
+    pub fn state(&self) -> u64 {
+        self.0
+    }
+
     /// Next raw 64-bit value (advances the state).
     pub fn next_u64(&mut self) -> u64 {
         self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);

@@ -184,3 +184,5 @@
 - [2026-08-31] Modified: src/lib.rs — the chain identifies at head and tail, feeds a replay instead of the AI, and records the tick's state hash last
 - [2026-08-31] Modified: tests/m5_replay.rs — M5 AC3: a persisted log replays tick-for-tick; sim ids survive a difference in entity allocation; the hash covers what it claims
 - [2026-08-31] Modified: tests/critic_m4c.rs — the gather-claim reader allowlist admits sim/replay.rs, and now asserts the ordering that justifies it
+- [2026-08-31] Modified: src/sim/spatial.rs, src/sim/ai.rs — SplitMix64::state / AiCommander::rng_state, so "the RNG steps only in the sim" is watchable
+- [2026-08-31] Modified: tests/m5_replay.rs — M5 AC4: the only generator lives in the sim, advances only on sim ticks, and a replay steps none of it

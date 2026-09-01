@@ -932,6 +932,199 @@ fn everything_in_a_live_match_is_identified_and_the_log_resolves() {
     assert_eq!(MatchLog::from_ron(&log.to_ron().unwrap()).unwrap(), log);
 }
 
+// ---- AC4: the seeded RNG is stepped only inside the sim ---------------------
+
+/// The sim's only generator is `SplitMix64`, and it lives — and is stepped —
+/// only under `src/sim/`. Source-level over the **whole** driver, not just the
+/// sim, because the failure this rules out is the driver rolling a number and
+/// feeding it in: the sim would still be "deterministic given its inputs" and
+/// the match would still not replay.
+#[test]
+fn the_only_generator_lives_in_the_sim_and_nothing_else_rolls_a_number() {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut offenders: Vec<String> = Vec::new();
+    let mut stack = vec![src.clone()];
+    let mut files: Vec<PathBuf> = Vec::new();
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("read src") {
+            let p = entry.expect("entry").path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|e| e == "rs") {
+                files.push(p);
+            }
+        }
+    }
+    files.sort();
+    for path in &files {
+        let rel = path
+            .strip_prefix(&src)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        let in_sim = rel.starts_with("sim/");
+        let text = std::fs::read_to_string(path).expect("read source");
+        for (i, line) in text.lines().enumerate() {
+            let code = line.split("//").next().unwrap_or("");
+            // Anything that produces randomness, anywhere.
+            // (`random(` on its own would flag `TileGrid::random`, the sim's
+            // own *seeded* fixture generator — the needles below are the ways a
+            // program gets a number it did not seed.)
+            for needle in ["rand::", "thread_rng", "::random()", "getrandom"] {
+                if code.contains(needle) {
+                    offenders.push(format!("{rel}:{}: {}", i + 1, code.trim()));
+                }
+            }
+            // The project's own generator: sim only.
+            for needle in ["SplitMix64", "next_u64(", "next_f32(", "range_f32("] {
+                if code.contains(needle) && !in_sim {
+                    offenders.push(format!("{rel}:{}: {}", i + 1, code.trim()));
+                }
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "randomness outside the sim: {offenders:#?}"
+    );
+
+    // ...and no RNG crate is a dependency at all, so there is nothing else to
+    // roll with.
+    let manifest = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
+    )
+    .expect("read Cargo.toml");
+    for line in manifest.lines() {
+        let dep = line.split('#').next().unwrap_or("").trim();
+        assert!(
+            !dep.starts_with("rand") && !dep.starts_with("fastrand"),
+            "an RNG crate is a dependency: {dep}"
+        );
+    }
+}
+
+/// The generator advances **only while the sim is running**, and by exactly the
+/// sim's own schedule: frames with the clock stopped do not move it, and neither
+/// do the ticks after the match is decided (the chain is off).
+#[test]
+fn the_rng_advances_only_when_the_sim_ticks() {
+    let rng_state = |app: &App| -> Vec<u64> {
+        app.world()
+            .resource::<AiCommanders>()
+            .commanders()
+            .iter()
+            .map(|c| c.rng_state())
+            .collect()
+    };
+
+    // 1. A shipped-shape app (sim in `FixedUpdate`) with the clock stopped:
+    //    frames go by, the RNG does not move.
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(Time::<Fixed>::from_hz(60.0))
+        .insert_resource(content())
+        .init_resource::<CommandQueue>()
+        .init_resource::<RateReport>()
+        .init_resource::<Casualties>()
+        .insert_resource(Stockpiles::starting(content().economy.starting_alloy));
+    onus::add_sim_systems(&mut app, FixedUpdate);
+    spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    app.world_mut().spawn((
+        Position(Vec2::new(250.0, 0.0)),
+        ResourceNode { amount: 100_000 },
+    ));
+    spawn_unit(&mut app, "worker", Faction::A, Vec2::ZERO);
+    app.insert_resource(AiCommanders::new(3, &[Faction::A]));
+    app.world_mut().resource_mut::<Time<Virtual>>().pause();
+    let before = rng_state(&app);
+    for _ in 0..60 {
+        app.update();
+    }
+    assert_eq!(
+        rng_state(&app),
+        before,
+        "the RNG moved on a frame the sim did not tick"
+    );
+
+    // 2. Running the sim does move it (or the test above proves nothing).
+    let mut app = ai_vs_ai(9);
+    let start = rng_state(&app);
+    tick(&mut app, 600);
+    let running = rng_state(&app);
+    assert_ne!(running, start, "the AI never stepped its RNG at all");
+
+    // 3. Past the end of the match, the chain is off and so is the RNG.
+    const BUDGET: u32 = 8 * 60 * 60;
+    let mut played = 0;
+    while app.world().resource::<MatchState>().outcome().is_none() && played < BUDGET {
+        step(&mut app);
+        played += 1;
+    }
+    assert!(
+        app.world().resource::<MatchState>().outcome().is_some(),
+        "the match never ended, so the freeze is untested"
+    );
+    let at_end = rng_state(&app);
+    tick(&mut app, 300);
+    assert_eq!(
+        rng_state(&app),
+        at_end,
+        "the RNG kept rolling after the match was decided"
+    );
+}
+
+/// A replay steps **no** RNG: the commanders are stood down, so even a replay
+/// app that was handed seeded commanders leaves their streams untouched — and
+/// still reproduces the match. (The decisions those streams produced are in the
+/// log, as orders.)
+#[test]
+fn a_replay_reproduces_the_match_without_stepping_the_rng() {
+    const TICKS: u32 = 1_200;
+    let (recorded, log, _) = recorded_run(4, TICKS);
+    let mut app = ai_vs_ai(log.seed);
+    app.insert_resource(StateHashLog::default());
+    app.insert_resource(CommandLog::new(log.seed));
+    app.insert_resource(ReplaySource::new(log));
+    let before: Vec<u64> = app
+        .world()
+        .resource::<AiCommanders>()
+        .commanders()
+        .iter()
+        .map(|c| c.rng_state())
+        .collect();
+    assert!(!before.is_empty(), "the replay app has no commanders to freeze");
+    tick(&mut app, TICKS);
+    let after: Vec<u64> = app
+        .world()
+        .resource::<AiCommanders>()
+        .commanders()
+        .iter()
+        .map(|c| c.rng_state())
+        .collect();
+    assert_eq!(before, after, "a replay stepped the AI's RNG");
+    assert_eq!(
+        recorded.first_divergence(&app.world().resource::<StateHashLog>().clone()),
+        None,
+        "the replay diverged"
+    );
+}
+
+/// One seed fixes both commanders' streams, and two seeds do not share one.
+#[test]
+fn the_seed_is_the_whole_of_the_randomness() {
+    let states = |seed: u64| {
+        AiCommanders::new(seed, &[Faction::A, Faction::B])
+            .commanders()
+            .iter()
+            .map(|c| c.rng_state())
+            .collect::<Vec<u64>>()
+    };
+    assert_eq!(states(11), states(11), "one seed, two streams");
+    assert_ne!(states(11), states(12), "two seeds, one stream");
+    let one = states(11);
+    assert_ne!(one[0], one[1], "both commanders share a stream");
+}
+
 // ---- keep the fixture warnings honest ---------------------------------------
 
 #[test]

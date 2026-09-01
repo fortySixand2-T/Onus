@@ -105,6 +105,12 @@ impl AiCommander {
     pub fn tick(&self) -> u32 {
         self.tick
     }
+
+    /// This commander's RNG state. The sim's only randomness lives here, and
+    /// this is how a test checks that it moved only while the sim was running.
+    pub fn rng_state(&self) -> u64 {
+        self.rng.state()
+    }
 }
 
 fn faction_slot(f: Faction) -> usize {
