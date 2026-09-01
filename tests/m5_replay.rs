@@ -488,27 +488,35 @@ fn an_unreadable_log_is_an_error_not_a_panic() {
     // Version.
     assert!(MatchLog::from_ron(&text.replace("version: 1", "version: 2")).is_err());
 
-    // Tick order.
+    // Tick order, and a command naming an entity the sim never identified: no
+    // replay can resolve either, so both are refused — at *both* boundaries,
+    // which is why the text under test is serialized directly rather than
+    // through `to_ron` (which now refuses them too).
+    let raw = |log: &MatchLog| {
+        ron::ser::to_string_pretty(log, ron::ser::PrettyConfig::default()).expect("serializes")
+    };
     let mut jumbled = good.clone();
     jumbled.commands.push(LoggedCommand {
         tick: 0,
         ..good.commands[0].clone()
     });
-    let text = jumbled.to_ron().expect("writes");
+    assert!(jumbled.to_ron().is_err(), "a backwards log was written");
     assert!(
-        MatchLog::from_ron(&text).is_err(),
+        MatchLog::from_ron(&raw(&jumbled)).is_err(),
         "a log whose ticks run backwards was accepted"
     );
 
-    // A command naming an entity the sim never identified: no replay can
-    // resolve it, so the log is refused rather than replayed with a hole in it.
     let mut nameless = good.clone();
     nameless.commands[0].order = LoggedOrder::MoveTo {
         units: vec![0, SimId::UNIDENTIFIED.0],
         dest: (1.0, 2.0),
     };
     assert!(
-        MatchLog::from_ron(&nameless.to_ron().unwrap()).is_err(),
+        nameless.to_ron().is_err(),
+        "a log naming an unidentified entity was written"
+    );
+    assert!(
+        MatchLog::from_ron(&raw(&nameless)).is_err(),
         "a command naming an unidentified entity was accepted"
     );
 
@@ -1183,6 +1191,102 @@ fn every_command_a_shipped_match_applies_is_signed() {
             .any(|c| c.attribution == Attribution::SelfSigned),
         "the log cannot tell a self-signed command from a signed one"
     );
+}
+
+// ---- the two boundaries agree ----------------------------------------------
+
+/// Adversarial logs, each either accepted by **both** boundaries or refused by
+/// both. The write side used to check only one of the three invalid classes, so
+/// the sim could write a log that would then never load again.
+#[test]
+fn what_the_writer_accepts_the_reader_accepts_and_the_other_way_round() {
+    let cmd = |tick: u32, order: LoggedOrder| LoggedCommand {
+        tick,
+        attribution: Attribution::By(Faction::A),
+        order,
+    };
+    let cases: Vec<(&str, Vec<LoggedCommand>)> = vec![
+        ("empty", vec![]),
+        (
+            "ordinary",
+            vec![
+                cmd(0, LoggedOrder::MoveTo { units: vec![0, 1], dest: (1.5, -2.5) }),
+                cmd(0, LoggedOrder::Train { building: 2, unit: 1 }),
+                cmd(9, LoggedOrder::Gather { units: vec![3], node: 4, node_pos: (0.0, -0.0) }),
+                cmd(9, LoggedOrder::Place { faction: Faction::B, building: 0, pos: (7.0, 8.0) }),
+            ],
+        ),
+        ("nan", vec![cmd(1, LoggedOrder::MoveTo { units: vec![0], dest: (f32::NAN, 0.0) })]),
+        ("inf", vec![cmd(1, LoggedOrder::Place { faction: Faction::A, building: 0, pos: (0.0, f32::INFINITY) })]),
+        (
+            "backwards",
+            vec![cmd(5, LoggedOrder::Train { building: 0, unit: 0 }), cmd(4, LoggedOrder::Train { building: 0, unit: 0 })],
+        ),
+        (
+            "unidentified in a move",
+            vec![cmd(1, LoggedOrder::MoveTo { units: vec![0, SimId::UNIDENTIFIED.0], dest: (1.0, 1.0) })],
+        ),
+        (
+            "unidentified node",
+            vec![cmd(1, LoggedOrder::Gather { units: vec![0], node: SimId::UNIDENTIFIED.0, node_pos: (1.0, 1.0) })],
+        ),
+        (
+            "unidentified building",
+            vec![cmd(1, LoggedOrder::Train { building: SimId::UNIDENTIFIED.0, unit: 0 })],
+        ),
+    ];
+    for (name, commands) in cases {
+        let mut log = MatchLog::new(5);
+        log.commands = commands;
+        let path = scratch(&format!("symmetry-{}", name.replace(' ', "-")));
+        let _ = std::fs::remove_file(&path);
+        let wrote = log.save(&path);
+        match wrote {
+            Ok(()) => {
+                let back = MatchLog::load(&path).unwrap_or_else(|e| {
+                    panic!("`{name}`: save wrote a log that load refuses: {e}")
+                });
+                assert_eq!(back, log, "`{name}`: the log changed on the way to disk");
+            }
+            Err(_) => {
+                assert!(
+                    !path.exists(),
+                    "`{name}`: save refused and still wrote a file"
+                );
+                // A refused log is refused by the reader too — otherwise the
+                // rejection is a matter of which door you came in by.
+                let text = ron::ser::to_string_pretty(&log, ron::ser::PrettyConfig::default())
+                    .expect("serializes as a value");
+                assert!(
+                    MatchLog::from_ron(&text).is_err(),
+                    "`{name}`: the writer refused a log the reader accepts"
+                );
+            }
+        }
+    }
+}
+
+/// The direction a stricter writer could break: **every** log the sim itself
+/// records still saves and loads, over a long live match, checked repeatedly as
+/// it grows rather than once at the end.
+#[test]
+fn every_log_the_sim_records_still_saves_and_loads() {
+    let mut app = ai_vs_ai(4);
+    for t in 0..2_000u32 {
+        step(&mut app);
+        if t % 250 == 0 || t == 1_999 {
+            let log = app.world().resource::<CommandLog>().log().clone();
+            log.validate()
+                .unwrap_or_else(|e| panic!("tick {t}: the sim recorded an invalid log: {e}"));
+            let path = scratch("sim-written");
+            log.save(&path)
+                .unwrap_or_else(|e| panic!("tick {t}: the sim's own log will not save: {e}"));
+            let back = MatchLog::load(&path)
+                .unwrap_or_else(|e| panic!("tick {t}: the sim's own log will not load: {e}"));
+            assert_eq!(back, log);
+        }
+    }
+    assert!(app.world().resource::<CommandLog>().commands().len() > 20);
 }
 
 // ---- the chain's F-008 boundary, per system ---------------------------------

@@ -339,20 +339,31 @@ impl MatchLog {
         self.commands.iter().filter(move |c| c.tick == tick)
     }
 
-    /// Serialize to RON — the format the rest of the project's data already
-    /// uses, so a log is readable and diffable with no new dependency.
+    /// Is this a log that can be written, read back, and replayed as itself?
     ///
-    /// **Checked at the boundary.** A non-finite coordinate (`NaN`, `±inf`) has
-    /// no round-tripping RON spelling, so a log containing one could be written
-    /// and then replayed as something else. That is a rejection, not a
-    /// best-effort write: a log that cannot be read back exactly is not a log.
-    pub fn to_ron(&self) -> Result<String, String> {
-        if self.version != LOG_FORMAT_VERSION {
-            return Err(format!(
-                "log: refusing to write format version {} (this build writes {LOG_FORMAT_VERSION})",
-                self.version
-            ));
-        }
+    /// **One predicate, called by both boundaries** ([`to_ron`](Self::to_ron)
+    /// and [`from_ron`](Self::from_ron)). The two used to check different
+    /// things, which meant the sim could write a log that would then never
+    /// load — the log destroyed exactly when it was wanted, with the error
+    /// arriving where nothing could be done about it. A write-side check that
+    /// admits a value the read side refuses is not a check (F-005's rule, one
+    /// boundary further out), so there is now only one list:
+    ///
+    /// - every coordinate is finite. `NaN`/`±inf` have no round-tripping RON
+    ///   spelling, so a log holding one would come back as something else;
+    /// - ticks are non-decreasing. They are by construction (one drain per
+    ///   tick, in order); a log that is not is corrupt or hand-edited, and
+    ///   replaying it would silently drop everything out of order;
+    /// - every entity named is *identified*. `SimId::UNIDENTIFIED` is the value
+    ///   the sim records for an entity it never gave an id to, and no replay
+    ///   can resolve it — so a log containing one is refused where it is
+    ///   produced rather than accepted and rejected later.
+    ///
+    /// The format version is deliberately **not** here: writing refuses a
+    /// version this build does not produce, reading refuses one it does not
+    /// understand, and those are different sentences about the same number.
+    pub fn validate(&self) -> Result<(), String> {
+        let mut last = 0u32;
         for c in &self.commands {
             for f in c.order.floats() {
                 if !f.is_finite() {
@@ -362,25 +373,6 @@ impl MatchLog {
                     ));
                 }
             }
-        }
-        ron::ser::to_string_pretty(self, ron::ser::PrettyConfig::default())
-            .map_err(|e| format!("log: serialize: {e}"))
-    }
-
-    pub fn from_ron(text: &str) -> Result<Self, String> {
-        let log: MatchLog = ron::from_str(text).map_err(|e| format!("log: parse: {e}"))?;
-        if log.version != LOG_FORMAT_VERSION {
-            return Err(format!(
-                "log: format version {} is not {LOG_FORMAT_VERSION}",
-                log.version
-            ));
-        }
-        // Ticks are non-decreasing by construction (one drain per tick, in
-        // order). A log that is not is either corrupt or hand-edited, and
-        // replaying it would silently drop everything out of order — an error
-        // is the honest answer.
-        let mut last = 0u32;
-        for c in &log.commands {
             if c.tick < last {
                 return Err(format!(
                     "log: tick {} follows tick {last} — commands are out of order",
@@ -399,6 +391,34 @@ impl MatchLog {
                 }
             }
         }
+        Ok(())
+    }
+
+    /// Serialize to RON — the format the rest of the project's data already
+    /// uses, so a log is readable and diffable with no new dependency. Refuses
+    /// anything [`validate`](Self::validate) refuses: what this writes,
+    /// [`from_ron`](Self::from_ron) reads.
+    pub fn to_ron(&self) -> Result<String, String> {
+        if self.version != LOG_FORMAT_VERSION {
+            return Err(format!(
+                "log: refusing to write format version {} (this build writes {LOG_FORMAT_VERSION})",
+                self.version
+            ));
+        }
+        self.validate()?;
+        ron::ser::to_string_pretty(self, ron::ser::PrettyConfig::default())
+            .map_err(|e| format!("log: serialize: {e}"))
+    }
+
+    pub fn from_ron(text: &str) -> Result<Self, String> {
+        let log: MatchLog = ron::from_str(text).map_err(|e| format!("log: parse: {e}"))?;
+        if log.version != LOG_FORMAT_VERSION {
+            return Err(format!(
+                "log: format version {} is not {LOG_FORMAT_VERSION}",
+                log.version
+            ));
+        }
+        log.validate()?;
         Ok(log)
     }
 

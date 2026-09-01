@@ -194,3 +194,5 @@
 - [2026-08-31] Modified: src/lib.rs — F1/F2: identify moved after the gather-claim sweep; the F-008 instruction sits on the sweep again, identify has its own comment
 - [2026-08-31] Modified: tests/critic_m4c.rs — the allowlist's ordering assertion is now system-granular and general (no pre-sweep system may name the claim)
 - [2026-08-31] Modified: tests/m5_replay.rs — per-system F-008 boundary probe, identify's real ordering constraint, tick-0 order logs a real sim id
+- [2026-08-31] Modified: src/sim/replay.rs — F3: MatchLog::validate is one predicate both boundaries call, so save never writes a log load refuses
+- [2026-08-31] Modified: tests/m5_replay.rs — F3: writer/reader symmetry over adversarial logs; every log the sim records still saves and loads
