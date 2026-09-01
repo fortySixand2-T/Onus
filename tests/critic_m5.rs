@@ -668,3 +668,369 @@ fn the_same_seed_twice_in_one_process_is_the_same_match() {
         assert_eq!(la.commands, lb.commands, "seed {seed} produced two different logs");
     }
 }
+
+// ============================================================================
+// Pass 2 — probes against the fixes for F1..F4.
+// ============================================================================
+
+/// Replicates the resolution rule the M4c guard uses to turn a chain entry into
+/// a function body: `sim::<module>::<name>` ⇒ `src/sim/<module>.rs`,
+/// `sim::<name>` ⇒ `src/sim/mod.rs`, body = from `pub fn <name>(` to the first
+/// line that is a bare `}`.
+fn resolve_chain_system(path: &str) -> Result<String, String> {
+    let src = src_dir();
+    let name = path.rsplit("::").next().unwrap_or_default();
+    let module: Vec<&str> = path.split("::").collect();
+    let file = if module.len() >= 3 {
+        src.join(format!("sim/{}.rs", module[1]))
+    } else {
+        src.join("sim/mod.rs")
+    };
+    let text = std::fs::read_to_string(&file)
+        .map_err(|_| format!("{path}: no such file as {}", file.display()))?;
+    let fn_at = text
+        .find(&format!("pub fn {name}("))
+        .ok_or_else(|| format!("{path}: no `pub fn {name}(` in {}", file.display()))?;
+    let body = &text[fn_at..];
+    let end = body[1..].find("\n}\n").map(|i| i + 3).unwrap_or(body.len());
+    Ok(body[..end].to_string())
+}
+
+/// Every `sim::…` system path the chain names, in source order, paired with its
+/// byte offset in `src/lib.rs`.
+fn chain_system_paths() -> Vec<(usize, String)> {
+    let lib = std::fs::read_to_string(src_dir().join("lib.rs")).expect("src/lib.rs");
+    let mut out = Vec::new();
+    let mut at = 0usize;
+    while let Some(i) = lib[at..].find("sim::") {
+        let start = at + i;
+        let rest = &lib[start..];
+        let end = rest
+            .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == ':'))
+            .unwrap_or(rest.len());
+        let path = &rest[..end];
+        at = start + end;
+        let name = path.rsplit("::").next().unwrap_or_default();
+        // The guard's own filter: a resource/type path is upper-camel.
+        if name.is_empty() || name.starts_with(|c: char| c.is_uppercase()) {
+            continue;
+        }
+        out.push((start, path.to_string()));
+    }
+    out
+}
+
+fn sweep_offset() -> usize {
+    std::fs::read_to_string(src_dir().join("lib.rs"))
+        .expect("src/lib.rs")
+        .find("sim::economy::repair_gather_claims")
+        .expect("the sweep is in the chain")
+}
+
+/// **The F-008 guard must not silently skip.**
+///
+/// The M4c probe is now generated: it walks the chain, resolves each pre-sweep
+/// entry to a function body on disk, and rejects one that names the claim. Its
+/// comment claims it "requires that *no* system registered before the sweep, in
+/// any file, so much as names either half of the claim". That is only true for
+/// entries it can resolve — and it `continue`s past the ones it cannot, without
+/// a word. Any chain entry the rule cannot resolve today is a system that, if
+/// it were moved ahead of the sweep tomorrow, would be waved through.
+#[test]
+fn every_system_the_chain_names_resolves_to_a_body_the_guard_can_read() {
+    let mut unresolved: Vec<String> = Vec::new();
+    for (_, path) in chain_system_paths() {
+        if let Err(e) = resolve_chain_system(&path) {
+            unresolved.push(e);
+        }
+    }
+    assert!(
+        unresolved.is_empty(),
+        "the F-008 guard's resolution rule cannot find these systems, and \
+         skips whatever it cannot find without failing — so the guard is blind \
+         to them: {unresolved:#?}"
+    );
+}
+
+/// The guard has to actually examine something. A walker that resolves nothing
+/// passes every input, and reads as comprehensive while checking nothing.
+#[test]
+fn the_generated_f008_guard_examines_at_least_one_system_and_a_whole_body() {
+    let sweep = sweep_offset();
+    let pre: Vec<(usize, String)> = chain_system_paths()
+        .into_iter()
+        .filter(|(at, _)| *at < sweep)
+        .collect();
+    assert!(
+        !pre.is_empty(),
+        "no system is registered before the sweep, so the generated guard \
+         inspects nothing and would pass any change"
+    );
+    for (_, path) in &pre {
+        let body = resolve_chain_system(path)
+            .unwrap_or_else(|e| panic!("the guard cannot read a pre-sweep system: {e}"));
+        assert!(
+            body.trim_end().ends_with('}'),
+            "`{path}`'s body was cut short by the guard's `\\n}}\\n` scan: it \
+             would not see a claim read past the cut"
+        );
+    }
+}
+
+/// The comment that justifies moving `identify` after the sweep says "the sweep
+/// is the chain's first system, so 'before the sweep' is a place nothing needs
+/// to be". If that is the argument, it has to be true — and if it is not, the
+/// place is not empty and the guard's one job is not the formality the comment
+/// makes it sound.
+#[test]
+fn the_sweep_really_is_the_chains_first_system_if_the_comment_says_so() {
+    let lib = std::fs::read_to_string(src_dir().join("lib.rs")).expect("src/lib.rs");
+    let flat: String = lib
+        .lines()
+        .map(|l| l.trim().trim_start_matches("//").trim())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if !flat.contains("the sweep is the chain's first system") {
+        return; // the claim was not made; nothing to hold it to.
+    }
+    let sweep = sweep_offset();
+    let before: Vec<String> = chain_system_paths()
+        .into_iter()
+        .filter(|(at, _)| *at < sweep)
+        .map(|(_, p)| p)
+        .collect();
+    assert!(
+        before.is_empty(),
+        "`src/lib.rs` says \"the sweep is the chain's first system\", but these \
+         systems are registered before it: {before:?}"
+    );
+}
+
+// ---- F1's fix: `identify` moved from the head to after the sweep -----------
+
+/// Moving `identify` behind the sweep must not open a window. Over a whole
+/// match, nothing in the world may ever be hashed, logged or read without an
+/// id: the `(Position, no SimId)` population has to be empty at every tick
+/// boundary, and the sim's own count of them (the hash's `UNIDENTIFIED` row)
+/// has to stay zero.
+#[test]
+fn nothing_in_the_world_is_ever_unidentified_at_a_tick_boundary() {
+    use onus::sim::replay::SimId;
+    let mut app = ai_vs_ai(4);
+    for t in 0..2_000u32 {
+        step(&mut app);
+        let n = app
+            .world_mut()
+            .query_filtered::<Entity, (With<Position>, Without<SimId>)>()
+            .iter(app.world())
+            .count();
+        assert_eq!(n, 0, "tick {t} ended with {n} unidentified things in the world");
+    }
+}
+
+/// Nothing may spawn between the sweep and `identify` — that is the window the
+/// move created, and it is only safe while it is empty of spawners.
+#[test]
+fn nothing_between_the_sweep_and_identify_puts_anything_into_the_world() {
+    let lib = std::fs::read_to_string(src_dir().join("lib.rs")).expect("src/lib.rs");
+    let sweep = sweep_offset();
+    let identify = lib.find("sim::replay::identify").expect("identify is in the chain");
+    assert!(sweep < identify, "identify is no longer after the sweep");
+    let between: Vec<String> = chain_system_paths()
+        .into_iter()
+        .filter(|(at, _)| *at > sweep && *at < identify)
+        .map(|(_, p)| p)
+        .collect();
+    for path in &between {
+        let body = resolve_chain_system(path).unwrap_or_else(|e| panic!("{e}"));
+        for spawner in ["spawn(", "spawn_batch(", "spawn_empty("] {
+            assert!(
+                !body.contains(spawner),
+                "`{path}` runs between the sweep and `identify` and spawns: its \
+                 entities reach `apply_commands` (which logs by SimId) with no id"
+            );
+        }
+    }
+}
+
+/// A command applied on the very first tick, naming an entity the fixture
+/// spawned before the sim ever ran, is logged with a real id — not
+/// `UNIDENTIFIED`. (`identify` is now the *second* system in the play block;
+/// this is the property that move must not have cost.)
+#[test]
+fn a_first_tick_order_is_still_logged_against_a_real_id() {
+    use onus::sim::replay::SimId;
+    let mut app = sim_app_with(0, 0);
+    let u = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    push_at(
+        &mut app,
+        0,
+        Order::MoveTo { units: vec![u], dest: Vec2::new(5.0, 0.0) }.issued_by(Faction::A),
+    );
+    step(&mut app);
+    let log = app.world().resource::<CommandLog>();
+    assert_eq!(log.commands().len(), 1);
+    let ids = log.commands()[0].order.sim_ids();
+    assert!(
+        ids.iter().all(|i| i.is_identified()),
+        "a first-tick order was logged against an unidentified entity: {ids:?}"
+    );
+    assert!(log.log().validate().is_ok(), "the sim wrote a log it calls invalid");
+}
+
+// ---- F3's fix: one validity predicate --------------------------------------
+
+/// **The sim must never record a command its own log format calls invalid.**
+///
+/// `validate` is now the write-side check too, so a log holding an
+/// `UNIDENTIFIED` id can no longer be saved at all. `apply_commands` still
+/// *writes* that value for any entity it cannot resolve, so the two halves have
+/// to agree: whatever the sim records must be something the sim can save.
+#[test]
+fn any_log_the_sim_records_is_a_log_the_sim_can_save() {
+    use onus::sim::replay::SimId;
+    const TICKS: u32 = 900;
+    let (_, log) = recorded(4, TICKS);
+    assert!(log.validate().is_ok(), "a plain recording is invalid");
+
+    // A replay whose world has moved out from under the log — the case the
+    // `unresolved`/`skipped` counters exist to report. The report is the log,
+    // so the log has to survive.
+    let mut app = ai_vs_ai(log.seed);
+    app.insert_resource(CommandLog::new(log.seed));
+    // The first command past tick 100 that names a unit, and the unit it names.
+    let doomed = log
+        .commands
+        .iter()
+        .filter(|c| c.tick > 100)
+        .find_map(|c| c.order.sim_ids().first().copied().map(|id| (c.tick, id)));
+    let Some((at, id)) = doomed else {
+        panic!("the recording named no entity after tick 100");
+    };
+    app.insert_resource(ReplaySource::new(log));
+    for t in 0..TICKS {
+        if t + 1 == at {
+            if let Some(e) = app.world().resource::<SimIds>().entity(id) {
+                let _ = app.world_mut().despawn(e);
+            }
+        }
+        step(&mut app);
+    }
+    let produced = app.world().resource::<CommandLog>().log().clone();
+    let path = scratch("replay-of-a-moved-world");
+    assert!(
+        produced.save(&path).is_ok(),
+        "the sim recorded a log it then refuses to write: {:?} \
+         (SimId {id:?} was despawned before tick {at})",
+        produced.validate().err()
+    );
+}
+
+// ---- F4's fix: pending commands in the hash --------------------------------
+
+/// A tiny match that ends on a known tick: both HQs stand for two ticks (so the
+/// match is contested), then B's is removed.
+fn decided_match() -> App {
+    let mut app = sim_app_with(0, 0);
+    spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+    let b = spawn_building(&mut app, "hq", Faction::B, Vec2::new(100.0, 0.0));
+    let u = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(-90.0, 0.0));
+    app.insert_resource(StateHashLog::default());
+    tick(&mut app, 2);
+    app.world_mut().despawn(b);
+    tick(&mut app, 3);
+    assert!(app.world().resource::<MatchState>().outcome().is_some(), "the fixture never decided");
+    // The unit is only here so a live order has something real to name.
+    app.world_mut().entity_mut(u).insert(Position(Vec2::new(-90.0, 0.0)));
+    app
+}
+
+/// **A decided sim is frozen, and a click cannot un-freeze it.**
+///
+/// `record_state_hash` is documented as running "including the ticks after the
+/// match is over, so a frozen sim is visibly frozen". Once the outcome is
+/// written, `apply_commands` is gated off forever, so a command pushed after
+/// that point can never be applied and can never influence any future state.
+/// Hashing it makes a purely client-side event — a click on a finished match —
+/// read as a state divergence, which is the one thing a desync check must not
+/// invent.
+#[test]
+fn a_click_after_the_match_is_over_does_not_move_the_frozen_hash() {
+    let mut app = decided_match();
+    tick(&mut app, 5);
+    let frozen = onus::sim::state_hash(app.world_mut());
+    let unit = app
+        .world_mut()
+        .query_filtered::<Entity, With<onus::sim::UnitKind>>()
+        .iter(app.world())
+        .next()
+        .expect("a unit to name");
+    app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+        Order::MoveTo { units: vec![unit], dest: Vec2::new(0.0, 0.0) }.issued_by(Faction::A),
+    );
+    tick(&mut app, 5);
+    assert_eq!(
+        onus::sim::state_hash(app.world_mut()),
+        frozen,
+        "an order pushed after the match ended — which can never be applied — \
+         changed the hash of a sim that is supposed to be frozen"
+    );
+    let hashes = app.world().resource::<StateHashLog>().clone();
+    let tail = &hashes.0[hashes.0.len() - 8..];
+    assert!(
+        tail.iter().all(|h| *h == tail[0]),
+        "the post-match hashes are not constant: {tail:?}"
+    );
+}
+
+/// The hash's doc says it covers "the commands the queue is still holding **for
+/// a future tick**". The code hashes every command in the queue, including an
+/// `Asap` one, which is not held for a future tick — it is held for the next
+/// drain, and in a running sim it is always drained before the hash is taken.
+/// If the doc is the contract, an `Asap` command must not reach the hash.
+#[test]
+fn an_asap_command_is_not_a_command_held_for_a_future_tick() {
+    let mut a = sim_app_with(500, 0);
+    let ua = spawn_unit(&mut a, "ripper", Faction::A, Vec2::ZERO);
+    let mut b = sim_app_with(500, 0);
+    let _ = spawn_unit(&mut b, "ripper", Faction::A, Vec2::ZERO);
+    tick(&mut a, 5);
+    tick(&mut b, 5);
+    assert_eq!(
+        onus::sim::state_hash(a.world_mut()),
+        onus::sim::state_hash(b.world_mut()),
+        "the fixtures were not identical to begin with"
+    );
+    a.world_mut().resource_mut::<CommandQueue>().0.push_back(
+        Order::MoveTo { units: vec![ua], dest: Vec2::new(1.0, 1.0) }.issued_by(Faction::A),
+    );
+    assert_eq!(
+        onus::sim::state_hash(a.world_mut()),
+        onus::sim::state_hash(b.world_mut()),
+        "an `Asap` command — which the sim will drain on its next tick before \
+         any hash is taken — is being hashed as though it were state held for a \
+         future tick"
+    );
+}
+
+/// The new rows must not have cost the properties pass 1 established: the hash
+/// stays a pure function of the world, and hashing every tick still does not
+/// change the match. (Re-run here against the *new* row set, over a longer run
+/// than pass 1 used.)
+#[test]
+fn the_new_hash_rows_did_not_break_purity_or_neutrality() {
+    const TICKS: u32 = 1_500;
+    let mut watched = ai_vs_ai(4);
+    watched.insert_resource(StateHashLog::default());
+    tick(&mut watched, TICKS);
+    let mut unwatched = ai_vs_ai(4);
+    tick(&mut unwatched, TICKS);
+    let a = onus::sim::state_hash(watched.world_mut());
+    let b = onus::sim::state_hash(watched.world_mut());
+    assert_eq!(a, b, "the hash is not a function of the world alone");
+    assert_eq!(
+        a,
+        onus::sim::state_hash(unwatched.world_mut()),
+        "recording a per-tick hash changed the match it was measuring"
+    );
+}

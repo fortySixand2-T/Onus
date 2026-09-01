@@ -1521,28 +1521,118 @@ fn the_only_readers_of_the_gather_claim_are_the_three_the_doc_names() {
     // The ordering that earns the allowlist its entries, checked over every
     // system the chain actually registers rather than over a list written by
     // hand: nothing that runs before the sweep may name the claim.
-    for (system, line) in systems_registered_before_the_sweep(&src) {
-        for claim in ["GatherTarget", "GatherPhase", "SplitClaim"] {
+    let pre = systems_registered_before_the_sweep();
+    assert!(
+        !pre.is_empty(),
+        "no system is registered before the sweep, so this check inspects \
+         nothing and would pass any change"
+    );
+    for (system, body) in pre {
+        for claim in CLAIM_SPELLINGS {
             assert!(
-                !line.contains(claim),
+                !body.contains(claim),
                 "`{system}` is registered before `repair_gather_claims` and \
                  names `{claim}`: a half claim reaches it (F-008)"
             );
         }
     }
+    // Run conditions are evaluated before the systems they gate, so a condition
+    // that read the claim would read it ahead of the sweep wherever it is
+    // written.
+    for (_, path) in chain_fn_paths() {
+        let lib = std::fs::read_to_string(src.join("lib.rs")).expect("read src/lib.rs");
+        if !lib.contains(&format!("run_if({path})")) {
+            continue;
+        }
+        let body = resolve_sim_fn(&path).unwrap_or_else(|e| panic!("{e}"));
+        for claim in CLAIM_SPELLINGS {
+            assert!(
+                !body.contains(claim),
+                "the run condition `{path}` names `{claim}`: a condition is \
+                 evaluated before the sweep it gates (F-008)"
+            );
+        }
+    }
 }
 
-/// Every system the chain in `src/lib.rs` registers **before**
-/// `economy::repair_gather_claims`, paired with the source of its function
-/// body. Systems live at `src/sim/<module>.rs` (`sim::apply_commands` and
-/// `sim::movement` at `src/sim/mod.rs`).
-fn systems_registered_before_the_sweep(src: &std::path::Path) -> Vec<(String, String)> {
-    use std::fs;
-    let lib = fs::read_to_string(src.join("lib.rs")).expect("read src/lib.rs");
-    let sweep = lib
-        .find("sim::economy::repair_gather_claims")
-        .expect("the sweep is in the chain");
-    let mut found = Vec::new();
+
+/// Resolve a chain-registered `sim::…` path to the source of its function body.
+///
+/// **Every failure to resolve is an error, never a skip.** The rule this guard
+/// enforces reads as comprehensive ("no system before the sweep names the
+/// claim"), and a walker that quietly `continue`s past a name it cannot find is
+/// a walker that waves that system through — which is exactly what happens the
+/// day someone moves it ahead of the sweep. So a name that does not resolve to
+/// exactly one definition fails the test by name.
+///
+/// The lookup is by *definition*, not by module path: a system may be
+/// re-exported (`pub use victory::match_running` makes `sim::match_running`
+/// legal) or live in a nested submodule, so every `.rs` file under `src/sim/`
+/// is searched and exactly one `pub fn <name>(` must be found.
+fn resolve_sim_fn(path: &str) -> Result<String, String> {
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let name = path.rsplit("::").next().unwrap_or_default();
+    if name.is_empty() {
+        return Err(format!("{path}: not a function path"));
+    }
+    let needle = format!("pub fn {name}(");
+    let mut found: Vec<(String, String)> = Vec::new();
+    let mut stack = vec![src.join("sim")];
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).map_err(|e| format!("{path}: read dir: {e}"))? {
+            let p = entry.map_err(|e| format!("{path}: {e}"))?.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|e| e == "rs") {
+                files.push(p);
+            }
+        }
+    }
+    files.sort();
+    for file in files {
+        let text = std::fs::read_to_string(&file).map_err(|e| format!("{path}: {e}"))?;
+        let Some(at) = text.find(&needle) else {
+            continue;
+        };
+        let rest = &text[at..];
+        // The body runs to the first line that is a bare `}` at column 0.
+        let end = rest[1..]
+            .find("\n}\n")
+            .map(|i| i + 3)
+            .ok_or_else(|| {
+                format!(
+                    "{path}: `{needle}` in {} has no closing `}}` at column 0, so \
+                     the guard cannot read the whole body",
+                    file.display()
+                )
+            })?;
+        found.push((file.display().to_string(), rest[..end].to_string()));
+    }
+    match found.len() {
+        0 => Err(format!(
+            "{path}: no `{needle}` anywhere under src/sim — the guard cannot \
+             read this system, so it cannot vouch for it"
+        )),
+        1 => Ok(found.pop().expect("one").1),
+        _ => Err(format!(
+            "{path}: `{needle}` is defined in {} places ({:?}) — the guard \
+             cannot tell which one the chain runs",
+            found.len(),
+            found.iter().map(|(f, _)| f).collect::<Vec<_>>()
+        )),
+    }
+}
+
+/// Every `sim::…` function path the chain in `src/lib.rs` names, in source
+/// order, paired with its byte offset. Upper-camel names are resource/type
+/// paths (`init_resource::<sim::X>`, `resource_exists::<sim::X>`), not systems.
+fn chain_fn_paths() -> Vec<(usize, String)> {
+    let lib = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"),
+    )
+    .expect("read src/lib.rs");
+    let mut out = Vec::new();
     let mut at = 0usize;
     while let Some(i) = lib[at..].find("sim::") {
         let start = at + i;
@@ -1552,36 +1642,36 @@ fn systems_registered_before_the_sweep(src: &std::path::Path) -> Vec<(String, St
             .unwrap_or(rest.len());
         let path = &rest[..end];
         at = start + end;
-        if start >= sweep {
-            continue;
-        }
-        // Registrations only: a resource path is `init_resource::<sim::X>()`,
-        // which is upper-camel, and a `run_if` names a resource type too.
         let name = path.rsplit("::").next().unwrap_or_default();
         if name.is_empty() || name.starts_with(|c: char| c.is_uppercase()) {
             continue;
         }
-        let module: Vec<&str> = path.split("::").collect();
-        let file = if module.len() >= 3 {
-            src.join(format!("sim/{}.rs", module[1]))
-        } else {
-            src.join("sim/mod.rs")
-        };
-        let text = match fs::read_to_string(&file) {
-            Ok(t) => t,
-            Err(_) => continue,
-        };
-        let Some(fn_at) = text.find(&format!("pub fn {name}(")) else {
-            continue;
-        };
-        let body = &text[fn_at..];
-        let end = body[1..]
-            .find("\n}\n")
-            .map(|i| i + 3)
-            .unwrap_or(body.len());
-        found.push((path.to_string(), body[..end].to_string()));
+        out.push((start, path.to_string()));
     }
-    found
+    out
+}
+
+/// The gather claim, in the spellings a system would use to read it.
+const CLAIM_SPELLINGS: [&str; 3] = ["GatherTarget", "GatherPhase", "SplitClaim"];
+
+/// Every system the chain registers **before** `economy::repair_gather_claims`,
+/// paired with the source of its body.
+fn systems_registered_before_the_sweep() -> Vec<(String, String)> {
+    let lib = std::fs::read_to_string(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"),
+    )
+    .expect("read src/lib.rs");
+    let sweep = lib
+        .find("sim::economy::repair_gather_claims")
+        .expect("the sweep is in the chain");
+    chain_fn_paths()
+        .into_iter()
+        .filter(|(at, _)| *at < sweep)
+        .map(|(_, path)| {
+            let body = resolve_sim_fn(&path).unwrap_or_else(|e| panic!("{e}"));
+            (path, body)
+        })
+        .collect()
 }
 
 /// **Training still charges exactly once with the sweep at the head of the

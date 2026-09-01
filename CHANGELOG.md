@@ -199,3 +199,7 @@
 - [2026-08-31] Modified: src/sim/replay.rs — F4: the state hash covers held commands (by queue position) and the next SimId to be issued
 - [2026-08-31] Modified: tests/m5_replay.rs — F4 probes both ways, plus a guard that nothing in src/ schedules a command ahead
 - [2026-08-31] Modified: FINDINGS.md — F-012 extension: the four critic findings and the two known-open items left for M6
+- [2026-08-31] Modified: tests/critic_m5.rs — pass-2 critic probes against the F1..F4 fixes (guard resolution, chain-comment claim, log producer/validator agreement, post-match hash freeze)
+- [2026-08-31] Modified: src/lib.rs — critic pass 2 F1/F2: the chain names sim::victory::match_running (no re-export); the identify comment no longer claims the sweep is first
+- [2026-08-31] Modified: tests/critic_m4c.rs — the F-008 guard resolves by definition across src/sim (re-exports, submodules), fails loudly on unresolvable, and checks run conditions
+- [2026-08-31] Modified: tests/m5_replay.rs — the same strict resolver, plus a probe that every chain name resolves to exactly one readable body

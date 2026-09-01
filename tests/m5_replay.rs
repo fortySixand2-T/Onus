@@ -1488,12 +1488,68 @@ fn every_log_the_sim_records_still_saves_and_loads() {
 
 // ---- the chain's F-008 boundary, per system ---------------------------------
 
-/// Every system the chain registers, in registration order, paired with the
-/// source of its function body. Systems live at `src/sim/<module>.rs`;
-/// `sim::apply_commands` and `sim::movement` at `src/sim/mod.rs`.
-fn chain_systems() -> Vec<(String, String)> {
-    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
-    let lib = std::fs::read_to_string(src.join("lib.rs")).expect("read src/lib.rs");
+/// Resolve a chain-registered `sim::…` path to the source of its function body.
+///
+/// **A name that does not resolve is a failure, not a skip.** A walker that
+/// quietly passes over what it cannot find reads as comprehensive while being
+/// blind, and the system it skipped is exactly the one that gets moved ahead of
+/// the sweep later. The lookup is by *definition*: a system may be re-exported
+/// (`pub use victory::match_running`) or live in a nested submodule, so every
+/// `.rs` under `src/sim/` is searched and exactly one `pub fn <name>(` must be
+/// found, with a body the scan can read to its closing brace.
+fn resolve_sim_fn(path: &str) -> Result<String, String> {
+    let sim = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/sim");
+    let name = path.rsplit("::").next().unwrap_or_default();
+    if name.is_empty() {
+        return Err(format!("{path}: not a function path"));
+    }
+    let needle = format!("pub fn {name}(");
+    let mut files: Vec<PathBuf> = Vec::new();
+    let mut stack = vec![sim];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).map_err(|e| format!("{path}: {e}"))? {
+            let p = entry.map_err(|e| format!("{path}: {e}"))?.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|e| e == "rs") {
+                files.push(p);
+            }
+        }
+    }
+    files.sort();
+    let mut found: Vec<(String, String)> = Vec::new();
+    for file in files {
+        let text = std::fs::read_to_string(&file).map_err(|e| format!("{path}: {e}"))?;
+        let Some(at) = text.find(&needle) else {
+            continue;
+        };
+        let rest = &text[at..];
+        let end = rest[1..].find("\n}\n").map(|i| i + 3).ok_or_else(|| {
+            format!(
+                "{path}: `{needle}` in {} has no closing `}}` at column 0",
+                file.display()
+            )
+        })?;
+        found.push((file.display().to_string(), rest[..end].to_string()));
+    }
+    match found.len() {
+        0 => Err(format!("{path}: no `{needle}` anywhere under src/sim")),
+        1 => Ok(found.pop().expect("one").1),
+        _ => Err(format!(
+            "{path}: `{needle}` is defined {} times ({:?})",
+            found.len(),
+            found.iter().map(|(f, _)| f).collect::<Vec<_>>()
+        )),
+    }
+}
+
+/// Every `sim::…` function path the chain names, in source order, with its byte
+/// offset in `src/lib.rs`. Upper-camel names are resource/type paths.
+fn chain_fn_paths() -> Vec<(usize, String)> {
+    let lib = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"),
+    )
+    .expect("read src/lib.rs");
     let mut out = Vec::new();
     let mut at = 0usize;
     while let Some(i) = lib[at..].find("sim::") {
@@ -1505,28 +1561,40 @@ fn chain_systems() -> Vec<(String, String)> {
         let path = &rest[..end];
         at = start + end;
         let name = path.rsplit("::").next().unwrap_or_default();
-        // A resource path (`init_resource::<sim::X>`, `resource_exists::<..>`)
-        // is upper-camel; a system is not.
         if name.is_empty() || name.starts_with(|c: char| c.is_uppercase()) {
             continue;
         }
-        let parts: Vec<&str> = path.split("::").collect();
-        let file = if parts.len() >= 3 {
-            src.join(format!("sim/{}.rs", parts[1]))
-        } else {
-            src.join("sim/mod.rs")
-        };
-        let Ok(text) = std::fs::read_to_string(&file) else {
-            continue;
-        };
-        let Some(fn_at) = text.find(&format!("pub fn {name}(")) else {
-            continue;
-        };
-        let body = &text[fn_at..];
-        let end = body[1..].find("\n}\n").map(|i| i + 3).unwrap_or(body.len());
-        out.push((path.to_string(), body[..end].to_string()));
+        out.push((start, path.to_string()));
     }
     out
+}
+
+fn sweep_offset() -> usize {
+    std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"))
+        .expect("read src/lib.rs")
+        .find("sim::economy::repair_gather_claims")
+        .expect("the sweep is in the chain")
+}
+
+/// **Every name the chain uses resolves.** The claim-freeness check below is
+/// only as wide as this: a path it cannot turn into a body is a system it
+/// cannot vouch for, and silence there is worse than the hand-written list it
+/// replaced.
+#[test]
+fn every_function_the_chain_names_resolves_to_exactly_one_body() {
+    let paths = chain_fn_paths();
+    assert!(paths.len() >= 8, "the chain walker found almost nothing: {paths:?}");
+    let mut unresolved = Vec::new();
+    for (_, path) in &paths {
+        match resolve_sim_fn(path) {
+            Ok(body) => assert!(
+                body.trim_end().ends_with('}'),
+                "`{path}`'s body was cut short before its closing brace"
+            ),
+            Err(e) => unresolved.push(e),
+        }
+    }
+    assert!(unresolved.is_empty(), "the chain names systems the guard cannot read: {unresolved:#?}");
 }
 
 /// F-008's rule, checked **per system** rather than per file: nothing the chain
@@ -1538,24 +1606,47 @@ fn chain_systems() -> Vec<(String, String)> {
 /// check that does not.
 #[test]
 fn no_system_the_chain_runs_before_the_sweep_touches_the_gather_claim() {
-    let systems = chain_systems();
-    let sweep = systems
-        .iter()
-        .position(|(p, _)| p == "sim::economy::repair_gather_claims")
-        .expect("the sweep is in the chain");
-    assert!(sweep <= 1, "the sweep is no longer at the head of the chain");
+    let sweep = sweep_offset();
+    let pre: Vec<String> = chain_fn_paths()
+        .into_iter()
+        .filter(|(at, _)| *at < sweep)
+        .map(|(_, p)| p)
+        .collect();
+    assert!(
+        !pre.is_empty(),
+        "nothing is registered before the sweep, so this check inspects nothing"
+    );
     let mut offenders = Vec::new();
-    for (path, body) in &systems[..sweep] {
+    for path in &pre {
+        // Unresolvable is a failure, not a skip: see
+        // `every_function_the_chain_names_resolves_to_exactly_one_body`.
+        let body = resolve_sim_fn(path).unwrap_or_else(|e| panic!("{e}"));
         for claim in ["GatherTarget", "GatherPhase", "SplitClaim"] {
             if body.contains(claim) {
                 offenders.push(format!("{path} names {claim}"));
             }
         }
     }
+    // A run condition is evaluated before the systems it gates, so it is
+    // "before the sweep" wherever in the file it is written.
+    let lib = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"),
+    )
+    .expect("read src/lib.rs");
+    for (_, path) in chain_fn_paths() {
+        if !lib.contains(&format!("run_if({path})")) {
+            continue;
+        }
+        let body = resolve_sim_fn(&path).unwrap_or_else(|e| panic!("{e}"));
+        for claim in ["GatherTarget", "GatherPhase", "SplitClaim"] {
+            if body.contains(claim) {
+                offenders.push(format!("the run condition {path} names {claim}"));
+            }
+        }
+    }
     assert!(
         offenders.is_empty(),
-        "a system that runs before the gather-claim sweep reads the claim \
-         (F-008): {offenders:?}"
+        "code that runs before the gather-claim sweep reads the claim (F-008): {offenders:?}"
     );
 }
 
@@ -1565,7 +1656,7 @@ fn no_system_the_chain_runs_before_the_sweep_touches_the_gather_claim() {
 /// `feed_replay` resolves by it, `record_state_hash` keys by it).
 #[test]
 fn identify_runs_after_the_sweep_and_before_everything_that_uses_a_sim_id() {
-    let order: Vec<String> = chain_systems().into_iter().map(|(p, _)| p).collect();
+    let order: Vec<String> = chain_fn_paths().into_iter().map(|(_, p)| p).collect();
     let at = |name: &str| {
         order
             .iter()
