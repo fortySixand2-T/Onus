@@ -29,6 +29,11 @@ harness = false
 name = "pathfind"
 harness = false
 
+# M5: the cost of a tick with and without per-tick state hashing.
+[[bench]]
+name = "replay_hash"
+harness = false
+
 [profile.dev]
 opt-level = 1
 

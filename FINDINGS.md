@@ -526,3 +526,120 @@ sim tick counter, Alloy and production for 300 ticks past the end),
 `an_ai_vs_ai_match_is_decided_within_eight_minutes`, and
 `an_ai_vs_ai_match_replays_identically_from_its_seed`.
 Reproduce: `cargo test --test m4c_ai`.
+
+## F-011 — A command log cannot address entities by `Entity` (M5)
+
+**Wall hit.** M5's replay was implemented the obvious way: log every applied
+command with the tick it applied on, storing entities as `Entity::to_bits()`,
+then feed the log back into a freshly built copy of the starting world. The
+first full test —
+`a_replay_of_the_persisted_log_reproduces_the_match_tick_for_tick`, an
+AI-vs-AI match compared hash for hash — reproduced **299 ticks exactly** and
+then diverged. Not a rounding difference, not a phase shift: at tick 300 both
+sides place their Barracks, and the recording's two new buildings came out at
+entity ids `…62`/`…63` while the replay's came out at `…61`/`…62`.
+
+**Measurement.** Counting entities per tick in the two apps showed the replay
+one ahead **before either had stepped**: 32 entities in the recording's world,
+33 in the replay's. The single difference between them was `insert_resource`.
+In Bevy 0.19 a resource *is* an entity, so **adding one resource shifts every
+entity id the world hands out afterwards** — and a replay app has, by
+construction, at least one resource the recording did not (`ReplaySource`, and
+usually `StateHashLog` too). Every entity that existed before the first tick
+still matched, which is exactly why the failure hid for 299 ticks: only
+*newly spawned* things (a placed building, a trained unit) landed on shifted
+ids, and a log naming them then commanded the wrong ones — silently, because
+`Entity` bits from another app are still perfectly valid `Entity` bits.
+
+**Decision.** Entity ids are an **ECS allocation detail, not sim state**. The
+sim now issues its own coordinate:
+
+- `SimId(u64)` — a component assigned by `replay::identify`, an exclusive
+  system that gives every *thing in the world* (anything with a `Position`) the
+  next id in sequence, new entities in ascending `Entity::to_bits()` order (the
+  stable-order convention of F-007). `SimIds` is the registry, a `Vec` indexed
+  by id — never a map.
+- `identify` runs **twice** in the one chain: at the head (everything the tick
+  reads has an identity) and at the tail (everything the tick *created* has one
+  before that tick is hashed, and before the next tick's orders can name it).
+  It is idempotent.
+- The command log stores `SimId`s, and the state hash is **keyed** on them.
+  Both are therefore functions of the sim's own spawn sequence and of nothing
+  else about the app they run in.
+- A logged id the registry has never issued is an error, not a guess; a log
+  naming an *unidentified* entity (`SimId::UNIDENTIFIED`, a bare fixture entity
+  with no `Position`) is refused at load, because no replay can resolve it.
+
+The general rule, and it will apply again at M6 (a command crossing a process
+boundary cannot carry an `Entity` either): **anything that leaves the tick —
+to disk, to a hash, to another machine — must be addressed in the sim's own
+coordinates.** An identifier the engine allocates is only meaningful inside the
+one `World` that allocated it.
+
+**Evidence.** Red: the replay diverging at tick 300 (`Some(300)` from
+`StateHashLog::first_divergence`), plus the entity-count probe (32 vs 33 before
+the first tick). Green after, over a full match:
+`a_replay_reaches_the_same_verdict_on_the_same_tick` (seed 7 decides on tick
+4625; the replay reaches the same verdict on the same tick, every tick's hash
+equal), `a_replay_of_the_persisted_log_reproduces_the_match_tick_for_tick`
+(3000 ticks through a file), and the direct probe
+`sim_ids_and_the_state_hash_survive_a_difference_in_entity_allocation` — two
+apps whose entity ids provably differ (asserted) agree on every `SimId` and on
+the state hash. The direction a vacuous pass would hide:
+`a_log_missing_one_command_replays_into_a_different_match`. Reproduce:
+`cargo test --test m5_replay`.
+
+## F-012 — The tick tag is on the command, and the state hash is opt-in (M5)
+
+**Wall hit / decisions.** Three M5 choices worth their own record, each with
+what pinned it:
+
+| Question | Choice | Pinned by |
+|---|---|---|
+| Where does the tick tag live? | On the *envelope*, not the order: `Command = SignedOrder + CommandTick`, and `OrderQueue` holds `Command`s. Input pushes `Asap` (a click has no tick of its own; the sim stamps it), a replay pushes `At(tick)`. An order with no place in the tick stream is unrepresentable, exactly as M4c made an order with no attribution unrepresentable. | `a_command_scheduled_for_a_future_tick_applies_on_exactly_that_tick`, `an_unscheduled_command_is_applied_on_the_next_tick` |
+| A command whose tick has passed? | **Dropped and counted**, never applied late. Applying one a tick late is the divergence the whole milestone exists to rule out, so a missed tick is a lost command, not a rescheduled one. | `a_command_whose_tick_has_passed_is_dropped_not_applied_late` |
+| Log format | RON — already the project's content format, so a log is readable and diffable with no new dependency. **Writing is a validation boundary**: a non-finite coordinate has no round-tripping spelling, so `to_ron` refuses it rather than writing a log that would replay as something else (F-005's rule, applied to serialization). Reading refuses an unknown format version and a log whose ticks run backwards. | `every_coordinate_survives_the_file_exactly` (subnormals, both zeros, the extremes, compared by `to_bits`), `a_log_that_could_not_be_read_back_is_refused_when_written`, `an_unreadable_log_is_an_error_not_a_panic` |
+
+**Measurement (why the state hash is opt-in).** `cargo bench --bench
+replay_hash` on the box (release), the AI-vs-AI fixture:
+
+| Bench | Median |
+|---|---|
+| 600 ticks, no `StateHashLog` | 76.9 ms (0.128 ms/tick) |
+| 600 ticks, hashing every tick | 102.5 ms (0.171 ms/tick) |
+| one `state_hash` of a 14-thing world | 15.6 µs |
+
+So hashing every tick costs **~33% of a tick** even on a 14-entity fixture —
+it walks ~19 component queries and sorts the rows, and it builds each
+`QueryState` per call. That is the right price for a replay check or a desync
+probe and the wrong one for every shipped tick, so `record_state_hash` does
+nothing unless a `StateHashLog` resource has been inserted. (Not an
+optimization claim: the hash has no faster variant here, only a switch. If M6
+needs it every tick, the query states want caching, and that will need its own
+before/after.)
+
+**One canonical hash.** The critics have been writing their own state hash
+since M2 (`tests/critic_m4b.rs`, `tests/critic_m4c.rs` each carry one covering
+position, HP and stockpiles). `sim::state_hash` is now the definition, in the
+sim: it covers position, health, ownership, unit/building definitions, carried
+and banked Alloy, both halves of the gather claim, move and combat targets,
+attack cooldowns, resource nodes, production queues (item *positions*
+included), casualties and match state — as rows sorted by `(SimId, field tag)`,
+with floats hashed by exact bits, never bucketed. It deliberately excludes the
+AI journal and the command log: those are records *about* a run, and a faithful
+replay has neither. Pinned in both directions by
+`the_state_hash_covers_every_piece_of_state_it_claims_to` (ten single-field
+mutations, each of which must move it — including a one-bit change to a
+coordinate) and `the_state_hash_ignores_what_is_not_sim_state`.
+
+**The M4c carry-over, closed.** M4c left open that a `src/` emitter forgetting
+`.issued_by(..)` self-signs rather than failing loudly (safe — F-009 — but not
+something a shipped producer should do), and noted the check would have to be
+about *values*, not about the spelling of call sites. The command log is that
+record: `every_command_a_shipped_match_applies_is_signed` runs a 3000-tick
+match, asserts **per tick** that the queue holds no unsigned order, and then
+asserts that every command in the log was `Attribution::By(_)` — and finishes
+by pushing an unsigned order by hand and requiring the log to record it as
+`SelfSigned`, so the test can actually fail. `SelfSigned` stays constructible
+(M1-M4 fixtures push bare orders and F-009's residual limit still stands); what
+is now checked is that nothing shipped produces one.

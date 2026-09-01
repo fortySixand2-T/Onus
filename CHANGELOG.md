@@ -186,3 +186,7 @@
 - [2026-08-31] Modified: tests/critic_m4c.rs — the gather-claim reader allowlist admits sim/replay.rs, and now asserts the ordering that justifies it
 - [2026-08-31] Modified: src/sim/spatial.rs, src/sim/ai.rs — SplitMix64::state / AiCommander::rng_state, so "the RNG steps only in the sim" is watchable
 - [2026-08-31] Modified: tests/m5_replay.rs — M5 AC4: the only generator lives in the sim, advances only on sim ticks, and a replay steps none of it
+- [2026-08-31] Created: benches/replay_hash.rs — L4: the cost of a tick with and without per-tick state hashing
+- [2026-08-31] Modified: Cargo.toml — register the replay_hash bench
+- [2026-08-31] Modified: tests/m5_replay.rs — close the M4c self-signing carry-over: every command a shipped match applies is signed
+- [2026-08-31] Modified: FINDINGS.md — F-011 (entity ids are not a coordinate a log can use; SimId) and F-012 (tick tag on the envelope, RON log, opt-in hash with measurements)

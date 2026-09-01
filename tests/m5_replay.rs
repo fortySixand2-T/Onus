@@ -1125,6 +1125,66 @@ fn the_seed_is_the_whole_of_the_randomness() {
     assert_ne!(one[0], one[1], "both commanders share a stream");
 }
 
+// ---- the M4c carry-over: nothing shipped is self-signed ---------------------
+
+/// M4c left one item open: a `src/` emitter that forgets `.issued_by(..)`
+/// self-signs rather than failing loudly. Self-signing is *safe* (an order with
+/// no coherent issuer is refused whole — F-009), but it is not something any
+/// shipped producer should ever do, and until M5 there was no record of what the
+/// sim was actually asked to do.
+///
+/// The command log is that record: every command the sim consumed, with its
+/// attribution. So the claim is now checked over **values reaching the sim**,
+/// rather than over the spelling of the call sites (the text scan F-009
+/// deleted): in a shipped match, every command is signed.
+#[test]
+fn every_command_a_shipped_match_applies_is_signed() {
+    let mut app = ai_vs_ai(4);
+    for t in 0..3_000u32 {
+        step(&mut app);
+        // Per tick, not just at the end: a self-signed order that appears and is
+        // consumed mid-match would not show up in an end-state check.
+        let queue_unsigned = {
+            let q = app.world().resource::<CommandQueue>();
+            q.0.iter()
+                .filter(|c| c.attribution() != Attribution::By(Faction::A)
+                    && c.attribution() != Attribution::By(Faction::B))
+                .count()
+        };
+        assert_eq!(
+            queue_unsigned, 0,
+            "tick {t}: the queue holds an unsigned order"
+        );
+    }
+    let log = app.world().resource::<CommandLog>();
+    assert!(log.commands().len() > 20, "nothing was ordered at all");
+    for c in log.commands() {
+        assert!(
+            matches!(c.attribution, Attribution::By(_)),
+            "tick {}: a {:?} command reached the sim {:?}",
+            c.tick,
+            c.attribution,
+            c.order
+        );
+    }
+    // And the log distinguishes them, so this test could fail: an unsigned
+    // order pushed by hand is recorded as self-signed.
+    let unit = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(-700.0, 0.0));
+    app.world_mut().resource_mut::<CommandQueue>().0.push_back(Order::MoveTo {
+        units: vec![unit],
+        dest: Vec2::new(0.0, 0.0),
+    });
+    step(&mut app);
+    assert!(
+        app.world()
+            .resource::<CommandLog>()
+            .commands()
+            .iter()
+            .any(|c| c.attribution == Attribution::SelfSigned),
+        "the log cannot tell a self-signed command from a signed one"
+    );
+}
+
 // ---- keep the fixture warnings honest ---------------------------------------
 
 #[test]
