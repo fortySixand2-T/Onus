@@ -19,9 +19,10 @@ use onus::sim::combat::{Casualties, Health};
 use onus::sim::content::Content;
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use onus::sim::spatial::Faction;
+use onus::sim::replay::{LoggedCommand, LoggedOrder, MatchLog};
 use onus::sim::{
-    CommandLog, CommandQueue, CommandTick, MatchState, MoveTarget, Order, Position, RateReport,
-    ResourceNode,
+    AiCommanders, Attribution, CommandLog, CommandQueue, CommandTick, MatchState, MoveTarget,
+    Order, Position, RateReport, ResourceNode,
 };
 
 // ---- harness ----------------------------------------------------------------
@@ -88,6 +89,34 @@ fn spawn_building(app: &mut App, id: &str, faction: Faction, pos: Vec2) -> Entit
             ProductionQueue::default(),
         ))
         .id()
+}
+
+/// The symmetric AI-vs-AI fixture (the M4c one): two bases, two deposits, three
+/// workers a side, both commanders seeded from one match seed. The whole match
+/// is then a function of `(this world, seed, the command log)`.
+fn ai_vs_ai(seed: u64) -> App {
+    let mut app = sim_app_with_alloy(content().economy.starting_alloy);
+    for (faction, base) in [
+        (Faction::A, Vec2::new(-750.0, 0.0)),
+        (Faction::B, Vec2::new(750.0, 0.0)),
+    ] {
+        spawn_building(&mut app, "hq", faction, base);
+        app.world_mut().spawn((
+            Position(base + Vec2::new(0.0, 250.0)),
+            ResourceNode { amount: 100_000 },
+        ));
+        for i in 0..3 {
+            spawn_unit(
+                &mut app,
+                "worker",
+                faction,
+                base + Vec2::new(0.0, 20.0 * i as f32),
+            );
+        }
+    }
+    app.insert_resource(AiCommanders::new(seed, &[Faction::A, Faction::B]));
+    app.insert_resource(CommandLog::new(seed));
+    app
 }
 
 fn sim_tick(app: &App) -> u32 {
@@ -312,6 +341,179 @@ fn a_hand_composed_app_without_the_tick_counter_still_applies_its_orders() {
         app.world().get::<MoveTarget>(unit).is_some(),
         "a hand-composed app stopped applying its orders"
     );
+}
+
+// ---- AC2: the command log is persisted to disk ------------------------------
+
+/// A scratch path for a log file. Under the OS temp dir, named per test, so two
+/// tests never race for one file.
+fn scratch(name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join("onus-m5");
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    dir.join(format!("{name}.ron"))
+}
+
+/// An AI match's whole command stream survives a trip through a file: same
+/// ticks, same attributions, same orders, byte-identical coordinates.
+#[test]
+fn the_command_log_round_trips_through_a_file() {
+    let mut app = ai_vs_ai(4);
+    tick(&mut app, 3_000);
+    let recorded = app.world().resource::<CommandLog>().log().clone();
+    assert!(
+        recorded.commands.len() > 20,
+        "the log recorded almost nothing ({}) — the round trip would prove nothing",
+        recorded.commands.len()
+    );
+    assert!(
+        recorded.commands.iter().map(|c| c.tick).max() > Some(0),
+        "every command landed on tick 0"
+    );
+
+    let path = scratch("round_trip");
+    recorded.save(&path).expect("save");
+    let loaded = MatchLog::load(&path).expect("load");
+    assert_eq!(loaded, recorded, "the log changed on the way to disk");
+    assert_eq!(loaded.seed, 4, "the seed is not part of the persisted log");
+
+    // Coordinates bit for bit — a log that rounds a float is a log that
+    // replays a different match.
+    for (a, b) in loaded.commands.iter().zip(recorded.commands.iter()) {
+        assert_eq!(
+            format!("{:?}", a.order),
+            format!("{:?}", b.order),
+            "an order changed shape on disk"
+        );
+    }
+}
+
+/// Every float a log can carry comes back **bit-identical** — including the
+/// subnormals, the extremes and negative zero, where a lazily formatted number
+/// would quietly become a different one.
+#[test]
+fn every_coordinate_survives_the_file_exactly() {
+    let hard: Vec<f32> = vec![
+        0.0,
+        -0.0,
+        1.0,
+        -1.0,
+        0.1,
+        1.0 / 3.0,
+        -750.0,
+        1234.5678,
+        f32::MIN_POSITIVE,
+        -f32::MIN_POSITIVE,
+        f32::from_bits(1),       // smallest subnormal
+        f32::from_bits(0x0080_0000 - 1), // largest subnormal
+        f32::MAX,
+        f32::MIN,
+        1e-40,
+        3.4028235e38,
+    ];
+    let mut log = MatchLog::new(7);
+    for (i, pair) in hard.chunks(2).enumerate() {
+        log.commands.push(LoggedCommand {
+            tick: i as u32,
+            attribution: Attribution::By(Faction::A),
+            order: LoggedOrder::MoveTo {
+                units: vec![1, 2],
+                dest: (pair[0], pair[1]),
+            },
+        });
+    }
+    let path = scratch("floats");
+    log.save(&path).expect("save");
+    let back = MatchLog::load(&path).expect("load");
+    for (i, (a, b)) in back.commands.iter().zip(log.commands.iter()).enumerate() {
+        let (LoggedOrder::MoveTo { dest: got, .. }, LoggedOrder::MoveTo { dest: want, .. }) =
+            (&a.order, &b.order)
+        else {
+            panic!("shape changed");
+        };
+        assert_eq!(
+            (got.0.to_bits(), got.1.to_bits()),
+            (want.0.to_bits(), want.1.to_bits()),
+            "command {i}: {want:?} came back as {got:?}"
+        );
+    }
+}
+
+/// A coordinate with no round-tripping spelling is refused **at the write**,
+/// not written out to be misread later. (F-005's rule, applied to serialization:
+/// a check that admits a value it cannot represent is not a check.)
+#[test]
+fn a_log_that_could_not_be_read_back_is_refused_when_written() {
+    for bad in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+        let mut log = MatchLog::new(1);
+        log.commands.push(LoggedCommand {
+            tick: 3,
+            attribution: Attribution::SelfSigned,
+            order: LoggedOrder::Place {
+                faction: Faction::B,
+                building: 0,
+                pos: (bad, 0.0),
+            },
+        });
+        assert!(log.to_ron().is_err(), "{bad} was accepted into a log");
+        let path = scratch("nonfinite");
+        let _ = std::fs::remove_file(&path);
+        assert!(log.save(&path).is_err());
+        assert!(
+            !path.exists(),
+            "a log that cannot be read back was still written to disk"
+        );
+    }
+}
+
+/// A log this build cannot read exactly is an error, never a partial replay:
+/// an unknown format version, commands out of tick order, or an entity id no
+/// world can hold (which `Entity::from_bits` would *panic* on).
+#[test]
+fn an_unreadable_log_is_an_error_not_a_panic() {
+    // A real entity's bits, so the "valid" half of this test is genuinely valid.
+    let mut world = World::new();
+    let real = world.spawn_empty().id().to_bits();
+    let good = {
+        let mut l = MatchLog::new(2);
+        l.commands.push(LoggedCommand {
+            tick: 1,
+            attribution: Attribution::By(Faction::A),
+            order: LoggedOrder::Train {
+                building: real,
+                unit: 0,
+            },
+        });
+        l
+    };
+    let text = good.to_ron().expect("writes");
+    assert_eq!(MatchLog::from_ron(&text).expect("reads"), good);
+
+    // Version.
+    assert!(MatchLog::from_ron(&text.replace("version: 1", "version: 2")).is_err());
+
+    // Tick order.
+    let mut jumbled = good.clone();
+    jumbled.commands.push(LoggedCommand {
+        tick: 0,
+        ..good.commands[0].clone()
+    });
+    let text = jumbled.to_ron().expect("writes");
+    assert!(
+        MatchLog::from_ron(&text).is_err(),
+        "a log whose ticks run backwards was accepted"
+    );
+
+    // Entity bits nothing can be (index 0 is not a valid `EntityIndex`).
+    // `Entity::from_bits` *panics* on these; the log must return an error.
+    let text = good.to_ron().unwrap().replace(&real.to_string(), "0");
+    assert!(
+        MatchLog::from_ron(&text).is_err(),
+        "an impossible entity id was accepted"
+    );
+
+    // Not RON at all.
+    assert!(MatchLog::from_ron("this is not a log").is_err());
+    assert!(MatchLog::load(&scratch("does-not-exist-at-all")).is_err());
 }
 
 // ---- keep the fixture warnings honest ---------------------------------------

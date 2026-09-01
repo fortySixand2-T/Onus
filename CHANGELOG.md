@@ -177,3 +177,5 @@
 - [2026-08-31] Modified: src/sim/spatial.rs — Faction is serializable (the command log stores it)
 - [2026-08-31] Modified: src/lib.rs — the sim chain installs the CommandLog with itself
 - [2026-08-31] Created: tests/m5_replay.rs — M5 AC1: a command applies on exactly its tick, never late, and only when the sim schedule runs
+- [2026-08-31] Modified: src/sim/replay.rs — M5 AC2: MatchLog to_ron/from_ron/save/load, checked at the boundary (non-finite coords, format version, tick order, impossible entity ids)
+- [2026-08-31] Modified: tests/m5_replay.rs — M5 AC2: the log round-trips through a file bit for bit; an unreadable log is an error, not a panic

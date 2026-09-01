@@ -111,9 +111,14 @@ impl LoggedOrder {
         })
     }
 
-    /// Back to an `Order`. Checked: an entity id the world cannot represent is
-    /// an error, not a panic (`Entity::from_bits` panics; `try_from_bits` does
-    /// not).
+    /// Back to an `Order`. Checked exactly as far as it can be: bits that are
+    /// not a valid `Entity` **at all** (`Entity::from_bits` panics on those;
+    /// `try_from_bits` does not) are an error. Bits that name some *other*
+    /// entity are not detectable here — no order can know which world it will
+    /// be replayed into — and are caught where they show up, as a per-tick
+    /// state-hash mismatch against the recorded run. Either way the sim itself
+    /// is safe: every order path resolves entities with `Commands::get_entity`,
+    /// so naming a stranger is inert rather than fatal (F-009).
     pub fn to_order(&self) -> Result<Order, String> {
         let ent = |bits: u64| {
             Entity::try_from_bits(bits).ok_or_else(|| format!("log: invalid entity bits {bits}"))
