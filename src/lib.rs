@@ -87,6 +87,7 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
     app.init_resource::<sim::AiJournal>();
     app.init_resource::<sim::MatchState>();
     app.init_resource::<sim::replay::CommandLog>();
+    app.init_resource::<sim::replay::SimIds>();
     app.add_systems(
         schedule,
         (
@@ -101,8 +102,21 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
                 // job, combat reads it as "the economy owns this one". A
                 // half-claim swept here therefore reaches none of them. Any new
                 // reader of the claim belongs after this system — see F-008.
+                // Every thing in the world carries the sim's own stable id, so
+                // the command log and the state hash address entities by
+                // something that does not move when the app's configuration
+                // does. Runs at the head *and* at the tail — see below.
+                sim::replay::identify,
                 sim::economy::repair_gather_claims,
-                sim::ai::ai_commanders,
+                // The scripted commanders — **unless this is a replay**, where
+                // their decisions are already in the log as orders and letting
+                // them think again would double every one of them.
+                sim::ai::ai_commanders
+                    .run_if(not(resource_exists::<sim::replay::ReplaySource>)),
+                // A replay's only producer: this tick's logged commands, pushed
+                // onto the same queue every other producer writes to.
+                sim::replay::feed_replay
+                    .run_if(resource_exists::<sim::replay::ReplaySource>),
                 sim::apply_commands,
                 sim::economy::production,
                 sim::economy::gather,
@@ -113,6 +127,14 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
                 .run_if(sim::match_running),
             // Deciding it: always runs, and writes the outcome exactly once.
             sim::victory::match_end,
+            // The tail identification pass: whatever this tick spawned (a
+            // placed building, a trained unit) gets its id before the tick is
+            // hashed, and before the next tick's orders can name it.
+            sim::replay::identify,
+            // The tick's state hash, on the state the tick ended in — including
+            // the ticks after the match is over, so a frozen sim is visibly
+            // frozen. Does nothing unless a `StateHashLog` was inserted.
+            sim::replay::record_state_hash,
         )
             .chain(),
     );

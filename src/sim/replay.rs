@@ -26,22 +26,135 @@ use bevy::ecs::prelude::*;
 use bevy::math::Vec2;
 use serde::{Deserialize, Serialize};
 
+use crate::sim::combat::{AttackCooldown, Casualties, Engaging, Health, Target};
+use crate::sim::economy::{Building, Carrying, GatherPhase, ProductionQueue, Stockpiles, UnitDefIdx};
 use crate::sim::spatial::Faction;
-use crate::sim::{Attribution, Order};
+use crate::sim::victory::MatchState;
+use crate::sim::{
+    Attribution, CommandQueue, GatherTarget, MoveTarget, Order, Position, ResourceNode, SignedOrder,
+    UnitKind,
+};
 
 /// Format version of a persisted [`MatchLog`]. Bumped when the on-disk shape
 /// changes; loading refuses a version it does not know, because a log it cannot
 /// read exactly is a log it cannot replay at all.
 pub const LOG_FORMAT_VERSION: u32 = 1;
 
+// ---- stable identity --------------------------------------------------------
+
+/// A **sim-stable** identity for a world entity: the order in which the sim
+/// first saw it, counted by the sim itself.
+///
+/// A command log cannot address entities by `Entity::to_bits()`. Entity ids are
+/// an ECS *allocation* detail, not sim state: in Bevy 0.19 even inserting one
+/// extra resource into an app shifts every id the world hands out afterwards, so
+/// a replay — which by construction has at least one resource the recording did
+/// not ([`ReplaySource`]) — allocates its buildings and its trained units at
+/// different ids than the run it is replaying. A log keyed on raw entity bits
+/// then commands *the wrong units*, silently.
+///
+/// `SimId` is the coordinate that does not move: it is assigned by
+/// [`identify`], in the sim, in a deterministic order, and depends on nothing
+/// but the sim's own sequence of spawns.
+#[derive(
+    Component, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash, Serialize, Deserialize,
+)]
+pub struct SimId(pub u64);
+
+impl SimId {
+    /// The id of an entity the sim never identified — a bare entity from a test
+    /// fixture, say, which has no `Position` and so is not a thing in the world.
+    /// A log containing one is refused on load: it names something a replay
+    /// cannot resolve.
+    pub const UNIDENTIFIED: SimId = SimId(u64::MAX);
+
+    pub fn is_identified(self) -> bool {
+        self != SimId::UNIDENTIFIED
+    }
+}
+
+/// The sim's own entity registry: `SimId` → the entity currently holding it.
+///
+/// A `Vec` indexed by id, never a map — the lookup is by key and the iteration
+/// (in [`identify`]) is over a sorted `Vec`, so no hash order can reach an
+/// outcome. A slot whose entity has been despawned keeps the dead `Entity`
+/// value: entity *generations* make that a lookup miss rather than a collision
+/// with whatever later reused the index, and every order path resolves through
+/// `Commands::get_entity` anyway (F-009).
+#[derive(Resource, Debug, Default)]
+pub struct SimIds {
+    slots: Vec<Entity>,
+}
+
+impl SimIds {
+    /// The entity holding `id`, if the sim has ever issued that id.
+    pub fn entity(&self, id: SimId) -> Option<Entity> {
+        usize::try_from(id.0)
+            .ok()
+            .and_then(|i| self.slots.get(i))
+            .copied()
+    }
+
+    /// How many ids have been issued.
+    pub fn issued(&self) -> u64 {
+        self.slots.len() as u64
+    }
+
+    fn assign(&mut self, e: Entity) -> SimId {
+        let id = SimId(self.slots.len() as u64);
+        self.slots.push(e);
+        id
+    }
+}
+
+/// Give every *thing in the world* that does not have one a [`SimId`].
+///
+/// "A thing in the world" is an entity with a [`Position`] — every unit,
+/// building and resource node has one, and nothing else in the sim does. New
+/// entities are identified in ascending `Entity::to_bits()` order, the same
+/// stable-order convention combat uses (F-007), so two runs that spawn the same
+/// things in the same tick issue the same ids.
+///
+/// It is an **exclusive** system, so the ids exist the moment it returns rather
+/// than at the next sync point, and it runs **twice** in the chain: once at the
+/// head (so everything the tick reads has an identity) and once at the tail
+/// (so everything the tick *created* — a placed building, a trained unit — has
+/// one before that tick's state hash is taken, and before the next tick's
+/// orders can name it). It is idempotent: the second run does nothing unless
+/// the tick spawned something.
+pub fn identify(world: &mut World) {
+    if !world.contains_resource::<SimIds>() {
+        world.init_resource::<SimIds>();
+    }
+    let mut fresh: Vec<Entity> = world
+        .query_filtered::<Entity, (With<Position>, Without<SimId>)>()
+        .iter(world)
+        .collect();
+    if fresh.is_empty() {
+        return;
+    }
+    fresh.sort_unstable_by_key(|e| e.to_bits());
+    let mut assigned: Vec<(Entity, SimId)> = Vec::with_capacity(fresh.len());
+    world.resource_scope(|_w, mut ids: Mut<SimIds>| {
+        for e in fresh {
+            assigned.push((e, ids.assign(e)));
+        }
+    });
+    for (e, id) in assigned {
+        if let Ok(mut ent) = world.get_entity_mut(e) {
+            ent.insert(id);
+        }
+    }
+}
+
 // ---- the loggable form of an order -----------------------------------------
 
 /// An [`Order`] in the form that goes to disk.
 ///
 /// Two deliberate differences from `Order`:
-/// - entities are their raw `Entity::to_bits()`, converted back through
-///   `Entity::try_from_bits` (a *checked* boundary — a corrupt log yields an
-///   error, never a panic). Entity ids are reproducible because spawn order is;
+/// - entities are [`SimId`]s, not `Entity`s. Entity ids are an ECS allocation
+///   detail that shifts with the app's configuration, so a log keyed on them
+///   replays into the wrong units — see [`SimId`];
 /// - there is no `By` wrapper: the signature has already been resolved into an
 ///   [`Attribution`] by the time a command is applied, and that is what is
 ///   stored beside the order.
@@ -76,13 +189,15 @@ fn vec2((x, y): (f32, f32)) -> Vec2 {
 }
 
 impl LoggedOrder {
-    /// The loggable form of an order. `None` only for [`Order::By`], which the
-    /// queue has already peeled off before a command is ever applied — a
-    /// signature is an [`Attribution`], not an order.
-    pub fn of(order: &Order) -> Option<Self> {
+    /// The loggable form of an order, with each entity resolved to its
+    /// [`SimId`] by `id_of`. `None` only for [`Order::By`], which the queue has
+    /// already peeled off before a command is ever applied — a signature is an
+    /// [`Attribution`], not an order.
+    pub fn of(order: &Order, id_of: impl Fn(Entity) -> SimId) -> Option<Self> {
+        let ids = |es: &[Entity]| es.iter().map(|e| id_of(*e).0).collect::<Vec<u64>>();
         Some(match order {
             Order::MoveTo { units, dest } => LoggedOrder::MoveTo {
-                units: units.iter().map(|e| e.to_bits()).collect(),
+                units: ids(units),
                 dest: xy(*dest),
             },
             Order::Gather {
@@ -90,8 +205,8 @@ impl LoggedOrder {
                 node,
                 node_pos,
             } => LoggedOrder::Gather {
-                units: units.iter().map(|e| e.to_bits()).collect(),
-                node: node.to_bits(),
+                units: ids(units),
+                node: id_of(*node).0,
                 node_pos: xy(*node_pos),
             },
             Order::Place {
@@ -104,26 +219,42 @@ impl LoggedOrder {
                 pos: xy(*pos),
             },
             Order::Train { building, unit } => LoggedOrder::Train {
-                building: building.to_bits(),
+                building: id_of(*building).0,
                 unit: *unit,
             },
             Order::By { .. } => return None,
         })
     }
 
-    /// Back to an `Order`. Checked exactly as far as it can be: bits that are
-    /// not a valid `Entity` **at all** (`Entity::from_bits` panics on those;
-    /// `try_from_bits` does not) are an error. Bits that name some *other*
-    /// entity are not detectable here — no order can know which world it will
-    /// be replayed into — and are caught where they show up, as a per-tick
-    /// state-hash mismatch against the recorded run. Either way the sim itself
-    /// is safe: every order path resolves entities with `Commands::get_entity`,
-    /// so naming a stranger is inert rather than fatal (F-009).
-    pub fn to_order(&self) -> Result<Order, String> {
-        let ent = |bits: u64| {
-            Entity::try_from_bits(bits).ok_or_else(|| format!("log: invalid entity bits {bits}"))
+    /// Every [`SimId`] this order names.
+    pub fn sim_ids(&self) -> Vec<SimId> {
+        match self {
+            LoggedOrder::MoveTo { units, .. } => units.iter().map(|i| SimId(*i)).collect(),
+            LoggedOrder::Gather { units, node, .. } => units
+                .iter()
+                .chain(std::iter::once(node))
+                .map(|i| SimId(*i))
+                .collect(),
+            LoggedOrder::Place { .. } => vec![],
+            LoggedOrder::Train { building, .. } => vec![SimId(*building)],
+        }
+    }
+
+    /// Back to an `Order` in `ids`' world. An id the registry has never issued
+    /// is an error rather than a guess: a replay that quietly commanded
+    /// *something else* is worse than one that stops.
+    ///
+    /// What this cannot check is whether the entity behind a known id is the
+    /// one the recording meant — no order can know which world it will be
+    /// replayed into. That is caught where it shows up, as a per-tick state
+    /// hash mismatch, and it is harmless to the sim either way: every order
+    /// path resolves entities with `Commands::get_entity` (F-009).
+    pub fn to_order(&self, ids: &SimIds) -> Result<Order, String> {
+        let ent = |id: u64| {
+            ids.entity(SimId(id))
+                .ok_or_else(|| format!("log: no entity for sim id {id}"))
         };
-        let ents = |bits: &[u64]| bits.iter().map(|b| ent(*b)).collect::<Result<Vec<_>, _>>();
+        let ents = |all: &[u64]| all.iter().map(|i| ent(*i)).collect::<Result<Vec<_>, _>>();
         Ok(match self {
             LoggedOrder::MoveTo { units, dest } => Order::MoveTo {
                 units: ents(units)?,
@@ -257,7 +388,16 @@ impl MatchLog {
                 ));
             }
             last = c.tick;
-            c.order.to_order()?;
+            for id in c.order.sim_ids() {
+                if !id.is_identified() {
+                    return Err(format!(
+                        "log: the command at tick {} names an unidentified entity — \
+                         it was recorded against something the sim never gave an id, \
+                         and no replay can resolve it",
+                        c.tick
+                    ));
+                }
+            }
         }
         Ok(log)
     }
@@ -309,8 +449,14 @@ impl CommandLog {
         self.late
     }
 
-    pub(crate) fn record(&mut self, tick: u32, attribution: Attribution, order: &Order) {
-        if let Some(order) = LoggedOrder::of(order) {
+    pub(crate) fn record(
+        &mut self,
+        tick: u32,
+        attribution: Attribution,
+        order: &Order,
+        id_of: impl Fn(Entity) -> SimId,
+    ) {
+        if let Some(order) = LoggedOrder::of(order, id_of) {
             self.log.commands.push(LoggedCommand {
                 tick,
                 attribution,
@@ -322,4 +468,394 @@ impl CommandLog {
     pub(crate) fn record_late(&mut self, late: u32) {
         self.late = self.late.saturating_add(late);
     }
+}
+
+// ---- replaying a log --------------------------------------------------------
+
+/// A log being replayed. Its presence puts the sim in **replay mode**: the
+/// scripted AI stands down (its decisions are already in the log, as orders),
+/// and [`feed_replay`] is the only producer of commands for the tick.
+#[derive(Resource, Debug)]
+pub struct ReplaySource {
+    log: MatchLog,
+    /// How far through `log.commands` the replay has got. The log is ordered by
+    /// tick, so this only ever moves forward — the replay never searches, and
+    /// never depends on anything but its own position.
+    cursor: usize,
+    /// Commands the replay could not place because their tick had already gone
+    /// by when it reached them. Zero for any log this build wrote.
+    skipped: u32,
+    /// Live commands (a click, a stray fixture order) discarded because they
+    /// were not part of the recorded match.
+    discarded: u32,
+    /// Logged commands naming a [`SimId`] this world has never issued — the log
+    /// does not match the starting world it is being replayed into.
+    unresolved: u32,
+}
+
+impl ReplaySource {
+    pub fn new(log: MatchLog) -> Self {
+        Self {
+            log,
+            cursor: 0,
+            skipped: 0,
+            discarded: 0,
+            unresolved: 0,
+        }
+    }
+
+    pub fn log(&self) -> &MatchLog {
+        &self.log
+    }
+
+    pub fn seed(&self) -> u64 {
+        self.log.seed
+    }
+
+    /// Commands consumed so far.
+    pub fn cursor(&self) -> usize {
+        self.cursor
+    }
+
+    pub fn skipped(&self) -> u32 {
+        self.skipped
+    }
+
+    pub fn discarded(&self) -> u32 {
+        self.discarded
+    }
+
+    pub fn unresolved(&self) -> u32 {
+        self.unresolved
+    }
+
+    /// Has every logged command been fed?
+    pub fn finished(&self) -> bool {
+        self.cursor >= self.log.commands.len()
+    }
+}
+
+/// Feed this tick's logged commands back onto the ordinary command queue.
+///
+/// Two properties make the replay a replay rather than an approximation:
+/// - **The recorded commands are the only ones.** Anything a live producer
+///   pushed is discarded first (counted in [`ReplaySource::discarded`]), so a
+///   stray click cannot desync a replay by adding an order the recording never
+///   had.
+/// - **They go through the same path as everything else.** They are pushed as
+///   `At(tick)` commands onto the same queue the mouse and the AI write to, and
+///   `apply_commands` checks their ownership and charges their cost exactly as
+///   it did during the recording. There is no replay-only route into the sim
+///   (the same rule that keeps the AI honest — F-009).
+pub fn feed_replay(
+    state: Res<MatchState>,
+    ids: Res<SimIds>,
+    mut source: ResMut<ReplaySource>,
+    mut queue: ResMut<CommandQueue>,
+) {
+    let now = state.tick();
+    let discarded = queue.0.len() as u32;
+    queue.0.clear();
+    source.discarded = source.discarded.saturating_add(discarded);
+
+    while let Some(entry) = source.log.commands.get(source.cursor) {
+        if entry.tick > now {
+            break;
+        }
+        if entry.tick < now {
+            // Only reachable from a hand-edited log: the sim's own ticks are
+            // monotonic and `from_ron` rejects an out-of-order log. Counted, not
+            // applied — a command off its tick is the divergence replay exists
+            // to rule out.
+            source.skipped = source.skipped.saturating_add(1);
+            source.cursor += 1;
+            continue;
+        }
+        match entry.order.to_order(&ids) {
+            Ok(order) => queue
+                .0
+                .push_at(entry.tick, SignedOrder::from_parts(entry.attribution, order)),
+            // An id this world has never issued: the log does not belong to
+            // this starting world (or was hand-edited). Counted and dropped —
+            // guessing an entity would be worse than missing a command, and the
+            // state hash reports the divergence either way.
+            Err(_) => source.unresolved = source.unresolved.saturating_add(1),
+        }
+        source.cursor += 1;
+    }
+}
+
+// ---- the canonical state hash ----------------------------------------------
+
+/// Every tick's [`state_hash`], in order. Opt-in: insert it and the sim records
+/// a hash per tick; leave it out and the hashing pass does nothing (it is an
+/// O(entities) walk, and only a replay check or a desync probe needs it).
+#[derive(Resource, Debug, Default, Clone, PartialEq, Eq)]
+pub struct StateHashLog(pub Vec<u64>);
+
+impl StateHashLog {
+    pub fn last(&self) -> Option<u64> {
+        self.0.last().copied()
+    }
+
+    /// The first tick at which two runs disagree, if any — the figure a desync
+    /// report wants (M6 will exchange these).
+    pub fn first_divergence(&self, other: &StateHashLog) -> Option<usize> {
+        self.0
+            .iter()
+            .zip(other.0.iter())
+            .position(|(a, b)| a != b)
+            .or_else(|| (self.0.len() != other.0.len()).then_some(self.0.len().min(other.0.len())))
+    }
+}
+
+/// Record this tick's state hash, if anybody asked for one. Runs last in the
+/// chain, so the hash for tick N is the state tick N ended in.
+pub fn record_state_hash(world: &mut World) {
+    if !world.contains_resource::<StateHashLog>() {
+        return;
+    }
+    let h = state_hash(world);
+    world.resource_mut::<StateHashLog>().0.push(h);
+}
+
+/// Field tags, so two different components can never collide into the same row.
+mod tag {
+    pub const POSITION: u64 = 1;
+    pub const HEALTH: u64 = 2;
+    pub const FACTION: u64 = 3;
+    pub const UNIT_DEF: u64 = 4;
+    pub const UNIT_KIND: u64 = 5;
+    pub const CARRYING: u64 = 6;
+    pub const GATHER_TARGET: u64 = 7;
+    pub const GATHER_PHASE: u64 = 8;
+    pub const MOVE_TARGET: u64 = 9;
+    pub const BUILDING: u64 = 10;
+    pub const PRODUCTION: u64 = 11;
+    pub const COMBAT_TARGET: u64 = 12;
+    pub const COOLDOWN: u64 = 13;
+    pub const ENGAGING: u64 = 14;
+    pub const RESOURCE_NODE: u64 = 15;
+    pub const STOCKPILES: u64 = 16;
+    pub const CASUALTIES: u64 = 17;
+    pub const MATCH_STATE: u64 = 18;
+    pub const UNIDENTIFIED: u64 = 19;
+}
+
+/// A `SimId` lookup for entities named by *other* entities' components.
+/// Unidentified (or despawned) targets collapse to [`SimId::UNIDENTIFIED`],
+/// which is a value, not a hole.
+fn sim_id_lookup(world: &mut World) -> impl Fn(Entity) -> SimId + '_ {
+    move |e: Entity| {
+        world
+            .get::<SimId>(e)
+            .copied()
+            .unwrap_or(SimId::UNIDENTIFIED)
+    }
+}
+
+fn faction_bits(f: Faction) -> u64 {
+    match f {
+        Faction::A => 0,
+        Faction::B => 1,
+    }
+}
+
+/// **The** hash of the sim's state — one definition, in the sim, so a replay
+/// check and a desync probe cannot drift into two different notions of
+/// "identical".
+///
+/// It covers every piece of state the sim owns and writes: positions, health,
+/// ownership, unit/building definitions, carried and banked Alloy, the gather
+/// claim (both halves), move and combat targets, attack cooldowns, resource
+/// nodes, production queues, the casualty ledger and the match state.
+///
+/// **Order-independent, and allocation-independent.** Every fact is emitted as
+/// a row keyed by `(SimId, field tag, ..)` and the rows are *sorted* before they
+/// are mixed, so no query, archetype or storage order can reach the result —
+/// the same reason `combat` walks entities in ascending `to_bits()` (F-007).
+/// The key is the sim's own [`SimId`], not `Entity::to_bits()`, so two runs that
+/// hold the same sim state hash equal even when the ECS handed them different
+/// entity ids (which it does the moment the two apps differ by one resource).
+/// Entities the sim has not identified are not silently invisible: they are
+/// counted, and the count is hashed.
+/// Floats are hashed as their exact bits, never rounded into a bucket: a hash
+/// that rounds is a hash that agrees with a run that diverged.
+///
+/// What it deliberately does **not** cover: the AI's journal and the command
+/// log, which are records *about* the run rather than state the run reads. A
+/// replay is driven from the log with the AI stood down, so including either
+/// would make a faithful replay look like a divergence.
+pub fn state_hash(world: &mut World) -> u64 {
+    let mut rows: Vec<(u64, u64, u64, u64)> = Vec::new();
+    let row = |id: SimId, tag: u64, a: u64, b: u64| (id.0, tag, a, b);
+
+    macro_rules! collect {
+        ($q:ty, |$e:ident, $c:ident| $body:block) => {{
+            let mut q = world.query::<(&SimId, $q)>();
+            let mut out: Vec<(u64, u64, u64, u64)> = Vec::new();
+            for (&$e, $c) in q.iter(world) {
+                out.extend($body);
+            }
+            rows.extend(out);
+        }};
+    }
+
+    collect!(&Position, |e, c| {
+        [row(e, tag::POSITION, c.0.x.to_bits() as u64, c.0.y.to_bits() as u64)]
+    });
+    collect!(&Health, |e, c| {
+        [row(e, tag::HEALTH, c.current as u64, c.max as u64)]
+    });
+    collect!(&Faction, |e, c| {
+        [row(e, tag::FACTION, faction_bits(*c), 0)]
+    });
+    collect!(&UnitDefIdx, |e, c| {
+        [row(e, tag::UNIT_DEF, c.0 as u64, 0)]
+    });
+    collect!(&UnitKind, |e, c| {
+        [row(e, tag::UNIT_KIND, *c as u64, 0)]
+    });
+    collect!(&Carrying, |e, c| { [row(e, tag::CARRYING, c.0 as u64, 0)] });
+    // A claim on another entity is hashed by *that* entity's `SimId`, for the
+    // same reason the key is: raw entity bits are not comparable across runs.
+    {
+        let mut q = world.query::<(&SimId, &GatherTarget)>();
+        let claims: Vec<(SimId, Entity)> = q.iter(world).map(|(id, t)| (*id, t.0)).collect();
+        let of = sim_id_lookup(world);
+        rows.extend(
+            claims
+                .into_iter()
+                .map(|(id, target)| row(id, tag::GATHER_TARGET, of(target).0, 0)),
+        );
+    }
+    collect!(&GatherPhase, |e, c| {
+        let (which, ticks) = match c {
+            GatherPhase::ToNode => (0u64, 0u64),
+            GatherPhase::Harvesting { ticks_left } => (1, *ticks_left as u64),
+            GatherPhase::ToDropoff => (2, 0),
+        };
+        [row(e, tag::GATHER_PHASE, which, ticks)]
+    });
+    collect!(&MoveTarget, |e, c| {
+        [row(e, tag::MOVE_TARGET, c.0.x.to_bits() as u64, c.0.y.to_bits() as u64)]
+    });
+    collect!(&Building, |e, c| {
+        [row(e, tag::BUILDING, c.def as u64, 0)]
+    });
+    {
+        let mut q = world.query::<(&SimId, &Target)>();
+        let aims: Vec<(SimId, Entity)> = q.iter(world).map(|(id, t)| (*id, t.0)).collect();
+        let of = sim_id_lookup(world);
+        rows.extend(
+            aims.into_iter()
+                .map(|(id, target)| row(id, tag::COMBAT_TARGET, of(target).0, 0)),
+        );
+    }
+    collect!(&AttackCooldown, |e, c| {
+        [row(e, tag::COOLDOWN, c.0 as u64, 0)]
+    });
+    collect!(&ResourceNode, |e, c| {
+        [row(e, tag::RESOURCE_NODE, c.amount as u64, 0)]
+    });
+
+    // Markers and sequences, which need more than one row each.
+    {
+        let mut q = world.query_filtered::<&SimId, With<Engaging>>();
+        let marked: Vec<SimId> = q.iter(world).copied().collect();
+        rows.extend(marked.into_iter().map(|id| row(id, tag::ENGAGING, 1, 0)));
+    }
+    {
+        let mut q = world.query::<(&SimId, &ProductionQueue)>();
+        let queues: Vec<(u64, u64, u64, u64)> = q
+            .iter(world)
+            .flat_map(|(id, pq)| {
+                let key = id.0;
+                // The queue is a sequence: the *position* of an item is part of
+                // the state, so it goes into the row's key.
+                pq.items
+                    .iter()
+                    .enumerate()
+                    .map(move |(i, item)| {
+                        (
+                            key,
+                            tag::PRODUCTION,
+                            i as u64,
+                            (item.unit as u64) << 32 | item.ticks_left as u64,
+                        )
+                    })
+                    .chain(std::iter::once((
+                        key,
+                        tag::PRODUCTION,
+                        u64::MAX,
+                        pq.items.len() as u64,
+                    )))
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        rows.extend(queues);
+    }
+
+    // Anything in the world the sim has not identified. Should be nothing: the
+    // chain identifies at its tail, so every entity spawned during a tick has an
+    // id before that tick is hashed. Counted rather than skipped, so a hole in
+    // the identification pass shows up as a changed hash instead of as silence.
+    {
+        let mut q = world.query_filtered::<Entity, (With<Position>, Without<SimId>)>();
+        let n = q.iter(world).count() as u64;
+        rows.push((u64::MAX, tag::UNIDENTIFIED, n, 0));
+    }
+
+    // Sim resources, in a constant slot; the tag is what distinguishes them.
+    let slot = u64::MAX;
+    if let Some(stock) = world.get_resource::<Stockpiles>() {
+        rows.push((
+            slot,
+            tag::STOCKPILES,
+            stock.alloy(Faction::A) as u64,
+            stock.alloy(Faction::B) as u64,
+        ));
+    }
+    if let Some(cas) = world.get_resource::<Casualties>() {
+        rows.push((
+            slot,
+            tag::CASUALTIES,
+            cas.lost(Faction::A) as u64,
+            cas.lost(Faction::B) as u64,
+        ));
+    }
+    if let Some(state) = world.get_resource::<MatchState>() {
+        let outcome = match state.outcome() {
+            None => 0u64,
+            Some(o) => {
+                let winner = match o.winner {
+                    None => 1,
+                    Some(f) => 2 + faction_bits(f),
+                };
+                (winner << 32) | (o.tick as u64 + 1)
+            }
+        };
+        rows.push((
+            slot,
+            tag::MATCH_STATE,
+            state.tick() as u64 | ((state.engaged() as u64) << 32),
+            outcome,
+        ));
+    }
+
+    rows.sort_unstable();
+
+    // FNV-1a over the sorted rows.
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut mix = |v: u64| {
+        h ^= v;
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    };
+    for (a, b, c, d) in rows {
+        mix(a);
+        mix(b);
+        mix(c);
+        mix(d);
+    }
+    h
 }

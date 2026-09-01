@@ -26,7 +26,10 @@ pub use economy::{
     Building, Carrying, GatherPhase, ProductionQueue, QueuedUnit, Stockpiles, UnitDefIdx,
 };
 pub use pathfind::{astar, FlowField, TileGrid};
-pub use replay::{CommandLog, LoggedCommand, LoggedOrder, MatchLog};
+pub use replay::{
+    state_hash, CommandLog, LoggedCommand, LoggedOrder, MatchLog, ReplaySource, SimId, SimIds,
+    StateHashLog,
+};
 pub use victory::{match_running, MatchOutcome, MatchState};
 pub use spatial::{
     brute_force_nearest_enemy, random_layout, Faction, SpatialGrid, SplitMix64, Unit,
@@ -294,6 +297,16 @@ impl SignedOrder {
     pub fn into_parts(self) -> (Attribution, Order) {
         (self.attribution, self.order)
     }
+
+    /// Rebuild a signed order from parts — the inverse of
+    /// [`into_parts`](Self::into_parts), used by a replay to re-enqueue a
+    /// command with **the attribution it was recorded with** rather than one
+    /// derived again from a world that has moved on. The attribution is still
+    /// only ever *checked* by `apply_commands`, so this grants no authority: it
+    /// carries a claim forward, it does not make one true.
+    pub fn from_parts(attribution: Attribution, order: Order) -> Self {
+        SignedOrder { attribution, order }
+    }
 }
 
 impl From<Order> for SignedOrder {
@@ -420,6 +433,7 @@ pub fn apply_commands(
     mut producers: Query<(&Building, &Faction, &mut ProductionQueue)>,
     defs: Query<&UnitDefIdx>,
     owners: Query<&Faction>,
+    sim_ids: Query<&replay::SimId>,
     mut commands: Commands,
 ) {
     let now = state.map(|s| s.tick()).unwrap_or(0);
@@ -434,7 +448,14 @@ pub fn apply_commands(
         // of this loop checks against.
         let (attribution, cmd) = signed.into_parts();
         if let Some(log) = log.as_mut() {
-            log.record(tick, attribution, &cmd);
+            // Logged by `SimId`, the sim's own coordinate — an `Entity` is an
+            // allocation detail that does not survive into another app.
+            log.record(tick, attribution, &cmd, |e| {
+                sim_ids
+                    .get(e)
+                    .copied()
+                    .unwrap_or(replay::SimId::UNIDENTIFIED)
+            });
         }
         if attribution == Attribution::Void {
             continue;

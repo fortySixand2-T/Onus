@@ -1461,7 +1461,17 @@ fn the_sweep_never_fires_in_a_clean_ai_match() {
 fn the_only_readers_of_the_gather_claim_are_the_three_the_doc_names() {
     use std::fs;
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
-    let allowed = ["sim/economy.rs", "sim/ai.rs", "sim/combat.rs", "sim/mod.rs"];
+    // M5 adds a fourth file that names the claim: `sim/replay.rs`'s canonical
+    // state hash, which *records* both halves rather than acting on either. It
+    // is allowed only because it is ordered after the sweep — asserted below,
+    // so the allowance cannot outlive the ordering that justifies it.
+    let allowed = [
+        "sim/economy.rs",
+        "sim/ai.rs",
+        "sim/combat.rs",
+        "sim/mod.rs",
+        "sim/replay.rs",
+    ];
     let mut offenders: Vec<String> = Vec::new();
     let mut stack = vec![src.clone()];
     while let Some(dir) = stack.pop() {
@@ -1497,9 +1507,31 @@ fn the_only_readers_of_the_gather_claim_are_the_three_the_doc_names() {
     }
     assert!(
         offenders.is_empty(),
-        "a reader of the gather claim lives outside the three the doc names \
+        "a reader of the gather claim lives outside the files the doc names \
          (and outside the sweep's protection): {offenders:#?}"
     );
+
+    // The ordering that earns `sim/replay.rs` its place on the list.
+    let lib = fs::read_to_string(src.join("lib.rs")).expect("read src/lib.rs");
+    let sweep = lib
+        .find("sim::economy::repair_gather_claims")
+        .expect("the sweep is in the chain");
+    for after in [
+        "sim::replay::record_state_hash",
+        "sim::replay::feed_replay",
+        "sim::apply_commands",
+        "sim::economy::gather",
+        "sim::combat::combat",
+        "sim::ai::ai_commanders",
+    ] {
+        let at = lib
+            .find(after)
+            .unwrap_or_else(|| panic!("{after} is not in the chain"));
+        assert!(
+            sweep < at,
+            "{after} is registered before the gather-claim sweep"
+        );
+    }
 }
 
 /// **Training still charges exactly once with the sweep at the head of the

@@ -19,10 +19,10 @@ use onus::sim::combat::{Casualties, Health};
 use onus::sim::content::Content;
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use onus::sim::spatial::Faction;
-use onus::sim::replay::{LoggedCommand, LoggedOrder, MatchLog};
+use onus::sim::replay::{LoggedCommand, LoggedOrder, MatchLog, SimId};
 use onus::sim::{
-    AiCommanders, Attribution, CommandLog, CommandQueue, CommandTick, MatchState, MoveTarget,
-    Order, Position, RateReport, ResourceNode,
+    AiCommanders, AiJournal, Attribution, CommandLog, CommandQueue, CommandTick, MatchState,
+    MoveTarget, Order, Position, RateReport, ReplaySource, ResourceNode, StateHashLog,
 };
 
 // ---- harness ----------------------------------------------------------------
@@ -470,16 +470,13 @@ fn a_log_that_could_not_be_read_back_is_refused_when_written() {
 /// world can hold (which `Entity::from_bits` would *panic* on).
 #[test]
 fn an_unreadable_log_is_an_error_not_a_panic() {
-    // A real entity's bits, so the "valid" half of this test is genuinely valid.
-    let mut world = World::new();
-    let real = world.spawn_empty().id().to_bits();
     let good = {
         let mut l = MatchLog::new(2);
         l.commands.push(LoggedCommand {
             tick: 1,
             attribution: Attribution::By(Faction::A),
             order: LoggedOrder::Train {
-                building: real,
+                building: 3,
                 unit: 0,
             },
         });
@@ -503,17 +500,436 @@ fn an_unreadable_log_is_an_error_not_a_panic() {
         "a log whose ticks run backwards was accepted"
     );
 
-    // Entity bits nothing can be (index 0 is not a valid `EntityIndex`).
-    // `Entity::from_bits` *panics* on these; the log must return an error.
-    let text = good.to_ron().unwrap().replace(&real.to_string(), "0");
+    // A command naming an entity the sim never identified: no replay can
+    // resolve it, so the log is refused rather than replayed with a hole in it.
+    let mut nameless = good.clone();
+    nameless.commands[0].order = LoggedOrder::MoveTo {
+        units: vec![0, SimId::UNIDENTIFIED.0],
+        dest: (1.0, 2.0),
+    };
     assert!(
-        MatchLog::from_ron(&text).is_err(),
-        "an impossible entity id was accepted"
+        MatchLog::from_ron(&nameless.to_ron().unwrap()).is_err(),
+        "a command naming an unidentified entity was accepted"
     );
 
     // Not RON at all.
     assert!(MatchLog::from_ron("this is not a log").is_err());
     assert!(MatchLog::load(&scratch("does-not-exist-at-all")).is_err());
+}
+
+// ---- AC3: a replay reproduces the match, tick for tick ----------------------
+
+/// The starting world a match is played from, built the same way twice. A
+/// replay is only meaningful against an identical starting world — that is the
+/// other half of `(world, seed, log)`.
+fn recorded_run(seed: u64, ticks: u32) -> (StateHashLog, MatchLog, App) {
+    let mut app = ai_vs_ai(seed);
+    app.insert_resource(StateHashLog::default());
+    tick(&mut app, ticks);
+    let hashes = app.world().resource::<StateHashLog>().clone();
+    let log = app.world().resource::<CommandLog>().log().clone();
+    (hashes, log, app)
+}
+
+/// A world identical to `ai_vs_ai`'s, with no AI: the replay drives it entirely
+/// from the log.
+fn replay_run(log: MatchLog, ticks: u32) -> (StateHashLog, App) {
+    let mut app = ai_vs_ai(log.seed);
+    app.world_mut().remove_resource::<AiCommanders>();
+    app.insert_resource(AiCommanders::default());
+    app.insert_resource(StateHashLog::default());
+    app.insert_resource(CommandLog::new(log.seed));
+    app.insert_resource(ReplaySource::new(log));
+    tick(&mut app, ticks);
+    let hashes = app.world().resource::<StateHashLog>().clone();
+    (hashes, app)
+}
+
+/// **AC3.** Record an AI-vs-AI match, persist its log to disk, load it back,
+/// and replay it into a fresh world with no AI at all: every tick's state hash
+/// must match, and so must the final state.
+#[test]
+fn a_replay_of_the_persisted_log_reproduces_the_match_tick_for_tick() {
+    const TICKS: u32 = 3_000;
+    let (recorded, log, mut original) = recorded_run(4, TICKS);
+    let path = scratch("replay");
+    log.save(&path).expect("save");
+    let loaded = MatchLog::load(&path).expect("load");
+
+    let (replayed, mut app) = replay_run(loaded, TICKS);
+    assert_eq!(recorded.0.len(), TICKS as usize, "a hash per tick");
+    assert_eq!(
+        recorded.first_divergence(&replayed),
+        None,
+        "the replay diverged from the recording"
+    );
+
+    // The final state, spelled out — a hash that matched but a world that did
+    // not would mean the hash is the thing that is wrong.
+    assert_eq!(
+        app.world().resource::<Stockpiles>().alloy(Faction::A),
+        original.world().resource::<Stockpiles>().alloy(Faction::A)
+    );
+    assert_eq!(
+        app.world().resource::<Stockpiles>().alloy(Faction::B),
+        original.world().resource::<Stockpiles>().alloy(Faction::B)
+    );
+    assert_eq!(
+        app.world().resource::<Casualties>().total(),
+        original.world().resource::<Casualties>().total()
+    );
+    assert_eq!(
+        app.world().resource::<MatchState>().outcome(),
+        original.world().resource::<MatchState>().outcome()
+    );
+    assert_eq!(
+        onus::sim::state_hash(app.world_mut()),
+        onus::sim::state_hash(original.world_mut()),
+        "the replayed world is not the recorded world"
+    );
+    // The replay really did consume the log (rather than reproducing the match
+    // by coincidence, with the AI still playing).
+    let source = app.world().resource::<ReplaySource>();
+    assert!(source.cursor() > 20, "the replay fed almost nothing");
+    assert_eq!(source.skipped(), 0, "the replay skipped commands");
+    assert!(
+        app.world().resource::<AiJournal>().0.is_empty(),
+        "the AI was still thinking during the replay"
+    );
+}
+
+/// A replay all the way to the end of the match: the outcome, and the tick it
+/// was decided on, are reproduced.
+#[test]
+fn a_replay_reaches_the_same_verdict_on_the_same_tick() {
+    const BUDGET: u32 = 8 * 60 * 60;
+    let mut app = ai_vs_ai(7);
+    app.insert_resource(StateHashLog::default());
+    let mut played = 0;
+    while app.world().resource::<MatchState>().outcome().is_none() && played < BUDGET {
+        step(&mut app);
+        played += 1;
+    }
+    let decided = app
+        .world()
+        .resource::<MatchState>()
+        .outcome()
+        .expect("the match decided inside the budget");
+    let recorded = app.world().resource::<StateHashLog>().clone();
+    let log = app.world().resource::<CommandLog>().log().clone();
+
+    let (replayed, app2) = replay_run(log, played);
+    assert_eq!(
+        app2.world().resource::<MatchState>().outcome(),
+        Some(decided),
+        "the replay reached a different verdict"
+    );
+    assert_eq!(recorded.first_divergence(&replayed), None);
+}
+
+/// The property a replay is worthless without: a *different* log gives a
+/// different match. Drop one command and the hashes must part company — so the
+/// AC3 test cannot be passing because the log is ignored.
+#[test]
+fn a_log_missing_one_command_replays_into_a_different_match() {
+    const TICKS: u32 = 1_500;
+    let (recorded, log, _) = recorded_run(4, TICKS);
+    let mut damaged = log.clone();
+    let dropped = damaged.commands.len() / 2;
+    let at = damaged.commands[dropped].tick;
+    damaged.commands.remove(dropped);
+    let (replayed, _) = replay_run(damaged, TICKS);
+    let divergence = recorded
+        .first_divergence(&replayed)
+        .expect("dropping a command changed nothing");
+    assert!(
+        divergence >= at as usize,
+        "the runs diverged at tick {divergence}, before the command dropped at tick {at}"
+    );
+}
+
+/// A stray live order during a replay — a click, a fixture, an editor — is
+/// **discarded**, not applied: the recorded commands are the only commands.
+#[test]
+fn a_rogue_live_order_cannot_desync_a_replay() {
+    const TICKS: u32 = 1_200;
+    let (recorded, log, _) = recorded_run(4, TICKS);
+    let mut app = ai_vs_ai(log.seed);
+    app.world_mut().remove_resource::<AiCommanders>();
+    app.insert_resource(AiCommanders::default());
+    app.insert_resource(StateHashLog::default());
+    app.insert_resource(CommandLog::new(log.seed));
+    app.insert_resource(ReplaySource::new(log));
+    let victim = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(-700.0, 40.0));
+    for t in 0..TICKS {
+        if t % 17 == 0 {
+            app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+                Order::MoveTo {
+                    units: vec![victim],
+                    dest: Vec2::new(t as f32, 900.0),
+                }
+                .issued_by(Faction::A),
+            );
+        }
+        step(&mut app);
+    }
+    let replayed = app.world().resource::<StateHashLog>().clone();
+    assert!(
+        app.world().resource::<ReplaySource>().discarded() > 50,
+        "the rogue orders were never seen"
+    );
+    // The extra unit is not in the recorded world, so the hashes cannot be
+    // compared directly — what must hold is that no rogue order was *applied*.
+    assert!(
+        app.world().get::<MoveTarget>(victim).is_none(),
+        "a live order was applied during a replay"
+    );
+    assert_eq!(replayed.0.len(), TICKS as usize);
+    assert_eq!(recorded.0.len(), replayed.0.len());
+}
+
+/// Replaying a log produces the same log: the recording is a fixed point, which
+/// is what makes it safe to record while replaying (and is how M6 will compare
+/// two peers' streams).
+#[test]
+fn a_replay_records_the_same_log_it_was_given() {
+    const TICKS: u32 = 1_500;
+    let (_, log, _) = recorded_run(4, TICKS);
+    let (_, app) = replay_run(log.clone(), TICKS);
+    let again = app.world().resource::<CommandLog>().log().clone();
+    assert_eq!(again.commands, log.commands, "the replay logged a different stream");
+    assert_eq!(app.world().resource::<CommandLog>().late(), 0);
+}
+
+// ---- the state hash itself --------------------------------------------------
+
+/// The hash has to *notice* the state it claims to cover. Each field is changed
+/// on its own, and each must move the hash.
+#[test]
+fn the_state_hash_covers_every_piece_of_state_it_claims_to() {
+    let base = |seed_ticks: u32| {
+        let mut app = ai_vs_ai(4);
+        tick(&mut app, seed_ticks);
+        app
+    };
+    let hash_of = |app: &mut App| onus::sim::state_hash(app.world_mut());
+
+    #[allow(clippy::type_complexity)]
+    let mutate: Vec<(&str, Box<dyn Fn(&mut App)>)> = vec![
+        (
+            "position",
+            Box::new(|app: &mut App| {
+                let e = first_with::<Position>(app);
+                app.world_mut().get_mut::<Position>(e).unwrap().0.x += 1.0;
+            }),
+        ),
+        (
+            "position, by one bit",
+            Box::new(|app: &mut App| {
+                let e = first_with::<Position>(app);
+                let mut p = app.world_mut().get_mut::<Position>(e).unwrap();
+                p.0.x = f32::from_bits(p.0.x.to_bits() ^ 1);
+            }),
+        ),
+        (
+            "health",
+            Box::new(|app: &mut App| {
+                let e = first_with::<Health>(app);
+                app.world_mut().get_mut::<Health>(e).unwrap().current -= 1;
+            }),
+        ),
+        (
+            "stockpile",
+            Box::new(|app: &mut App| {
+                let _ = app
+                    .world_mut()
+                    .resource_mut::<Stockpiles>()
+                    .add(Faction::B, 1);
+            }),
+        ),
+        (
+            "production queue",
+            Box::new(|app: &mut App| {
+                let e = first_with::<ProductionQueue>(app);
+                app.world_mut()
+                    .get_mut::<ProductionQueue>(e)
+                    .unwrap()
+                    .items
+                    .push_back(onus::sim::QueuedUnit {
+                        unit: 0,
+                        ticks_left: 5,
+                    });
+            }),
+        ),
+        (
+            "carried alloy",
+            Box::new(|app: &mut App| {
+                let e = first_with::<Position>(app);
+                app.world_mut().entity_mut(e).insert(onus::sim::Carrying(3));
+            }),
+        ),
+        (
+            "gather claim",
+            Box::new(|app: &mut App| {
+                let e = first_with::<Position>(app);
+                app.world_mut()
+                    .entity_mut(e)
+                    .insert(onus::sim::GatherPhase::ToDropoff);
+            }),
+        ),
+        (
+            "resource node",
+            Box::new(|app: &mut App| {
+                let e = first_with::<ResourceNode>(app);
+                app.world_mut().get_mut::<ResourceNode>(e).unwrap().amount -= 1;
+            }),
+        ),
+        (
+            "casualties",
+            Box::new(|app: &mut App| {
+                let e = first_with::<Health>(app);
+                app.world_mut().despawn(e);
+            }),
+        ),
+        (
+            "match state",
+            Box::new(|app: &mut App| {
+                step(app);
+            }),
+        ),
+    ];
+
+    for (what, change) in mutate {
+        let mut app = base(400);
+        let before = hash_of(&mut app);
+        change(&mut app);
+        let after = hash_of(&mut app);
+        assert_ne!(before, after, "the state hash ignores {what}");
+    }
+}
+
+/// ...and must **not** notice anything that is not sim state: a component the
+/// sim never reads, or the archetype shuffling that adding one causes.
+#[test]
+fn the_state_hash_ignores_what_is_not_sim_state() {
+    #[derive(Component)]
+    struct Decoration(#[allow(dead_code)] u32);
+
+    let mut app = ai_vs_ai(4);
+    tick(&mut app, 400);
+    let before = onus::sim::state_hash(app.world_mut());
+
+    let ents: Vec<Entity> = {
+        let mut q = app.world_mut().query_filtered::<Entity, With<Position>>();
+        q.iter(app.world()).collect()
+    };
+    for (i, e) in ents.iter().enumerate() {
+        app.world_mut().entity_mut(*e).insert(Decoration(i as u32));
+    }
+    assert_eq!(
+        onus::sim::state_hash(app.world_mut()),
+        before,
+        "a non-sim component moved the state hash"
+    );
+
+    // Hashing is a pure read: doing it repeatedly changes nothing.
+    assert_eq!(onus::sim::state_hash(app.world_mut()), before);
+    assert_eq!(onus::sim::state_hash(app.world_mut()), before);
+
+    // The AI journal and the command log are records *about* the run, not state
+    // the run reads: a replay has neither, and must still hash equal.
+    app.world_mut().resource_mut::<AiJournal>().0.clear();
+    assert_eq!(onus::sim::state_hash(app.world_mut()), before);
+}
+
+fn first_with<C: Component>(app: &mut App) -> Entity {
+    let mut q = app.world_mut().query_filtered::<Entity, With<C>>();
+    let mut all: Vec<Entity> = q.iter(app.world()).collect();
+    all.sort_by_key(|e| e.to_bits());
+    *all.first().expect("an entity with that component")
+}
+
+// ---- the addressing scheme the log depends on -------------------------------
+
+/// The reason the log is keyed on `SimId` and not on `Entity`: entity ids are an
+/// ECS allocation detail. Two apps that hold the *same sim state* but differ by
+/// one resource hand out different entity ids — and must still agree on every
+/// sim id and on the state hash.
+#[test]
+fn sim_ids_and_the_state_hash_survive_a_difference_in_entity_allocation() {
+    #[derive(Resource)]
+    struct Unrelated(#[allow(dead_code)] u32);
+
+    let run = |extra: bool| {
+        let mut app = ai_vs_ai(4);
+        if extra {
+            app.insert_resource(Unrelated(1));
+            app.insert_resource(StateHashLog::default());
+        }
+        tick(&mut app, 600);
+        let ids: Vec<(u64, [u32; 2])> = {
+            let mut q = app.world_mut().query::<(&SimId, &Position)>();
+            let mut v: Vec<(u64, [u32; 2])> = q
+                .iter(app.world())
+                .map(|(id, p)| (id.0, [p.0.x.to_bits(), p.0.y.to_bits()]))
+                .collect();
+            v.sort();
+            v
+        };
+        let entity_bits: Vec<u64> = {
+            let mut q = app.world_mut().query_filtered::<Entity, With<SimId>>();
+            let mut v: Vec<u64> = q.iter(app.world()).map(|e| e.to_bits()).collect();
+            v.sort();
+            v
+        };
+        (ids, entity_bits, onus::sim::state_hash(app.world_mut()))
+    };
+    let plain = run(false);
+    let padded = run(true);
+    assert_ne!(
+        plain.1, padded.1,
+        "the two apps allocated identical entity ids — this test proves nothing \
+         unless they differ, so the fixture needs a bigger difference"
+    );
+    assert_eq!(plain.0, padded.0, "sim ids moved with the entity ids");
+    assert_eq!(
+        plain.2, padded.2,
+        "the state hash moved with the entity ids"
+    );
+}
+
+/// Every thing in the world is identified — before its tick is hashed, and
+/// before the next tick's orders can name it — so a real match's log never
+/// contains an unresolvable command.
+#[test]
+fn everything_in_a_live_match_is_identified_and_the_log_resolves() {
+    let mut app = ai_vs_ai(4);
+    for t in 0..1_500u32 {
+        step(&mut app);
+        let unidentified = {
+            let mut q = app
+                .world_mut()
+                .query_filtered::<Entity, (With<Position>, Without<SimId>)>();
+            q.iter(app.world()).count()
+        };
+        assert_eq!(
+            unidentified, 0,
+            "tick {t}: something in the world has no sim id"
+        );
+    }
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert!(log.commands.len() > 20);
+    for c in &log.commands {
+        for id in c.order.sim_ids() {
+            assert!(
+                id.is_identified(),
+                "the log names an unidentified entity at tick {}",
+                c.tick
+            );
+        }
+    }
+    // And such a log loads (the `from_ron` guard is about hand-made logs).
+    assert_eq!(MatchLog::from_ron(&log.to_ron().unwrap()).unwrap(), log);
 }
 
 // ---- keep the fixture warnings honest ---------------------------------------

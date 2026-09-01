@@ -179,3 +179,8 @@
 - [2026-08-31] Created: tests/m5_replay.rs — M5 AC1: a command applies on exactly its tick, never late, and only when the sim schedule runs
 - [2026-08-31] Modified: src/sim/replay.rs — M5 AC2: MatchLog to_ron/from_ron/save/load, checked at the boundary (non-finite coords, format version, tick order, impossible entity ids)
 - [2026-08-31] Modified: tests/m5_replay.rs — M5 AC2: the log round-trips through a file bit for bit; an unreadable log is an error, not a panic
+- [2026-08-31] Modified: src/sim/replay.rs — M5 AC3: SimId/SimIds/identify (allocation-independent identity), ReplaySource + feed_replay, canonical state_hash + StateHashLog
+- [2026-08-31] Modified: src/sim/mod.rs — apply_commands logs by SimId; SignedOrder::from_parts carries a recorded attribution forward
+- [2026-08-31] Modified: src/lib.rs — the chain identifies at head and tail, feeds a replay instead of the AI, and records the tick's state hash last
+- [2026-08-31] Modified: tests/m5_replay.rs — M5 AC3: a persisted log replays tick-for-tick; sim ids survive a difference in entity allocation; the hash covers what it claims
+- [2026-08-31] Modified: tests/critic_m4c.rs — the gather-claim reader allowlist admits sim/replay.rs, and now asserts the ordering that justifies it
