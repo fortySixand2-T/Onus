@@ -1185,6 +1185,139 @@ fn every_command_a_shipped_match_applies_is_signed() {
     );
 }
 
+// ---- the chain's F-008 boundary, per system ---------------------------------
+
+/// Every system the chain registers, in registration order, paired with the
+/// source of its function body. Systems live at `src/sim/<module>.rs`;
+/// `sim::apply_commands` and `sim::movement` at `src/sim/mod.rs`.
+fn chain_systems() -> Vec<(String, String)> {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let lib = std::fs::read_to_string(src.join("lib.rs")).expect("read src/lib.rs");
+    let mut out = Vec::new();
+    let mut at = 0usize;
+    while let Some(i) = lib[at..].find("sim::") {
+        let start = at + i;
+        let rest = &lib[start..];
+        let end = rest
+            .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == ':'))
+            .unwrap_or(rest.len());
+        let path = &rest[..end];
+        at = start + end;
+        let name = path.rsplit("::").next().unwrap_or_default();
+        // A resource path (`init_resource::<sim::X>`, `resource_exists::<..>`)
+        // is upper-camel; a system is not.
+        if name.is_empty() || name.starts_with(|c: char| c.is_uppercase()) {
+            continue;
+        }
+        let parts: Vec<&str> = path.split("::").collect();
+        let file = if parts.len() >= 3 {
+            src.join(format!("sim/{}.rs", parts[1]))
+        } else {
+            src.join("sim/mod.rs")
+        };
+        let Ok(text) = std::fs::read_to_string(&file) else {
+            continue;
+        };
+        let Some(fn_at) = text.find(&format!("pub fn {name}(")) else {
+            continue;
+        };
+        let body = &text[fn_at..];
+        let end = body[1..].find("\n}\n").map(|i| i + 3).unwrap_or(body.len());
+        out.push((path.to_string(), body[..end].to_string()));
+    }
+    out
+}
+
+/// F-008's rule, checked **per system** rather than per file: nothing the chain
+/// runs before `repair_gather_claims` may name either half of the gather claim.
+///
+/// The file-granular allowlist in the M4c probes cannot express this — admitting
+/// a file says nothing about where its systems run — so a claim read added to a
+/// pre-sweep system of an already-admitted file would slip past it. This is the
+/// check that does not.
+#[test]
+fn no_system_the_chain_runs_before_the_sweep_touches_the_gather_claim() {
+    let systems = chain_systems();
+    let sweep = systems
+        .iter()
+        .position(|(p, _)| p == "sim::economy::repair_gather_claims")
+        .expect("the sweep is in the chain");
+    assert!(sweep <= 1, "the sweep is no longer at the head of the chain");
+    let mut offenders = Vec::new();
+    for (path, body) in &systems[..sweep] {
+        for claim in ["GatherTarget", "GatherPhase", "SplitClaim"] {
+            if body.contains(claim) {
+                offenders.push(format!("{path} names {claim}"));
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "a system that runs before the gather-claim sweep reads the claim \
+         (F-008): {offenders:?}"
+    );
+}
+
+/// The ordering `identify` actually needs — and the direction moving it after
+/// the sweep could have broken: it must still run before every system that
+/// addresses an entity by its `SimId` (`apply_commands` logs by it,
+/// `feed_replay` resolves by it, `record_state_hash` keys by it).
+#[test]
+fn identify_runs_after_the_sweep_and_before_everything_that_uses_a_sim_id() {
+    let order: Vec<String> = chain_systems().into_iter().map(|(p, _)| p).collect();
+    let at = |name: &str| {
+        order
+            .iter()
+            .position(|p| p == name)
+            .unwrap_or_else(|| panic!("{name} is not in the chain"))
+    };
+    let identify = at("sim::replay::identify");
+    assert!(
+        identify > at("sim::economy::repair_gather_claims"),
+        "identify runs before the gather-claim sweep again"
+    );
+    for user in [
+        "sim::apply_commands",
+        "sim::replay::feed_replay",
+        "sim::replay::record_state_hash",
+    ] {
+        assert!(
+            identify < at(user),
+            "{user} addresses entities by SimId but runs before identify"
+        );
+    }
+}
+
+/// The behaviour behind that ordering: an order issued against a unit that was
+/// on the field before the first tick is logged with a **real** sim id, not the
+/// unidentified sentinel — on tick 0, the earliest it could go wrong.
+#[test]
+fn an_order_on_the_very_first_tick_is_logged_with_a_real_sim_id() {
+    let mut app = sim_app();
+    let unit = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+        Order::MoveTo {
+            units: vec![unit],
+            dest: Vec2::new(50.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
+    step(&mut app);
+    let log = app.world().resource::<CommandLog>();
+    assert_eq!(log.commands().len(), 1);
+    let ids = log.commands()[0].order.sim_ids();
+    assert_eq!(ids.len(), 1);
+    assert!(
+        ids[0].is_identified(),
+        "a tick-0 order was logged against an unidentified entity"
+    );
+    assert_eq!(
+        app.world().get::<SimId>(unit).copied(),
+        Some(ids[0]),
+        "the logged id is not the unit's"
+    );
+}
+
 // ---- keep the fixture warnings honest ---------------------------------------
 
 #[test]

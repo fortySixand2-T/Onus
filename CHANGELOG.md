@@ -190,3 +190,7 @@
 - [2026-08-31] Modified: Cargo.toml — register the replay_hash bench
 - [2026-08-31] Modified: tests/m5_replay.rs — close the M4c self-signing carry-over: every command a shipped match applies is signed
 - [2026-08-31] Modified: FINDINGS.md — F-011 (entity ids are not a coordinate a log can use; SimId) and F-012 (tick tag on the envelope, RON log, opt-in hash with measurements)
+- [2026-08-31] Created: tests/critic_m5.rs — M5 critic probes (chain position vs F-008, log save/load round trip, tick tagging edges, hash purity/coverage, replay isolation)
+- [2026-08-31] Modified: src/lib.rs — F1/F2: identify moved after the gather-claim sweep; the F-008 instruction sits on the sweep again, identify has its own comment
+- [2026-08-31] Modified: tests/critic_m4c.rs — the allowlist's ordering assertion is now system-granular and general (no pre-sweep system may name the claim)
+- [2026-08-31] Modified: tests/m5_replay.rs — per-system F-008 boundary probe, identify's real ordering constraint, tick-0 order logs a real sim id

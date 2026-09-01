@@ -1462,9 +1462,16 @@ fn the_only_readers_of_the_gather_claim_are_the_three_the_doc_names() {
     use std::fs;
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
     // M5 adds a fourth file that names the claim: `sim/replay.rs`'s canonical
-    // state hash, which *records* both halves rather than acting on either. It
-    // is allowed only because it is ordered after the sweep — asserted below,
-    // so the allowance cannot outlive the ordering that justifies it.
+    // state hash, which *records* both halves rather than acting on either.
+    //
+    // The allowlist is file-granular, so admitting a file says nothing about
+    // where its systems run — which is the whole of what F-008 needs. The
+    // ordering assertion below is therefore **system-granular and general**: it
+    // walks the chain in `src/lib.rs` and requires that *no* system registered
+    // before the sweep, in any file, so much as names either half of the claim.
+    // That is what earns `sim/replay.rs` its place here, and it holds for every
+    // system in it (and in every other admitted file) rather than for an
+    // enumerated few.
     let allowed = [
         "sim/economy.rs",
         "sim/ai.rs",
@@ -1511,27 +1518,70 @@ fn the_only_readers_of_the_gather_claim_are_the_three_the_doc_names() {
          (and outside the sweep's protection): {offenders:#?}"
     );
 
-    // The ordering that earns `sim/replay.rs` its place on the list.
+    // The ordering that earns the allowlist its entries, checked over every
+    // system the chain actually registers rather than over a list written by
+    // hand: nothing that runs before the sweep may name the claim.
+    for (system, line) in systems_registered_before_the_sweep(&src) {
+        for claim in ["GatherTarget", "GatherPhase", "SplitClaim"] {
+            assert!(
+                !line.contains(claim),
+                "`{system}` is registered before `repair_gather_claims` and \
+                 names `{claim}`: a half claim reaches it (F-008)"
+            );
+        }
+    }
+}
+
+/// Every system the chain in `src/lib.rs` registers **before**
+/// `economy::repair_gather_claims`, paired with the source of its function
+/// body. Systems live at `src/sim/<module>.rs` (`sim::apply_commands` and
+/// `sim::movement` at `src/sim/mod.rs`).
+fn systems_registered_before_the_sweep(src: &std::path::Path) -> Vec<(String, String)> {
+    use std::fs;
     let lib = fs::read_to_string(src.join("lib.rs")).expect("read src/lib.rs");
     let sweep = lib
         .find("sim::economy::repair_gather_claims")
         .expect("the sweep is in the chain");
-    for after in [
-        "sim::replay::record_state_hash",
-        "sim::replay::feed_replay",
-        "sim::apply_commands",
-        "sim::economy::gather",
-        "sim::combat::combat",
-        "sim::ai::ai_commanders",
-    ] {
-        let at = lib
-            .find(after)
-            .unwrap_or_else(|| panic!("{after} is not in the chain"));
-        assert!(
-            sweep < at,
-            "{after} is registered before the gather-claim sweep"
-        );
+    let mut found = Vec::new();
+    let mut at = 0usize;
+    while let Some(i) = lib[at..].find("sim::") {
+        let start = at + i;
+        let rest = &lib[start..];
+        let end = rest
+            .find(|c: char| !(c.is_alphanumeric() || c == '_' || c == ':'))
+            .unwrap_or(rest.len());
+        let path = &rest[..end];
+        at = start + end;
+        if start >= sweep {
+            continue;
+        }
+        // Registrations only: a resource path is `init_resource::<sim::X>()`,
+        // which is upper-camel, and a `run_if` names a resource type too.
+        let name = path.rsplit("::").next().unwrap_or_default();
+        if name.is_empty() || name.starts_with(|c: char| c.is_uppercase()) {
+            continue;
+        }
+        let module: Vec<&str> = path.split("::").collect();
+        let file = if module.len() >= 3 {
+            src.join(format!("sim/{}.rs", module[1]))
+        } else {
+            src.join("sim/mod.rs")
+        };
+        let text = match fs::read_to_string(&file) {
+            Ok(t) => t,
+            Err(_) => continue,
+        };
+        let Some(fn_at) = text.find(&format!("pub fn {name}(")) else {
+            continue;
+        };
+        let body = &text[fn_at..];
+        let end = body[1..]
+            .find("\n}\n")
+            .map(|i| i + 3)
+            .unwrap_or(body.len());
+        found.push((path.to_string(), body[..end].to_string()));
     }
+    found
 }
 
 /// **Training still charges exactly once with the sweep at the head of the

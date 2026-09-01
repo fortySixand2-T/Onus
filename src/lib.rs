@@ -102,12 +102,18 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
                 // job, combat reads it as "the economy owns this one". A
                 // half-claim swept here therefore reaches none of them. Any new
                 // reader of the claim belongs after this system — see F-008.
+                sim::economy::repair_gather_claims,
                 // Every thing in the world carries the sim's own stable id, so
                 // the command log and the state hash address entities by
                 // something that does not move when the app's configuration
-                // does. Runs at the head *and* at the tail — see below.
+                // does (F-011). It reads no gather claim, but it is ordered
+                // after the sweep anyway: the sweep is the chain's first
+                // system, so "before the sweep" is a place nothing needs to be,
+                // and keeping it empty is what keeps the F-008 rule above
+                // checkable per system rather than per file. What it does need
+                // is to run before `apply_commands`, which logs by `SimId`.
+                // Runs here *and* at the tail — see below.
                 sim::replay::identify,
-                sim::economy::repair_gather_claims,
                 // The scripted commanders — **unless this is a replay**, where
                 // their decisions are already in the log as orders and letting
                 // them think again would double every one of them.
