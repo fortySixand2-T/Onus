@@ -49,8 +49,16 @@ pub fn build_app() -> App {
             (
                 input::update_cursor,
                 input::selection.after(input::update_cursor),
-                input::emit_commands.after(input::update_cursor),
-                input::emit_build_commands.after(input::update_cursor),
+                // Input stops when the match does. Not a sim rule — the sim
+                // would refuse to apply these anyway, since the chain is gated
+                // off — but an order pushed onto a queue nothing will ever
+                // drain accumulates for the rest of the session.
+                input::emit_commands
+                    .after(input::update_cursor)
+                    .run_if(sim::victory::match_running),
+                input::emit_build_commands
+                    .after(input::update_cursor)
+                    .run_if(sim::victory::match_running),
                 ui::attach_visuals,
                 ui::sync_transform,
                 ui::draw_selection,

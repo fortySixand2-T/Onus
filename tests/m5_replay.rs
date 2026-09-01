@@ -1498,6 +1498,113 @@ fn a_replay_into_a_world_that_lost_units_still_records_a_writable_log() {
     );
 }
 
+// ---- what the hash must not invent ------------------------------------------
+
+/// A command pushed after the match is decided can never be applied — the chain
+/// is gated off — so it has no causal reach at all, and the hash of a frozen sim
+/// must not move for it. Hashing it would turn a click into a desync report.
+#[test]
+fn an_order_pushed_after_the_match_is_over_leaves_the_frozen_hash_alone() {
+    let mut app = sim_app();
+    spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+    let doomed = spawn_building(&mut app, "hq", Faction::B, Vec2::new(100.0, 0.0));
+    let unit = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(-90.0, 0.0));
+    tick(&mut app, 2);
+    app.world_mut().despawn(doomed);
+    tick(&mut app, 3);
+    assert!(
+        app.world().resource::<MatchState>().is_over(),
+        "the fixture never decided"
+    );
+    let frozen = onus::sim::state_hash(app.world_mut());
+    for t in 0..20u32 {
+        app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+            Order::MoveTo {
+                units: vec![unit],
+                dest: Vec2::new(t as f32, 0.0),
+            }
+            .issued_by(Faction::A),
+        );
+        step(&mut app);
+        assert_eq!(
+            onus::sim::state_hash(app.world_mut()),
+            frozen,
+            "click {t} on a finished match moved the hash of a frozen sim"
+        );
+    }
+    assert!(
+        app.world().resource::<CommandQueue>().0.len() >= 20,
+        "the queue did not actually hold the orders, so this proves nothing"
+    );
+}
+
+/// The direction that narrowing could break: a command genuinely **held for a
+/// later tick** is still hashed, in a running sim and in a finished one.
+#[test]
+fn a_command_held_for_a_later_tick_is_hashed_either_way() {
+    for finished in [false, true] {
+        let mut a = sim_app();
+        let ua = spawn_unit(&mut a, "ripper", Faction::A, Vec2::ZERO);
+        let mut b = sim_app();
+        let _ = spawn_unit(&mut b, "ripper", Faction::A, Vec2::ZERO);
+        if finished {
+            for app in [&mut a, &mut b] {
+                spawn_building(app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+                let d = spawn_building(app, "hq", Faction::B, Vec2::new(100.0, 0.0));
+                tick(app, 2);
+                app.world_mut().despawn(d);
+                tick(app, 3);
+                assert!(app.world().resource::<MatchState>().is_over());
+            }
+        } else {
+            tick(&mut a, 3);
+            tick(&mut b, 3);
+        }
+        assert_eq!(
+            onus::sim::state_hash(a.world_mut()),
+            onus::sim::state_hash(b.world_mut()),
+            "the fixtures differed to begin with (finished: {finished})"
+        );
+        push_at(
+            &mut a,
+            5_000,
+            Order::MoveTo {
+                units: vec![ua],
+                dest: Vec2::new(9.0, 9.0),
+            }
+            .issued_by(Faction::A),
+        );
+        assert_ne!(
+            onus::sim::state_hash(a.world_mut()),
+            onus::sim::state_hash(b.world_mut()),
+            "a command held for a later tick is invisible (finished: {finished})"
+        );
+    }
+}
+
+/// The driver half of the same problem: the shipped app kept emitting orders
+/// after the match was decided, so the queue grew without bound for the rest of
+/// the session. Input stops when the match does.
+#[test]
+fn the_shipped_app_stops_emitting_orders_once_the_match_is_decided() {
+    let lib = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"),
+    )
+    .expect("read src/lib.rs");
+    for emitter in ["input::emit_commands", "input::emit_build_commands"] {
+        let at = lib
+            .find(emitter)
+            .unwrap_or_else(|| panic!("{emitter} is not registered"));
+        let tail = &lib[at..at + 200.min(lib.len() - at)];
+        let end = tail.find(",\n").unwrap_or(tail.len());
+        assert!(
+            tail[..end].contains("run_if(sim::victory::match_running)"),
+            "{emitter} keeps emitting orders after the match is over: {}",
+            tail[..end].trim()
+        );
+    }
+}
+
 // ---- the two boundaries agree ----------------------------------------------
 
 /// Adversarial logs, each either accepted by **both** boundaries or refused by

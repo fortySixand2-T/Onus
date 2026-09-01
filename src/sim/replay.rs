@@ -971,7 +971,7 @@ pub fn state_hash(world: &mut World) -> u64 {
         rows.push((u64::MAX, tag::UNIDENTIFIED, n, 0));
     }
 
-    // Commands the sim has **accepted and is still holding**:
+    // Commands the sim has **accepted and is holding for a later tick**:
     // `take_due` keeps an `At(t > now)` command across ticks, so it is state the
     // sim owns, wrote, and will read later. Two worlds identical but for one
     // held command must not hash equal — that is a divergence that has not
@@ -995,6 +995,7 @@ pub fn state_hash(world: &mut World) -> u64 {
             Some(queue) => queue
                 .0
                 .iter()
+                .filter(|cmd| matches!(cmd.when(), crate::sim::CommandTick::At(_)))
                 .enumerate()
                 .map(|(i, cmd)| {
                     let digest = command_digest(cmd, |e| {

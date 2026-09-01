@@ -205,3 +205,7 @@
 - [2026-08-31] Modified: tests/m5_replay.rs — the same strict resolver, plus a probe that every chain name resolves to exactly one readable body
 - [2026-08-31] Modified: src/sim/replay.rs, src/sim/mod.rs — critic pass 2 F3: SimIds is a two-way registry; the log is written through id_for, so the sim never records UNIDENTIFIED
 - [2026-08-31] Modified: tests/m5_replay.rs — F3 probes: a dead unit is logged by the id it had; a bare entity gets one; a replay into a world that lost units still writes
+- [2026-08-31] Modified: src/sim/replay.rs — critic pass 2 F4: only commands held for a later tick are hashed; an Asap command is not state
+- [2026-08-31] Modified: src/lib.rs — input stops emitting orders once the match is decided
+- [2026-08-31] Modified: tests/m5_replay.rs — F4 probes: a post-match click leaves the frozen hash alone; a held command is hashed either way
+- [2026-08-31] Modified: FINDINGS.md — F-012 extension 2: the four pass-2 findings, and a refreshed bench table

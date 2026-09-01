@@ -605,11 +605,16 @@ replay_hash` on the box (release), the AI-vs-AI fixture:
 
 | Bench | Median |
 |---|---|
-| 600 ticks, no `StateHashLog` | 76.9 ms (0.128 ms/tick) |
-| 600 ticks, hashing every tick | 102.5 ms (0.171 ms/tick) |
-| one `state_hash` of a 14-thing world | 15.6 µs |
+| 600 ticks, no `StateHashLog` | 70.3 ms (0.117 ms/tick) |
+| 600 ticks, hashing every tick | 93.4 ms (0.156 ms/tick) |
+| one `state_hash` of a 14-thing world | 14.8 µs |
 
-So hashing every tick costs **~33% of a tick** even on a 14-entity fixture —
+(Re-measured after the M5 critic's second pass. The ratio moves with machine
+load — runs on the box have come out between ~1.23× and ~1.33× — so the figure
+to hold on to is the ~15 µs per hash and the *shape*, not the third digit.)
+
+So hashing every tick costs **a quarter to a third of a tick** even on a
+14-entity fixture —
 it walks ~19 component queries and sorts the rows, and it builds each
 `QueryState` per call. That is the right price for a replay check or a desync
 probe and the wrong one for every shipped tick, so `record_state_hash` does
@@ -705,3 +710,54 @@ than their prose, and one thing left open on purpose.**
   for the current tick). M6 introduces ahead-scheduling by construction, and
   must record the queued tick alongside the applied one — and decide what to do
   with commands queued but never applied, which are in no log at all.
+
+**Extension 2 (M5 critic, pass 2) — four defects, all of them in pass 1's fix
+code.** Third milestone running where the fixes out-defected the original
+implementation, so it is recorded here as a standing property of this project
+rather than as a run of bad luck: *a fix is new code written under time
+pressure against a spec written by the person who just got it wrong.* It needs
+the same two tests everything else does — one for the property it establishes,
+one for the property it might break — and the second is the one that keeps
+catching things.
+
+1. **A guard that skips in silence is worse than the narrow one it replaced.**
+   The generated F-008 walker mapped `sim::<name>` ⇒ `src/sim/mod.rs` and
+   `continue`d past anything it could not find. `sim::match_running` is
+   *re-exported* there and defined in `victory.rs`, so it was skipped without a
+   word — while the comment claimed the check covered every pre-sweep system
+   "in any file". The list it replaced at least panicked on a name it did not
+   know. Resolution is now by definition (search every `.rs` under `src/sim/`
+   for `pub fn <name>(`, require exactly one, require a body that reaches its
+   closing brace), every failure is a named test failure, and run conditions are
+   checked as pre-sweep code because a condition is evaluated before what it
+   gates. **The rule: a checker's failure mode must be "fail", never
+   "continue" — and what a checker cannot resolve is the exact thing that will
+   be moved into the dangerous position later.**
+
+2. **The justification for moving a shipped system was false** ("the sweep is
+   the chain's first system" — `victory::match_watch` precedes it), written in
+   the same commit that added the F-012 rule about prose that says *this*.
+   Sixth defect of the class.
+
+3. **Unifying two boundaries without fixing the producer moved the failure
+   earlier and made it worse.** `validate` refuses `SimId::UNIDENTIFIED`;
+   `apply_commands` still *minted* it for any entity it could not resolve —
+   including one that merely died before its command applied — so a latent
+   *read* failure became a live *write* failure: the sim could record a log it
+   could never save, exactly in the case (a replay whose world has moved) where
+   the log is the report. The fix is at the producer: `SimIds` is a two-way
+   registry (`Vec` forward, ordered `BTreeMap` backward), so a despawned entity
+   is still nameable, and `id_for` issues an id for anything that lacks one.
+   **A validator and its producer are one design; tightening either alone just
+   relocates the defect.**
+
+4. **A desync check must not invent a divergence.** The pending-command rows
+   hashed *every* queued command, including `Asap` ones. In a running sim an
+   `Asap` command is drained before any hash is taken — but once the match is
+   decided the chain is gated off, so a click on a finished match sits in the
+   queue forever with no causal reach, and the "frozen sim" hash moved on every
+   later tick. Two M6 peers, one of whose players clicked, would report a desync
+   that does not exist. The rows now cover only commands held for a *later*
+   tick, which is what the doc always claimed. The driver half is fixed too:
+   `input::emit_commands`/`emit_build_commands` are gated on `match_running`, so
+   a finished match stops filling a queue nothing will drain.
