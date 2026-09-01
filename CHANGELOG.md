@@ -172,3 +172,8 @@
 - [2026-08-30] Modified: src/sim/ai.rs, src/lib.rs — Corrected stale doc claims about chain position after the sweep reorder
 - [2026-08-30] Modified: BUILD_PLAN.md — Ticked M4c acceptance criteria (critic PASS, box-verified)
 - [2026-08-30] Modified: CLAUDE.md — Status now M0–M4 done; next milestone M5 (deterministic replay)
+- [2026-08-31] Created: src/sim/replay.rs — M5: the command log (LoggedOrder/LoggedCommand/MatchLog/CommandLog), render-free
+- [2026-08-31] Modified: src/sim/mod.rs — M5 AC1: the queue holds tick-tagged Commands (CommandTick::Asap/At); apply_commands drains only what is due and logs it
+- [2026-08-31] Modified: src/sim/spatial.rs — Faction is serializable (the command log stores it)
+- [2026-08-31] Modified: src/lib.rs — the sim chain installs the CommandLog with itself
+- [2026-08-31] Created: tests/m5_replay.rs — M5 AC1: a command applies on exactly its tick, never late, and only when the sim schedule runs

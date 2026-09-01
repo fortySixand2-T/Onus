@@ -16,6 +16,7 @@ pub mod combat;
 pub mod content;
 pub mod economy;
 pub mod pathfind;
+pub mod replay;
 pub mod spatial;
 pub mod victory;
 pub use ai::{AiAction, AiCommander, AiCommanders, AiJournal};
@@ -25,6 +26,7 @@ pub use economy::{
     Building, Carrying, GatherPhase, ProductionQueue, QueuedUnit, Stockpiles, UnitDefIdx,
 };
 pub use pathfind::{astar, FlowField, TileGrid};
+pub use replay::{CommandLog, LoggedCommand, LoggedOrder, MatchLog};
 pub use victory::{match_running, MatchOutcome, MatchState};
 pub use spatial::{
     brute_force_nearest_enemy, random_layout, Faction, SpatialGrid, SplitMix64, Unit,
@@ -115,32 +117,79 @@ pub struct GatherTarget(pub Entity);
 #[derive(Resource, Default)]
 pub struct CommandQueue(pub OrderQueue);
 
-/// The queue itself. It holds [`SignedOrder`]s, **not** bare [`Order`]s: the
-/// element type is the witness that every order in flight has an attribution the
-/// sim will check it against. Pushing takes anything that can become one, so a
-/// caller may push a signed order (`.issued_by(f)`) or a bare order (which is
-/// attributed at the boundary, [`Attribution::SelfSigned`]) — what it cannot do
-/// is enqueue an order with no attribution at all, because no such value exists
-/// on the other side of `push_back`.
+/// The queue itself. It holds [`Command`]s — a [`SignedOrder`] plus **the tick
+/// it is to be applied on**. Two things are therefore impossible by
+/// construction rather than by convention: an order in flight with no
+/// attribution the sim can check it against (M4c, F-009), and an order with no
+/// place in the tick stream (M5). Pushing takes anything that can become a
+/// [`SignedOrder`], so a caller may push a signed order (`.issued_by(f)`) or a
+/// bare one (attributed at the boundary, [`Attribution::SelfSigned`]).
 #[derive(Default)]
-pub struct OrderQueue(VecDeque<SignedOrder>);
+pub struct OrderQueue(VecDeque<Command>);
 
 impl OrderQueue {
-    /// Enqueue an order. `impl Into<SignedOrder>` is the whole point: the
-    /// attribution is decided here, once, for every producer.
+    /// Enqueue an order for the next tick the sim drains the queue
+    /// ([`CommandTick::Asap`]) — the shape input produces, since a click lands
+    /// between ticks and cannot know which tick will pick it up. The sim stamps
+    /// it with that tick when it applies it, and the log records the stamp.
+    ///
+    /// `impl Into<SignedOrder>` is the whole point: the attribution is decided
+    /// here, once, for every producer.
     pub fn push_back(&mut self, order: impl Into<SignedOrder>) {
-        self.0.push_back(order.into());
+        self.0.push_back(Command {
+            when: CommandTick::Asap,
+            order: order.into(),
+        });
     }
 
-    pub fn pop_front(&mut self) -> Option<SignedOrder> {
-        self.0.pop_front()
+    /// Enqueue an order for **exactly** sim tick `at`. It is applied on that
+    /// tick and no other: a tick that has already gone by drops it (see
+    /// [`take_due`](Self::take_due)). This is the shape a replay feeds, and the
+    /// shape a networked (M6) command takes.
+    pub fn push_at(&mut self, at: u32, order: impl Into<SignedOrder>) {
+        self.0.push_back(Command {
+            when: CommandTick::At(at),
+            order: order.into(),
+        });
     }
 
-    pub fn front(&self) -> Option<&SignedOrder> {
+    /// Take everything due on tick `now`, in push order, and leave the rest.
+    ///
+    /// - [`CommandTick::Asap`] ⇒ due, stamped `now`;
+    /// - `At(t) == now` ⇒ due, stamped `t`;
+    /// - `At(t) > now` ⇒ retained, in order;
+    /// - `At(t) < now` ⇒ **dropped** and counted in the returned `late` figure.
+    ///   Applying a command a tick late is precisely the divergence a replay
+    ///   exists to rule out, so a missed tick is a lost command, never a
+    ///   rescheduled one.
+    ///
+    /// Order is preserved exactly, so what the sim applies within a tick is a
+    /// function of push order alone — no iteration order, no sorting by
+    /// entity, nothing a `HashMap` could reach.
+    pub fn take_due(&mut self, now: u32) -> (Vec<(u32, SignedOrder)>, u32) {
+        let mut due = Vec::new();
+        let mut late = 0u32;
+        let mut kept = VecDeque::with_capacity(self.0.len());
+        for cmd in self.0.drain(..) {
+            match cmd.when {
+                CommandTick::Asap => due.push((now, cmd.order)),
+                CommandTick::At(t) if t == now => due.push((t, cmd.order)),
+                CommandTick::At(t) if t > now => kept.push_back(Command {
+                    when: CommandTick::At(t),
+                    order: cmd.order,
+                }),
+                CommandTick::At(_) => late = late.saturating_add(1),
+            }
+        }
+        self.0 = kept;
+        (due, late)
+    }
+
+    pub fn front(&self) -> Option<&Command> {
         self.0.front()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &SignedOrder> {
+    pub fn iter(&self) -> impl Iterator<Item = &Command> {
         self.0.iter()
     }
 
@@ -157,8 +206,51 @@ impl OrderQueue {
     }
 }
 
-/// Who an order is to be held to.
+/// When a [`Command`] is to be applied.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CommandTick {
+    /// On the next tick the sim drains the queue. Input is asynchronous — a
+    /// click has no tick of its own — so the sim assigns it one, and that
+    /// assignment is what the command log records.
+    Asap,
+    /// On exactly this sim tick, or not at all.
+    At(u32),
+}
+
+/// A [`SignedOrder`] plus the tick it is to be applied on: the unit the sim
+/// consumes, the command log stores, and a replay feeds back in.
+///
+/// (The command *enum* is [`Order`] — named that way because Bevy's prelude
+/// already has a `Command` trait; `Command` is the tick-tagged envelope around
+/// it, which is what "tagged with a target tick" has to mean if the tag is to
+/// be unforgeable.)
+#[derive(Debug)]
+pub struct Command {
+    when: CommandTick,
+    order: SignedOrder,
+}
+
+impl Command {
+    pub fn when(&self) -> CommandTick {
+        self.when
+    }
+
+    pub fn attribution(&self) -> Attribution {
+        self.order.attribution()
+    }
+
+    pub fn issuer(&self) -> Option<Faction> {
+        self.order.issuer()
+    }
+
+    pub fn order(&self) -> &Order {
+        self.order.order()
+    }
+}
+
+/// Who an order is to be held to. Serializable: it is what the command log
+/// stores in place of the (already resolved) signature.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Attribution {
     /// Signed by this faction ([`Order::issued_by`]). Checked against
     /// everything the order touches.
@@ -301,10 +393,28 @@ pub struct RateReport {
 
 // ---- systems ---------------------------------------------------------------
 
-/// Drain the command queue, turning intents into per-entity sim components.
-/// Runs before [`movement`] so orders take effect on the same tick.
+/// Drain the commands **due on this tick**, turning intents into per-entity sim
+/// components. Runs before [`movement`] so orders take effect on the same tick.
+///
+/// This is the only place a command is ever applied, and it is only ever
+/// reached from the sim chain (`FixedUpdate` in the shipped app), so "applied
+/// on tick N" is a property of the sim's own tick counter and not of when the
+/// order happened to be pushed. Each command consumed is appended to the
+/// [`replay::CommandLog`] with the tick it applied on — including the ones
+/// refused for ownership or cost, because the log records what the sim was
+/// *asked* to do, which is what a replay must feed back.
+///
+/// [`MatchState`] (the tick counter) and the [`replay::CommandLog`] are taken as
+/// `Option`, and both are installed by `add_sim_systems` with the chain: an app
+/// that composes this system by hand — the M4a fixtures do, deliberately, to
+/// test it in isolation — still applies its unscheduled orders on the tick it
+/// runs. What no *shipped* configuration can do is lose them, because the one
+/// definition of the chain installs both alongside it (F-004).
+#[allow(clippy::too_many_arguments)]
 pub fn apply_commands(
     mut queue: ResMut<CommandQueue>,
+    state: Option<Res<MatchState>>,
+    log: Option<ResMut<replay::CommandLog>>,
     content: Res<Content>,
     mut stock: ResMut<Stockpiles>,
     mut producers: Query<(&Building, &Faction, &mut ProductionQueue)>,
@@ -312,11 +422,20 @@ pub fn apply_commands(
     owners: Query<&Faction>,
     mut commands: Commands,
 ) {
-    while let Some(signed) = queue.0.pop_front() {
+    let now = state.map(|s| s.tick()).unwrap_or(0);
+    let mut log = log;
+    let (due, late) = queue.0.take_due(now);
+    if let Some(log) = log.as_mut() {
+        log.record_late(late);
+    }
+    for (tick, signed) in due {
         // Ownership first. `Void` is an order nobody can be held to (signed by
         // two different factions); everything else yields the faction the rest
         // of this loop checks against.
         let (attribution, cmd) = signed.into_parts();
+        if let Some(log) = log.as_mut() {
+            log.record(tick, attribution, &cmd);
+        }
         if attribution == Attribution::Void {
             continue;
         }

@@ -20,7 +20,17 @@ use bevy::math::Vec2;
 /// Which side a unit fights for. For M2 the "two sides" are a mirror nation
 /// (see MVP_PLAN.md) — this is just the sim-pure tag that makes one unit an
 /// *enemy* of another. Unit *types* don't matter at this milestone.
-#[derive(Component, Clone, Copy, PartialEq, Eq, Debug, Hash)]
+#[derive(
+    Component,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Debug,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+)]
 pub enum Faction {
     A,
     B,

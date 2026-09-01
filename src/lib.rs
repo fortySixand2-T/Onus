@@ -86,6 +86,7 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
     app.init_resource::<sim::AiCommanders>();
     app.init_resource::<sim::AiJournal>();
     app.init_resource::<sim::MatchState>();
+    app.init_resource::<sim::replay::CommandLog>();
     app.add_systems(
         schedule,
         (
