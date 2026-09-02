@@ -28,6 +28,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::sim::combat::{AttackCooldown, Casualties, Engaging, Health, Target};
 use crate::sim::economy::{Building, Carrying, GatherPhase, ProductionQueue, Stockpiles, UnitDefIdx};
+use crate::sim::content::{Content, ContentFingerprint};
 use crate::sim::spatial::Faction;
 use crate::sim::victory::MatchState;
 use crate::sim::{
@@ -38,7 +39,14 @@ use crate::sim::{
 /// Format version of a persisted [`MatchLog`]. Bumped when the on-disk shape
 /// changes; loading refuses a version it does not know, because a log it cannot
 /// read exactly is a log it cannot replay at all.
-pub const LOG_FORMAT_VERSION: u32 = 1;
+///
+/// **Version 2 (Phase 1)** added the content fingerprint. There is deliberately
+/// **no migration shim**: a version-1 log is refused, loudly, by name. A shim
+/// would have to invent the one thing the old format is missing — which content
+/// the log was recorded against — and inventing it is precisely the silent
+/// wrong replay the fingerprint exists to prevent. Old logs are re-recordable
+/// (the seed and the starting world are all a recording needs); a guess is not.
+pub const LOG_FORMAT_VERSION: u32 = 2;
 
 // ---- stable identity --------------------------------------------------------
 
@@ -365,6 +373,13 @@ pub struct LoggedCommand {
 pub struct MatchLog {
     pub version: u32,
     pub seed: u64,
+    /// The content this match was played with. A log names units and buildings
+    /// and the sim's behaviour is data, so a log is only meaningful against the
+    /// content it was recorded with — [`matches_content`](Self::matches_content)
+    /// is what turns "different roster" from a silent wrong replay into a
+    /// refusal. Stamped by the sim itself (`replay::stamp_content`), never by
+    /// the caller.
+    pub content: ContentFingerprint,
     pub commands: Vec<LoggedCommand>,
 }
 
@@ -373,6 +388,7 @@ impl Default for MatchLog {
         Self {
             version: LOG_FORMAT_VERSION,
             seed: 0,
+            content: ContentFingerprint::unknown(),
             commands: Vec::new(),
         }
     }
@@ -474,6 +490,57 @@ impl MatchLog {
         Ok(log)
     }
 
+    /// Is this log playable against `content`?
+    ///
+    /// The fingerprint is compared, never the summary — the summary is there so
+    /// the error tells a human *what* changed. Two ways to fail, both loud:
+    ///
+    /// - **unknown**: the log was never stamped, which means no sim ever played
+    ///   it (a hand-built fixture log, or a match that was over before its first
+    ///   tick). There is nothing to check it against;
+    /// - **mismatch**: it was recorded against different content. Every id in it
+    ///   may still resolve, and every number in it may still parse — and the
+    ///   match it replays would not be the match it recorded.
+    ///
+    /// This is the check `load_for` and the replay itself run; plain
+    /// [`load`](Self::load) does *not* run it, on purpose, so a log that fails
+    /// here can still be read and inspected.
+    pub fn matches_content(&self, content: &Content) -> Result<(), String> {
+        let mine = content.fingerprint();
+        if !self.content.is_known() {
+            return Err(format!(
+                "log: recorded with unknown content (nothing stamped it), so it \
+                 cannot be checked against this build's content [{mine}]"
+            ));
+        }
+        if self.content.hash() != mine.hash() {
+            return Err(format!(
+                "log: recorded against different content — log has [{}], this \
+                 build has [{}]. A replay would play a different match, so it is \
+                 refused rather than run",
+                self.content, mine
+            ));
+        }
+        Ok(())
+    }
+
+    /// Parse **and** check against the content the replay will run: the
+    /// front door for loading a log to play.
+    pub fn from_ron_for(text: &str, content: &Content) -> Result<Self, String> {
+        let log = Self::from_ron(text)?;
+        log.matches_content(content)?;
+        Ok(log)
+    }
+
+    /// [`load`](Self::load) plus the content check — the front door for loading
+    /// a log to play. Plain `load` is the diagnostic path: it parses and
+    /// format-checks, so a log this refuses can still be read to find out why.
+    pub fn load_for(path: &Path, content: &Content) -> Result<Self, String> {
+        let log = Self::load(path)?;
+        log.matches_content(content)?;
+        Ok(log)
+    }
+
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let text = self.to_ron()?;
         std::fs::write(path, text).map_err(|e| format!("log: write {}: {e}", path.display()))
@@ -565,6 +632,19 @@ impl CommandLog {
         }
     }
 
+    /// Stamp the content this match is being played with, once.
+    ///
+    /// The sim does this itself (`replay::stamp_content`, which runs every tick
+    /// and does nothing after the first), so no caller can forget and no log the
+    /// sim writes is missing its fingerprint. Idempotent, and it never
+    /// *re-*stamps: content cannot change mid-match, and if it somehow did, the
+    /// first stamp is the one the recorded commands were taken under.
+    pub(crate) fn stamp_content(&mut self, content: &Content) {
+        if !self.log.content.is_known() {
+            self.log.content = content.fingerprint();
+        }
+    }
+
     pub(crate) fn record_unnameable(&mut self, n: u32) {
         self.unnameable = self.unnameable.saturating_add(n);
     }
@@ -599,6 +679,10 @@ pub struct ReplaySource {
     /// Logged commands naming a [`SimId`] this world has never issued — the log
     /// does not match the starting world it is being replayed into.
     unresolved: u32,
+    /// Why this replay was refused outright, if it was: the log does not belong
+    /// to the content the sim is running. Set once, on the first tick; while it
+    /// is set nothing is ever fed.
+    rejection: Option<String>,
 }
 
 impl ReplaySource {
@@ -609,6 +693,7 @@ impl ReplaySource {
             skipped: 0,
             discarded: 0,
             unresolved: 0,
+            rejection: None,
         }
     }
 
@@ -637,9 +722,31 @@ impl ReplaySource {
         self.unresolved
     }
 
+    /// Why this replay was refused, if it was. `Some` means **no command has
+    /// been or will be fed**: the log does not belong to this content.
+    pub fn rejection(&self) -> Option<&str> {
+        self.rejection.as_deref()
+    }
+
     /// Has every logged command been fed?
     pub fn finished(&self) -> bool {
         self.cursor >= self.log.commands.len()
+    }
+}
+
+/// Stamp the command log with the content the match is being played with.
+///
+/// Runs **ungated**, so a match that is decided on its first tick still stamps
+/// the log it recorded, and runs every tick because the stamp is one comparison
+/// after the first (the fingerprint is computed once). It is a system rather
+/// than a constructor argument because the log is installed with the chain
+/// (`init_resource`) and the content is match setup: a `CommandLog::new(seed)`
+/// in a fixture cannot know the content, and a log that has to be stamped by
+/// its caller is a log that will eventually go unstamped — which is the exact
+/// shape of defect this milestone keeps paying for.
+pub fn stamp_content(content: Res<Content>, log: Option<ResMut<CommandLog>>) {
+    if let Some(mut log) = log {
+        log.stamp_content(&content);
     }
 }
 
@@ -657,10 +764,26 @@ impl ReplaySource {
 ///   (the same rule that keeps the AI honest — F-009).
 pub fn feed_replay(
     state: Res<MatchState>,
+    content: Res<Content>,
     ids: Res<SimIds>,
     mut source: ResMut<ReplaySource>,
     mut queue: ResMut<CommandQueue>,
 ) {
+    // **The backstop.** `MatchLog::load_for` is the front door, but a
+    // `ReplaySource` can also be built from a log that was never checked (an
+    // in-memory one, or one loaded for inspection). A replay driven by a log
+    // recorded against different content is a silent wrong replay, so the sim
+    // refuses it here rather than playing it: nothing is ever fed, and
+    // `ReplaySource::rejection` says why.
+    if source.rejection.is_none() && source.cursor == 0 {
+        if let Err(why) = source.log.matches_content(&content) {
+            source.rejection = Some(why);
+        }
+    }
+    if source.rejection.is_some() {
+        queue.0.clear();
+        return;
+    }
     let now = state.tick();
     let discarded = queue.0.len() as u32;
     queue.0.clear();
@@ -755,7 +878,12 @@ mod tag {
 /// A 64-bit digest of one command the sim is holding. Everything about it that
 /// could differ between two worlds: when it is to apply, who it is held to, and
 /// what it says (entities as `SimId`s, coordinates as exact bits).
-fn command_digest(cmd: &crate::sim::Command, id_of: impl FnMut(Entity) -> SimId) -> u64 {
+///
+/// It walks the [`Order`] itself rather than its logged form, on purpose: this
+/// is a hash of *sim state*, and it must not change meaning when the log format
+/// does. Content definitions are digested as the indices the sim holds them by,
+/// which is what a held command actually contains.
+fn command_digest(cmd: &crate::sim::Command, mut id_of: impl FnMut(Entity) -> SimId) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     let mut mix = |v: u64| {
         h ^= v;
@@ -773,47 +901,50 @@ fn command_digest(cmd: &crate::sim::Command, id_of: impl FnMut(Entity) -> SimId)
         Attribution::SelfSigned => 3,
         Attribution::Void => 4,
     });
-    match LoggedOrder::of(cmd.order(), id_of) {
+    let ids = |mix: &mut dyn FnMut(u64), es: &[Entity], id_of: &mut dyn FnMut(Entity) -> SimId| {
+        mix(es.len() as u64);
+        for e in es {
+            mix(id_of(*e).0);
+        }
+    };
+    match cmd.order() {
+        Order::MoveTo { units, dest } => {
+            mix(1);
+            ids(&mut mix, units, &mut id_of);
+            mix(dest.x.to_bits() as u64);
+            mix(dest.y.to_bits() as u64);
+        }
+        Order::Gather {
+            units,
+            node,
+            node_pos,
+        } => {
+            mix(2);
+            ids(&mut mix, units, &mut id_of);
+            mix(id_of(*node).0);
+            mix(node_pos.x.to_bits() as u64);
+            mix(node_pos.y.to_bits() as u64);
+        }
+        Order::Place {
+            faction,
+            building,
+            pos,
+        } => {
+            mix(3);
+            mix(faction_bits(*faction));
+            mix(*building as u64);
+            mix(pos.x.to_bits() as u64);
+            mix(pos.y.to_bits() as u64);
+        }
+        Order::Train { building, unit } => {
+            mix(4);
+            mix(id_of(*building).0);
+            mix(*unit as u64);
+        }
         // Unreachable: the queue peels `Order::By` at the boundary. Hashed as a
         // distinct value rather than skipped, so it could never be a silent
         // match with something else.
-        None => mix(u64::MAX),
-        Some(order) => {
-            let (variant, ids, floats, indices) = match &order {
-                LoggedOrder::MoveTo { units, dest } => (1u64, units.clone(), vec![dest.0, dest.1], vec![]),
-                LoggedOrder::Gather {
-                    units,
-                    node,
-                    node_pos,
-                } => {
-                    let mut ids = units.clone();
-                    ids.push(*node);
-                    (2, ids, vec![node_pos.0, node_pos.1], vec![])
-                }
-                LoggedOrder::Place {
-                    faction,
-                    building,
-                    pos,
-                } => (
-                    3,
-                    vec![faction_bits(*faction)],
-                    vec![pos.0, pos.1],
-                    vec![*building],
-                ),
-                LoggedOrder::Train { building, unit } => (4, vec![*building], vec![], vec![*unit]),
-            };
-            mix(variant);
-            mix(ids.len() as u64);
-            for id in ids {
-                mix(id);
-            }
-            for f in floats {
-                mix(f.to_bits() as u64);
-            }
-            for i in indices {
-                mix(i as u64);
-            }
-        }
+        Order::By { .. } => mix(u64::MAX),
     }
     h
 }

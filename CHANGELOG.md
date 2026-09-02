@@ -217,3 +217,7 @@
 - [2026-09-01] Modified: tests/critic_m5.rs — pass-4 critic probes (no id issuance in apply_commands, partial-drop vs whole-refusal semantics, refusal charges nothing, F-009 preserved, registry-storage guard, unnameable-heavy match replay)
 - [2026-09-01] Modified: BUILD_PLAN.md — M5 acceptance criteria ticked after critic PASS (pass 4)
 - [2026-09-01] Modified: CLAUDE.md — status: M0–M5 done; next is M6 (lockstep networking, optional)
+- [2026-09-01] Modified: src/sim/content.rs — Phase 1a: ContentFingerprint + Content::fingerprint (whole content, float-exact, order-stable)
+- [2026-09-01] Modified: src/sim/replay.rs — Phase 1a: LOG_FORMAT_VERSION 2, MatchLog carries the content fingerprint, matches_content/load_for, replay backstop
+- [2026-09-01] Modified: src/lib.rs — the chain stamps the log with the content it is playing (ungated)
+- [2026-09-01] Modified: tests/m5_replay.rs — Phase 1a probes: a log from other content is refused; the fingerprint covers the whole content; migration is a refusal

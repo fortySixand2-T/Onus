@@ -167,8 +167,7 @@ impl OrderQueue {
     ///   rescheduled one.
     ///
     /// Order is preserved exactly, so what the sim applies within a tick is a
-    /// function of push order alone — no iteration order, no sorting by
-    /// entity, nothing a `HashMap` could reach.
+    /// function of push order alone.
     pub fn take_due(&mut self, now: u32) -> (Vec<(u32, SignedOrder)>, u32) {
         let mut due = Vec::new();
         let mut late = 0u32;

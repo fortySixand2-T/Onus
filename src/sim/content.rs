@@ -307,6 +307,129 @@ pub struct Content {
     pub economy: EconomyDef,
 }
 
+// ---- content fingerprint ----------------------------------------------------
+
+/// A fingerprint of a whole loaded [`Content`]: a 64-bit hash plus a short
+/// human-readable summary.
+///
+/// A command log is only meaningful against the content it was recorded with —
+/// it names units and buildings, and the sim's behaviour is data. The
+/// fingerprint is what lets a replay **refuse** a log recorded against
+/// different content instead of quietly playing a different match.
+///
+/// Only [`hash`](Self::hash) is compared. `summary` is diagnostic: it is what a
+/// mismatch message shows a human, and nothing is decided from it.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ContentFingerprint {
+    hash: u64,
+    summary: String,
+}
+
+impl ContentFingerprint {
+    /// "No content was ever stamped here." `0` is reserved for this — the hash
+    /// below never returns it — so "unknown" is a value the type can hold
+    /// rather than a hash collision waiting to be misread.
+    pub const UNKNOWN: u64 = 0;
+
+    pub fn unknown() -> Self {
+        Self {
+            hash: Self::UNKNOWN,
+            summary: String::new(),
+        }
+    }
+
+    pub fn hash(&self) -> u64 {
+        self.hash
+    }
+
+    pub fn summary(&self) -> &str {
+        &self.summary
+    }
+
+    pub fn is_known(&self) -> bool {
+        self.hash != Self::UNKNOWN
+    }
+}
+
+impl fmt::Display for ContentFingerprint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.is_known() {
+            write!(f, "{:016x} ({})", self.hash, self.summary)
+        } else {
+            write!(f, "unknown")
+        }
+    }
+}
+
+/// FNV-1a over the pieces of a [`Content`]. Same discipline as the sim's state
+/// hash: floats by their exact bits (never rounded into a bucket), strings
+/// length-prefixed (so `"ab" + "c"` cannot collide with `"a" + "bc"`), every
+/// sequence in its RON order, and no map anywhere — nothing here can depend on
+/// iteration order.
+struct Fnv(u64);
+
+impl Fnv {
+    fn new() -> Self {
+        Fnv(0xcbf2_9ce4_8422_2325)
+    }
+
+    fn u64(&mut self, v: u64) -> &mut Self {
+        self.0 ^= v;
+        self.0 = self.0.wrapping_mul(0x0000_0100_0000_01b3);
+        self
+    }
+
+    fn u32(&mut self, v: u32) -> &mut Self {
+        self.u64(v as u64)
+    }
+
+    fn bool(&mut self, v: bool) -> &mut Self {
+        self.u64(v as u64)
+    }
+
+    /// Exact bits, so a change no decimal rendering would show still moves the
+    /// fingerprint.
+    fn f32(&mut self, v: f32) -> &mut Self {
+        self.u64(v.to_bits() as u64)
+    }
+
+    fn str(&mut self, s: &str) -> &mut Self {
+        self.u64(s.len() as u64);
+        for b in s.bytes() {
+            self.u64(b as u64);
+        }
+        self
+    }
+
+    fn opt_str(&mut self, s: &Option<String>) -> &mut Self {
+        match s {
+            None => self.u64(0),
+            Some(s) => {
+                self.u64(1);
+                self.str(s)
+            }
+        }
+    }
+
+    fn strs(&mut self, all: &[String]) -> &mut Self {
+        self.u64(all.len() as u64);
+        for s in all {
+            self.str(s);
+        }
+        self
+    }
+
+    /// Never [`ContentFingerprint::UNKNOWN`]: `0` means "nothing was stamped",
+    /// and a real fingerprint must never be mistaken for that.
+    fn finish(&self) -> u64 {
+        if self.0 == ContentFingerprint::UNKNOWN {
+            1
+        } else {
+            self.0
+        }
+    }
+}
+
 /// Why content failed to load. Carries the offending path/message so a startup
 /// failure is diagnosable without a debugger.
 #[derive(Debug)]
@@ -650,6 +773,126 @@ impl Content {
             return bad("mvp_economy ranges must be finite and positive".to_string());
         }
         Ok(())
+    }
+
+    /// Fingerprint of this whole content set — every field of every definition,
+    /// in RON order.
+    ///
+    /// **Deliberately the whole thing, including the post-MVP `cost` fields the
+    /// MVP sim never reads.** That means an edit which could not have changed
+    /// sim behaviour still invalidates a stored log. The asymmetry decides it: a
+    /// false rejection is loud, immediate and recoverable (the log is still
+    /// readable, and `MatchLog::load` will still parse it for inspection),
+    /// while a false accept is the silent wrong replay this exists to
+    /// eliminate. Narrowing the scope to "the fields the sim reads today" would
+    /// also mean the fingerprint's meaning changes every time a field starts
+    /// being read — the kind of rule that is true when written and false a
+    /// milestone later.
+    ///
+    /// Order-stable and float-exact by construction (see [`Fnv`]): definitions
+    /// keep their RON order, floats are hashed by their bits, and no map is
+    /// involved, so two loads of the same files always agree.
+    pub fn fingerprint(&self) -> ContentFingerprint {
+        let mut h = Fnv::new();
+        // A tag per section, so moving a value from one list to another cannot
+        // leave the fingerprint unchanged.
+        h.str("units").u64(self.units.len() as u64);
+        for u in &self.units {
+            h.str(&u.id).str(&u.name);
+            h.opt_str(&u.source).opt_str(&u.barracks);
+            h.str(&u.cost.resource).u32(u.cost.amount);
+            h.u64(match u.mvp_kind {
+                UnitKind::Worker => 0,
+                UnitKind::Soldier => 1,
+                UnitKind::Scout => 2,
+            });
+            h.u32(u.mvp_alloy_cost)
+                .u32(u.mvp_train_ticks)
+                .u32(u.mvp_carry_capacity)
+                .u32(u.mvp_gather_ticks)
+                .u32(u.mvp_attack_ticks);
+            h.f32(u.mvp_attack_range);
+            h.u32(u.speed).u32(u.offense).u32(u.defense).u32(u.armor);
+            h.opt_str(&u.nemesis).bool(u.gathers).bool(u.builds);
+        }
+
+        h.str("buildings").u64(self.buildings.len() as u64);
+        for b in &self.buildings {
+            h.str(&b.id).str(&b.name).u32(b.alloy_cost);
+            h.strs(&b.produces);
+            h.bool(b.dropoff).bool(b.victory);
+            h.u32(b.mvp_defense).u32(b.mvp_armor);
+        }
+
+        h.str("combat");
+        h.u32(self.combat.hp_per_defense)
+            .u32(self.combat.damage_per_offense)
+            .u32(self.combat.mitigation_per_armor);
+        h.f32(self.combat.speed_per_point)
+            .f32(self.combat.engage_range)
+            .f32(self.combat.pursue_range);
+        h.u32(self.combat.max_stat)
+            .u32(self.combat.building_hp_per_defense);
+
+        h.str("nemesis");
+        h.f32(self.nemesis_bonus.damage_mult)
+            .bool(self.nemesis_bonus.ignore_armor);
+
+        h.str("ai");
+        h.u32(self.ai.think_interval_ticks)
+            .u32(self.ai.worker_target)
+            .str(&self.ai.barracks)
+            .u32(self.ai.barracks_at_tick)
+            .f32(self.ai.barracks_offset)
+            .u32(self.ai.attack_at_army)
+            .u32(self.ai.attack_interval_ticks)
+            .f32(self.ai.attack_spread)
+            .u64(self.ai.army.len() as u64);
+        for item in &self.ai.army {
+            h.str(&item.unit).u32(item.count);
+        }
+
+        h.str("resources").u64(self.resources.len() as u64);
+        for r in &self.resources {
+            h.str(&r.id).str(&r.name).str(&r.domain).str(&r.building);
+            h.u64(match r.acquisition {
+                Acquisition::Mined => 0,
+                Acquisition::Grown => 1,
+                Acquisition::Channeled => 2,
+            });
+            h.strs(&r.powers);
+        }
+        h.str("mvp_active").strs(&self.mvp_active);
+
+        h.str("economy")
+            .str(&self.economy.currency)
+            .u32(self.economy.starting_alloy)
+            .f32(self.economy.gather_range)
+            .f32(self.economy.deposit_range);
+
+        let ids = |all: &[String]| {
+            if all.is_empty() {
+                "-".to_string()
+            } else {
+                all.join(",")
+            }
+        };
+        let summary = format!(
+            "{} units [{}], {} buildings [{}], {} resources",
+            self.units.len(),
+            ids(&self.units.iter().map(|u| u.id.clone()).collect::<Vec<_>>()),
+            self.buildings.len(),
+            ids(&self
+                .buildings
+                .iter()
+                .map(|b| b.id.clone())
+                .collect::<Vec<_>>()),
+            self.resources.len(),
+        );
+        ContentFingerprint {
+            hash: h.finish(),
+            summary,
+        }
     }
 
     /// Index of a unit definition by id (stable: the RON order).

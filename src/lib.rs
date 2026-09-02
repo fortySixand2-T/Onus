@@ -140,6 +140,13 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
             )
                 .chain()
                 .run_if(sim::victory::match_running),
+            // Stamp the command log with the content this match is played with,
+            // so a log can never be replayed against a different roster (and so
+            // no caller has to remember to do it). **Ungated**, so a match
+            // decided on its first tick still stamps the log it recorded, and
+            // ordered after the sweep like everything else in `replay` (F-008's
+            // pre-sweep stretch stays empty of anything but the win watch).
+            sim::replay::stamp_content,
             // Deciding it: always runs, and writes the outcome exactly once.
             sim::victory::match_end,
             // The tail identification pass: whatever this tick spawned (a

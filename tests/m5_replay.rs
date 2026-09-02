@@ -486,7 +486,7 @@ fn an_unreadable_log_is_an_error_not_a_panic() {
     assert_eq!(MatchLog::from_ron(&text).expect("reads"), good);
 
     // Version.
-    assert!(MatchLog::from_ron(&text.replace("version: 1", "version: 2")).is_err());
+    assert!(MatchLog::from_ron(&text.replace("version: 2", "version: 3")).is_err());
 
     // Tick order, and a command naming an entity the sim never identified: no
     // replay can resolve either, so both are refused — at *both* boundaries,
@@ -1799,6 +1799,218 @@ fn the_shipped_app_stops_emitting_orders_once_the_match_is_decided() {
             tail[..end].trim()
         );
     }
+}
+
+// ---- the content a log was recorded against ---------------------------------
+
+/// Load `assets/data` with one textual substitution applied to `units.ron`,
+/// into a scratch directory — the way the M4 suites edit content.
+fn content_edited(name: &str, from: &str, to: &str) -> Content {
+    let dir = std::env::temp_dir().join(format!("onus-p1-{name}"));
+    std::fs::create_dir_all(&dir).expect("scratch content dir");
+    for file in ["units.ron", "resources.ron"] {
+        let text = std::fs::read_to_string(data_dir().join(file)).expect("read content");
+        let text = if file == "units.ron" {
+            assert!(text.contains(from), "`{from}` is not in units.ron");
+            text.replacen(from, to, 1)
+        } else {
+            text
+        };
+        std::fs::write(dir.join(file), text).expect("write content");
+    }
+    Content::load_from_dir(&dir).expect("the edited content still loads")
+}
+
+/// The same content set with two unit definitions swapped: identical ids,
+/// identical stats, different *positions* — which is exactly what a RON edit
+/// does to the indices a log used to be written in terms of.
+fn reordered_roster() -> Content {
+    let mut c = content();
+    assert!(c.units.len() > 2);
+    c.units.swap(1, 2);
+    c
+}
+
+/// **A log carries the content it was recorded against, and a replay refuses
+/// one that does not match.** Without this, editing the roster turns every
+/// stored log into a silently different match.
+#[test]
+fn a_log_recorded_against_other_content_is_refused() {
+    let mut app = ai_vs_ai(4);
+    tick(&mut app, 600);
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert!(
+        log.content.is_known(),
+        "the sim did not stamp the content it played with"
+    );
+    assert_eq!(log.content, content().fingerprint());
+
+    // The same content: it loads, through the checked front door.
+    let path = scratch("fingerprint");
+    log.save(&path).expect("save");
+    MatchLog::load_for(&path, &content()).expect("its own content must load");
+
+    // A different roster: refused, by name, with both sides in the message.
+    let edited = content_edited("costlier", "mvp_alloy_cost: 10", "mvp_alloy_cost: 11");
+    let err = MatchLog::load_for(&path, &edited)
+        .expect_err("a log recorded against other content must be refused");
+    assert!(
+        err.contains("different content") && err.contains("units"),
+        "the refusal does not say what changed: {err}"
+    );
+    // ...and it is still *readable*, so a false rejection is recoverable.
+    let inspected = MatchLog::load(&path).expect("a refused log is still readable");
+    assert_eq!(inspected, log);
+}
+
+/// The scope decision, made executable: the fingerprint covers the **whole**
+/// content, including fields the MVP sim never reads, and is exact about
+/// floats and about order.
+///
+/// The trade is deliberate. A false rejection is loud, immediate and
+/// recoverable; a false accept is the silent wrong replay the fingerprint
+/// exists to eliminate. So the fingerprint errs towards rejecting.
+#[test]
+fn the_fingerprint_covers_the_whole_content_exactly() {
+    let base = content().fingerprint();
+    assert_eq!(base, content().fingerprint(), "the fingerprint is not stable");
+    assert!(base.is_known());
+
+    let moved = |name: &str, from: &str, to: &str| content_edited(name, from, to).fingerprint();
+    // A field the MVP sim reads.
+    assert_ne!(base, moved("cost", "mvp_alloy_cost: 10", "mvp_alloy_cost: 11"));
+    // A field it does **not** read: the post-MVP per-domain cost.
+    assert_ne!(
+        base,
+        moved(
+            "postmvp",
+            "cost: (resource: \"alloy\", amount: 10)",
+            "cost: (resource: \"alloy\", amount: 11)"
+        ),
+        "an edit to a field the MVP never reads left the fingerprint unchanged \
+         — the scope decision is not implemented"
+    );
+    // A name, which nothing at all reads.
+    assert_ne!(base, moved("name", "name: \"Worker\"", "name: \"Labourer\""));
+    // A float, changed by one representable step.
+    assert_ne!(base, moved("float", "speed_per_point: 36.0", "speed_per_point: 36.000004"));
+    // Order: same set of definitions, different RON order.
+    let reordered = reordered_roster();
+    assert_ne!(
+        base,
+        reordered.fingerprint(),
+        "reordering the roster left the fingerprint unchanged"
+    );
+    // And the summary is diagnostic only — it changes with the roster, and
+    // nothing is decided from it.
+    assert!(base.summary().contains("units"));
+}
+
+/// The property the fingerprint could break: the sim always stamps, so
+/// **every** log it records can be checked against its own content — asserted
+/// per sample as the log grows, not once at the end.
+#[test]
+fn every_log_the_sim_records_matches_the_content_it_played() {
+    let mut app = ai_vs_ai(4);
+    for t in 0..1_200u32 {
+        step(&mut app);
+        if t % 200 == 0 || t == 1_199 {
+            let log = app.world().resource::<CommandLog>().log().clone();
+            log.matches_content(&content())
+                .unwrap_or_else(|e| panic!("tick {t}: {e}"));
+        }
+    }
+    // Including a match that is decided on its very first tick: the stamp is
+    // ungated, so even a sim that never plays a live tick stamps its log.
+    let mut over = sim_app();
+    spawn_building(&mut over, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+    let b = spawn_building(&mut over, "hq", Faction::B, Vec2::new(100.0, 0.0));
+    tick(&mut over, 2);
+    over.world_mut().despawn(b);
+    tick(&mut over, 2);
+    assert!(over.world().resource::<MatchState>().is_over());
+    over.world()
+        .resource::<CommandLog>()
+        .log()
+        .matches_content(&content())
+        .expect("a match decided early still stamps its log");
+}
+
+/// The backstop: even a `ReplaySource` built from a log nobody checked is
+/// refused by the sim itself, rather than played as a different match.
+#[test]
+fn the_sim_refuses_to_replay_a_log_from_other_content() {
+    const TICKS: u32 = 400;
+    let (_, log, _) = recorded_run(4, TICKS);
+    let mut app = ai_vs_ai(log.seed);
+    // Same starting world, different content.
+    let edited = content_edited("replay-refuse", "mvp_alloy_cost: 10", "mvp_alloy_cost: 11");
+    app.insert_resource(edited);
+    app.insert_resource(CommandLog::new(log.seed));
+    app.insert_resource(ReplaySource::new(log));
+    tick(&mut app, TICKS);
+    let source = app.world().resource::<ReplaySource>();
+    assert!(
+        source.rejection().is_some(),
+        "the sim replayed a log recorded against different content"
+    );
+    assert_eq!(source.cursor(), 0, "it fed commands from a rejected log");
+    assert_eq!(
+        app.world().resource::<CommandLog>().commands().len(),
+        0,
+        "a refused replay still applied commands"
+    );
+}
+
+/// The direction the backstop could break: a replay whose content *does* match
+/// is not rejected, and still reproduces the match.
+#[test]
+fn a_matching_log_is_not_refused_by_the_backstop() {
+    const TICKS: u32 = 900;
+    let (recorded, log, _) = recorded_run(4, TICKS);
+    let (replayed, app) = replay_run(log, TICKS);
+    assert!(
+        app.world().resource::<ReplaySource>().rejection().is_none(),
+        "a matching log was refused"
+    );
+    assert!(
+        app.world().resource::<ReplaySource>().cursor() > 0,
+        "the matching replay fed nothing at all, so the comparison is vacuous"
+    );
+    assert_eq!(recorded.first_divergence(&replayed), None);
+}
+
+/// **Migration: there is none.** A version-1 log is refused by name, not
+/// upgraded — the one thing it is missing is which content it was recorded
+/// against, and inventing that is exactly the silent wrong replay the
+/// fingerprint exists to prevent.
+#[test]
+fn a_version_one_log_is_refused_rather_than_upgraded() {
+    // Exactly what a version-1 log looked like: no content fingerprint, because
+    // the format had none.
+    let v1 = r#"(
+    version: 1,
+    seed: 4,
+    commands: [],
+)"#;
+    let err = MatchLog::from_ron(v1).expect_err("a version-1 log must be refused");
+    assert!(
+        err.contains("version") || err.contains("content"),
+        "the refusal explains neither the version nor the missing content: {err}"
+    );
+    // ...and it is refused *because it is version 1*, not merely because the
+    // field is missing: the same log with the field still added is refused.
+    let v1_padded = r#"(
+    version: 1,
+    seed: 4,
+    content: (hash: 7, summary: "whatever"),
+    commands: [],
+)"#;
+    let err = MatchLog::from_ron(v1_padded).expect_err("a version-1 log must be refused");
+    assert!(
+        err.contains("version 1"),
+        "the refusal does not name the version: {err}"
+    );
 }
 
 // ---- the two boundaries agree ----------------------------------------------
