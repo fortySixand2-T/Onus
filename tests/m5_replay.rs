@@ -450,7 +450,7 @@ fn a_log_that_could_not_be_read_back_is_refused_when_written() {
             attribution: Attribution::SelfSigned,
             order: LoggedOrder::Place {
                 faction: Faction::B,
-                building: 0,
+                building: "hq".to_string(),
                 pos: (bad, 0.0),
             },
         });
@@ -477,7 +477,7 @@ fn an_unreadable_log_is_an_error_not_a_panic() {
             attribution: Attribution::By(Faction::A),
             order: LoggedOrder::Train {
                 building: 3,
-                unit: 0,
+                unit: "worker".to_string(),
             },
         });
         l
@@ -2013,6 +2013,148 @@ fn a_version_one_log_is_refused_rather_than_upgraded() {
     );
 }
 
+// ---- a log names content by id, not by position -----------------------------
+
+/// **The property indices could not have.** A log records `Place`/`Train` by
+/// the content's *id*, so it still names the same things after the RON order
+/// changes — which "content is data" guarantees will happen.
+///
+/// (The fingerprint would refuse such a log at the front door; that is the
+/// point of the diagnostic path. What this shows is that the log's *meaning*
+/// survives the edit, so a deliberate re-validation is a decision someone can
+/// make rather than data that is already lost.)
+#[test]
+fn a_log_still_names_the_same_things_after_the_roster_is_reordered() {
+    let mut app = ai_vs_ai(4);
+    tick(&mut app, 2_000);
+    let log = app.world().resource::<CommandLog>().log().clone();
+    let named: Vec<String> = log
+        .commands
+        .iter()
+        .flat_map(|c| c.order.content_ids())
+        .map(|(what, id)| format!("{what}:{id}"))
+        .collect();
+    assert!(
+        named.iter().any(|n| n.starts_with("unit:")),
+        "the match trained nothing, so this proves nothing"
+    );
+    assert!(
+        named.iter().any(|n| n.starts_with("building:")),
+        "the match placed nothing, so this proves nothing"
+    );
+
+    // Under the original content and under a reordered roster, every logged
+    // order resolves — to *different indices*, naming the *same definitions*.
+    let base = content();
+    let moved = reordered_roster();
+    let ids = app.world().resource::<SimIds>();
+    let mut differed = 0;
+    for c in &log.commands {
+        let a = c.order.to_order(ids, &base).expect("resolves under its own content");
+        let b = c
+            .order
+            .to_order(ids, &moved)
+            .expect("resolves under a reordered roster");
+        match (&a, &b) {
+            (Order::Train { unit: x, .. }, Order::Train { unit: y, .. }) => {
+                assert_eq!(base.units[*x].id, moved.units[*y].id, "a Train changed unit");
+                differed += usize::from(x != y);
+            }
+            (Order::Place { building: x, .. }, Order::Place { building: y, .. }) => {
+                assert_eq!(
+                    base.buildings[*x].id, moved.buildings[*y].id,
+                    "a Place changed building"
+                );
+            }
+            _ => {}
+        }
+    }
+    assert!(
+        differed > 0,
+        "no logged order landed on a different index under the reordered \
+         roster, so the reorder did not exercise anything"
+    );
+}
+
+/// The direction ids could break: under the content it was recorded with, every
+/// logged order resolves back to **exactly** the index the sim applied — per
+/// command, over a live match, not just at the end.
+#[test]
+fn every_logged_order_resolves_back_to_the_index_it_was_applied_with() {
+    let mut app = sim_app_with_alloy(50_000);
+    let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    let worker = app
+        .world()
+        .resource::<Content>()
+        .unit_index("worker")
+        .expect("worker");
+    let foundry = app
+        .world()
+        .resource::<Content>()
+        .building_index("foundry")
+        .expect("foundry");
+    tick(&mut app, 2);
+    for t in 0..40u32 {
+        if t % 2 == 0 {
+            app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+                Order::Train {
+                    building: hq,
+                    unit: worker,
+                }
+                .issued_by(Faction::A),
+            );
+        } else {
+            app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+                Order::Place {
+                    faction: Faction::A,
+                    building: foundry,
+                    pos: Vec2::new(300.0 + t as f32, 0.0),
+                }
+                .issued_by(Faction::A),
+            );
+        }
+        step(&mut app);
+        let c = content();
+        let ids = app.world().resource::<SimIds>();
+        let log = app.world().resource::<CommandLog>();
+        for entry in log.commands() {
+            match entry.order.to_order(ids, &c).expect("resolves") {
+                Order::Train { unit, .. } => assert_eq!(unit, worker, "tick {t}"),
+                Order::Place { building, .. } => assert_eq!(building, foundry, "tick {t}"),
+                _ => {}
+            }
+        }
+    }
+    assert!(app.world().resource::<CommandLog>().commands().len() >= 40);
+}
+
+/// An id this build's content does not have is refused **loudly**, at the
+/// content boundary, and never quietly resolved to some index.
+#[test]
+fn a_log_naming_content_this_build_does_not_have_is_refused() {
+    let mut app = ai_vs_ai(4);
+    tick(&mut app, 600);
+    let mut log = app.world().resource::<CommandLog>().log().clone();
+    log.commands.push(LoggedCommand {
+        tick: 600,
+        attribution: Attribution::By(Faction::A),
+        order: LoggedOrder::Train {
+            building: 0,
+            unit: "ghost_unit".to_string(),
+        },
+    });
+    let err = log
+        .matches_content(&content())
+        .expect_err("a log naming a unit this build lacks must be refused");
+    assert!(
+        err.contains("ghost_unit"),
+        "the refusal does not name what is missing: {err}"
+    );
+    // ...and resolving it is an error, not a guess at an index.
+    let ids = app.world().resource::<SimIds>();
+    assert!(log.commands.last().unwrap().order.to_order(ids, &content()).is_err());
+}
+
 // ---- the two boundaries agree ----------------------------------------------
 
 /// Adversarial logs, each either accepted by **both** boundaries or refused by
@@ -2031,16 +2173,19 @@ fn what_the_writer_accepts_the_reader_accepts_and_the_other_way_round() {
             "ordinary",
             vec![
                 cmd(0, LoggedOrder::MoveTo { units: vec![0, 1], dest: (1.5, -2.5) }),
-                cmd(0, LoggedOrder::Train { building: 2, unit: 1 }),
+                cmd(0, LoggedOrder::Train { building: 2, unit: "ripper".into() }),
                 cmd(9, LoggedOrder::Gather { units: vec![3], node: 4, node_pos: (0.0, -0.0) }),
-                cmd(9, LoggedOrder::Place { faction: Faction::B, building: 0, pos: (7.0, 8.0) }),
+                cmd(9, LoggedOrder::Place { faction: Faction::B, building: "hq".into(), pos: (7.0, 8.0) }),
             ],
         ),
         ("nan", vec![cmd(1, LoggedOrder::MoveTo { units: vec![0], dest: (f32::NAN, 0.0) })]),
-        ("inf", vec![cmd(1, LoggedOrder::Place { faction: Faction::A, building: 0, pos: (0.0, f32::INFINITY) })]),
+        ("inf", vec![cmd(1, LoggedOrder::Place { faction: Faction::A, building: "hq".into(), pos: (0.0, f32::INFINITY) })]),
         (
             "backwards",
-            vec![cmd(5, LoggedOrder::Train { building: 0, unit: 0 }), cmd(4, LoggedOrder::Train { building: 0, unit: 0 })],
+            vec![
+                cmd(5, LoggedOrder::Train { building: 0, unit: "worker".into() }),
+                cmd(4, LoggedOrder::Train { building: 0, unit: "worker".into() }),
+            ],
         ),
         (
             "unidentified in a move",
@@ -2052,7 +2197,7 @@ fn what_the_writer_accepts_the_reader_accepts_and_the_other_way_round() {
         ),
         (
             "unidentified building",
-            vec![cmd(1, LoggedOrder::Train { building: SimId::UNIDENTIFIED.0, unit: 0 })],
+            vec![cmd(1, LoggedOrder::Train { building: SimId::UNIDENTIFIED.0, unit: "worker".into() })],
         ),
     ];
     for (name, commands) in cases {

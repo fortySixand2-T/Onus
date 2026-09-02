@@ -162,9 +162,6 @@ impl OrderQueue {
     /// - `At(t) == now` ⇒ due, stamped `t`;
     /// - `At(t) > now` ⇒ retained, in order;
     /// - `At(t) < now` ⇒ **dropped** and counted in the returned `late` figure.
-    ///   Applying a command a tick late is precisely the divergence a replay
-    ///   exists to rule out, so a missed tick is a lost command, never a
-    ///   rescheduled one.
     ///
     /// Order is preserved exactly, so what the sim applies within a tick is a
     /// function of push order alone.
@@ -475,7 +472,7 @@ pub fn apply_commands(
             None => cmd,
             Some(ids) => {
                 let mut dropped = 0u32;
-                let named = nameable(ids, cmd, &mut dropped);
+                let named = nameable(ids, &content, cmd, &mut dropped);
                 if let Some(log) = log.as_mut() {
                     log.record_unnameable(dropped + u32::from(named.is_none()));
                 }
@@ -492,7 +489,7 @@ pub fn apply_commands(
         // because an order can name an entity that has already been despawned:
         // the component died with it, the registry entry did not.
         match (log.as_mut(), ids.as_ref()) {
-            (Some(log), Some(ids)) => log.record(tick, attribution, &cmd, |e| {
+            (Some(log), Some(ids)) => log.record(tick, attribution, &cmd, &content, |e| {
                 ids.id_of(e).unwrap_or(replay::SimId::UNIDENTIFIED)
             }),
             (Some(log), None) => log.record_unrecordable(),
@@ -631,11 +628,19 @@ pub fn apply_commands(
 ///   faction's units still commands the issuer's own (F-009);
 /// - an order whose single subject is unnameable (`Gather`'s node, `Train`'s
 ///   building) is **refused whole**, since there is nothing left of it;
-/// - `Place` names no entity and is always nameable.
+/// - `Place` names no entity, but it does name a **building definition**, and
+///   `Train` names a unit definition: an index this build's content does not
+///   have is refused the same way, because the log names content by id and
+///   there would be no id to write.
 ///
 /// `dropped` accumulates the names that could not be resolved, for the log's
 /// diagnostic counter.
-fn nameable(ids: &replay::SimIds, order: Order, dropped: &mut u32) -> Option<Order> {
+fn nameable(
+    ids: &replay::SimIds,
+    content: &Content,
+    order: Order,
+    dropped: &mut u32,
+) -> Option<Order> {
     let keep = |units: Vec<Entity>, dropped: &mut u32| -> Vec<Entity> {
         let before = units.len();
         let kept: Vec<Entity> = units
@@ -662,17 +667,26 @@ fn nameable(ids: &replay::SimIds, order: Order, dropped: &mut u32) -> Option<Ord
                 node_pos,
             }
         }
+        // Content, too, is a thing an order names. An index this build does not
+        // have cannot be written into the log (the log names content by id, so
+        // there would be no id to write) and does nothing if applied, so it is
+        // refused here — one place, before anything is logged or applied,
+        // exactly like an unnameable entity.
         Order::Place {
             faction,
             building,
             pos,
-        } => Order::Place {
-            faction,
-            building,
-            pos,
-        },
+        } => {
+            content.buildings.get(building)?;
+            Order::Place {
+                faction,
+                building,
+                pos,
+            }
+        }
         Order::Train { building, unit } => {
             ids.id_of(building)?;
+            content.units.get(unit)?;
             Order::Train { building, unit }
         }
         // Peeled at the queue boundary; never reaches here.

@@ -221,3 +221,5 @@
 - [2026-09-01] Modified: src/sim/replay.rs — Phase 1a: LOG_FORMAT_VERSION 2, MatchLog carries the content fingerprint, matches_content/load_for, replay backstop
 - [2026-09-01] Modified: src/lib.rs — the chain stamps the log with the content it is playing (ungated)
 - [2026-09-01] Modified: tests/m5_replay.rs — Phase 1a probes: a log from other content is refused; the fingerprint covers the whole content; migration is a refusal
+- [2026-09-01] Modified: src/sim/replay.rs, src/sim/mod.rs — Phase 1b: the log names content by stable id, not by RON position; matches_content proves every id resolves; an order naming content this build lacks is refused
+- [2026-09-01] Modified: tests/m5_replay.rs — Phase 1b probes: a log survives a roster reorder; every logged order resolves back to the index it was applied with; unknown content is refused loudly

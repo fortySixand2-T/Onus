@@ -226,12 +226,19 @@ pub enum LoggedOrder {
     },
     Place {
         faction: Faction,
-        building: usize,
+        /// The building's **id** (`"hq"`), not its index into
+        /// [`Content::buildings`]. Content is data and its RON order moves; an
+        /// index is a coordinate that silently means something else the moment
+        /// the roster is edited, which is the same class of defect as keying
+        /// entities by `Entity::to_bits()` (F-011). An id also makes the log
+        /// legible, which matters for a format whose job is debugging.
+        building: String,
         pos: (f32, f32),
     },
     Train {
         building: u64,
-        unit: usize,
+        /// The unit's **id** (`"ripper"`) — see `Place::building`.
+        unit: String,
     },
 }
 
@@ -248,7 +255,11 @@ impl LoggedOrder {
     /// [`SimId`] by `id_of`. `None` only for [`Order::By`], which the queue has
     /// already peeled off before a command is ever applied — a signature is an
     /// [`Attribution`], not an order.
-    pub fn of(order: &Order, mut id_of: impl FnMut(Entity) -> SimId) -> Option<Self> {
+    pub fn of(
+        order: &Order,
+        content: &Content,
+        mut id_of: impl FnMut(Entity) -> SimId,
+    ) -> Option<Self> {
         let ids = |es: &[Entity], id_of: &mut dyn FnMut(Entity) -> SimId| {
             es.iter().map(|e| id_of(*e).0).collect::<Vec<u64>>()
         };
@@ -275,12 +286,16 @@ impl LoggedOrder {
                 pos,
             } => LoggedOrder::Place {
                 faction: *faction,
-                building: *building,
+                // Unreachable: `apply_commands` refuses an order naming content
+                // this build does not have, before anything is logged or
+                // applied — the same rule as an unnameable entity. `None` here
+                // would mean the sim applied something it could not write down.
+                building: content.buildings.get(*building)?.id.clone(),
                 pos: xy(*pos),
             },
             Order::Train { building, unit } => LoggedOrder::Train {
                 building: id_of(*building).0,
-                unit: *unit,
+                unit: content.units.get(*unit)?.id.clone(),
             },
             Order::By { .. } => return None,
         })
@@ -309,7 +324,7 @@ impl LoggedOrder {
     /// replayed into. That is caught where it shows up, as a per-tick state
     /// hash mismatch, and it is harmless to the sim either way: every order
     /// path resolves entities with `Commands::get_entity` (F-009).
-    pub fn to_order(&self, ids: &SimIds) -> Result<Order, String> {
+    pub fn to_order(&self, ids: &SimIds, content: &Content) -> Result<Order, String> {
         let ent = |id: u64| {
             ids.entity(SimId(id))
                 .ok_or_else(|| format!("log: no entity for sim id {id}"))
@@ -335,14 +350,28 @@ impl LoggedOrder {
                 pos,
             } => Order::Place {
                 faction: *faction,
-                building: *building,
+                building: content
+                    .building_index(building)
+                    .ok_or_else(|| format!("log: no building `{building}` in this content"))?,
                 pos: vec2(*pos),
             },
             LoggedOrder::Train { building, unit } => Order::Train {
                 building: ent(*building)?,
-                unit: *unit,
+                unit: content
+                    .unit_index(unit)
+                    .ok_or_else(|| format!("log: no unit `{unit}` in this content"))?,
             },
         })
+    }
+
+    /// The content ids this order names, tagged with what they are, so a log
+    /// can be checked against a content set before anything tries to replay it.
+    pub fn content_ids(&self) -> Vec<(&'static str, &str)> {
+        match self {
+            LoggedOrder::MoveTo { .. } | LoggedOrder::Gather { .. } => vec![],
+            LoggedOrder::Place { building, .. } => vec![("building", building.as_str())],
+            LoggedOrder::Train { unit, .. } => vec![("unit", unit.as_str())],
+        }
     }
 
     /// Every float this order carries — the values a persisted log has to
@@ -521,6 +550,25 @@ impl MatchLog {
                 self.content, mine
             ));
         }
+        // Belt and braces, and the thing that makes the front door a real
+        // guarantee: every content id the log names resolves *here*. A log that
+        // passes this check cannot fail to resolve later, in the middle of a
+        // replay, where the only report would be a divergent hash.
+        for c in &self.commands {
+            for (what, id) in c.order.content_ids() {
+                let known = match what {
+                    "building" => content.building_index(id).is_some(),
+                    _ => content.unit_index(id).is_some(),
+                };
+                if !known {
+                    return Err(format!(
+                        "log: the command at tick {} names {what} `{id}`, which \
+                         this content does not have",
+                        c.tick
+                    ));
+                }
+            }
+        }
         Ok(())
     }
 
@@ -621,9 +669,10 @@ impl CommandLog {
         tick: u32,
         attribution: Attribution,
         order: &Order,
+        content: &Content,
         id_of: impl FnMut(Entity) -> SimId,
     ) {
-        if let Some(order) = LoggedOrder::of(order, id_of) {
+        if let Some(order) = LoggedOrder::of(order, content, id_of) {
             self.log.commands.push(LoggedCommand {
                 tick,
                 attribution,
@@ -802,7 +851,7 @@ pub fn feed_replay(
             source.cursor += 1;
             continue;
         }
-        match entry.order.to_order(&ids) {
+        match entry.order.to_order(&ids, &content) {
             Ok(order) => queue
                 .0
                 .push_at(entry.tick, SignedOrder::from_parts(entry.attribution, order)),
