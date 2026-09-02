@@ -214,3 +214,6 @@
 - [2026-09-01] Modified: src/sim/replay.rs — id_for removed (issuing an id while writing the log desynced the replay); CommandLog::unnameable counter
 - [2026-09-01] Modified: tests/m5_replay.rs — probes: an unnameable name is dropped from its order; record and replay grow the registry identically; only identify may issue an id
 - [2026-09-01] Modified: FINDINGS.md — F-012 extension 3: two boundary fixes, each correct, jointly wrong; the invariant M6 inherits
+- [2026-09-01] Modified: tests/critic_m5.rs — pass-4 critic probes (no id issuance in apply_commands, partial-drop vs whole-refusal semantics, refusal charges nothing, F-009 preserved, registry-storage guard, unnameable-heavy match replay)
+- [2026-09-01] Modified: BUILD_PLAN.md — M5 acceptance criteria ticked after critic PASS (pass 4)
+- [2026-09-01] Modified: CLAUDE.md — status: M0–M5 done; next is M6 (lockstep networking, optional)

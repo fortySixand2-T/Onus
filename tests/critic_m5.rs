@@ -1572,3 +1572,561 @@ fn the_pass_three_fixes_did_not_cost_the_earlier_guarantees() {
         "a command held for a later tick is no longer observed"
     );
 }
+
+// ============================================================================
+// Pass 4 — probes against the fix for pass 3 ("the sim commands only what it
+// can name"). The fix changed what `apply_commands` *does*, so M4's order
+// semantics are in scope again.
+// ============================================================================
+
+/// Two HQs (so the match is contested and never ends), a worker, a deposit, and
+/// two entities that are not things in the world at all.
+struct Named {
+    app: App,
+    hq: Entity,
+    worker: Entity,
+    node: Entity,
+    bare: Entity,
+    bare2: Entity,
+}
+
+fn nameable_fixture() -> Named {
+    let mut app = sim_app_with(5_000, 0);
+    let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+    spawn_building(&mut app, "hq", Faction::B, Vec2::new(100.0, 0.0));
+    let worker = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(-90.0, 0.0));
+    let node = app
+        .world_mut()
+        .spawn((Position(Vec2::new(-60.0, 60.0)), ResourceNode { amount: 100_000 }))
+        .id();
+    let bare = app.world_mut().spawn_empty().id();
+    let bare2 = app.world_mut().spawn_empty().id();
+    app.insert_resource(CommandLog::new(21));
+    Named { app, hq, worker, node, bare, bare2 }
+}
+
+fn alloy(app: &App, f: Faction) -> u32 {
+    app.world().resource::<Stockpiles>().alloy(f)
+}
+
+fn issued(app: &App) -> u64 {
+    app.world().resource::<SimIds>().issued()
+}
+
+fn push(app: &mut App, order: Order) {
+    app.world_mut().resource_mut::<CommandQueue>().0.push_back(order);
+}
+
+// ---- 1. the invariant, stated generally -------------------------------------
+
+/// **`apply_commands` never grows the registry.** This is the general form of
+/// the pass-3 defect: ids are hashed, the replay path resolves read-only, so
+/// any issuance on the record path is a divergence the replay cannot reproduce.
+/// Throw every unnameable shape at it on a tick that spawns nothing, and the
+/// id count must not move.
+#[test]
+fn applying_commands_never_issues_an_id() {
+    let mut f = nameable_fixture();
+    tick(&mut f.app, 5);
+    let before = issued(&f.app);
+    let orders = vec![
+        Order::MoveTo { units: vec![f.bare], dest: Vec2::ZERO }.issued_by(Faction::A),
+        Order::MoveTo { units: vec![f.bare, f.bare2], dest: Vec2::ZERO }.issued_by(Faction::A),
+        Order::MoveTo { units: vec![f.worker, f.bare], dest: Vec2::new(-50.0, 0.0) }
+            .issued_by(Faction::A),
+        Order::Gather { units: vec![f.worker], node: f.bare, node_pos: Vec2::ZERO }
+            .issued_by(Faction::A),
+        Order::Gather { units: vec![f.bare], node: f.node, node_pos: Vec2::new(-60.0, 60.0) }
+            .issued_by(Faction::A),
+        Order::Train { building: f.bare, unit: worker_index() }.issued_by(Faction::A),
+        Order::MoveTo { units: vec![f.bare], dest: Vec2::ZERO },
+        Order::MoveTo { units: vec![f.bare], dest: Vec2::ZERO }
+            .issued_by(Faction::A)
+            .issued_by(Faction::B),
+    ];
+    for o in orders {
+        push(&mut f.app, o);
+    }
+    tick(&mut f.app, 3);
+    assert_eq!(
+        issued(&f.app),
+        before,
+        "applying commands issued {} new id(s): naming a thing created one",
+        issued(&f.app) - before
+    );
+    assert!(f.app.world().resource::<CommandLog>().unnameable() > 0, "nothing was refused");
+    assert!(f.app.world().resource::<CommandLog>().log().validate().is_ok());
+}
+
+/// An unnameable order must be **inert**: two identical worlds, one of which is
+/// handed an order naming nothing it knows, must hash the same. (This also
+/// pins that the diagnostic counters are not hashed.)
+#[test]
+fn an_unnameable_order_changes_no_state_at_all() {
+    let mut a = nameable_fixture();
+    let mut b = nameable_fixture();
+    tick(&mut a.app, 5);
+    tick(&mut b.app, 5);
+    assert_eq!(
+        onus::sim::state_hash(a.app.world_mut()),
+        onus::sim::state_hash(b.app.world_mut()),
+        "the fixtures were not identical to begin with"
+    );
+    push(&mut a.app, Order::MoveTo { units: vec![a.bare, a.bare2], dest: Vec2::new(7.0, 7.0) }
+        .issued_by(Faction::A));
+    push(&mut a.app, Order::Train { building: a.bare, unit: worker_index() }.issued_by(Faction::A));
+    push(&mut a.app, Order::Gather { units: vec![a.worker], node: a.bare, node_pos: Vec2::ZERO }
+        .issued_by(Faction::A));
+    tick(&mut a.app, 3);
+    tick(&mut b.app, 3);
+    assert_eq!(
+        onus::sim::state_hash(a.app.world_mut()),
+        onus::sim::state_hash(b.app.world_mut()),
+        "an order the sim cannot name changed the world anyway"
+    );
+}
+
+// ---- 2. the partial-drop rule, and what it costs ----------------------------
+
+/// A list order loses its unnameable members and the rest stands — and what is
+/// logged is what stood, so the replay does the same thing.
+#[test]
+fn a_list_order_keeps_the_names_the_sim_knows_and_drops_the_rest() {
+    let mut f = nameable_fixture();
+    tick(&mut f.app, 3);
+    push(&mut f.app, Order::MoveTo {
+        units: vec![f.bare, f.worker, f.bare2],
+        dest: Vec2::new(-40.0, 0.0),
+    }
+    .issued_by(Faction::A));
+    step(&mut f.app);
+    assert!(
+        f.app.world().get::<MoveTarget>(f.worker).is_some(),
+        "the nameable member of the order was not obeyed"
+    );
+    let log = f.app.world().resource::<CommandLog>();
+    assert_eq!(log.commands().len(), 1, "the order was not logged");
+    match &log.commands()[0].order {
+        LoggedOrder::MoveTo { units, .. } => {
+            assert_eq!(units.len(), 1, "the log kept a name the sim dropped: {units:?}");
+        }
+        other => panic!("wrong shape: {other:?}"),
+    }
+    assert_eq!(log.unnameable(), 2, "the dropped names were not counted");
+}
+
+/// A list order **all** of whose members are unnameable is a no-op. Whatever
+/// the sim chooses to do with it — log an empty order or refuse it — the record
+/// and the replay must agree, and nothing in the world may move.
+#[test]
+fn an_all_unnameable_list_order_is_inert_and_replays_as_itself() {
+    const TICKS: u32 = 60;
+    let build = |replay: Option<MatchLog>| -> (u64, MatchLog, u64) {
+        let mut f = nameable_fixture();
+        let live = replay.is_none();
+        if let Some(log) = replay {
+            f.app.insert_resource(CommandLog::new(log.seed));
+            f.app.insert_resource(ReplaySource::new(log));
+        }
+        for t in 0..TICKS {
+            if live && t == 10 {
+                push(&mut f.app, Order::MoveTo {
+                    units: vec![f.bare, f.bare2],
+                    dest: Vec2::new(7.0, 7.0),
+                }
+                .issued_by(Faction::A));
+            }
+            step(&mut f.app);
+        }
+        let h = onus::sim::state_hash(f.app.world_mut());
+        let log = f.app.world().resource::<CommandLog>().log().clone();
+        (h, log, issued(&f.app))
+    };
+    let (rec_hash, log, rec_issued) = build(None);
+    assert!(log.validate().is_ok(), "the sim recorded a log it calls invalid");
+    let (rep_hash, again, rep_issued) = build(Some(log.clone()));
+    assert_eq!(rec_issued, rep_issued, "the registries drifted");
+    assert_eq!(rec_hash, rep_hash, "an inert order desynced its own replay");
+    assert_eq!(again.commands, log.commands, "the replay logged a different stream");
+}
+
+/// An order whose **single** subject is unnameable is refused whole: no half of
+/// it applies. `Gather` carries a move half that reaches every unit in the
+/// order, so "refused whole" has to mean that half does not land either.
+#[test]
+fn a_refused_single_subject_order_applies_no_half_of_itself() {
+    use onus::sim::GatherTarget;
+    let mut f = nameable_fixture();
+    tick(&mut f.app, 3);
+    push(&mut f.app, Order::Gather {
+        units: vec![f.worker],
+        node: f.bare,
+        node_pos: Vec2::new(500.0, 500.0),
+    }
+    .issued_by(Faction::A));
+    step(&mut f.app);
+    assert!(
+        f.app.world().get::<GatherTarget>(f.worker).is_none(),
+        "a refused gather still claimed the worker"
+    );
+    assert!(
+        f.app.world().get::<MoveTarget>(f.worker).is_none(),
+        "a refused gather still applied its move half"
+    );
+    assert!(
+        f.app.world().resource::<CommandLog>().commands().is_empty(),
+        "an order the sim refused whole is in the log, so a replay will re-run it"
+    );
+}
+
+// ---- 3. charging and side effects on the refusal path -----------------------
+
+/// **A refused order charges nothing, and a nameable one charges exactly once.**
+/// The nameability test has to sit ahead of every effect, the same way the
+/// pass-3 defect was a check sitting behind one.
+#[test]
+fn refusal_is_free_and_acceptance_charges_exactly_once() {
+    let mut f = nameable_fixture();
+    tick(&mut f.app, 3);
+    let start = alloy(&f.app, Faction::A);
+    let queued = |app: &App, e: Entity| {
+        app.world().get::<ProductionQueue>(e).map(|q| q.items.len()).unwrap_or(0)
+    };
+    let q0 = queued(&f.app, f.hq);
+
+    // Refused: the building it names is not a thing in the world.
+    push(&mut f.app, Order::Train { building: f.bare, unit: worker_index() }.issued_by(Faction::A));
+    tick(&mut f.app, 2);
+    assert_eq!(alloy(&f.app, Faction::A), start, "a refused Train charged Alloy");
+    assert_eq!(queued(&f.app, f.hq), q0, "a refused Train queued a unit somewhere");
+    assert!(f.app.world().resource::<CommandLog>().commands().is_empty());
+
+    // Accepted: exactly one charge, once.
+    let cost = content().units[worker_index()].mvp_alloy_cost;
+    push(&mut f.app, Order::Train { building: f.hq, unit: worker_index() }.issued_by(Faction::A));
+    tick(&mut f.app, 2);
+    assert_eq!(alloy(&f.app, Faction::A), start - cost, "a Train did not charge exactly once");
+    assert_eq!(queued(&f.app, f.hq), q0 + 1);
+
+    // `Place` names no entity, so nameability cannot refuse it — and it still
+    // charges exactly once.
+    let after_train = alloy(&f.app, Faction::A);
+    let foundry = content().building_index("foundry").expect("foundry");
+    let bcost = content().buildings[foundry].alloy_cost;
+    push(&mut f.app, Order::Place { faction: Faction::A, building: foundry, pos: Vec2::new(-140.0, 40.0) }
+        .issued_by(Faction::A));
+    tick(&mut f.app, 2);
+    assert_eq!(alloy(&f.app, Faction::A), after_train - bcost, "Place did not charge exactly once");
+}
+
+// ---- 4. the M4 semantics the new control flow runs through ------------------
+
+/// **F-009's precedent is unchanged.** An *unsigned* order naming two factions
+/// is still refused whole (there is no commander it could have come from), and
+/// a *signed* order naming another faction's unit still commands its own. The
+/// new per-entity drop must not have quietly turned the first into the second.
+#[test]
+fn the_signing_rules_survive_the_nameability_filter() {
+    let mut f = nameable_fixture();
+    // Workers, not fighters: a combat unit would acquire a `MoveTarget` by
+    // chasing, and this probe is about what *orders* do.
+    let theirs = spawn_unit(&mut f.app, "worker", Faction::B, Vec2::new(900.0, 0.0));
+    let mine = spawn_unit(&mut f.app, "worker", Faction::A, Vec2::new(-900.0, 0.0));
+    tick(&mut f.app, 3);
+    let target = |app: &App, e: Entity| app.world().get::<MoveTarget>(e).map(|m| m.0);
+
+    // Unsigned, two factions: refused whole.
+    let a = Vec2::new(-500.0, 0.0);
+    push(&mut f.app, Order::MoveTo { units: vec![mine, theirs], dest: a });
+    step(&mut f.app);
+    assert_ne!(target(&f.app, mine), Some(a), "an unsigned two-faction order moved the first unit");
+    assert_ne!(target(&f.app, theirs), Some(a), "an unsigned two-faction order moved the second unit");
+
+    // The same shape with one member unnameable must not become *coherent* by
+    // dropping it: A's unit plus a bare entity is still one faction, and this
+    // is the case where the new filter and F-009 could disagree.
+    let b = Vec2::new(-400.0, 0.0);
+    push(&mut f.app, Order::MoveTo { units: vec![mine, f.bare], dest: b });
+    step(&mut f.app);
+    assert_eq!(
+        target(&f.app, mine),
+        Some(b),
+        "an unsigned order over one faction plus an unnameable name was refused"
+    );
+
+    // Signed by A, two factions: commands A's own, and only that.
+    let c = Vec2::new(-300.0, 0.0);
+    push(&mut f.app, Order::MoveTo { units: vec![mine, theirs], dest: c }.issued_by(Faction::A));
+    step(&mut f.app);
+    assert_eq!(target(&f.app, mine), Some(c), "the issuer's own unit was not moved");
+    assert_ne!(
+        target(&f.app, theirs),
+        Some(c),
+        "a signed order commanded another faction's unit"
+    );
+}
+
+/// A unit that has died is still **nameable** (the registry does not forget), so
+/// an order naming it is logged against the right id and applied harmlessly —
+/// no panic, no resurrection.
+#[test]
+fn ordering_a_dead_but_registered_unit_is_named_logged_and_harmless() {
+    let mut f = nameable_fixture();
+    tick(&mut f.app, 3);
+    let id = f.app.world().resource::<SimIds>().id_of(f.worker).expect("identified");
+    f.app.world_mut().despawn(f.worker);
+    let before = issued(&f.app);
+    push(&mut f.app, Order::MoveTo { units: vec![f.worker], dest: Vec2::ZERO }.issued_by(Faction::A));
+    tick(&mut f.app, 2);
+    assert_eq!(issued(&f.app), before, "naming a dead unit issued a new id");
+    let log = f.app.world().resource::<CommandLog>();
+    assert_eq!(log.commands().len(), 1, "an order naming a dead-but-known unit was dropped");
+    assert_eq!(log.commands()[0].order.sim_ids(), vec![id], "it was logged against the wrong id");
+    assert_eq!(log.unnameable(), 0, "a unit the registry knows was called unnameable");
+    assert!(log.log().validate().is_ok());
+}
+
+// ---- 5. the absent-registry path --------------------------------------------
+
+/// Nameability is enforced only where the registry exists, so **no shipped app
+/// may be able to run without it.** The one definition of the chain installs it
+/// (F-004); this is the probe that it cannot be composed away.
+#[test]
+fn the_one_chain_definition_always_installs_the_registry() {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(Time::<Fixed>::from_hz(60.0))
+        .insert_resource(content())
+        .init_resource::<CommandQueue>()
+        .init_resource::<RateReport>()
+        .init_resource::<Casualties>()
+        .insert_resource(Stockpiles::starting(0));
+    onus::add_sim_systems(&mut app, Update);
+    assert!(
+        app.world().get_resource::<SimIds>().is_some(),
+        "`add_sim_systems` did not install the registry, so a shipped tick can \
+         take the unchecked path"
+    );
+    assert!(app.world().get_resource::<CommandLog>().is_some());
+    step(&mut app);
+    assert!(app.world().get_resource::<SimIds>().is_some());
+    // And `identify` re-creates it rather than leaving the chain unchecked.
+    app.world_mut().remove_resource::<SimIds>();
+    step(&mut app);
+    assert!(
+        app.world().get_resource::<SimIds>().is_some(),
+        "a tick ran with no registry and did not restore one"
+    );
+}
+
+// ---- 6. the structural guard, attacked --------------------------------------
+
+/// The shipped guard checks that `assign` has one call site. The property it is
+/// standing in for is larger: **nothing outside `assign` may grow the
+/// registry.** A new method that pushed to `slots` directly would satisfy the
+/// shipped guard and reintroduce exactly the pass-3 defect.
+#[test]
+fn nothing_but_assign_touches_the_registrys_storage() {
+    let replay = std::fs::read_to_string(src_dir().join("sim/replay.rs")).expect("replay.rs");
+    let at = replay.find("fn assign(").expect("assign exists");
+    let end = at + replay[at..].find("\n    }\n").map(|i| i + 6).expect("assign has a body");
+    let mut offenders: Vec<String> = Vec::new();
+    for (i, line) in replay.lines().enumerate() {
+        let code = line.split("//").next().unwrap_or("");
+        let mutates = code.contains("slots.push")
+            || code.contains("slots.insert")
+            || code.contains("slots.remove")
+            || code.contains("slots.clear")
+            || code.contains("by_entity.insert")
+            || code.contains("by_entity.remove")
+            || code.contains("by_entity.clear");
+        if !mutates {
+            continue;
+        }
+        let offset: usize = replay.lines().take(i).map(|l| l.len() + 1).sum();
+        if offset < at || offset > end {
+            offenders.push(format!("replay.rs:{}: {}", i + 1, code.trim()));
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "the registry's storage is mutated outside `assign`: {offenders:#?}"
+    );
+    // And no on-demand issuance has come back under any name, anywhere in src/.
+    let mut stack = vec![src_dir()];
+    while let Some(dir) = stack.pop() {
+        for e in std::fs::read_dir(&dir).expect("read src") {
+            let p = e.expect("entry").path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                let text = std::fs::read_to_string(&p).expect("read");
+                assert!(
+                    !text.contains("id_for"),
+                    "`id_for` is back in {}",
+                    p.display()
+                );
+            }
+        }
+    }
+}
+
+// ---- 7. the invariant under a match that does everything --------------------
+
+/// **The general property, under load.** A match containing every shape the fix
+/// touches — partial drops, whole refusals, an all-unnameable order, real
+/// places and trains and gathers, and an unnameable order on the tick the match
+/// is decided — must replay tick for tick from its own persisted log, with the
+/// same registry at every tick and the same log written back out.
+#[test]
+fn a_match_full_of_unnameable_orders_still_replays_exactly() {
+    const TICKS: u32 = 400;
+    let foundry = content().building_index("foundry").expect("foundry");
+    let script = |f: &mut Named, t: u32| {
+        let (bare, bare2, worker, node, hq) = (f.bare, f.bare2, f.worker, f.node, f.hq);
+        match t {
+            10 => push(&mut f.app, Order::MoveTo { units: vec![worker, bare], dest: Vec2::new(-40.0, 0.0) }.issued_by(Faction::A)),
+            15 => push(&mut f.app, Order::Gather { units: vec![worker], node: bare, node_pos: Vec2::new(9.0, 9.0) }.issued_by(Faction::A)),
+            20 => push(&mut f.app, Order::Place { faction: Faction::A, building: foundry, pos: Vec2::new(-140.0, 40.0) }.issued_by(Faction::A)),
+            25 => push(&mut f.app, Order::MoveTo { units: vec![bare, bare2], dest: Vec2::new(7.0, 7.0) }.issued_by(Faction::A)),
+            30 => push(&mut f.app, Order::Train { building: bare2, unit: worker_index() }.issued_by(Faction::A)),
+            35 => push(&mut f.app, Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A)),
+            40 => push(&mut f.app, Order::Gather { units: vec![worker, bare], node, node_pos: Vec2::new(-60.0, 60.0) }.issued_by(Faction::A)),
+            45 => push(&mut f.app, Order::MoveTo { units: vec![bare], dest: Vec2::ZERO }),
+            50 => push(&mut f.app, Order::Gather { units: vec![bare], node: bare2, node_pos: Vec2::ZERO }.issued_by(Faction::A)),
+            _ => {}
+        }
+    };
+    // Record.
+    let mut f = nameable_fixture();
+    f.app.insert_resource(StateHashLog::default());
+    let mut rec_ids = Vec::new();
+    for t in 0..TICKS {
+        script(&mut f, t);
+        step(&mut f.app);
+        rec_ids.push(issued(&f.app));
+    }
+    let recorded = f.app.world().resource::<StateHashLog>().clone();
+    let log = f.app.world().resource::<CommandLog>().log().clone();
+    assert!(
+        f.app.world().resource::<CommandLog>().unnameable() >= 5,
+        "the script did not actually exercise the refusal paths"
+    );
+    let path = scratch("nameable-match");
+    log.save(&path).expect("the sim must be able to save its own log");
+    let loaded = MatchLog::load(&path).expect("load");
+
+    // Replay, through the file.
+    let mut g = nameable_fixture();
+    g.app.insert_resource(StateHashLog::default());
+    g.app.insert_resource(CommandLog::new(loaded.seed));
+    g.app.insert_resource(ReplaySource::new(loaded));
+    let mut rep_ids = Vec::new();
+    for _ in 0..TICKS {
+        step(&mut g.app);
+        rep_ids.push(issued(&g.app));
+    }
+    let replayed = g.app.world().resource::<StateHashLog>().clone();
+    assert_eq!(rec_ids, rep_ids, "the registries drifted apart");
+    assert_eq!(
+        recorded.first_divergence(&replayed),
+        None,
+        "a match containing unnameable orders did not replay (unresolved {}, \
+         skipped {})",
+        g.app.world().resource::<ReplaySource>().unresolved(),
+        g.app.world().resource::<ReplaySource>().skipped(),
+    );
+    let again = g.app.world().resource::<CommandLog>().log().clone();
+    let path2 = scratch("nameable-match-again");
+    again.save(&path2).expect("save the replay's log");
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        std::fs::read_to_string(&path2).unwrap(),
+        "the replay wrote a different log than it consumed"
+    );
+    assert_eq!(
+        onus::sim::state_hash(f.app.world_mut()),
+        onus::sim::state_hash(g.app.world_mut()),
+        "the replayed world is not the recorded world"
+    );
+}
+
+/// An unnameable order landing on the **deciding tick** — the tick after which
+/// the chain is gated off forever — must not disturb the verdict or the frozen
+/// tail.
+#[test]
+fn an_unnameable_order_on_the_deciding_tick_changes_nothing() {
+    let mut f = nameable_fixture();
+    f.app.insert_resource(StateHashLog::default());
+    tick(&mut f.app, 3);
+    let b_hq = f
+        .app
+        .world_mut()
+        .query_filtered::<Entity, (With<Building>, With<Faction>)>()
+        .iter(f.app.world())
+        .find(|e| f.app.world().get::<Faction>(*e) == Some(&Faction::B))
+        .expect("B's HQ");
+    f.app.world_mut().despawn(b_hq);
+    push(&mut f.app, Order::MoveTo { units: vec![f.bare, f.bare2], dest: Vec2::ZERO }
+        .issued_by(Faction::A));
+    push(&mut f.app, Order::Train { building: f.bare, unit: worker_index() }.issued_by(Faction::A));
+    let before = issued(&f.app);
+    step(&mut f.app);
+    let outcome = f.app.world().resource::<MatchState>().outcome().expect("decided");
+    assert_eq!(outcome.winner, Some(Faction::A), "the verdict moved");
+    assert_eq!(issued(&f.app), before, "the deciding tick issued an id");
+    tick(&mut f.app, 20);
+    let h = f.app.world().resource::<StateHashLog>().clone();
+    let tail = &h.0[h.0.len() - 15..];
+    assert!(tail.iter().all(|x| *x == tail[0]), "the frozen tail is not frozen: {tail:?}");
+}
+
+/// **Logging can never change what the sim does.** The nameability decision is
+/// claimed to come from the registry alone. Remove the log and the same orders
+/// must meet the same fate — otherwise "what the sim did" would depend on
+/// whether anybody was writing it down, which is the shape of the pass-3 defect
+/// (the record path doing something the replay path does not).
+#[test]
+fn whether_a_log_exists_does_not_change_what_the_sim_obeys() {
+    use onus::sim::GatherTarget;
+    let outcome = |with_log: bool| -> (bool, bool, u32, u64) {
+        let mut f = nameable_fixture();
+        if !with_log {
+            f.app.world_mut().remove_resource::<CommandLog>();
+        }
+        tick(&mut f.app, 3);
+        let alloy_before = alloy(&f.app, Faction::A);
+        push(&mut f.app, Order::MoveTo { units: vec![f.worker, f.bare], dest: Vec2::new(-40.0, 0.0) }
+            .issued_by(Faction::A));
+        push(&mut f.app, Order::Gather { units: vec![f.worker], node: f.bare, node_pos: Vec2::ZERO }
+            .issued_by(Faction::A));
+        push(&mut f.app, Order::Train { building: f.bare, unit: worker_index() }.issued_by(Faction::A));
+        tick(&mut f.app, 2);
+        (
+            f.app.world().get::<MoveTarget>(f.worker).is_some(),
+            f.app.world().get::<GatherTarget>(f.worker).is_some(),
+            alloy_before - alloy(&f.app, Faction::A),
+            issued(&f.app),
+        )
+    };
+    assert_eq!(
+        outcome(true),
+        outcome(false),
+        "the sim obeyed a different set of orders depending on whether a log \
+         was present"
+    );
+}
+
+/// The claim that `unnameable()` is "zero for anything a shipped producer
+/// emits": everything input and the AI name is in the world, and everything in
+/// the world is identified. Run a real AI-vs-AI match and hold it to that.
+#[test]
+fn a_shipped_match_never_names_anything_it_cannot_name() {
+    let mut app = ai_vs_ai(4);
+    tick(&mut app, 2_000);
+    let log = app.world().resource::<CommandLog>();
+    assert_eq!(log.unnameable(), 0, "the AI named something the sim could not name");
+    assert_eq!(log.unrecorded(), 0, "a shipped chain failed to record a command");
+    assert_eq!(log.late(), 0, "a shipped chain applied a command late");
+    assert!(log.log().validate().is_ok());
+}

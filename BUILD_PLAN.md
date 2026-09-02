@@ -167,10 +167,10 @@ Critic probes: damage/armor math matches the spec; nemesis applies iff prey matc
 Critic probes: AI is deterministic given the seed (same seed ⇒ same actions); the match terminates on HQ destruction; no wall-clock / iteration-order nondeterminism in the AI or end check.
 
 ### M5 — deterministic replay
-- [ ] `Command` enum tagged with a target tick; applied only in `FixedUpdate`.
-- [ ] Command log persisted to disk.
-- [ ] Replay reproduces identical final state (per-tick state hash matches).
-- [ ] Seeded RNG stepped only inside the sim.
+- [x] `Command` enum tagged with a target tick; applied only in `FixedUpdate`.
+- [x] Command log persisted to disk.
+- [x] Replay reproduces identical final state (per-tick state hash matches).
+- [x] Seeded RNG stepped only inside the sim.
 
 Critic probes: same seed + same log ⇒ identical per-tick hash; commands never apply off their scheduled tick; no HashMap/iteration-order nondeterminism affects outcomes; no wall-clock in sim.
 
