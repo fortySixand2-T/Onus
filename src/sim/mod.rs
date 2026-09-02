@@ -433,12 +433,14 @@ pub fn apply_commands(
     mut producers: Query<(&Building, &Faction, &mut ProductionQueue)>,
     defs: Query<&UnitDefIdx>,
     owners: Query<&Faction>,
-    ids: Option<ResMut<replay::SimIds>>,
+    // **`Res`, not `ResMut`**: naming a thing must never create one. The record
+    // path mutating the registry is exactly the desync the replay path cannot
+    // reproduce (see the comment in the loop below).
+    ids: Option<Res<replay::SimIds>>,
     mut commands: Commands,
 ) {
     let now = state.map(|s| s.tick()).unwrap_or(0);
     let mut log = log;
-    let mut ids = ids;
     let (due, late) = queue.0.take_due(now);
     if let Some(log) = log.as_mut() {
         log.record_late(late);
@@ -448,19 +450,52 @@ pub fn apply_commands(
         // two different factions); everything else yields the faction the rest
         // of this loop checks against.
         let (attribution, cmd) = signed.into_parts();
+
+        // **The sim commands only what it can name.** An entity the registry
+        // has never issued an id for has no name in the sim's own coordinates:
+        // it cannot be written to the log, and a replay would have nothing to
+        // point at. Such a name is therefore dropped from the order — and an
+        // order whose *single* target is unnameable is refused whole — before
+        // anything is logged or applied, so the recording and the replay of its
+        // log do exactly the same thing.
+        //
+        // The alternative shapes both fail: naming it `UNIDENTIFIED` writes a
+        // log the sim's own validator refuses (pass-2 F3), and *issuing* it an
+        // id here makes writing the log mutate the registry — hashed state the
+        // replay path never mutates, which desyncs a replay of a log that saved
+        // perfectly well (pass-3). Ids are issued in exactly one place,
+        // `replay::identify`, which both paths run identically.
+        //
+        // Whether an entity is nameable is decided by the registry alone, never
+        // by whether a log happens to be present, so logging can never change
+        // what the sim does. A hand-composed app with no registry (the M4a
+        // fixtures) names nothing and refuses nothing: it applies its orders as
+        // it always did and records none of them, counted in
+        // `CommandLog::unrecorded`.
+        let cmd = match ids.as_ref() {
+            None => cmd,
+            Some(ids) => {
+                let mut dropped = 0u32;
+                let named = nameable(ids, cmd, &mut dropped);
+                if let Some(log) = log.as_mut() {
+                    log.record_unnameable(dropped + u32::from(named.is_none()));
+                }
+                match named {
+                    Some(cmd) => cmd,
+                    None => continue,
+                }
+            }
+        };
+
         // Logged by `SimId`, the sim's own coordinate — an `Entity` is an
         // allocation detail that does not survive into another app. The id
-        // comes from the **registry**, not from the entity's component, for two
-        // reasons: an order can name an entity that has already been despawned
-        // (its component died with it, the registry entry did not), and the
-        // registry issues an id for anything that has none, so this path can
-        // never write `SimId::UNIDENTIFIED` — a value `MatchLog::validate`
-        // refuses, which would leave the sim recording a log it cannot save.
-        // Both resources are installed with the chain (F-004); a hand-composed
-        // app missing the registry records nothing rather than something it
-        // could not write, and says so in `CommandLog::unrecorded`.
-        match (log.as_mut(), ids.as_mut()) {
-            (Some(log), Some(ids)) => log.record(tick, attribution, &cmd, |e| ids.id_for(e)),
+        // comes from the **registry**, not from the entity's `SimId` component,
+        // because an order can name an entity that has already been despawned:
+        // the component died with it, the registry entry did not.
+        match (log.as_mut(), ids.as_ref()) {
+            (Some(log), Some(ids)) => log.record(tick, attribution, &cmd, |e| {
+                ids.id_of(e).unwrap_or(replay::SimId::UNIDENTIFIED)
+            }),
             (Some(log), None) => log.record_unrecordable(),
             (None, _) => {}
         }
@@ -582,6 +617,68 @@ pub fn apply_commands(
             Order::By { .. } => {}
         }
     }
+}
+
+/// Reduce an order to the part of it the sim can **name**, or `None` if there is
+/// nothing left to obey.
+///
+/// A name is a [`replay::SimId`], and the registry issues those in exactly one
+/// place ([`replay::identify`], for everything in the world). An entity the
+/// registry does not know is something the sim has never had in its world — a
+/// bare fixture entity, say — so:
+///
+/// - in a list order (`MoveTo`, `Gather`) the unnameable entries are **dropped**
+///   and the rest of the order stands, exactly as a signed order naming another
+///   faction's units still commands the issuer's own (F-009);
+/// - an order whose single subject is unnameable (`Gather`'s node, `Train`'s
+///   building) is **refused whole**, since there is nothing left of it;
+/// - `Place` names no entity and is always nameable.
+///
+/// `dropped` accumulates the names that could not be resolved, for the log's
+/// diagnostic counter.
+fn nameable(ids: &replay::SimIds, order: Order, dropped: &mut u32) -> Option<Order> {
+    let keep = |units: Vec<Entity>, dropped: &mut u32| -> Vec<Entity> {
+        let before = units.len();
+        let kept: Vec<Entity> = units
+            .into_iter()
+            .filter(|e| ids.id_of(*e).is_some())
+            .collect();
+        *dropped = dropped.saturating_add((before - kept.len()) as u32);
+        kept
+    };
+    Some(match order {
+        Order::MoveTo { units, dest } => Order::MoveTo {
+            units: keep(units, dropped),
+            dest,
+        },
+        Order::Gather {
+            units,
+            node,
+            node_pos,
+        } => {
+            ids.id_of(node)?;
+            Order::Gather {
+                units: keep(units, dropped),
+                node,
+                node_pos,
+            }
+        }
+        Order::Place {
+            faction,
+            building,
+            pos,
+        } => Order::Place {
+            faction,
+            building,
+            pos,
+        },
+        Order::Train { building, unit } => {
+            ids.id_of(building)?;
+            Order::Train { building, unit }
+        }
+        // Peeled at the queue boundary; never reaches here.
+        Order::By { issuer, order } => Order::By { issuer, order },
+    })
 }
 
 /// The faction an entity-list order is to be checked against, or `None` if the

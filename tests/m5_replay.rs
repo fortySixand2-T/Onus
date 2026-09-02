@@ -1430,29 +1430,225 @@ fn a_command_naming_a_dead_unit_is_logged_by_the_id_it_had() {
     assert_eq!(log.unrecorded(), 0);
 }
 
-/// The same, for an entity the sim never saw in the world at all (no
-/// `Position`, so `identify` never touched it): it is *given* an id when the
-/// log needs to name it, rather than recorded as the sentinel.
+/// An entity the sim has never had in its world (no `Position`, so `identify`
+/// never saw it) has **no name**: it cannot be logged and a replay would have
+/// nothing to point at. So the sim does not obey it either — the name is
+/// dropped from the order, the rest of the order stands, and what is logged is
+/// exactly what was applied.
+///
+/// The two shapes this replaced both failed: naming it `UNIDENTIFIED` wrote a
+/// log the validator refuses, and *issuing* it an id at log-write time made the
+/// record path grow the registry — hashed state the replay path cannot grow.
 #[test]
-fn an_order_naming_something_the_world_never_held_is_still_logged_by_an_id() {
-    let mut app = sim_app();
+fn an_order_naming_something_the_world_never_held_is_dropped_from_it() {
+    let mut app = sim_app_with_alloy(1_000);
+    let real = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    tick(&mut app, 2);
+    let real_id = app.world().get::<SimId>(real).copied().expect("identified");
+    let issued_before = app.world().resource::<SimIds>().issued();
+
     let bare = app.world_mut().spawn_empty().id();
     app.world_mut().resource_mut::<CommandQueue>().0.push_back(
         Order::MoveTo {
-            units: vec![bare],
-            dest: Vec2::new(1.0, 2.0),
+            units: vec![bare, real],
+            dest: Vec2::new(40.0, 0.0),
         }
         .issued_by(Faction::A),
     );
     step(&mut app);
-    let log = app.world().resource::<CommandLog>().log().clone();
+
+    // The nameable half of the order was obeyed...
     assert!(
-        log.commands[0].order.sim_ids().iter().all(|i| i.is_identified()),
-        "a bare entity was logged as UNIDENTIFIED"
+        app.world().get::<MoveTarget>(real).is_some(),
+        "dropping the unnameable name threw the whole order away"
     );
-    let path = scratch("bare-entity");
+    assert!(app.world().get::<MoveTarget>(bare).is_none());
+    // ...and the log says exactly that, naming one entity, not two.
+    let log = app.world().resource::<CommandLog>();
+    assert_eq!(log.commands().len(), 1);
+    assert_eq!(
+        log.commands()[0].order.sim_ids(),
+        vec![real_id],
+        "the log does not match what was applied"
+    );
+    assert_eq!(log.unnameable(), 1, "the refusal was not counted");
+    // Nothing was issued an id by writing the log.
+    assert_eq!(
+        app.world().resource::<SimIds>().issued(),
+        issued_before,
+        "logging an order issued a new sim id"
+    );
+
+    // An order whose *single* subject is unnameable is refused whole: nothing
+    // logged, nothing charged.
+    let alloy_before = app.world().resource::<Stockpiles>().alloy(Faction::A);
+    let ghost = app.world_mut().spawn_empty().id();
+    app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+        Order::Train {
+            building: ghost,
+            unit: 0,
+        }
+        .issued_by(Faction::A),
+    );
+    step(&mut app);
+    assert_eq!(app.world().resource::<CommandLog>().commands().len(), 1);
+    assert_eq!(
+        app.world().resource::<Stockpiles>().alloy(Faction::A),
+        alloy_before
+    );
+    let log = app.world().resource::<CommandLog>().log().clone();
+    let path = scratch("unnameable");
     log.save(&path).expect("the sim's log must be writable");
     assert_eq!(MatchLog::load(&path).expect("load"), log);
+}
+
+/// **The invariant behind that choice: the record path and the replay path
+/// mutate the registry identically.** Ids are issued in one place, `identify`,
+/// which both paths run; nothing else may grow the registry, because the replay
+/// cannot reproduce a growth that came from writing the log.
+///
+/// A recording that contains an order naming a thing outside the world — the
+/// case that broke it — must replay id-for-id and hash-for-hash, and a building
+/// placed after that order must carry the same id in both runs.
+#[test]
+fn the_record_and_replay_paths_grow_the_registry_identically() {
+    const TICKS: u32 = 600;
+    let world = |seed: u64| {
+        let mut app = sim_app_with_alloy(5_000);
+        spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+        spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+        app.insert_resource(StateHashLog::default());
+        app.insert_resource(CommandLog::new(seed));
+        app
+    };
+
+    // Record: an order naming a bare entity at tick 10, a building placed at
+    // tick 20 (so its id is the one that would shift), and ids sampled per tick.
+    let mut rec = world(3);
+    let mut rec_ids = Vec::new();
+    let foundry = rec
+        .world()
+        .resource::<Content>()
+        .building_index("foundry")
+        .expect("foundry");
+    for t in 0..TICKS {
+        if t == 10 {
+            let bare = rec.world_mut().spawn_empty().id();
+            rec.world_mut().resource_mut::<CommandQueue>().0.push_back(
+                Order::MoveTo {
+                    units: vec![bare],
+                    dest: Vec2::new(1.0, 1.0),
+                }
+                .issued_by(Faction::A),
+            );
+        }
+        if t == 20 {
+            rec.world_mut().resource_mut::<CommandQueue>().0.push_back(
+                Order::Place {
+                    faction: Faction::A,
+                    building: foundry,
+                    pos: Vec2::new(200.0, 0.0),
+                }
+                .issued_by(Faction::A),
+            );
+        }
+        step(&mut rec);
+        rec_ids.push(rec.world().resource::<SimIds>().issued());
+    }
+    let log = rec.world().resource::<CommandLog>().log().clone();
+    let hashes = rec.world().resource::<StateHashLog>().clone();
+    log.save(&scratch("registry-parity")).expect("saves");
+
+    // Replay the same log into the same starting world.
+    let mut rep = world(3);
+    rep.insert_resource(ReplaySource::new(log));
+    let mut rep_ids = Vec::new();
+    for _ in 0..TICKS {
+        step(&mut rep);
+        rep_ids.push(rep.world().resource::<SimIds>().issued());
+    }
+
+    // The registry has to have actually grown, or the comparison is vacuous.
+    assert!(
+        rec_ids.last() > rec_ids.first(),
+        "the fixture never issued a new id: {rec_ids:?}"
+    );
+    assert_eq!(
+        rec_ids.iter().zip(rep_ids.iter()).position(|(a, b)| a != b),
+        None,
+        "the registry grew differently: recorded {rec_ids:?} vs replayed {rep_ids:?}"
+    );
+    assert_eq!(
+        hashes.first_divergence(&rep.world().resource::<StateHashLog>().clone()),
+        None,
+        "the replay of a log containing an unnameable order diverged"
+    );
+    // The building really was placed, and carries the same id in both runs.
+    let id_of_building = |app: &mut App| {
+        let mut q = app.world_mut().query::<(&SimId, &Building)>();
+        let mut v: Vec<u64> = q
+            .iter(app.world())
+            .filter(|(_, b)| b.def == foundry)
+            .map(|(id, _)| id.0)
+            .collect();
+        v.sort();
+        v
+    };
+    let placed = id_of_building(&mut rec);
+    assert_eq!(placed.len(), 1, "the fixture never placed its building");
+    assert_eq!(placed, id_of_building(&mut rep), "the ids drifted");
+}
+
+/// The structural half of the same invariant: the record path takes the
+/// registry **read-only**, and the only place an id is issued is `identify`.
+/// (Prose would not have stopped the last one; this does.)
+#[test]
+fn only_identify_can_issue_a_sim_id() {
+    let sim = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/sim");
+    let mod_rs = std::fs::read_to_string(sim.join("mod.rs")).expect("mod.rs");
+    assert!(
+        mod_rs.contains("ids: Option<Res<replay::SimIds>>"),
+        "`apply_commands` no longer takes the registry read-only — writing the \
+         log could mutate it again"
+    );
+    let replay = std::fs::read_to_string(sim.join("replay.rs")).expect("replay.rs");
+    // `assign` is the only thing that grows the registry.
+    let callers: Vec<(usize, String)> = replay
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| {
+            let code = l.split("//").next().unwrap_or("");
+            code.contains("assign(") && !code.contains("fn assign(")
+        })
+        .map(|(i, l)| (i + 1, l.trim().to_string()))
+        .collect();
+    assert_eq!(
+        callers.len(),
+        1,
+        "the registry is grown from more than one place: {callers:?}"
+    );
+    // ...and that one call site is inside `identify`.
+    let identify_at = replay.find("pub fn identify(").expect("identify exists");
+    let identify_line = replay[..identify_at].lines().count() + 1;
+    let identify_end = identify_line
+        + replay[identify_at..]
+            .find("\n}\n")
+            .map(|i| replay[identify_at..identify_at + i].lines().count())
+            .expect("identify has a body");
+    assert!(
+        (identify_line..=identify_end).contains(&callers[0].0),
+        "the registry is grown outside `identify` (line {} of replay.rs: {})",
+        callers[0].0,
+        callers[0].1
+    );
+    // Nothing may hand out an id on demand again.
+    for banned in ["fn id_for", "id_for("] {
+        assert!(
+            !replay.contains(banned),
+            "`{banned}` is back: issuing an id on demand is what desynced a \
+             replay of its own log"
+        );
+    }
 }
 
 /// End to end, and per sample as the log grows: a match whose world moves out

@@ -65,12 +65,13 @@ impl SimId {
     /// "No id". A log containing one is refused by [`MatchLog::validate`] — at
     /// **both** boundaries — because it names something no replay can resolve.
     ///
-    /// The sim itself never records it: the command log is written through
-    /// [`SimIds::id_for`], which issues an id for anything that lacks one, so
-    /// this value reaches a log only if something builds one by hand. What it
-    /// is still used for is the state hash's *reference* lookups (the entity a
-    /// `GatherTarget` or a combat `Target` points at), where "no id" is a fact
-    /// worth hashing rather than an error.
+    /// The sim itself never records it, because it never *applies* a command it
+    /// cannot name: `apply_commands` drops an unnameable entity from an order
+    /// and refuses an order whose single target is unnameable (see
+    /// [`SimIds::id_of`]). So this value reaches a log only if something builds
+    /// one by hand. What it is still used for is the state hash's *reference*
+    /// lookups (the entity a `GatherTarget` or a combat `Target` points at),
+    /// where "no id" is a fact worth hashing rather than an error.
     pub const UNIDENTIFIED: SimId = SimId(u64::MAX);
 
     pub fn is_identified(self) -> bool {
@@ -86,6 +87,15 @@ impl SimId {
 /// iteration it could ever have is in sorted order and no hash order can reach
 /// an outcome. (`identify`, the only thing that iterates candidates, walks a
 /// sorted `Vec`.)
+///
+/// **Ids are issued in exactly one place**, [`identify`], which the record path
+/// and the replay path run identically. There is deliberately no "give me an id
+/// for this, issuing one if needed": an earlier fix had the *log* do that for an
+/// entity it could not otherwise name, which made writing the log mutate the
+/// registry — hashed state ([`issued`](Self::issued)) that the replay path never
+/// mutates, because it resolves read-only. The recording and the replay of its
+/// own log then drifted apart from the tick that order was written, and every
+/// later id named a different thing. Naming, outside `identify`, is read-only.
 ///
 /// A slot whose entity has been despawned keeps the dead `Entity` value on
 /// purpose: an order can name a unit that has since died, and the log has to
@@ -121,24 +131,13 @@ impl SimIds {
     }
 
     /// The id issued to `e`, alive or dead, if it was ever issued one.
+    ///
+    /// `None` means the sim has never had this entity in its world — it has no
+    /// name, so an order that mentions it cannot be logged, cannot be replayed,
+    /// and (therefore) is not applied either: see `apply_commands`. Read-only
+    /// on purpose; naming a thing must never *create* one.
     pub fn id_of(&self, e: Entity) -> Option<SimId> {
         self.by_entity.get(&e.to_bits()).copied()
-    }
-
-    /// The id for `e`, **issuing one if it has none**.
-    ///
-    /// The log is written through this, so the sim can never record
-    /// [`SimId::UNIDENTIFIED`] — a value its own [`MatchLog::validate`] refuses,
-    /// which would make the log unwritable exactly when something unusual had
-    /// happened and the log was the report. An entity the sim has never seen in
-    /// the world (a bare fixture entity with no `Position`) gets a real id here
-    /// rather than a sentinel: it is a thing an order named, so it is a thing
-    /// the log can name.
-    pub fn id_for(&mut self, e: Entity) -> SimId {
-        match self.id_of(e) {
-            Some(id) => id,
-            None => self.assign(e),
-        }
     }
 
     /// How many ids have been issued.
@@ -501,6 +500,12 @@ pub struct CommandLog {
     /// a hand-composed app, where it is the honest count of what this log is
     /// missing.
     unrecorded: u32,
+    /// Names the sim could not resolve to a [`SimId`], and so did not obey: an
+    /// entity dropped from a list order, or a whole order refused because its
+    /// single subject was unnameable. Zero for anything a shipped producer
+    /// emits — everything input and the AI name is in the world, and everything
+    /// in the world is identified.
+    unnameable: u32,
 }
 
 impl CommandLog {
@@ -510,6 +515,7 @@ impl CommandLog {
             log: MatchLog::new(seed),
             late: 0,
             unrecorded: 0,
+            unnameable: 0,
         }
     }
 
@@ -535,6 +541,14 @@ impl CommandLog {
         self.unrecorded
     }
 
+    /// Names the sim refused to obey because it could not resolve them to a
+    /// [`SimId`] (see `apply_commands`). Unlike [`unrecorded`](Self::unrecorded)
+    /// this is not a gap between the log and the run: nothing was applied
+    /// either, so the log is still the whole truth.
+    pub fn unnameable(&self) -> u32 {
+        self.unnameable
+    }
+
     pub(crate) fn record(
         &mut self,
         tick: u32,
@@ -549,6 +563,10 @@ impl CommandLog {
                 order,
             });
         }
+    }
+
+    pub(crate) fn record_unnameable(&mut self, n: u32) {
+        self.unnameable = self.unnameable.saturating_add(n);
     }
 
     pub(crate) fn record_unrecordable(&mut self) {

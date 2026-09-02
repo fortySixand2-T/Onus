@@ -859,7 +859,6 @@ fn nothing_between_the_sweep_and_identify_puts_anything_into_the_world() {
 /// this is the property that move must not have cost.)
 #[test]
 fn a_first_tick_order_is_still_logged_against_a_real_id() {
-    use onus::sim::replay::SimId;
     let mut app = sim_app_with(0, 0);
     let u = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
     push_at(
@@ -888,7 +887,6 @@ fn a_first_tick_order_is_still_logged_against_a_real_id() {
 /// to agree: whatever the sim records must be something the sim can save.
 #[test]
 fn any_log_the_sim_records_is_a_log_the_sim_can_save() {
-    use onus::sim::replay::SimId;
     const TICKS: u32 = 900;
     let (_, log) = recorded(4, TICKS);
     assert!(log.validate().is_ok(), "a plain recording is invalid");
@@ -1032,5 +1030,545 @@ fn the_new_hash_rows_did_not_break_purity_or_neutrality() {
         a,
         onus::sim::state_hash(unwatched.world_mut()),
         "recording a per-tick hash changed the match it was measuring"
+    );
+}
+
+// ============================================================================
+// Pass 3 — probes against the fixes for pass 2's F1..F4.
+// ============================================================================
+
+// ---- the registry: lazy issuance, recycling, growth ------------------------
+
+/// Every `SimId` the registry has issued names a **different** entity. An id is
+/// a coordinate; two ids for one thing means the log and the hash can disagree
+/// about which coordinate that thing has.
+fn registry_is_injective(app: &App) -> Result<(), String> {
+    let ids = app.world().resource::<SimIds>();
+    let mut seen: std::collections::BTreeMap<u64, u64> = std::collections::BTreeMap::new();
+    for i in 0..ids.issued() {
+        let Some(e) = ids.entity(SimId(i)) else {
+            return Err(format!("id {i} was issued but resolves to nothing"));
+        };
+        if let Some(first) = seen.insert(e.to_bits(), i) {
+            return Err(format!("{e:?} holds both SimId({first}) and SimId({i})"));
+        }
+    }
+    Ok(())
+}
+
+/// The registry stays injective across a whole match, spawns and deaths
+/// included.
+#[test]
+fn the_registry_never_issues_two_ids_for_one_entity() {
+    let mut app = ai_vs_ai(4);
+    for t in 0..2_000u32 {
+        step(&mut app);
+        if let Err(e) = registry_is_injective(&app) {
+            panic!("tick {t}: {e}");
+        }
+    }
+}
+
+/// **The `to_bits` key, attacked.** The registry is now keyed on
+/// `Entity::to_bits()` and never forgets, on the stated ground that generations
+/// stop a recycled index colliding with the entry of the entity that used to
+/// hold it.
+///
+/// Two things are checked over a whole match: the key is a *bijection* (every
+/// id round-trips through the entity it names, and no two ids share a key), and
+/// — if this Bevy ever hands the same index out twice — the second holder never
+/// reaches the first's entry. If no index is ever recycled, the probe says so:
+/// the hazard is then ruled out by the allocator rather than by the key.
+#[test]
+fn the_to_bits_key_is_a_bijection_and_survives_any_index_reuse() {
+    let mut app = ai_vs_ai(4);
+    let mut reused = 0usize;
+    for t in 0..2_000u32 {
+        step(&mut app);
+        let ids = app.world().resource::<SimIds>();
+        let mut by_index: std::collections::BTreeMap<String, Vec<u64>> = Default::default();
+        let mut by_bits: std::collections::BTreeMap<u64, u64> = Default::default();
+        for i in 0..ids.issued() {
+            let e = ids.entity(SimId(i)).unwrap_or_else(|| panic!("tick {t}: id {i} names nothing"));
+            assert_eq!(
+                ids.id_of(e),
+                Some(SimId(i)),
+                "tick {t}: SimId({i}) names {e:?}, which the registry maps back to \
+                 {:?} — the two halves disagree",
+                ids.id_of(e)
+            );
+            if let Some(first) = by_bits.insert(e.to_bits(), i) {
+                panic!("tick {t}: SimId({first}) and SimId({i}) share the key {e:?}");
+            }
+            by_index.entry(format!("{:?}", e.index())).or_default().push(i);
+        }
+        reused = reused.max(by_index.values().filter(|v| v.len() > 1).count());
+    }
+    // Whether or not the allocator recycled, the bijection above held at every
+    // tick. `reused` is reported so a Bevy that starts recycling cannot make
+    // this probe quietly weaker.
+    println!("index reuse observed in the registry: {reused} indices");
+}
+
+/// The registry never forgets, so it grows for the life of a match. Growth
+/// itself must be a function of the sim's own spawn sequence — the same match
+/// played twice must issue exactly the same number of ids at every tick, or the
+/// `NEXT_SIM_ID` row turns registry bookkeeping into a hash divergence.
+#[test]
+fn the_registry_grows_identically_in_two_runs_of_the_same_match() {
+    const TICKS: u32 = 1_500;
+    let trace = |seed: u64| {
+        let mut app = ai_vs_ai(seed);
+        let mut out = Vec::with_capacity(TICKS as usize);
+        for _ in 0..TICKS {
+            step(&mut app);
+            out.push(app.world().resource::<SimIds>().issued());
+        }
+        out
+    };
+    assert_eq!(trace(4), trace(4), "two runs of one seed issued ids differently");
+}
+
+// ---- lazy issuance during logging ------------------------------------------
+
+/// A world with one thing in it that is **not** a thing in the world: a bare
+/// entity with no `Position`, which `identify` will never see. An order may
+/// still name it, and `apply_commands` now issues it an id at log-write time.
+fn world_with_a_bare_entity() -> (App, Entity, Entity) {
+    let mut app = sim_app_with(5_000, 0);
+    let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+    spawn_building(&mut app, "hq", Faction::B, Vec2::new(100.0, 0.0));
+    spawn_unit(&mut app, "worker", Faction::A, Vec2::new(-90.0, 0.0));
+    app.world_mut()
+        .spawn((Position(Vec2::new(-60.0, 60.0)), ResourceNode { amount: 100_000 }));
+    let bare = app.world_mut().spawn_empty().id();
+    app.insert_resource(CommandLog::new(11));
+    (app, hq, bare)
+}
+
+fn worker_index() -> usize {
+    content().unit_index("worker").expect("worker")
+}
+
+/// **The sharpest consequence of lazy issuance.** `issued()` is a hashed row,
+/// and the log is written through `id_for`, which *mutates* the registry. So an
+/// order naming something the registry has not seen issues an id — and the
+/// replay of that log, driven by `feed_replay`, has to arrive at the same
+/// registry to reproduce the same hash. Record a match containing such an
+/// order, replay it, and require every tick to agree.
+#[test]
+fn an_order_naming_a_thing_outside_the_world_does_not_desync_its_own_replay() {
+    const TICKS: u32 = 300;
+    let (mut app, hq, bare) = world_with_a_bare_entity();
+    app.insert_resource(StateHashLog::default());
+    for t in 0..TICKS {
+        if t == 10 {
+            push_at(
+                &mut app,
+                10,
+                Order::MoveTo { units: vec![bare], dest: Vec2::new(3.0, 4.0) }
+                    .issued_by(Faction::A),
+            );
+        }
+        if t == 20 {
+            push_at(
+                &mut app,
+                20,
+                Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A),
+            );
+        }
+        step(&mut app);
+    }
+    let recorded = app.world().resource::<StateHashLog>().clone();
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert!(log.validate().is_ok(), "the sim recorded a log it calls invalid");
+
+    // The same starting world, rebuilt identically — bare entity and all.
+    let (mut back, _, _) = world_with_a_bare_entity();
+    back.insert_resource(StateHashLog::default());
+    back.insert_resource(CommandLog::new(log.seed));
+    back.insert_resource(ReplaySource::new(log));
+    tick(&mut back, TICKS);
+    let replayed = back.world().resource::<StateHashLog>().clone();
+    assert_eq!(
+        recorded.first_divergence(&replayed),
+        None,
+        "issuing an id while writing the log desynced the replay of that log \
+         (unresolved: {}, issued: recorded {} vs replayed {})",
+        back.world().resource::<ReplaySource>().unresolved(),
+        app.world().resource::<SimIds>().issued(),
+        back.world().resource::<SimIds>().issued(),
+    );
+}
+
+/// The harm the desync above does, named. F-011 exists because a log keyed on
+/// something that shifts "commands *the wrong units*, silently". Issuing an id
+/// while writing the log shifts exactly that: a building placed after the shift
+/// gets a different `SimId` in the recording than in the replay, so every later
+/// command naming it names something else.
+#[test]
+fn a_building_placed_after_a_logged_order_gets_the_same_id_in_a_replay() {
+    const TICKS: u32 = 120;
+    let foundry = content().building_index("foundry").expect("foundry");
+    let play = |replay: Option<MatchLog>| -> (Vec<u64>, u64, usize) {
+        let (mut app, _hq, bare) = world_with_a_bare_entity();
+        let live = replay.is_none();
+        if let Some(log) = replay {
+            app.insert_resource(CommandLog::new(log.seed));
+            app.insert_resource(ReplaySource::new(log));
+        }
+        for t in 0..TICKS {
+            if live && t == 10 {
+                push_at(
+                    &mut app,
+                    10,
+                    Order::MoveTo { units: vec![bare], dest: Vec2::new(3.0, 4.0) }
+                        .issued_by(Faction::A),
+                );
+            }
+            if live && t == 20 {
+                push_at(
+                    &mut app,
+                    20,
+                    Order::Place {
+                        faction: Faction::A,
+                        building: foundry,
+                        pos: Vec2::new(-140.0, 40.0),
+                    }
+                    .issued_by(Faction::A),
+                );
+            }
+            step(&mut app);
+        }
+        let mut placed: Vec<u64> = app
+            .world_mut()
+            .query::<(&SimId, &Building)>()
+            .iter(app.world())
+            .filter(|(_, b)| b.def == foundry)
+            .map(|(i, _)| i.0)
+            .collect();
+        placed.sort_unstable();
+        let n = placed.len();
+        let issued = app.world().resource::<SimIds>().issued();
+        let log_len = app.world().resource::<CommandLog>().commands().len();
+        let _ = log_len;
+        (placed, issued, n)
+    };
+    let (rec_ids, rec_issued, n) = play(None);
+    assert_eq!(n, 1, "the fixture placed no building, so nothing is being tested");
+    let log = {
+        let (mut app, _hq, bare) = world_with_a_bare_entity();
+        for t in 0..TICKS {
+            if t == 10 {
+                push_at(&mut app, 10, Order::MoveTo { units: vec![bare], dest: Vec2::new(3.0, 4.0) }.issued_by(Faction::A));
+            }
+            if t == 20 {
+                push_at(&mut app, 20, Order::Place { faction: Faction::A, building: foundry, pos: Vec2::new(-140.0, 40.0) }.issued_by(Faction::A));
+            }
+            step(&mut app);
+        }
+        app.world().resource::<CommandLog>().log().clone()
+    };
+    let (rep_ids, rep_issued, rep_n) = play(Some(log));
+    assert_eq!(rep_n, 1, "the replay did not place the building the log records");
+    assert_eq!(
+        rec_ids, rep_ids,
+        "the building placed by the replay carries a different SimId than the \
+         recording's ({rec_issued} ids issued in the recording, {rep_issued} in \
+         the replay) — every later command naming it names something else"
+    );
+}
+
+/// The registry trajectory of a faithful replay is the recording's, tick for
+/// tick. `NEXT_SIM_ID` is hashed, so anything that issues an id in one run and
+/// not the other is a desync of the desync detector itself.
+#[test]
+fn a_replay_issues_the_same_ids_at_the_same_ticks_as_the_recording() {
+    const TICKS: u32 = 1_200;
+    let mut rec = ai_vs_ai(4);
+    let mut rec_trace = Vec::new();
+    for _ in 0..TICKS {
+        step(&mut rec);
+        rec_trace.push(rec.world().resource::<SimIds>().issued());
+    }
+    let log = rec.world().resource::<CommandLog>().log().clone();
+
+    let mut app = ai_vs_ai(log.seed);
+    app.insert_resource(CommandLog::new(log.seed));
+    app.insert_resource(ReplaySource::new(log));
+    let mut rep_trace = Vec::new();
+    for _ in 0..TICKS {
+        step(&mut app);
+        rep_trace.push(app.world().resource::<SimIds>().issued());
+    }
+    assert_eq!(rec_trace, rep_trace, "the replay's registry drifted from the recording's");
+}
+
+// ---- `SimId::UNIDENTIFIED` is unreachable from the sim ----------------------
+
+/// **The universal claim, tested exhaustively.** `SimId::UNIDENTIFIED` "is
+/// never recorded by the sim" — so throw every shape of bad order at
+/// `apply_commands` and require that no logged command names it, that the log
+/// validates, and that it saves.
+#[test]
+fn no_order_of_any_shape_can_put_unidentified_into_a_log() {
+    let (mut app, hq, bare) = world_with_a_bare_entity();
+    let doomed = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(-80.0, 10.0));
+    let enemy = spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(80.0, 10.0));
+    step(&mut app);
+    // A unit that is despawned before the order naming it is applied.
+    app.world_mut().despawn(doomed);
+    // An entity that never existed at all.
+    let ghost = app.world_mut().spawn_empty().id();
+    app.world_mut().despawn(ghost);
+
+    let orders: Vec<Order> = vec![
+        Order::MoveTo { units: vec![bare], dest: Vec2::ZERO }.issued_by(Faction::A),
+        Order::MoveTo { units: vec![doomed], dest: Vec2::ZERO }.issued_by(Faction::A),
+        Order::MoveTo { units: vec![ghost], dest: Vec2::ZERO }.issued_by(Faction::A),
+        Order::MoveTo { units: vec![doomed, enemy], dest: Vec2::ZERO },
+        Order::Gather { units: vec![ghost], node: bare, node_pos: Vec2::ZERO },
+        Order::Train { building: ghost, unit: worker_index() },
+        Order::Train { building: hq, unit: usize::MAX },
+        Order::Place { faction: Faction::A, building: usize::MAX, pos: Vec2::ZERO },
+    ];
+    for o in orders {
+        app.world_mut().resource_mut::<CommandQueue>().0.push_back(o);
+    }
+    // And the same again, signed by two different factions, so the queue peels
+    // the signature into `Attribution::Void` — which is still recorded.
+    app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+        Order::MoveTo { units: vec![bare], dest: Vec2::ZERO }
+            .issued_by(Faction::A)
+            .issued_by(Faction::B),
+    );
+    tick(&mut app, 3);
+
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert!(!log.commands.is_empty(), "nothing was recorded, so nothing was tested");
+    for c in &log.commands {
+        for id in c.order.sim_ids() {
+            assert!(
+                id.is_identified(),
+                "the command at tick {} was logged with SimId::UNIDENTIFIED: {:?}",
+                c.tick,
+                c.order
+            );
+        }
+    }
+    assert!(log.validate().is_ok(), "the sim recorded a log it calls invalid: {:?}", log.validate());
+    let path = scratch("every-bad-order");
+    assert!(log.save(&path).is_ok(), "the sim recorded a log it cannot save");
+    assert!(MatchLog::load(&path).is_ok(), "the sim saved a log it cannot load");
+    assert_eq!(app.world().resource::<CommandLog>().unrecorded(), 0);
+    assert!(registry_is_injective(&app).is_ok());
+}
+
+// ---- the input gate --------------------------------------------------------
+
+/// Both order emitters are gated, and on the *sim's* run condition — not on a
+/// second, drifting notion of "the match is over".
+#[test]
+fn both_order_emitters_are_gated_on_the_sims_own_run_condition() {
+    let lib = std::fs::read_to_string(src_dir().join("lib.rs")).expect("src/lib.rs");
+    for emitter in ["input::emit_commands", "input::emit_build_commands"] {
+        let at = lib.find(emitter).unwrap_or_else(|| panic!("{emitter} is not registered"));
+        let window = &lib[at..lib.len().min(at + 220)];
+        assert!(
+            window.contains("run_if(sim::victory::match_running)"),
+            "`{emitter}` is not gated on the sim's `match_running`: {window}"
+        );
+    }
+}
+
+/// **The gate must not cost an order.** Everything the sim would have applied
+/// before it was decided still applies — including on the deciding tick itself,
+/// where `apply_commands` runs before `match_end` writes the outcome.
+#[test]
+fn an_order_landing_on_the_deciding_tick_is_still_applied() {
+    let mut app = sim_app_with(0, 0);
+    spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+    let b_hq = spawn_building(&mut app, "hq", Faction::B, Vec2::new(100.0, 0.0));
+    let u = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(-90.0, 0.0));
+    tick(&mut app, 2);
+    assert!(app.world().resource::<MatchState>().engaged());
+    // B's HQ is gone: the *next* tick is the deciding one.
+    app.world_mut().despawn(b_hq);
+    app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+        Order::MoveTo { units: vec![u], dest: Vec2::new(-40.0, 0.0) }.issued_by(Faction::A),
+    );
+    step(&mut app);
+    assert!(
+        app.world().resource::<MatchState>().is_over(),
+        "the fixture did not decide on the tick under test"
+    );
+    assert!(
+        app.world().get::<MoveTarget>(u).is_some(),
+        "an order queued before the match was decided was dropped on the \
+         deciding tick"
+    );
+    assert_eq!(
+        app.world().resource::<CommandLog>().commands().len(),
+        1,
+        "the deciding tick's command is missing from the log"
+    );
+}
+
+// ---- the F-008 guard, third edition ----------------------------------------
+
+/// The new resolver's rule: search every `.rs` under `src/sim/` for
+/// `pub fn <name>(`, require **exactly one**, and require a closing `}` at
+/// column 0. Applied here to every `sim::…` function path the chain names — a
+/// name that resolves to zero or to two is a name the guard cannot vouch for.
+#[test]
+fn every_chain_function_resolves_to_exactly_one_readable_definition() {
+    let sim = src_dir().join("sim");
+    let mut files: Vec<PathBuf> = Vec::new();
+    let mut stack = vec![sim];
+    while let Some(dir) = stack.pop() {
+        for e in std::fs::read_dir(&dir).expect("read src/sim") {
+            let p = e.expect("entry").path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                files.push(p);
+            }
+        }
+    }
+    files.sort();
+    let mut problems: Vec<String> = Vec::new();
+    for (_, path) in chain_system_paths() {
+        let name = path.rsplit("::").next().unwrap_or_default();
+        let needle = format!("pub fn {name}(");
+        let mut hits: Vec<String> = Vec::new();
+        for f in &files {
+            let text = std::fs::read_to_string(f).expect("read");
+            let Some(at) = text.find(&needle) else { continue };
+            if text[at + 1..].find("\n}\n").is_none() {
+                problems.push(format!("{path}: body in {} has no `}}` at column 0", f.display()));
+            }
+            hits.push(f.display().to_string());
+        }
+        match hits.len() {
+            1 => {}
+            0 => problems.push(format!("{path}: no `{needle}` under src/sim")),
+            n => problems.push(format!("{path}: `{needle}` defined in {n} places: {hits:?}")),
+        }
+    }
+    assert!(problems.is_empty(), "the F-008 guard cannot resolve: {problems:#?}");
+}
+
+/// **Run conditions, however they are spelled.** The guard checks a condition
+/// only when `src/lib.rs` contains the exact text `run_if(<path>)`. A condition
+/// composed with `not(..)`, `.and(..)` or `.or(..)` is spelled differently and
+/// would be passed over in silence — the same "skip what you cannot parse" the
+/// third edition was written to remove. Every `sim::…` function named inside a
+/// `run_if(..)` must be covered: either by the exact spelling, or by being
+/// textually before the sweep (where the first loop catches it anyway).
+#[test]
+fn every_run_condition_the_chain_uses_is_actually_checked_by_the_guard() {
+    let lib = std::fs::read_to_string(src_dir().join("lib.rs")).expect("src/lib.rs");
+    let sweep = sweep_offset();
+    let mut uncovered: Vec<String> = Vec::new();
+    let mut at = 0usize;
+    while let Some(i) = lib[at..].find("run_if(") {
+        let start = at + i + "run_if(".len();
+        // The balanced contents of the `run_if(..)` call.
+        let mut depth = 1usize;
+        let mut end = start;
+        for (k, c) in lib[start..].char_indices() {
+            match c {
+                '(' => depth += 1,
+                ')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = start + k;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let inner = &lib[start..end];
+        at = end.max(start + 1);
+        for m in inner.split(|c: char| !(c.is_alphanumeric() || c == '_' || c == ':')) {
+            if !m.starts_with("sim::") {
+                continue;
+            }
+            let name = m.rsplit("::").next().unwrap_or_default();
+            if name.is_empty() || name.starts_with(|c: char| c.is_uppercase()) {
+                continue;
+            }
+            let exact = lib.contains(&format!("run_if({m})"));
+            let pre_sweep = lib.find(m).is_some_and(|p| p < sweep);
+            if !exact && !pre_sweep {
+                uncovered.push(format!("{m} (inside `run_if({inner})`)"));
+            }
+        }
+    }
+    assert!(
+        uncovered.is_empty(),
+        "these run conditions are named by the chain but match neither the \
+         guard's exact `run_if(<path>)` test nor its before-the-sweep test, so \
+         the guard skips them without saying so: {uncovered:#?}"
+    );
+}
+
+// ---- the properties the fixes could have broken ----------------------------
+
+/// Pass 1 and pass 2's structural guarantees, re-established against the new
+/// registry, the new hash filter and the gated input.
+#[test]
+fn the_pass_three_fixes_did_not_cost_the_earlier_guarantees() {
+    const TICKS: u32 = 1_200;
+    // Allocation independence, with the registry now keyed on `to_bits`.
+    let run = |pad: usize| {
+        let mut app = ai_vs_ai_padded(4, pad);
+        app.insert_resource(StateHashLog::default());
+        tick(&mut app, TICKS);
+        app.world().resource::<StateHashLog>().clone()
+    };
+    let plain = run(0);
+    for pad in [1usize, 3, 17] {
+        assert_eq!(
+            plain.first_divergence(&run(pad)),
+            None,
+            "padding the entity allocator with {pad} bare entities moved a hash"
+        );
+    }
+    // Observer neutrality and purity, with the new rows.
+    let mut watched = ai_vs_ai(4);
+    watched.insert_resource(StateHashLog::default());
+    tick(&mut watched, TICKS);
+    let mut unwatched = ai_vs_ai(4);
+    tick(&mut unwatched, TICKS);
+    let a = onus::sim::state_hash(watched.world_mut());
+    assert_eq!(a, onus::sim::state_hash(watched.world_mut()), "the hash is not pure");
+    assert_eq!(
+        a,
+        onus::sim::state_hash(unwatched.world_mut()),
+        "hashing every tick changed the match"
+    );
+    // A held (`At`) command is still observed; an `Asap` one still is not.
+    let mut held = ai_vs_ai(4);
+    tick(&mut held, 20);
+    let before = onus::sim::state_hash(held.world_mut());
+    let victim = held.world().resource::<SimIds>().entity(SimId(2)).expect("a thing");
+    held.world_mut().resource_mut::<CommandQueue>().0.push_back(
+        Order::MoveTo { units: vec![victim], dest: Vec2::ZERO }.issued_by(Faction::A),
+    );
+    assert_eq!(
+        onus::sim::state_hash(held.world_mut()),
+        before,
+        "an `Asap` command is being hashed again"
+    );
+    held.world_mut().resource_mut::<CommandQueue>().0.push_at(
+        9_000,
+        Order::MoveTo { units: vec![victim], dest: Vec2::ZERO }.issued_by(Faction::A),
+    );
+    assert_ne!(
+        onus::sim::state_hash(held.world_mut()),
+        before,
+        "a command held for a later tick is no longer observed"
     );
 }

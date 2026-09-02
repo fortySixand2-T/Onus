@@ -209,3 +209,8 @@
 - [2026-08-31] Modified: src/lib.rs — input stops emitting orders once the match is decided
 - [2026-08-31] Modified: tests/m5_replay.rs — F4 probes: a post-match click leaves the frozen hash alone; a held command is hashed either way
 - [2026-08-31] Modified: FINDINGS.md — F-012 extension 2: the four pass-2 findings, and a refreshed bench table
+- [2026-09-01] Modified: tests/critic_m5.rs — pass-3 critic probes (registry injectivity, to_bits bijection, lazy id issuance vs replay, UNIDENTIFIED unreachability, input gate, F-008 resolver/run-condition coverage)
+- [2026-09-01] Modified: src/sim/mod.rs — critic pass 3: the sim commands only what it can name; unnameable entities are dropped/refused, the registry is read-only on the record path
+- [2026-09-01] Modified: src/sim/replay.rs — id_for removed (issuing an id while writing the log desynced the replay); CommandLog::unnameable counter
+- [2026-09-01] Modified: tests/m5_replay.rs — probes: an unnameable name is dropped from its order; record and replay grow the registry identically; only identify may issue an id
+- [2026-09-01] Modified: FINDINGS.md — F-012 extension 3: two boundary fixes, each correct, jointly wrong; the invariant M6 inherits

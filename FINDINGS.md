@@ -761,3 +761,64 @@ catching things.
    tick, which is what the doc always claimed. The driver half is fixed too:
    `input::emit_commands`/`emit_build_commands` are gated on `match_running`, so
    a finished match stops filling a queue nothing will drain.
+
+**Extension 3 (M5 critic, pass 3) — two boundary fixes, each correct, jointly
+wrong.** Pass 2's F3 forbade *recording* `SimId::UNIDENTIFIED` (a log the sim's
+own validator refuses). The fix routed the log through a `SimIds::id_for` that
+issued an id on demand — and `issued()` is a hashed row, added by pass 1's F4.
+So **writing the log mutated hashed state**, and the replay path never performs
+that mutation: `feed_replay` resolves read-only. A recording whose order named
+something outside the world (a bare entity with no `Position`, which `identify`
+never sees) issued `SimId(4)` while writing the log; the replay of that same log
+could not resolve id 4, dropped the command, issued nothing — and the next
+building placed took id 4 in the replay and id 5 in the recording. The log
+validated, saved and loaded perfectly. Every hash from that tick on diverged,
+and every later command named a different thing.
+
+Three things worth keeping from it:
+
+- **It was worse than the defect it fixed.** Pass 2's F3 was a log that would
+  not *save* — loud, at the write, where something could still be done. The fix
+  removed the loud failure and left a silent wrong replay. When a fix converts a
+  loud failure into a quiet one, that is a regression even if the original
+  symptom is gone.
+- **It reopened F-011's own named failure mode through a different door.**
+  F-011 said a log keyed on a coordinate that moves "commands the wrong units,
+  silently". The coordinate no longer moved with the ECS allocator; it moved
+  with *whether an order named something the registry had not seen*.
+- **Seventh doc-comment defect**: `id_for` asserted "a bare fixture entity …
+  gets a real id here rather than a sentinel: it is a thing an order named, so
+  it is a thing the log can name." The log could name it. The replay could not
+  resolve it.
+
+**Decision.** An order can only command what the sim can **name**. A name is a
+`SimId`, and ids are issued in exactly one place — `replay::identify`, which the
+record path and the replay path run identically. `apply_commands` therefore
+takes the registry as `Res`, not `ResMut`, and:
+
+- drops an unnameable entity from a list order (`MoveTo`, `Gather`), leaving the
+  rest of the order to stand, exactly as a signed order naming another faction's
+  units still commands the issuer's own (F-009);
+- refuses whole an order whose single subject is unnameable (`Gather`'s node,
+  `Train`'s building);
+- decides all of this from the **registry alone**, never from whether a log is
+  present, so logging can never change what the sim does;
+- counts what it refused in `CommandLog::unnameable()` — zero for anything a
+  shipped producer emits.
+
+What is logged is then exactly what was applied, in both directions.
+
+**The invariant this milestone hands to M6** — more general than the repro, and
+the thing to hold new code to: **the record path and the replay path must mutate
+sim state identically, or not at all.** A log carries commands; it does not carry
+the side effects of *writing* it. Anything the recording does that the replay
+cannot repeat is a desync with a delayed fuse, and the hash will report it as a
+divergence in something innocent-looking several hundred ticks later.
+
+**Evidence.** Red first, by restoring the lazy-issuance version: three probes
+fail (`an_order_naming_something_the_world_never_held_is_dropped_from_it`,
+`the_record_and_replay_paths_grow_the_registry_identically`,
+`only_identify_can_issue_a_sim_id`). Green after, together with the structural
+guard that keeps it closed — `apply_commands` must take `Option<Res<SimIds>>`,
+`assign` must have exactly one call site and that site must lie inside
+`identify`, and no `id_for` may exist. 361 tests, debug and release.
