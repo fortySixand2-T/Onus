@@ -822,3 +822,60 @@ fail (`an_order_naming_something_the_world_never_held_is_dropped_from_it`,
 guard that keeps it closed — `apply_commands` must take `Option<Res<SimIds>>`,
 `assign` must have exactly one call site and that site must lie inside
 `identify`, and no `id_for` may exist. 361 tests, debug and release.
+
+## F-013 — A log is only meaningful against its content, and only complete if it records what failed (Phase 1)
+
+**Wall hit.** M5 shipped with three known-open items in its log format, all of
+the same family: things the format could not express, each of which M6 would
+have leaned on silently.
+
+1. `MatchLog` carried a format version and a seed but **no fingerprint of the
+   content**. `Place { building: usize }` / `Train { unit: usize }` were indices
+   into `Content`, and "content is data" guarantees those indices move: a log
+   replayed against a reordered `units.ron` builds different things, with no
+   error anywhere.
+2. A command was recorded by the tick it **applied** on, so a schedule was
+   unrepresentable and a command that never applied appeared in no log at all.
+
+**Decision.** One format bump (`LOG_FORMAT_VERSION: 2`), three changes, and no
+migration shim — a version-1 log is refused by name. A shim would have to invent
+the one thing the old format is missing (which content it was recorded against),
+and inventing it is precisely the silent wrong replay the fingerprint exists to
+prevent. Old logs are re-recordable; a guess is not.
+
+| Item | Choice | Pinned by |
+|---|---|---|
+| Content fingerprint | `Content::fingerprint()` over the **whole** deserialized content — floats by `to_bits`, strings length-prefixed, every list in RON order, no map. Stamped by the sim (`replay::stamp_content`), not by the caller. | `the_fingerprint_covers_the_whole_content_exactly`, `every_log_the_sim_records_matches_the_content_it_played` |
+| Where it is checked | `load_for`/`from_ron_for` at the front door; plain `load`/`from_ron` stay format-only so a refused log is still *readable*; `feed_replay` refuses a mismatched `ReplaySource` outright as the backstop. | `a_log_recorded_against_other_content_is_refused`, `the_sim_refuses_to_replay_a_log_from_other_content` |
+| Content named by | **Stable ids**, resolved through `Content` at replay time. Refusal on an unknown id, never a substituted index; `matches_content` proves every id resolves before a replay starts. | `a_log_still_names_the_same_things_after_the_roster_is_reordered`, `a_log_naming_content_this_build_does_not_have_is_refused` |
+| Schedule | Each entry records the `CommandTick` it was pushed with, and a replay re-pushes on **that**, not on the tick it applied. | `a_replay_re_pushes_on_the_recorded_schedule_and_re_records_the_same_log` |
+| Commands that failed | A command that missed its tick is logged with `CommandFate::Late` — the log is an account of the match, not of what worked. | `a_command_that_missed_its_tick_is_logged_with_its_schedule_and_reason` |
+
+**The fingerprint's scope, argued rather than assumed.** It covers fields the
+MVP sim never reads (the post-MVP `cost` block, `name`s), so an edit that could
+not have changed behaviour still invalidates a stored log. That is the intended
+trade: a false rejection is loud, immediate and recoverable — the log still
+loads for inspection and says what changed — while a false accept is a silently
+different match. A narrower scope would also have to be *revised* every time a
+field starts being read, which is a rule that is true when written and false a
+milestone later (this ledger has four entries about exactly that).
+
+**Producer and validator, again.** Every new validator here got its producer
+fixed in the same change, because M5 paid for the alternative twice: the sim
+stamps its own fingerprint (so no log it writes is unstamped), and
+`apply_commands` refuses an order naming content this build lacks (so no log it
+writes can name an unresolvable id). And the M5 invariant still holds under the
+new resolution step — record and replay resolve through the same `Content` and
+do the same thing with a failure.
+
+**Evidence.** 387 tests green in debug and release; `cargo test --test m5_replay`
+56/56. Each item was run red first (the fingerprint check removed; indices in
+place of ids; late commands unlogged).
+
+**Deliberately still open.** Ahead-scheduling itself is M6's to introduce: the
+format can now express `(schedule, applied tick)` but nothing in `src/` pushes
+a command for a future tick, and `nothing_in_src_schedules_a_command_ahead_of_
+the_tick_it_applies_on` keeps it that way. When M6 adds it, two things follow —
+the *queued* tick becomes worth recording (so the pending-queue rows of the
+state hash agree between a recording and its replay), and a command queued but
+never applied still appears in no log.

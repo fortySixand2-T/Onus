@@ -223,3 +223,6 @@
 - [2026-09-01] Modified: tests/m5_replay.rs — Phase 1a probes: a log from other content is refused; the fingerprint covers the whole content; migration is a refusal
 - [2026-09-01] Modified: src/sim/replay.rs, src/sim/mod.rs — Phase 1b: the log names content by stable id, not by RON position; matches_content proves every id resolves; an order naming content this build lacks is refused
 - [2026-09-01] Modified: tests/m5_replay.rs — Phase 1b probes: a log survives a roster reorder; every logged order resolves back to the index it was applied with; unknown content is refused loudly
+- [2026-09-01] Modified: src/sim/replay.rs, src/sim/mod.rs — Phase 1c: LoggedCommand records the schedule and the fate; late commands are logged, not silently dropped; a replay re-pushes on the recorded schedule
+- [2026-09-01] Modified: tests/m5_replay.rs — Phase 1c probes: a missed tick is logged with its reason and replays as dropped; Asap stays Asap
+- [2026-09-01] Modified: FINDINGS.md — F-013: the log's content fingerprint, id-naming and schedule/fate; migration is a refusal

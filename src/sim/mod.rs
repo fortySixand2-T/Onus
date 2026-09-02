@@ -156,32 +156,47 @@ impl OrderQueue {
         });
     }
 
-    /// Take everything due on tick `now`, in push order, and leave the rest.
+    /// Take everything the sim should look at on tick `now`, in push order,
+    /// and leave the rest.
     ///
-    /// - [`CommandTick::Asap`] ⇒ due, stamped `now`;
-    /// - `At(t) == now` ⇒ due, stamped `t`;
+    /// - [`CommandTick::Asap`] ⇒ taken, stamped `now`;
+    /// - `At(t) == now` ⇒ taken;
     /// - `At(t) > now` ⇒ retained, in order;
-    /// - `At(t) < now` ⇒ **dropped** and counted in the returned `late` figure.
+    /// - `At(t) < now` ⇒ taken **and marked late**: it is removed from the
+    ///   queue and never applied. Applying a command a tick late is precisely
+    ///   the divergence a replay exists to rule out, so a missed tick is a lost
+    ///   command, never a rescheduled one — but it is *returned* rather than
+    ///   silently dropped, so the log can record that it happened. A log that
+    ///   omitted it would describe a queue the replay never held.
     ///
-    /// Order is preserved exactly, so what the sim applies within a tick is a
-    /// function of push order alone.
-    pub fn take_due(&mut self, now: u32) -> (Vec<(u32, SignedOrder)>, u32) {
-        let mut due = Vec::new();
-        let mut late = 0u32;
+    /// Order is preserved exactly, so what the sim does within a tick is a
+    /// function of push order alone — no iteration order, no sorting by
+    /// entity, nothing a `HashMap` could reach.
+    pub fn take_due(&mut self, now: u32) -> Vec<TakenCommand> {
+        let mut taken = Vec::new();
         let mut kept = VecDeque::with_capacity(self.0.len());
         for cmd in self.0.drain(..) {
             match cmd.when {
-                CommandTick::Asap => due.push((now, cmd.order)),
-                CommandTick::At(t) if t == now => due.push((t, cmd.order)),
                 CommandTick::At(t) if t > now => kept.push_back(Command {
                     when: CommandTick::At(t),
                     order: cmd.order,
                 }),
-                CommandTick::At(_) => late = late.saturating_add(1),
+                CommandTick::At(t) if t < now => taken.push(TakenCommand {
+                    tick: now,
+                    schedule: CommandTick::At(t),
+                    late: true,
+                    order: cmd.order,
+                }),
+                when => taken.push(TakenCommand {
+                    tick: now,
+                    schedule: when,
+                    late: false,
+                    order: cmd.order,
+                }),
             }
         }
         self.0 = kept;
-        (due, late)
+        taken
     }
 
     pub fn front(&self) -> Option<&Command> {
@@ -205,8 +220,10 @@ impl OrderQueue {
     }
 }
 
-/// When a [`Command`] is to be applied.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+/// When a [`Command`] is to be applied. Serializable: the command log records
+/// the schedule a command carried, not only the tick it ended up on, so a
+/// replay can re-push it exactly as it was pushed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum CommandTick {
     /// On the next tick the sim drains the queue. Input is asynchronous — a
     /// click has no tick of its own — so the sim assigns it one, and that
@@ -227,6 +244,20 @@ pub enum CommandTick {
 pub struct Command {
     when: CommandTick,
     order: SignedOrder,
+}
+
+/// A command the sim has taken off the queue for tick [`tick`](Self::tick): the
+/// schedule it carried, whether it missed its tick, and the order itself.
+#[derive(Debug)]
+pub struct TakenCommand {
+    /// The tick the sim took it on.
+    pub tick: u32,
+    /// The schedule it was pushed with.
+    pub schedule: CommandTick,
+    /// Its scheduled tick had already gone by: it is **not** applied, only
+    /// recorded.
+    pub late: bool,
+    pub order: SignedOrder,
 }
 
 impl Command {
@@ -437,11 +468,17 @@ pub fn apply_commands(
 ) {
     let now = state.map(|s| s.tick()).unwrap_or(0);
     let mut log = log;
-    let (due, late) = queue.0.take_due(now);
+    let due = queue.0.take_due(now);
     if let Some(log) = log.as_mut() {
-        log.record_late(late);
+        log.record_late(due.iter().filter(|c| c.late).count() as u32);
     }
-    for (tick, signed) in due {
+    for taken in due {
+        let TakenCommand {
+            tick,
+            schedule,
+            late,
+            order: signed,
+        } = taken;
         // Ownership first. `Void` is an order nobody can be held to (signed by
         // two different factions); everything else yields the faction the rest
         // of this loop checks against.
@@ -488,12 +525,24 @@ pub fn apply_commands(
         // comes from the **registry**, not from the entity's `SimId` component,
         // because an order can name an entity that has already been despawned:
         // the component died with it, the registry entry did not.
+        let fate = if late {
+            replay::CommandFate::Late
+        } else {
+            replay::CommandFate::Taken
+        };
         match (log.as_mut(), ids.as_ref()) {
-            (Some(log), Some(ids)) => log.record(tick, attribution, &cmd, &content, |e| {
-                ids.id_of(e).unwrap_or(replay::SimId::UNIDENTIFIED)
-            }),
+            (Some(log), Some(ids)) => {
+                log.record(tick, schedule, fate, attribution, &cmd, &content, |e| {
+                    ids.id_of(e).unwrap_or(replay::SimId::UNIDENTIFIED)
+                })
+            }
             (Some(log), None) => log.record_unrecordable(),
             (None, _) => {}
+        }
+        // Recorded, but **not applied**: a command that missed its tick is part
+        // of the account of the match, not part of what the match did.
+        if late {
+            continue;
         }
         if attribution == Attribution::Void {
             continue;

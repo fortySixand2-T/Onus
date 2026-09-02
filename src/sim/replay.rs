@@ -32,8 +32,8 @@ use crate::sim::content::{Content, ContentFingerprint};
 use crate::sim::spatial::Faction;
 use crate::sim::victory::MatchState;
 use crate::sim::{
-    Attribution, CommandQueue, GatherTarget, MoveTarget, Order, Position, ResourceNode, SignedOrder,
-    UnitKind,
+    Attribution, CommandQueue, CommandTick, GatherTarget, MoveTarget, Order, Position,
+    ResourceNode, SignedOrder, UnitKind,
 };
 
 /// Format version of a persisted [`MatchLog`]. Bumped when the on-disk shape
@@ -386,11 +386,41 @@ impl LoggedOrder {
     }
 }
 
-/// One command as it was applied: the tick, who it was held to, and what it
-/// said.
+/// What became of a command the sim took off the queue.
+///
+/// The log is a complete account of every command the sim *saw and could name*,
+/// not only of the ones that worked — a command that missed its tick is part of
+/// what happened, and a replay that did not know about it would hold a
+/// different queue. (Commands the sim could not name are counted rather than
+/// logged: there is no way to write down a name the sim does not have. See
+/// `CommandLog::unnameable`.)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CommandFate {
+    /// The sim took it up on `tick` and processed it. It may still have been
+    /// refused for ownership or cost — those are *decisions*, made from state
+    /// the replay reproduces, not drops.
+    Taken,
+    /// Never processed: its scheduled tick had already gone by when the sim
+    /// first saw it. A command applied off its tick is the divergence replay
+    /// exists to rule out, so a missed tick is a lost command.
+    Late,
+}
+
+/// One command as the sim took it: when it was *scheduled* for, when the sim
+/// took it, what became of it, who it was held to, and what it said.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LoggedCommand {
+    /// The tick the sim took this command off the queue.
     pub tick: u32,
+    /// The schedule it carried — [`CommandTick::Asap`] for input (a click has
+    /// no tick of its own) or `At(t)` for a command aimed at a specific tick.
+    ///
+    /// Recorded because a replay must re-push a command **on its original
+    /// schedule**, not on the tick it happened to apply: those are the same
+    /// number today only because nothing schedules ahead, and M6 introduces
+    /// ahead-scheduling by construction.
+    pub schedule: CommandTick,
+    pub fate: CommandFate,
     pub attribution: Attribution,
     pub order: LoggedOrder,
 }
@@ -477,6 +507,22 @@ impl MatchLog {
                 ));
             }
             last = c.tick;
+            // The schedule and the fate have to be a story the sim could have
+            // produced, or the log describes a run that never happened.
+            match (c.schedule, c.fate) {
+                // Taken on the tick it was aimed at, or taken as soon as seen.
+                (CommandTick::Asap, CommandFate::Taken) => {}
+                (CommandTick::At(t), CommandFate::Taken) if t == c.tick => {}
+                // Missed: seen after the tick it was aimed at.
+                (CommandTick::At(t), CommandFate::Late) if t < c.tick => {}
+                (schedule, fate) => {
+                    return Err(format!(
+                        "log: the command at tick {} is {fate:?} with schedule \
+                         {schedule:?}, which the sim cannot produce",
+                        c.tick
+                    ));
+                }
+            }
             for id in c.order.sim_ids() {
                 if !id.is_identified() {
                     return Err(format!(
@@ -664,9 +710,12 @@ impl CommandLog {
         self.unnameable
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn record(
         &mut self,
         tick: u32,
+        schedule: CommandTick,
+        fate: CommandFate,
         attribution: Attribution,
         order: &Order,
         content: &Content,
@@ -675,6 +724,8 @@ impl CommandLog {
         if let Some(order) = LoggedOrder::of(order, content, id_of) {
             self.log.commands.push(LoggedCommand {
                 tick,
+                schedule,
+                fate,
                 attribution,
                 order,
             });
@@ -852,9 +903,18 @@ pub fn feed_replay(
             continue;
         }
         match entry.order.to_order(&ids, &content) {
-            Ok(order) => queue
-                .0
-                .push_at(entry.tick, SignedOrder::from_parts(entry.attribution, order)),
+            Ok(order) => {
+                let signed = SignedOrder::from_parts(entry.attribution, order);
+                // **On its original schedule**, not on the tick it applied.
+                // For everything today those are the same tick; for a command
+                // that missed its tick they are not, and re-pushing it with the
+                // tick it was *seen* on would silently turn a dropped command
+                // into an applied one.
+                match entry.schedule {
+                    CommandTick::Asap => queue.0.push_back(signed),
+                    CommandTick::At(t) => queue.0.push_at(t, signed),
+                }
+            }
             // An id this world has never issued: the log does not belong to
             // this starting world (or was hand-edited). Counted and dropped —
             // guessing an entity would be worse than missing a command, and the

@@ -19,7 +19,7 @@ use onus::sim::combat::{Casualties, Health};
 use onus::sim::content::Content;
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use onus::sim::spatial::Faction;
-use onus::sim::replay::{LoggedCommand, LoggedOrder, MatchLog, SimId, SimIds};
+use onus::sim::replay::{CommandFate, LoggedCommand, LoggedOrder, MatchLog, SimId, SimIds};
 use onus::sim::{
     AiCommanders, AiJournal, Attribution, CommandLog, CommandQueue, CommandTick, MatchState,
     MoveTarget, Order, Position, RateReport, ReplaySource, ResourceNode, StateHashLog,
@@ -414,6 +414,8 @@ fn every_coordinate_survives_the_file_exactly() {
     for (i, pair) in hard.chunks(2).enumerate() {
         log.commands.push(LoggedCommand {
             tick: i as u32,
+            schedule: CommandTick::Asap,
+            fate: CommandFate::Taken,
             attribution: Attribution::By(Faction::A),
             order: LoggedOrder::MoveTo {
                 units: vec![1, 2],
@@ -447,6 +449,8 @@ fn a_log_that_could_not_be_read_back_is_refused_when_written() {
         let mut log = MatchLog::new(1);
         log.commands.push(LoggedCommand {
             tick: 3,
+            schedule: CommandTick::Asap,
+            fate: CommandFate::Taken,
             attribution: Attribution::SelfSigned,
             order: LoggedOrder::Place {
                 faction: Faction::B,
@@ -474,6 +478,8 @@ fn an_unreadable_log_is_an_error_not_a_panic() {
         let mut l = MatchLog::new(2);
         l.commands.push(LoggedCommand {
             tick: 1,
+            schedule: CommandTick::Asap,
+            fate: CommandFate::Taken,
             attribution: Attribution::By(Faction::A),
             order: LoggedOrder::Train {
                 building: 3,
@@ -1378,15 +1384,33 @@ fn nothing_in_src_schedules_a_command_ahead_of_the_tick_it_applies_on() {
         callers[0].starts_with("sim/replay.rs"),
         "something other than the replay schedules a command: {callers:?}"
     );
-    // And what it schedules is *this* tick, never a later one.
+    // And what it schedules is never *ahead* of the tick it is fed on. The
+    // replay re-pushes each command on the schedule the log recorded, so the
+    // check that matters is on the log: a command scheduled for a tick later
+    // than the one the sim took it on is a story the sim cannot produce, and
+    // `validate` refuses it. (Behavioural, not textual — the old spelling of
+    // this check pinned a line of code rather than the property.)
     let replay = std::fs::read_to_string(src.join("sim/replay.rs")).expect("replay.rs");
-    assert!(
-        replay.contains(".push_at(entry.tick,"),
-        "the replay no longer pushes each command for the tick it was logged on"
-    );
     assert!(
         replay.contains("if entry.tick > now {"),
         "the replay no longer stops at the first command past the current tick"
+    );
+    let mut ahead = MatchLog::new(1);
+    ahead.commands.push(LoggedCommand {
+        tick: 5,
+        schedule: CommandTick::At(900),
+        fate: CommandFate::Taken,
+        attribution: Attribution::By(Faction::A),
+        order: LoggedOrder::MoveTo {
+            units: vec![0],
+            dest: (1.0, 1.0),
+        },
+    });
+    assert!(
+        ahead.validate().is_err(),
+        "a log claiming a command was taken 895 ticks before its schedule was \
+         accepted — ahead-scheduling is M6's to introduce, and the format must \
+         not admit an incoherent version of it in the meantime"
     );
 }
 
@@ -2137,6 +2161,8 @@ fn a_log_naming_content_this_build_does_not_have_is_refused() {
     let mut log = app.world().resource::<CommandLog>().log().clone();
     log.commands.push(LoggedCommand {
         tick: 600,
+        schedule: CommandTick::Asap,
+        fate: CommandFate::Taken,
         attribution: Attribution::By(Faction::A),
         order: LoggedOrder::Train {
             building: 0,
@@ -2155,6 +2181,143 @@ fn a_log_naming_content_this_build_does_not_have_is_refused() {
     assert!(log.commands.last().unwrap().order.to_order(ids, &content()).is_err());
 }
 
+// ---- the log records the schedule, not only the applied tick ----------------
+
+/// A command that missed its tick is **in the log**, with its schedule and the
+/// reason it never applied. Before this the log was an account of what worked;
+/// a replay of it held a different queue than the recording did.
+#[test]
+fn a_command_that_missed_its_tick_is_logged_with_its_schedule_and_reason() {
+    let mut app = sim_app();
+    let unit = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    tick(&mut app, 10);
+    let stale = sim_tick(&app) - 4;
+    push_at(
+        &mut app,
+        stale,
+        Order::MoveTo {
+            units: vec![unit],
+            dest: Vec2::new(400.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
+    step(&mut app);
+    // Not applied...
+    assert!(app.world().get::<MoveTarget>(unit).is_none());
+    // ...and recorded, as late, with the schedule it carried.
+    let log = app.world().resource::<CommandLog>();
+    assert_eq!(log.commands().len(), 1, "the dropped command is missing from the log");
+    let c = &log.commands()[0];
+    assert_eq!(c.fate, CommandFate::Late);
+    assert_eq!(c.schedule, CommandTick::At(stale));
+    assert_eq!(c.tick, stale + 4, "the log does not say when the sim saw it");
+    assert_eq!(log.late(), 1);
+    assert!(log.log().validate().is_ok());
+}
+
+/// A replay re-pushes each command **on its original schedule**, so a command
+/// that was dropped late in the recording is dropped late in the replay — and
+/// the replay's own log comes out identical. (Re-pushing on the tick it was
+/// *seen* would turn a dropped command into an applied one.)
+#[test]
+fn a_replay_re_pushes_on_the_recorded_schedule_and_re_records_the_same_log() {
+    const TICKS: u32 = 60;
+    let build = || {
+        let mut app = sim_app_with_alloy(1_000);
+        spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+        app.insert_resource(StateHashLog::default());
+        app.insert_resource(CommandLog::new(2));
+        app
+    };
+    let mut rec = build();
+    let unit = {
+        let mut q = rec.world_mut().query_filtered::<Entity, With<onus::sim::UnitKind>>();
+        q.iter(rec.world()).next().expect("a unit")
+    };
+    for t in 0..TICKS {
+        if t == 10 {
+            // On time.
+            push_at(
+                &mut rec,
+                10,
+                Order::MoveTo {
+                    units: vec![unit],
+                    dest: Vec2::new(50.0, 0.0),
+                }
+                .issued_by(Faction::A),
+            );
+        }
+        if t == 20 {
+            // Too late: aimed at a tick that has gone by.
+            push_at(
+                &mut rec,
+                15,
+                Order::MoveTo {
+                    units: vec![unit],
+                    dest: Vec2::new(-900.0, 0.0),
+                }
+                .issued_by(Faction::A),
+            );
+        }
+        step(&mut rec);
+    }
+    let log = rec.world().resource::<CommandLog>().log().clone();
+    let fates: Vec<(u32, CommandTick, CommandFate)> = log
+        .commands
+        .iter()
+        .map(|c| (c.tick, c.schedule, c.fate))
+        .collect();
+    assert_eq!(
+        fates,
+        vec![
+            (10, CommandTick::At(10), CommandFate::Taken),
+            (20, CommandTick::At(15), CommandFate::Late),
+        ]
+    );
+    let hashes = rec.world().resource::<StateHashLog>().clone();
+
+    let mut rep = build();
+    rep.insert_resource(ReplaySource::new(log.clone()));
+    tick(&mut rep, TICKS);
+    assert_eq!(
+        rep.world().resource::<CommandLog>().log().commands,
+        log.commands,
+        "the replay recorded a different account than the recording"
+    );
+    assert_eq!(
+        hashes.first_divergence(&rep.world().resource::<StateHashLog>().clone()),
+        None,
+        "the replay diverged"
+    );
+    assert_eq!(rep.world().resource::<CommandLog>().late(), 1);
+}
+
+/// The property recording the schedule might break: an ordinary `Asap` command
+/// — everything input and the AI emit — is logged as `Asap` and replays as
+/// `Asap`, and a whole AI match still replays hash for hash.
+#[test]
+fn an_asap_command_is_logged_and_replayed_as_asap() {
+    const TICKS: u32 = 3_000;
+    let (recorded, log, _) = recorded_run(4, TICKS);
+    assert!(
+        log.commands.len() > 20,
+        "the match issued almost nothing ({}), so this proves little",
+        log.commands.len()
+    );
+    assert!(
+        log.commands
+            .iter()
+            .all(|c| c.schedule == CommandTick::Asap && c.fate == CommandFate::Taken),
+        "a shipped producer emitted something other than an Asap command"
+    );
+    let (replayed, app) = replay_run(log.clone(), TICKS);
+    assert_eq!(recorded.first_divergence(&replayed), None);
+    assert_eq!(
+        app.world().resource::<CommandLog>().log().commands,
+        log.commands
+    );
+}
+
 // ---- the two boundaries agree ----------------------------------------------
 
 /// Adversarial logs, each either accepted by **both** boundaries or refused by
@@ -2164,6 +2327,8 @@ fn a_log_naming_content_this_build_does_not_have_is_refused() {
 fn what_the_writer_accepts_the_reader_accepts_and_the_other_way_round() {
     let cmd = |tick: u32, order: LoggedOrder| LoggedCommand {
         tick,
+        schedule: CommandTick::Asap,
+        fate: CommandFate::Taken,
         attribution: Attribution::By(Faction::A),
         order,
     };
