@@ -232,3 +232,5 @@
 - [2026-09-03] Modified: src/sim/replay.rs — critic F2: the stamp follows the content actually in use; a mid-match change poisons the log, refused at both boundaries
 - [2026-09-03] Modified: tests/m5_replay.rs — F2 probes: a content swap is followed and poisons the log; an ordinary match is never poisoned and a late log is still stamped
 - [2026-09-03] Modified: FINDINGS.md — F-013 extension: two more coordinates that were not what their prose said; "is it injective, and what enforces that?"
+- [2026-09-03] Modified: tests/critic_m5.rs — adjudicated the F1 probe patch (round-trip kept, refusal probed in all three namespaces, load_from_dir guarded as the sole producer); pass-6 probes for the poison flag and the stamp shortcut
+- [2026-09-03] Modified: tests/critic_m5.rs — Phase 1 pass-2 critic probes (loader unavoidability, three-namespace duplicate refusal, cross-namespace legality, poisoned-log refusal at every boundary); PASS

@@ -2233,39 +2233,56 @@ fn content_dir_with(name: &str, units_ron: String) -> PathBuf {
     dir
 }
 
-/// The shipped roster with **one building id present twice** — the second copy
-/// differing only in its Alloy cost. Nothing in `Content::load_from_dir` or
-/// `Content::validate` rejects this today, so it is content a designer can
-/// write and the game will happily run.
-fn content_with_a_duplicate_building_id() -> Content {
+/// A content directory built from the shipped one with `units.ron` edited.
+fn content_from_edited_units(name: &str, edit: impl Fn(String) -> String) -> PathBuf {
     let text = std::fs::read_to_string(data_dir().join("units.ron")).expect("units.ron");
-    let original = text
-        .lines()
-        .find(|l| l.contains("id: \"foundry\""))
-        .expect("the foundry line")
-        .to_string();
-    let twin = original.replace("alloy_cost: 150", "alloy_cost: 999");
-    assert_ne!(twin, original, "the twin is not actually different");
-    let edited = text.replacen(&original, &format!("{original}\n{twin}"), 1);
-    Content::load_from_dir(&content_dir_with("dupe", edited))
-        .expect("content with a duplicated id still loads — that is the point")
+    content_dir_with(name, edit(text))
+}
+
+/// The shipped roster with **one building id present twice** — the second copy
+/// differing only in its Alloy cost. This is what a designer's copy-paste
+/// produces; what the loader does with it is the question below.
+fn duplicate_building_id_content() -> Result<Content, onus::sim::content::ContentError> {
+    let dir = content_from_edited_units("dupe-building", |text| {
+        let original = text
+            .lines()
+            .find(|l| l.contains("id: \"foundry\""))
+            .expect("the foundry line")
+            .to_string();
+        let twin = original.replace("alloy_cost: 150", "alloy_cost: 999");
+        assert_ne!(twin, original, "the twin is not actually different");
+        text.replacen(&original, &format!("{original}\n{twin}"), 1)
+    });
+    Content::load_from_dir(&dir)
 }
 
 /// **The coordinate 1b replaced an index with has to be injective.**
 ///
-/// A log now names content by id and a replay resolves that id back to an index
+/// A log names content by id and a replay resolves that id back to an index
 /// with `Content::building_index` / `unit_index`, which return the *first*
 /// match. So the round trip `index -> id -> index` is the identity only while
-/// ids are unique — and nothing checks that they are. F-011 retired
-/// `Entity::to_bits()` because it was a coordinate that could mean something
-/// else later; an id that two definitions share is a coordinate that means
-/// something else *now*.
+/// ids are unique. F-011 retired `Entity::to_bits()` because it was a
+/// coordinate that could mean something else later; an id two definitions share
+/// is a coordinate that means something else *now*.
+///
+/// Asserted over every content that can be loaded, not over one — including a
+/// reordered roster and one where a unit and a building deliberately share an
+/// id, which the namespace decision says must stay legal.
 #[test]
 fn every_content_id_resolves_back_to_the_definition_it_came_from() {
-    for (what, c) in [
-        ("the shipped content", content()),
-        ("content a designer could write", content_with_a_duplicate_building_id()),
-    ] {
+    let cross = Content::load_from_dir(&content_dir_with(
+        "cross-namespace",
+        std::fs::read_to_string(data_dir().join("units.ron")).expect("units.ron"),
+    ));
+    let mut sets: Vec<(String, Content)> = vec![("the shipped content".into(), content())];
+    if let Ok(c) = cross {
+        sets.push(("a reload of it".into(), c));
+    }
+    if let Ok(c) = shared_id_across_namespaces() {
+        sets.push(("a unit and a resource sharing an id".into(), c));
+    }
+    assert!(sets.len() >= 2, "the probe is only exercising one content set");
+    for (what, c) in sets {
         for (i, b) in c.buildings.iter().enumerate() {
             assert_eq!(
                 c.building_index(&b.id),
@@ -2286,86 +2303,253 @@ fn every_content_id_resolves_back_to_the_definition_it_came_from() {
     }
 }
 
-/// The same defect, end to end: a log that validates, whose fingerprint matches
-/// exactly, replaying into a **different match**.
+/// ...and the only thing that could break it must be **unloadable**, in every
+/// namespace an id is resolved in, and however many copies there are. This is
+/// where the round-trip property is actually bought: not by care, but by
+/// content that would break it not existing.
 #[test]
-fn a_log_naming_a_duplicated_content_id_does_not_replay_as_a_different_match() {
-    let c = content_with_a_duplicate_building_id();
-    let twin = c
-        .buildings
-        .iter()
-        .enumerate()
-        .filter(|(_, b)| b.id == "foundry")
-        .map(|(i, _)| i)
-        .collect::<Vec<_>>();
-    assert_eq!(twin.len(), 2, "the fixture did not duplicate the id");
-    let expensive = twin[1];
+fn content_that_would_break_the_round_trip_cannot_be_loaded() {
+    // (a) buildings.
+    let err = duplicate_building_id_content()
+        .expect_err("content with a duplicated building id must not load")
+        .to_string();
+    assert!(
+        err.contains("foundry") && err.to_lowercase().contains("duplicate"),
+        "the refusal does not identify the duplicate: {err}"
+    );
 
-    let play = |replay: Option<MatchLog>| -> (u32, MatchLog, u64) {
-        let mut app = App::new();
-        app.add_plugins(MinimalPlugins)
-            .insert_resource(Time::<Fixed>::from_hz(60.0))
-            .insert_resource(c.clone())
-            .init_resource::<CommandQueue>()
-            .init_resource::<RateReport>()
-            .init_resource::<Casualties>()
-            .insert_resource(Stockpiles::starting(5_000));
-        onus::add_sim_systems(&mut app, Update);
-        let def = c.building_index("hq").expect("hq");
+    // (b) units — the other list the log names. Renaming one unit onto
+    // another's id is the same ambiguity a copy-paste makes, with no
+    // structural editing of the RON.
+    let dir = content_from_edited_units("dupe-unit", |text| {
+        text.replacen("id: \"ravager\",", "id: \"ripper\",", 1)
+    });
+    let err = Content::load_from_dir(&dir)
+        .expect_err("content with a duplicated unit id must not load")
+        .to_string();
+    assert!(
+        err.contains("ripper") && err.to_lowercase().contains("duplicate"),
+        "a duplicated unit id was not refused by name: {err}"
+    );
+
+    // (c) resources — named by `economy.currency`.
+    let rtext = std::fs::read_to_string(data_dir().join("resources.ron")).expect("resources.ron");
+    let rdir = content_dir_with("dupe-resource", std::fs::read_to_string(data_dir().join("units.ron")).unwrap());
+    std::fs::write(
+        rdir.join("resources.ron"),
+        rtext.replacen(
+            "id: \"biomass\"",
+            "id: \"alloy\"",
+            1,
+        ),
+    )
+    .unwrap();
+    let err = Content::load_from_dir(&rdir)
+        .expect_err("content with a duplicated resource id must not load")
+        .to_string();
+    assert!(
+        err.contains("alloy") && err.to_lowercase().contains("duplicate"),
+        "a duplicated resource id was not refused by name: {err}"
+    );
+
+    // (d) the *third* copy is refused too — a check that only compares
+    // neighbours, or only the first pair, would let this through.
+    let dir3 = content_from_edited_units("dupe-triple", |text| {
+        let original = text
+            .lines()
+            .find(|l| l.contains("id: \"gene_vats\""))
+            .expect("the gene_vats line")
+            .to_string();
+        text.replacen(&original, &format!("{original}\n{original}\n{original}"), 1)
+    });
+    assert!(
+        Content::load_from_dir(&dir3).is_err(),
+        "three copies of one building id loaded"
+    );
+}
+
+/// The refusal is only a guarantee if nothing can make a `Content` without it.
+/// `Content`'s fields are public, so this is a structural check that `src/`
+/// only ever builds one through `load_from_dir`, which validates.
+#[test]
+fn nothing_in_src_builds_a_content_that_skipped_validation() {
+    let content_rs = std::fs::read_to_string(src_dir().join("sim/content.rs")).expect("content.rs");
+    let at = content_rs
+        .find("pub fn load_from_dir(")
+        .expect("load_from_dir exists");
+    let body_end = at + content_rs[at..].find("\n    }\n").expect("it has a body");
+    assert!(
+        content_rs[at..body_end].contains("content.validate()?"),
+        "`load_from_dir` no longer validates what it loads"
+    );
+    let mut offenders: Vec<String> = Vec::new();
+    let mut stack = vec![src_dir()];
+    while let Some(dir) = stack.pop() {
+        for e in std::fs::read_dir(&dir).expect("read src") {
+            let p = e.expect("entry").path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            if p.extension().is_some_and(|x| x == "rs") {
+                let text = std::fs::read_to_string(&p).expect("read");
+                for (i, line) in text.lines().enumerate() {
+                    let code = line.split("//").next().unwrap_or("");
+                    // The one literal is the one inside `load_from_dir`.
+                    let is_literal = code.contains("Content {")
+                        && !code.contains("struct ")
+                        && !code.contains("impl ")
+                        && !code.contains("fn ");
+                    if is_literal {
+                        let offset: usize = text.lines().take(i).map(|l| l.len() + 1).sum();
+                        let inside = p.ends_with("content.rs") && offset > at && offset < body_end;
+                        if !inside {
+                            offenders.push(format!("{}:{}", p.display(), i + 1));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "a `Content` is built outside `load_from_dir`, so it never met the \
+         duplicate-id check: {offenders:#?}"
+    );
+}
+
+/// The namespace decision, tested where it costs something: a **resource** and
+/// a **unit** sharing an id is legal, loads, and replays — because every
+/// reference site says which kind it means.
+fn shared_id_across_namespaces() -> Result<Content, onus::sim::content::ContentError> {
+    let dir = content_dir_with(
+        "shared-id",
+        std::fs::read_to_string(data_dir().join("units.ron")).expect("units.ron"),
+    );
+    let rtext = std::fs::read_to_string(data_dir().join("resources.ron")).expect("resources.ron");
+    // `aether` is named by nothing the sim resolves (it is not the currency),
+    // so renaming it to a unit id is a pure cross-namespace collision.
+    std::fs::write(
+        dir.join("resources.ron"),
+        rtext.replacen("id: \"aether\"", "id: \"worker\"", 1),
+    )
+    .unwrap();
+    Content::load_from_dir(&dir)
+}
+
+#[test]
+fn an_id_shared_across_two_namespaces_is_legal_and_replays() {
+    let c = shared_id_across_namespaces()
+        .expect("a unit and a resource may share an id — the namespace decision");
+    assert!(c.unit_index("worker").is_some());
+    assert!(c.resources.iter().any(|r| r.id == "worker"));
+    // The two namespaces stay distinct: the unit id does not resolve to a
+    // building, and the roster round trip still holds.
+    assert!(c.building_index("worker").is_none());
+    for (i, u) in c.units.iter().enumerate() {
+        assert_eq!(c.unit_index(&u.id), Some(i));
+    }
+    // And a match played on it records and replays.
+    let (rec, log, rec_h) = play_a_place(&c, c.buildings.len() - 1, None);
+    let (rep, again, rep_h) = play_a_place(&c, c.buildings.len() - 1, Some(log.clone()));
+    assert_eq!(rec, rep, "a cross-namespace id changed what the log meant");
+    assert_eq!(rec_h, rep_h);
+    assert_eq!(again.commands, log.commands);
+}
+
+/// Record/replay a single `Place` of `def` against `c`, returning the Alloy
+/// spent, the log, and the final state hash.
+fn play_a_place(c: &Content, def: usize, replay: Option<MatchLog>) -> (u32, MatchLog, u64) {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(Time::<Fixed>::from_hz(60.0))
+        .insert_resource(c.clone())
+        .init_resource::<CommandQueue>()
+        .init_resource::<RateReport>()
+        .init_resource::<Casualties>()
+        .insert_resource(Stockpiles::starting(5_000));
+    onus::add_sim_systems(&mut app, Update);
+    let hq = c.building_index("hq").expect("hq");
+    for (f, x) in [(Faction::A, -100.0f32), (Faction::B, 100.0)] {
         app.world_mut().spawn((
-            Position(Vec2::new(-100.0, 0.0)),
-            Building { def },
-            Faction::A,
+            Position(Vec2::new(x, 0.0)),
+            Building { def: hq },
+            f,
             ProductionQueue::default(),
         ));
-        app.world_mut().spawn((
-            Position(Vec2::new(100.0, 0.0)),
-            Building { def },
-            Faction::B,
-            ProductionQueue::default(),
-        ));
-        let live = replay.is_none();
-        if let Some(log) = replay {
+    }
+    let live = replay.is_none();
+    match replay {
+        Some(log) => {
             app.insert_resource(CommandLog::new(log.seed));
             app.insert_resource(ReplaySource::new(log));
-        } else {
+        }
+        None => {
             app.insert_resource(CommandLog::new(5));
         }
-        for t in 0..40u32 {
-            if live && t == 10 {
-                // Names the *second* foundry — the expensive one.
-                app.world_mut().resource_mut::<CommandQueue>().0.push_back(
-                    Order::Place {
-                        faction: Faction::A,
-                        building: expensive,
-                        pos: Vec2::new(-200.0, 0.0),
-                    }
+    }
+    for t in 0..40u32 {
+        if live && t == 10 {
+            app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+                Order::Place { faction: Faction::A, building: def, pos: Vec2::new(-200.0, 0.0) }
                     .issued_by(Faction::A),
-                );
-            }
-            step(&mut app);
+            );
         }
-        let spent = 5_000 - app.world().resource::<Stockpiles>().alloy(Faction::A);
-        let log = app.world().resource::<CommandLog>().log().clone();
-        let h = onus::sim::state_hash(app.world_mut());
-        (spent, log, h)
-    };
+        step(&mut app);
+    }
+    if let Some(src) = app.world().get_resource::<ReplaySource>() {
+        assert_eq!(src.rejection(), None, "the replay was refused, so nothing is proved");
+        assert!(src.cursor() > 0, "the replay fed nothing");
+    }
+    let built = app
+        .world_mut()
+        .query::<&Building>()
+        .iter(app.world())
+        .filter(|b| b.def == def)
+        .count();
+    assert_eq!(built, 1, "the building was never placed, so the probe is vacuous");
+    let spent = 5_000 - app.world().resource::<Stockpiles>().alloy(Faction::A);
+    let log = app.world().resource::<CommandLog>().log().clone();
+    let h = onus::sim::state_hash(app.world_mut());
+    (spent, log, h)
+}
 
-    let (rec_spent, log, rec_hash) = play(None);
-    assert_eq!(rec_spent, 999, "the recording did not charge the duplicate's cost");
+/// The round trip on the definition a first-match lookup would never reach if
+/// ids were ambiguous: the **last** building in RON order. Recorded, replayed
+/// and re-recorded, it must still mean that building and charge its price.
+#[test]
+fn a_log_naming_the_last_building_definition_replays_as_that_definition() {
+    let c = content();
+    let last = c.buildings.len() - 1;
+    assert!(last > 0, "there is only one building to name");
+    let cost = c.buildings[last].alloy_cost;
+    assert!(cost > 0, "the fixture cannot tell a charge from a refusal");
+
+    let (rec_spent, log, rec_hash) = play_a_place(&c, last, None);
+    assert_eq!(rec_spent, cost, "the recording did not charge that building");
+    assert_eq!(log.commands.len(), 1, "the order was not logged");
     assert!(log.validate().is_ok(), "the recording is not a valid log");
     assert!(
         log.matches_content(&c).is_ok(),
         "the fingerprint refused the very content the match was played with"
     );
-    let (rep_spent, again, rep_hash) = play(Some(log.clone()));
+    let (rep_spent, again, rep_hash) = play_a_place(&c, last, Some(log.clone()));
     assert_eq!(
         rec_spent, rep_spent,
         "the replay charged {rep_spent} where the recording charged {rec_spent}: \
-         the log named a duplicated id and resolved to a different definition"
+         the logged id resolved to a different definition"
     );
     assert_eq!(rec_hash, rep_hash, "the replayed world is not the recorded world");
     assert_eq!(again.commands, log.commands, "the replay logged a different stream");
+}
+
+/// Every shipped content file still loads, and the stricter validator did not
+/// cost any fixture the rest of the suite depends on.
+#[test]
+fn the_shipped_content_still_loads_under_the_stricter_validator() {
+    let c = Content::load_from_dir(&data_dir()).expect("the shipped content must still load");
+    assert!(!c.units.is_empty() && !c.buildings.is_empty() && !c.resources.is_empty());
+    assert!(c.fingerprint().is_known());
 }
 
 // ---- 1a: the fingerprint --------------------------------------------------
@@ -2735,4 +2919,188 @@ fn a_refused_log_is_still_readable_for_diagnosis() {
     assert_eq!(back.commands, unstamped.commands);
     assert!(back.matches_content(&content()).is_err(), "an unstamped log was accepted to play");
     assert!(MatchLog::load_for(&path, &content()).is_err());
+}
+
+// ============================================================================
+// Pass 6 — probes against the fixes for pass 5's F1 and F2.
+// ============================================================================
+
+/// The `Content` the shipped roster loads to, with one value changed.
+fn content_with_a_changed_stat() -> Content {
+    Content::load_from_dir(&content_from_edited_units("changed-stat", |t| {
+        t.replacen("mvp_alloy_cost: 10,", "mvp_alloy_cost: 11,", 1)
+    }))
+    .expect("the edited content loads")
+}
+
+/// **The escape clause, tested.** F2's producer can build a log its own
+/// validator rejects (`content_changed`). That is only permissible if the
+/// refusal is loud, at the write, and if no content exists the log could
+/// correctly replay against — otherwise it is M5 pass-2's F3 again, where a
+/// legitimate match became unsaveable and the report was lost.
+#[test]
+fn a_poisoned_log_is_refused_loudly_at_every_boundary_and_matches_nothing() {
+    let a = content();
+    let b = content_with_a_changed_stat();
+    assert_ne!(a.fingerprint().hash(), b.fingerprint().hash());
+
+    let mut app = sim_app_with(5_000, 0);
+    let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+    spawn_building(&mut app, "hq", Faction::B, Vec2::new(100.0, 0.0));
+    app.insert_resource(CommandLog::new(3));
+    push(&mut app, Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A));
+    tick(&mut app, 3);
+    assert!(!app.world().resource::<CommandLog>().log().content_changed, "poisoned already");
+    app.insert_resource(b.clone());
+    push(&mut app, Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A));
+    tick(&mut app, 3);
+
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert!(log.content_changed, "the mid-match content change was not recorded");
+    assert!(log.commands.len() >= 2, "the fixture recorded nothing on either side");
+
+    // Loud, at the write, and the message says what happened.
+    let err = log.to_ron().expect_err("a poisoned log was serialized");
+    assert!(err.to_lowercase().contains("content"), "the refusal is not diagnosable: {err}");
+    let path = scratch("poisoned");
+    let _ = std::fs::remove_file(&path);
+    assert!(log.save(&path).is_err(), "a poisoned log was written");
+    assert!(!path.exists(), "a log that cannot be read back was still written to disk");
+
+    // And it matches *no* content — including both of the two it was played
+    // under, which is what makes refusing it a loss of nothing.
+    for (what, c) in [("the first", &a), ("the second", &b)] {
+        assert!(
+            log.matches_content(c).is_err(),
+            "a poisoned log was accepted against {what} content it was played under"
+        );
+    }
+    assert!(log.validate().is_err());
+}
+
+/// A replay driven from a poisoned in-memory log is refused by the backstop,
+/// not played — the same guarantee as a mismatched fingerprint.
+#[test]
+fn a_poisoned_log_cannot_be_replayed_even_in_memory() {
+    let b = content_with_a_changed_stat();
+    let mut app = sim_app_with(5_000, 0);
+    let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+    spawn_building(&mut app, "hq", Faction::B, Vec2::new(100.0, 0.0));
+    app.insert_resource(CommandLog::new(3));
+    tick(&mut app, 2);
+    app.insert_resource(b);
+    push(&mut app, Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A));
+    tick(&mut app, 3);
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert!(log.content_changed);
+
+    let mut r = sim_app_with(5_000, 0);
+    spawn_building(&mut r, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+    spawn_building(&mut r, "hq", Faction::B, Vec2::new(100.0, 0.0));
+    r.insert_resource(CommandLog::new(log.seed));
+    r.insert_resource(ReplaySource::new(log));
+    tick(&mut r, 10);
+    let src = r.world().resource::<ReplaySource>();
+    assert!(src.rejection().is_some(), "a poisoned log was replayed");
+    assert_eq!(src.cursor(), 0, "a poisoned log fed commands anyway");
+}
+
+/// **The poison must only fire on a real change.** The stamp is recomputed
+/// whenever Bevy says the `Content` resource changed, so a mutable borrow that
+/// alters nothing, or a byte-identical reload, must leave the log clean — or
+/// every legitimate match becomes unsaveable, which is the failure mode this
+/// escape clause is borrowing against.
+#[test]
+fn touching_the_content_without_changing_it_does_not_poison_the_log() {
+    // The fingerprint is a function of the content, not of the load.
+    assert_eq!(content().fingerprint(), content().fingerprint(), "the fingerprint is unstable");
+
+    let mut app = sim_app_with(5_000, 0);
+    let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+    spawn_building(&mut app, "hq", Faction::B, Vec2::new(100.0, 0.0));
+    app.insert_resource(CommandLog::new(3));
+    tick(&mut app, 3);
+    for _ in 0..5 {
+        // A mutable borrow that changes nothing...
+        let _ = app.world_mut().resource_mut::<Content>();
+        tick(&mut app, 2);
+        // ...and a byte-identical reinsertion.
+        app.insert_resource(content());
+        push(&mut app, Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A));
+        tick(&mut app, 2);
+    }
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert!(
+        !log.content_changed,
+        "touching the content without changing it marked the log as describing none"
+    );
+    assert!(log.validate().is_ok(), "a clean match produced an unwritable log");
+    assert!(log.matches_content(&content()).is_ok());
+    assert!(!log.commands.is_empty(), "nothing was recorded, so nothing is tested");
+}
+
+/// The "recompute only when unstamped or `Content` changed" shortcut must not
+/// miss a log: a fresh `CommandLog` installed mid-match, long after the content
+/// last changed, still gets stamped.
+#[test]
+fn a_log_installed_mid_match_is_still_stamped() {
+    let mut app = ai_vs_ai(4);
+    tick(&mut app, 50);
+    assert!(app.world().resource::<CommandLog>().log().content.is_known());
+    // A fresh, unstamped log, with the content untouched since tick 0.
+    app.insert_resource(CommandLog::new(4));
+    assert!(!app.world().resource::<CommandLog>().log().content.is_known());
+    step(&mut app);
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert!(
+        log.content.is_known(),
+        "a log installed after the content last changed was never stamped, so \
+         `load_for` would refuse it"
+    );
+    assert!(!log.content_changed, "a fresh log was marked as spanning a change");
+    assert!(log.matches_content(&content()).is_ok());
+}
+
+/// In a shipped match the poison is dead code, which is the other half of what
+/// makes the escape clause safe: refusing to write a poisoned log costs a real
+/// match nothing, because a real match never produces one.
+#[test]
+fn a_shipped_match_never_poisons_its_log() {
+    let mut app = ai_vs_ai(4);
+    tick(&mut app, 2_000);
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert!(!log.content_changed, "an ordinary AI match marked its own log poisoned");
+    assert!(log.content.is_known());
+    assert!(log.validate().is_ok());
+    let path = scratch("shipped-clean");
+    log.save(&path).expect("a shipped match must be able to save its log");
+    MatchLog::load_for(&path, &content()).expect("...and load it back through the front door");
+}
+
+/// `content_changed` is `#[serde(default)]`, so a v2 log written before the
+/// field existed still loads — and loads as *not* poisoned, since nothing can
+/// write a poisoned one to disk.
+#[test]
+fn a_v2_log_without_the_poison_field_still_loads_as_clean() {
+    let mut ok = MatchLog::new(11);
+    ok.content = content().fingerprint();
+    ok.commands.push(LoggedCommand {
+        tick: 2,
+        schedule: CommandTick::Asap,
+        fate: CommandFate::Taken,
+        attribution: Attribution::By(Faction::A),
+        order: LoggedOrder::Place { faction: Faction::A, building: "hq".into(), pos: (1.0, 2.0) },
+    });
+    let text = ok.to_ron().expect("serialize");
+    // Strip the field, as a log written by the build before F2 would not have it.
+    let stripped: String = text
+        .lines()
+        .filter(|l| !l.contains("content_changed"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(!stripped.contains("content_changed"));
+    let back = MatchLog::from_ron(&stripped).expect("a v2 log without the field must still load");
+    assert!(!back.content_changed);
+    assert_eq!(back.commands, ok.commands);
+    assert!(back.matches_content(&content()).is_ok());
 }
