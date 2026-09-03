@@ -514,6 +514,59 @@ impl Content {
     fn validate(&self) -> Result<(), ContentError> {
         let bad = |msg: String| Err(ContentError::Invalid { msg });
 
+        // **Ids are the coordinate everything else is written in**, so they must
+        // be unique *within their namespace* — and that has to be enforced
+        // where content is admitted, not noticed later.
+        //
+        // Every lookup here is `position(|x| x.id == id)`: first match wins. A
+        // duplicate therefore makes an id ambiguous, and the second definition
+        // unreachable by name. Nothing in the sim notices (it runs on indices),
+        // but the command log names content **by id** — so `index -> id ->
+        // index` stops being the identity, and a log that records "place the
+        // second `foundry`" replays as the first one, with different costs and
+        // different buildings, and no error anywhere. That is F-005's rule one
+        // boundary further out: validation that admits values the rest of the
+        // system cannot represent uniquely is worse than none.
+        //
+        // The namespaces are separate on purpose. Units, buildings and
+        // resources are looked up by three different functions, and every
+        // reference in the data says which kind it means (`produces` names
+        // units, `mvp_ai.barracks` names a building, `economy.currency` names a
+        // resource), so a unit and a building *may* share an id — nothing can
+        // confuse them. What may never repeat is an id inside one list.
+        for (what, ids) in [
+            (
+                "unit",
+                self.units.iter().map(|u| u.id.as_str()).collect::<Vec<_>>(),
+            ),
+            (
+                "building",
+                self.buildings
+                    .iter()
+                    .map(|b| b.id.as_str())
+                    .collect::<Vec<_>>(),
+            ),
+            (
+                "resource",
+                self.resources
+                    .iter()
+                    .map(|r| r.id.as_str())
+                    .collect::<Vec<_>>(),
+            ),
+        ] {
+            // A linear scan, not a set: the rosters are tiny, and this way the
+            // error names *both* positions and no hash is involved.
+            for (i, id) in ids.iter().enumerate() {
+                if let Some(j) = ids[..i].iter().position(|earlier| earlier == id) {
+                    return bad(format!(
+                        "duplicate {what} id `{id}` at positions {j} and {i}: an id \
+                         is how the command log names content, so a repeated one \
+                         makes a recorded order replay as a different definition"
+                    ));
+                }
+            }
+        }
+
         for b in &self.buildings {
             if b.alloy_cost == 0 {
                 return bad(format!("building `{}` has no Alloy cost", b.id));

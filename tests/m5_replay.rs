@@ -1830,19 +1830,46 @@ fn the_shipped_app_stops_emitting_orders_once_the_match_is_decided() {
 /// Load `assets/data` with one textual substitution applied to `units.ron`,
 /// into a scratch directory — the way the M4 suites edit content.
 fn content_edited(name: &str, from: &str, to: &str) -> Content {
+    try_content_edited(name, "units.ron", from, to).expect("the edited content still loads")
+}
+
+/// Load `assets/data` with one textual substitution applied to `which` file,
+/// into a scratch directory. Returns the loader's own `Result`, so a test can
+/// assert an edit is **refused**.
+fn try_content_edited(
+    name: &str,
+    which: &str,
+    from: &str,
+    to: &str,
+) -> Result<Content, onus::sim::content::ContentError> {
     let dir = std::env::temp_dir().join(format!("onus-p1-{name}"));
     std::fs::create_dir_all(&dir).expect("scratch content dir");
     for file in ["units.ron", "resources.ron"] {
         let text = std::fs::read_to_string(data_dir().join(file)).expect("read content");
-        let text = if file == "units.ron" {
-            assert!(text.contains(from), "`{from}` is not in units.ron");
+        let text = if file == which {
+            assert!(text.contains(from), "`{from}` is not in {file}");
             text.replacen(from, to, 1)
         } else {
             text
         };
         std::fs::write(dir.join(file), text).expect("write content");
     }
-    Content::load_from_dir(&dir).expect("the edited content still loads")
+    Content::load_from_dir(&dir)
+}
+
+/// The whole line of `units.ron` that declares `id`, duplicated — the shape a
+/// designer's copy-paste produces.
+fn duplicated_definition(name: &str, id: &str, tweak: (&str, &str)) -> String {
+    let text = std::fs::read_to_string(data_dir().join("units.ron")).expect("units.ron");
+    let line = text
+        .lines()
+        .find(|l| l.contains(&format!("id: \"{id}\"")))
+        .unwrap_or_else(|| panic!("no line declares `{id}`"))
+        .to_string();
+    let twin = line.replace(tweak.0, tweak.1);
+    assert_ne!(twin, line, "the twin of `{id}` is not actually different");
+    let _ = name;
+    format!("{line}\n{twin}")
 }
 
 /// The same content set with two unit definitions swapped: identical ids,
@@ -2035,6 +2062,143 @@ fn a_version_one_log_is_refused_rather_than_upgraded() {
         err.contains("version 1"),
         "the refusal does not name the version: {err}"
     );
+}
+
+// ---- the id is a coordinate, so it has to be injective ----------------------
+
+/// **A log names content by id, so an id must name exactly one definition.**
+///
+/// Every lookup is `position(|x| x.id == id)` — first match wins — so a
+/// duplicate makes the second definition unreachable by name, and the round
+/// trip `index -> id -> index` (which item 1b rests on entirely) stops being
+/// the identity. The sim itself never notices: it runs on indices. It surfaces
+/// only when a log written under that content is replayed, as a different
+/// building placed for a different price, with no error anywhere.
+///
+/// So it is refused **at load**, where every other unrepresentable-content rule
+/// lives (F-005): a coordinate that is not injective is not a coordinate.
+#[test]
+fn a_duplicated_content_id_is_impossible_to_load() {
+    // A building id twice — the critic's repro: same line, different price.
+    let foundry = duplicated_definition("dupe", "foundry", ("alloy_cost: 150", "alloy_cost: 999"));
+    let one_line = std::fs::read_to_string(data_dir().join("units.ron"))
+        .expect("units.ron")
+        .lines()
+        .find(|l| l.contains("id: \"foundry\""))
+        .expect("the foundry line")
+        .to_string();
+    let err = try_content_edited("dup-building", "units.ron", &one_line, &foundry)
+        .expect_err("content with two `foundry` definitions must not load");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("foundry") && msg.contains("duplicate"),
+        "the refusal does not name the duplicate: {msg}"
+    );
+
+    // A unit id twice — the whole entry copied, which is what a designer does.
+    let units = std::fs::read_to_string(data_dir().join("units.ron")).expect("units.ron");
+    let start = units.find("        (\n            id: \"worker\",").expect("the worker entry");
+    let end = units[start..].find("\n        ),").expect("the worker entry ends") + start + 11;
+    let entry = &units[start..end];
+    let err = try_content_edited("dup-unit2", "units.ron", entry, &format!("{entry}\n{entry}"))
+        .expect_err("content with two `worker` definitions must not load");
+    assert!(
+        err.to_string().contains("duplicate unit id `worker`"),
+        "the refusal does not name the duplicate unit: {err}"
+    );
+
+    // A resource id twice.
+    let alloy = "            id: \"alloy\",   name: \"Alloy\",   domain: \"machine\",";
+    let dup = format!(
+        "{alloy}\n            building: \"foundry\",\n            acquisition: Mined,\n            powers: [],\n        ),\n        (\n{alloy}"
+    );
+    let err = try_content_edited("dup-resource", "resources.ron", alloy, &dup)
+        .expect_err("content with two `alloy` resources must not load");
+    assert!(
+        err.to_string().contains("duplicate resource id `alloy`"),
+        "the refusal does not name the duplicate resource: {err}"
+    );
+}
+
+/// The invariant the refusal buys, stated over **everything that can load**:
+/// every id resolves back to its own definition. This is the property 1b needs;
+/// the load rule is only how it is guaranteed.
+#[test]
+fn every_id_in_loadable_content_resolves_back_to_its_own_definition() {
+    let cases = vec![
+        ("the shipped content", content()),
+        ("a reordered roster", reordered_roster()),
+        (
+            "an edited roster",
+            content_edited("injective-edit", "mvp_alloy_cost: 10", "mvp_alloy_cost: 11"),
+        ),
+    ];
+    for (what, c) in cases {
+        for (i, u) in c.units.iter().enumerate() {
+            assert_eq!(
+                c.unit_index(&u.id),
+                Some(i),
+                "{what}: unit {i} (`{}`) does not resolve back to itself",
+                u.id
+            );
+        }
+        for (i, b) in c.buildings.iter().enumerate() {
+            assert_eq!(
+                c.building_index(&b.id),
+                Some(i),
+                "{what}: building {i} (`{}`) does not resolve back to itself",
+                b.id
+            );
+        }
+        for (i, r) in c.resources.iter().enumerate() {
+            assert_eq!(
+                c.resources.iter().position(|x| x.id == r.id),
+                Some(i),
+                "{what}: resource {i} (`{}`) does not resolve back to itself",
+                r.id
+            );
+        }
+    }
+}
+
+/// The direction the new rule could break. Two things must still be legal:
+/// the **shipped content**, and an id shared **across** namespaces.
+///
+/// The namespaces are separate because every reference in the data says which
+/// kind it means — `produces` names units, `mvp_ai.barracks` names a building,
+/// `economy.currency` names a resource — and the log tags what it names the
+/// same way (`Place` a building, `Train` a unit). Nothing can confuse them, so
+/// requiring global uniqueness would refuse content that is perfectly
+/// replayable.
+#[test]
+fn the_shipped_content_loads_and_a_shared_id_across_namespaces_is_legal() {
+    let c = content();
+    assert!(!c.units.is_empty() && !c.buildings.is_empty());
+
+    // A *building* named exactly like a *unit*.
+    let shared = content_edited("shared-id", "id: \"gene_vats\"", "id: \"worker\"");
+    assert_eq!(
+        shared.building_index("worker"),
+        shared.buildings.iter().position(|b| b.id == "worker"),
+        "the building lookup did not find the shared id"
+    );
+    assert_eq!(
+        shared.unit_index("worker"),
+        Some(0),
+        "the unit lookup was diverted to the building"
+    );
+    // ...and a log written under it still names the two apart, because the log
+    // records *which kind* it named.
+    let building = shared.building_index("worker").expect("the building");
+    let logged = LoggedOrder::Place {
+        faction: Faction::A,
+        building: shared.buildings[building].id.clone(),
+        pos: (1.0, 2.0),
+    };
+    match logged.to_order(&SimIds::default(), &shared).expect("resolves") {
+        Order::Place { building: back, .. } => assert_eq!(back, building),
+        other => panic!("resolved to {other:?}"),
+    }
 }
 
 // ---- a log names content by id, not by position -----------------------------

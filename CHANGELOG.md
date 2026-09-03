@@ -226,3 +226,6 @@
 - [2026-09-01] Modified: src/sim/replay.rs, src/sim/mod.rs — Phase 1c: LoggedCommand records the schedule and the fate; late commands are logged, not silently dropped; a replay re-pushes on the recorded schedule
 - [2026-09-01] Modified: tests/m5_replay.rs — Phase 1c probes: a missed tick is logged with its reason and replays as dropped; Asap stays Asap
 - [2026-09-01] Modified: FINDINGS.md — F-013: the log's content fingerprint, id-naming and schedule/fate; migration is a refusal
+- [2026-09-02] Modified: tests/critic_m5.rs — adjudicated the v2 log-format patch (late-command probe rewritten, strengthened); pass-5 probes for Phase 1 (content-id injectivity, fingerprint field coverage, stamp vs running content, schedule/fate validator, v1 refusal)
+- [2026-09-03] Modified: src/sim/content.rs — critic F1: duplicate unit/building/resource ids are refused at load; an id is the log's coordinate, so it must be injective
+- [2026-09-03] Modified: tests/m5_replay.rs — F1 probes: a duplicated id cannot load; every id in loadable content resolves back to its own definition; a cross-namespace shared id stays legal

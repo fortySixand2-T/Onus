@@ -12,11 +12,13 @@ use onus::sim::ai::AiCommanders;
 use onus::sim::combat::{Casualties, Health};
 use onus::sim::content::Content;
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
-use onus::sim::replay::{LoggedCommand, LoggedOrder, MatchLog, SimId, SimIds};
+use onus::sim::replay::{
+    CommandFate, LoggedCommand, LoggedOrder, MatchLog, SimId, SimIds, LOG_FORMAT_VERSION,
+};
 use onus::sim::spatial::Faction;
 use onus::sim::{
-    AiJournal, Attribution, CommandLog, CommandQueue, MatchState, MoveTarget, Order, Position,
-    RateReport, ReplaySource, ResourceNode, StateHashLog,
+    AiJournal, Attribution, CommandLog, CommandQueue, CommandTick, MatchState, MoveTarget, Order,
+    Position, RateReport, ReplaySource, ResourceNode, StateHashLog,
 };
 
 // ---- harness (duplicated deliberately: the critic depends on no fixture the
@@ -226,6 +228,8 @@ fn anything_the_writer_accepts_the_reader_must_accept() {
     let mut log = MatchLog::new(9);
     log.commands.push(LoggedCommand {
         tick: 4,
+        schedule: CommandTick::Asap,
+        fate: CommandFate::Taken,
         attribution: Attribution::By(Faction::A),
         order: LoggedOrder::MoveTo {
             units: vec![SimId::UNIDENTIFIED.0],
@@ -250,8 +254,14 @@ fn a_damaged_log_file_is_an_error_never_a_panic() {
     let mut good = MatchLog::new(3);
     good.commands.push(LoggedCommand {
         tick: 1,
+        schedule: CommandTick::Asap,
+        fate: CommandFate::Taken,
         attribution: Attribution::SelfSigned,
-        order: LoggedOrder::Place { faction: Faction::A, building: 0, pos: (1.0, 2.0) },
+        order: LoggedOrder::Place {
+            faction: Faction::A,
+            building: "hq".into(),
+            pos: (1.0, 2.0),
+        },
     });
     let text = good.to_ron().expect("a good log serializes");
 
@@ -261,7 +271,10 @@ fn a_damaged_log_file_is_an_error_never_a_panic() {
         ("truncated", text[..text.len() / 2].to_string()),
         ("byte-truncated", text[..text.len() - 1].to_string()),
         ("garbage", "not ron at all }{".to_string()),
-        ("version", text.replacen("version: 1", "version: 99", 1)),
+        (
+            "version",
+            text.replacen(&format!("version: {LOG_FORMAT_VERSION}"), "version: 99", 1),
+        ),
     ] {
         let path = scratch(&format!("damaged-{name}"));
         std::fs::write(&path, &body).unwrap();
@@ -355,19 +368,89 @@ fn two_commands_on_one_tick_keep_their_push_order() {
     assert_eq!(app.world().get::<MoveTarget>(u).map(|m| m.0.x), Some(30.0), "the last command did not win");
 }
 
-/// A command whose tick has gone by is dropped, never applied late, and never
-/// written into the log (a log entry the sim did not act on would replay as an
-/// action the recording never took).
+/// A command whose tick has gone by is **dropped and never applied late**.
+///
+/// **Phase 1 (item 1c) changed what the log does with it, and I accept that
+/// change.** The original form of this probe asserted the command was not
+/// logged at all; that assertion was a *means*, and the end it served was the
+/// worry written beside it — "a log entry the sim did not act on would replay
+/// as an action the recording never took". 1c reaches the same end by the
+/// opposite means: the drop is recorded, with the schedule it carried and
+/// `CommandFate::Late`, and a replay re-pushes on the **recorded schedule** so
+/// it is late again and applied by nobody. That is strictly more than the old
+/// form gave, because a log that omitted the command would also describe a
+/// queue the replay never held.
+///
+/// So the end is what is asserted here, end to end and through a file — and
+/// with the replay proved to have actually run, since "the replay did not apply
+/// it" passes vacuously if the replay refused the log outright.
 #[test]
-fn a_late_command_is_dropped_and_is_not_written_into_the_log() {
+fn a_late_command_is_dropped_never_applied_and_replays_as_dropped() {
     let mut app = sim_app_with(0, 0);
     let u = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    let v = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(0.0, 40.0));
     tick(&mut app, 10);
+    // A command whose tick has gone, and — on the same tick — one that has not:
+    // the fates have to be decided per command, and the order kept.
     push_at(&mut app, 2, Order::MoveTo { units: vec![u], dest: Vec2::new(1.0, 0.0) }.issued_by(Faction::A));
+    push(&mut app, Order::MoveTo { units: vec![v], dest: Vec2::new(2.0, 0.0) }.issued_by(Faction::A));
     tick(&mut app, 3);
+
     assert!(app.world().get::<MoveTarget>(u).is_none(), "a stale command was applied");
-    assert!(app.world().resource::<CommandLog>().commands().is_empty(), "a command that never applied is in the log");
+    assert_eq!(
+        app.world().get::<MoveTarget>(v).map(|m| m.0.x),
+        Some(2.0),
+        "the command that was in time was dropped along with the late one"
+    );
     assert_eq!(app.world().resource::<CommandLog>().late(), 1);
+
+    // Recorded: both of them, in push order, each with its own schedule and fate.
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert_eq!(log.commands.len(), 2, "the account of the tick is incomplete");
+    assert_eq!(log.commands[0].fate, CommandFate::Late);
+    assert_eq!(log.commands[0].schedule, CommandTick::At(2));
+    assert!(log.commands[0].tick > 2, "the log does not say when the sim saw it");
+    assert_eq!(log.commands[1].fate, CommandFate::Taken);
+    assert_eq!(log.commands[1].schedule, CommandTick::Asap);
+    assert_eq!(log.commands[0].tick, log.commands[1].tick, "the two were taken on one tick");
+
+    // The account survives a file exactly.
+    assert!(log.validate().is_ok(), "the sim wrote an account it calls impossible");
+    let path = scratch("late-account");
+    log.save(&path).expect("save");
+    let back = MatchLog::load(&path).expect("load");
+    assert_eq!(back.commands, log.commands, "a `Late` entry did not survive the file");
+
+    // ...and replaying it applies the late one exactly as the recording did:
+    // never — while the timely one still lands, so the replay demonstrably ran.
+    let mut r = sim_app_with(0, 0);
+    let u2 = spawn_unit(&mut r, "ripper", Faction::A, Vec2::ZERO);
+    let v2 = spawn_unit(&mut r, "ripper", Faction::A, Vec2::new(0.0, 40.0));
+    r.insert_resource(CommandLog::new(back.seed));
+    r.insert_resource(ReplaySource::new(back.clone()));
+    tick(&mut r, 16);
+    let source = r.world().resource::<ReplaySource>();
+    assert_eq!(
+        source.rejection(),
+        None,
+        "the replay refused the log outright, so this probe proves nothing"
+    );
+    assert_eq!(source.cursor(), 2, "the replay never fed the commands");
+    assert!(
+        r.world().get::<MoveTarget>(u2).is_none(),
+        "a logged late command was applied by the replay"
+    );
+    assert_eq!(
+        r.world().get::<MoveTarget>(v2).map(|m| m.0.x),
+        Some(2.0),
+        "the replay dropped the command that was in time"
+    );
+    assert_eq!(
+        r.world().resource::<CommandLog>().log().commands,
+        back.commands,
+        "the replay recorded a different account of the drop"
+    );
+    assert_eq!(r.world().resource::<CommandLog>().late(), 1, "the replay's own drop count differs");
 }
 
 // ---- 4. the state hash ------------------------------------------------------
@@ -577,6 +660,8 @@ fn a_log_that_names_an_impossible_entity_neither_panics_nor_guesses() {
     let mut damaged = log.clone();
     damaged.commands.push(LoggedCommand {
         tick: 10,
+        schedule: CommandTick::Asap,
+        fate: CommandFate::Taken,
         attribution: Attribution::By(Faction::A),
         order: LoggedOrder::MoveTo { units: vec![9_999_999], dest: (5.0, 5.0) },
     });
@@ -2129,4 +2214,525 @@ fn a_shipped_match_never_names_anything_it_cannot_name() {
     assert_eq!(log.unrecorded(), 0, "a shipped chain failed to record a command");
     assert_eq!(log.late(), 0, "a shipped chain applied a command late");
     assert!(log.log().validate().is_ok());
+}
+
+// ============================================================================
+// Pass 5 — probes against Phase 1 (log format v2: content fingerprint, content
+// named by id, recorded schedule and fate).
+// ============================================================================
+
+fn content_dir_with(name: &str, units_ron: String) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("onus-critic-p1-{name}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("scratch content dir");
+    std::fs::write(dir.join("units.ron"), units_ron).expect("write units.ron");
+    std::fs::write(
+        dir.join("resources.ron"),
+        std::fs::read_to_string(data_dir().join("resources.ron")).expect("read resources.ron"),
+    )
+    .expect("write resources.ron");
+    dir
+}
+
+/// The shipped roster with **one building id present twice** — the second copy
+/// differing only in its Alloy cost. Nothing in `Content::load_from_dir` or
+/// `Content::validate` rejects this today, so it is content a designer can
+/// write and the game will happily run.
+fn content_with_a_duplicate_building_id() -> Content {
+    let text = std::fs::read_to_string(data_dir().join("units.ron")).expect("units.ron");
+    let original = text
+        .lines()
+        .find(|l| l.contains("id: \"foundry\""))
+        .expect("the foundry line")
+        .to_string();
+    let twin = original.replace("alloy_cost: 150", "alloy_cost: 999");
+    assert_ne!(twin, original, "the twin is not actually different");
+    let edited = text.replacen(&original, &format!("{original}\n{twin}"), 1);
+    Content::load_from_dir(&content_dir_with("dupe", edited))
+        .expect("content with a duplicated id still loads — that is the point")
+}
+
+/// **The coordinate 1b replaced an index with has to be injective.**
+///
+/// A log now names content by id and a replay resolves that id back to an index
+/// with `Content::building_index` / `unit_index`, which return the *first*
+/// match. So the round trip `index -> id -> index` is the identity only while
+/// ids are unique — and nothing checks that they are. F-011 retired
+/// `Entity::to_bits()` because it was a coordinate that could mean something
+/// else later; an id that two definitions share is a coordinate that means
+/// something else *now*.
+#[test]
+fn every_content_id_resolves_back_to_the_definition_it_came_from() {
+    for (what, c) in [
+        ("the shipped content", content()),
+        ("content a designer could write", content_with_a_duplicate_building_id()),
+    ] {
+        for (i, b) in c.buildings.iter().enumerate() {
+            assert_eq!(
+                c.building_index(&b.id),
+                Some(i),
+                "{what}: building {i} (`{}`) does not resolve back to itself, so a \
+                 log naming it replays as a different building",
+                b.id
+            );
+        }
+        for (i, u) in c.units.iter().enumerate() {
+            assert_eq!(
+                c.unit_index(&u.id),
+                Some(i),
+                "{what}: unit {i} (`{}`) does not resolve back to itself",
+                u.id
+            );
+        }
+    }
+}
+
+/// The same defect, end to end: a log that validates, whose fingerprint matches
+/// exactly, replaying into a **different match**.
+#[test]
+fn a_log_naming_a_duplicated_content_id_does_not_replay_as_a_different_match() {
+    let c = content_with_a_duplicate_building_id();
+    let twin = c
+        .buildings
+        .iter()
+        .enumerate()
+        .filter(|(_, b)| b.id == "foundry")
+        .map(|(i, _)| i)
+        .collect::<Vec<_>>();
+    assert_eq!(twin.len(), 2, "the fixture did not duplicate the id");
+    let expensive = twin[1];
+
+    let play = |replay: Option<MatchLog>| -> (u32, MatchLog, u64) {
+        let mut app = App::new();
+        app.add_plugins(MinimalPlugins)
+            .insert_resource(Time::<Fixed>::from_hz(60.0))
+            .insert_resource(c.clone())
+            .init_resource::<CommandQueue>()
+            .init_resource::<RateReport>()
+            .init_resource::<Casualties>()
+            .insert_resource(Stockpiles::starting(5_000));
+        onus::add_sim_systems(&mut app, Update);
+        let def = c.building_index("hq").expect("hq");
+        app.world_mut().spawn((
+            Position(Vec2::new(-100.0, 0.0)),
+            Building { def },
+            Faction::A,
+            ProductionQueue::default(),
+        ));
+        app.world_mut().spawn((
+            Position(Vec2::new(100.0, 0.0)),
+            Building { def },
+            Faction::B,
+            ProductionQueue::default(),
+        ));
+        let live = replay.is_none();
+        if let Some(log) = replay {
+            app.insert_resource(CommandLog::new(log.seed));
+            app.insert_resource(ReplaySource::new(log));
+        } else {
+            app.insert_resource(CommandLog::new(5));
+        }
+        for t in 0..40u32 {
+            if live && t == 10 {
+                // Names the *second* foundry — the expensive one.
+                app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+                    Order::Place {
+                        faction: Faction::A,
+                        building: expensive,
+                        pos: Vec2::new(-200.0, 0.0),
+                    }
+                    .issued_by(Faction::A),
+                );
+            }
+            step(&mut app);
+        }
+        let spent = 5_000 - app.world().resource::<Stockpiles>().alloy(Faction::A);
+        let log = app.world().resource::<CommandLog>().log().clone();
+        let h = onus::sim::state_hash(app.world_mut());
+        (spent, log, h)
+    };
+
+    let (rec_spent, log, rec_hash) = play(None);
+    assert_eq!(rec_spent, 999, "the recording did not charge the duplicate's cost");
+    assert!(log.validate().is_ok(), "the recording is not a valid log");
+    assert!(
+        log.matches_content(&c).is_ok(),
+        "the fingerprint refused the very content the match was played with"
+    );
+    let (rep_spent, again, rep_hash) = play(Some(log.clone()));
+    assert_eq!(
+        rec_spent, rep_spent,
+        "the replay charged {rep_spent} where the recording charged {rec_spent}: \
+         the log named a duplicated id and resolved to a different definition"
+    );
+    assert_eq!(rec_hash, rep_hash, "the replayed world is not the recorded world");
+    assert_eq!(again.commands, log.commands, "the replay logged a different stream");
+}
+
+// ---- 1a: the fingerprint --------------------------------------------------
+
+/// **The fingerprint must cover every field, and must go on covering them.**
+///
+/// `Content::fingerprint`'s doc says "every field of every definition". The
+/// shipped test spot-checks five fields, which cannot notice a *new* field
+/// going unhashed — and a field the fingerprint does not see is a false accept,
+/// which is the silent wrong replay the whole item exists to prevent. This is
+/// the standing guard: every field name of every content struct must appear in
+/// the body of `fingerprint()`.
+#[test]
+fn the_fingerprint_reads_every_field_of_every_content_struct() {
+    let src = std::fs::read_to_string(src_dir().join("sim/content.rs")).expect("content.rs");
+    let body_at = src.find("pub fn fingerprint(").expect("fingerprint exists");
+    let body_end = body_at
+        + src[body_at..]
+            .find("\n    }\n")
+            .expect("fingerprint has a body");
+    let body = &src[body_at..body_end];
+
+    // Field names of the content structs, read off the source.
+    let structs = [
+        "Cost", "UnitDef", "BuildingDef", "ArmyItem", "AiDef", "NemesisBonus", "CombatDef",
+        "ResourceDef", "EconomyDef", "Content",
+    ];
+    let mut missing: Vec<String> = Vec::new();
+    for name in structs {
+        let at = src
+            .find(&format!("pub struct {name} {{"))
+            .unwrap_or_else(|| panic!("`pub struct {name}` not found"));
+        let end = at + src[at..].find("\n}\n").expect("struct has an end");
+        for line in src[at..end].lines() {
+            let code = line.split("//").next().unwrap_or("").trim();
+            let Some(field) = code.strip_prefix("pub ") else { continue };
+            let Some(field) = field.split(':').next() else { continue };
+            let field = field.trim();
+            if field.is_empty() || !field.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                continue;
+            }
+            if !body.contains(field) {
+                missing.push(format!("{name}.{field}"));
+            }
+        }
+    }
+    assert!(
+        missing.is_empty(),
+        "`Content::fingerprint` says it covers every field, but never reads \
+         these — an edit to one of them would leave a stale log looking valid: \
+         {missing:#?}"
+    );
+}
+
+/// The sim stamps its own logs, on every path, including a match that is over
+/// before it starts. An unstamped log is one `load_for` refuses, so the
+/// producer has to be incapable of writing one.
+#[test]
+fn every_log_the_shipped_chain_writes_is_stamped_and_loadable() {
+    // (a) an ordinary match.
+    let mut app = ai_vs_ai(4);
+    tick(&mut app, 200);
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert!(log.content.is_known(), "an ordinary match wrote an unstamped log");
+    assert!(log.matches_content(&content()).is_ok());
+
+    // (b) a match decided on its very first tick: the play block never runs
+    // past tick 0, and the stamp must still happen.
+    let mut over = sim_app_with(0, 0);
+    spawn_building(&mut over, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+    let b = spawn_building(&mut over, "hq", Faction::B, Vec2::new(100.0, 0.0));
+    step(&mut over);
+    over.world_mut().despawn(b);
+    step(&mut over);
+    assert!(over.world().resource::<MatchState>().is_over(), "the fixture did not decide");
+    let short = over.world().resource::<CommandLog>().log().clone();
+    assert!(
+        short.content.is_known(),
+        "a match that ended immediately wrote an unstamped log, which `load_for` refuses"
+    );
+
+    // (c) and the stamp keeps working after the match is over.
+    tick(&mut over, 20);
+    assert!(over.world().resource::<CommandLog>().log().content.is_known());
+
+    // (d) a log the sim wrote always survives the front door, through a file.
+    let path = scratch("stamped");
+    log.save(&path).expect("save");
+    MatchLog::load_for(&path, &content()).expect("the sim wrote a log its own front door refuses");
+}
+
+/// The fingerprint has to describe the content the sim is **actually running
+/// on**. `stamp_content` stamps once and never re-stamps, and its doc argues
+/// that is safe because "the first stamp is the one the recorded commands were
+/// taken under". Commands recorded after a mid-match content change were not.
+#[test]
+fn the_stamp_describes_the_content_every_recorded_command_was_taken_under() {
+    let a = content();
+    let b = Content::load_from_dir(&content_dir_with(
+        "swapped",
+        std::fs::read_to_string(data_dir().join("units.ron"))
+            .expect("units.ron")
+            .replacen("mvp_alloy_cost: 10,", "mvp_alloy_cost: 11,", 1),
+    ))
+    .expect("the edited content loads");
+    assert_ne!(a.fingerprint().hash(), b.fingerprint().hash(), "the fixture changed nothing");
+
+    let mut app = sim_app_with(5_000, 0);
+    let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+    spawn_building(&mut app, "hq", Faction::B, Vec2::new(100.0, 0.0));
+    app.insert_resource(CommandLog::new(3));
+    tick(&mut app, 3);
+    // The content the sim runs on changes; the stamp does not.
+    app.insert_resource(b.clone());
+    push(&mut app, Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A));
+    tick(&mut app, 3);
+
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert!(!log.commands.is_empty(), "nothing was recorded after the swap");
+    let ran_under = app.world().resource::<Content>().fingerprint();
+    assert_eq!(
+        log.content.hash(),
+        ran_under.hash(),
+        "the log is stamped with content the recorded commands were *not* taken \
+         under: it says [{}] and the sim was running [{}]. A replay against the \
+         stamped content is accepted and plays a different match",
+        log.content,
+        ran_under
+    );
+}
+
+// ---- 1b: content named by id, and the producer that must agree -------------
+
+/// The content-index refusal has to sit where the nameability check sits:
+/// ahead of every charge and every effect. An order naming a definition this
+/// build does not have charges nothing, queues nothing, places nothing, and is
+/// not logged — in the record path and the replay path alike.
+#[test]
+fn an_order_naming_content_this_build_lacks_is_free_and_unlogged() {
+    let mut f = nameable_fixture();
+    tick(&mut f.app, 3);
+    let start = alloy(&f.app, Faction::A);
+    let buildings = f.app.world().resource::<Content>().buildings.len();
+    let units = f.app.world().resource::<Content>().units.len();
+    let before_ids = issued(&f.app);
+    let queued = |app: &App, e: Entity| {
+        app.world().get::<ProductionQueue>(e).map(|q| q.items.len()).unwrap_or(0)
+    };
+    let q0 = queued(&f.app, f.hq);
+    let placed = |app: &mut App| app.world_mut().query::<&Building>().iter(app.world()).count();
+    let p0 = placed(&mut f.app);
+
+    for o in [
+        Order::Place { faction: Faction::A, building: buildings, pos: Vec2::new(-140.0, 40.0) }
+            .issued_by(Faction::A),
+        Order::Place { faction: Faction::A, building: usize::MAX, pos: Vec2::new(-160.0, 40.0) }
+            .issued_by(Faction::A),
+        Order::Train { building: f.hq, unit: units }.issued_by(Faction::A),
+        Order::Train { building: f.hq, unit: usize::MAX }.issued_by(Faction::A),
+    ] {
+        push(&mut f.app, o);
+    }
+    tick(&mut f.app, 3);
+
+    assert_eq!(alloy(&f.app, Faction::A), start, "an unknown definition was charged for");
+    assert_eq!(queued(&f.app, f.hq), q0, "an unknown unit was queued");
+    assert_eq!(placed(&mut f.app), p0, "an unknown building was placed");
+    assert_eq!(issued(&f.app), before_ids, "refusing an unknown definition issued an id");
+    let log = f.app.world().resource::<CommandLog>();
+    assert!(
+        log.commands().is_empty(),
+        "an order the sim refused is in the log, so a replay will re-run it: {:?}",
+        log.commands()
+    );
+    assert!(log.unnameable() >= 4, "the refusals were not counted");
+    assert!(log.log().validate().is_ok());
+    assert!(log.log().matches_content(&content()).is_ok());
+}
+
+// ---- 1c: the schedule and the fate ------------------------------------------
+
+/// `validate` must accept exactly the `(schedule, fate)` pairs the sim can
+/// produce — no more (or it admits a log describing a run that never happened)
+/// and no fewer (or the sim writes logs its own validator refuses, which is
+/// pass-2's F3 all over again).
+#[test]
+fn the_schedule_and_fate_the_validator_accepts_are_the_ones_the_sim_produces() {
+    let entry = |tick: u32, schedule: CommandTick, fate: CommandFate| {
+        let mut log = MatchLog::new(1);
+        log.content = content().fingerprint();
+        log.commands.push(LoggedCommand {
+            tick,
+            schedule,
+            fate,
+            attribution: Attribution::By(Faction::A),
+            order: LoggedOrder::MoveTo { units: vec![0], dest: (1.0, 2.0) },
+        });
+        log
+    };
+    // The three the sim can produce.
+    for (t, s, f) in [
+        (5u32, CommandTick::Asap, CommandFate::Taken),
+        (5, CommandTick::At(5), CommandFate::Taken),
+        (5, CommandTick::At(2), CommandFate::Late),
+    ] {
+        assert!(entry(t, s, f).validate().is_ok(), "the sim's own ({s:?}, {f:?}) is refused");
+    }
+    // Everything else describes a run the sim cannot have had.
+    for (t, s, f) in [
+        (5u32, CommandTick::Asap, CommandFate::Late),
+        (5, CommandTick::At(5), CommandFate::Late),
+        (5, CommandTick::At(2), CommandFate::Taken),
+        (5, CommandTick::At(9), CommandFate::Taken),
+        (5, CommandTick::At(9), CommandFate::Late),
+        (0, CommandTick::At(0), CommandFate::Late),
+    ] {
+        assert!(
+            entry(t, s, f).validate().is_err(),
+            "({s:?}, {f:?}) at tick {t} was accepted, but no sim run produces it"
+        );
+    }
+}
+
+/// A whole match with late commands, real commands and content orders mixed —
+/// recorded, saved, loaded through the **front door**, replayed: every tick's
+/// hash, the registry, and the log file must all come back identical.
+#[test]
+fn a_match_with_late_commands_replays_byte_for_byte() {
+    const TICKS: u32 = 300;
+    let foundry = content().building_index("foundry").expect("foundry");
+    let script = |f: &mut Named, t: u32| {
+        let (worker, node, hq, bare) = (f.worker, f.node, f.hq, f.bare);
+        match t {
+            10 => f.app.world_mut().resource_mut::<CommandQueue>().0.push_at(
+                3,
+                Order::MoveTo { units: vec![worker], dest: Vec2::new(-10.0, 0.0) }
+                    .issued_by(Faction::A),
+            ),
+            11 => push(f_app(f), Order::Place { faction: Faction::A, building: foundry, pos: Vec2::new(-140.0, 40.0) }.issued_by(Faction::A)),
+            20 => push(f_app(f), Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A)),
+            25 => f.app.world_mut().resource_mut::<CommandQueue>().0.push_at(
+                1,
+                Order::Gather { units: vec![worker], node, node_pos: Vec2::new(-60.0, 60.0) }
+                    .issued_by(Faction::A),
+            ),
+            30 => push(f_app(f), Order::Gather { units: vec![worker], node, node_pos: Vec2::new(-60.0, 60.0) }.issued_by(Faction::A)),
+            35 => push(f_app(f), Order::MoveTo { units: vec![worker, bare], dest: Vec2::new(-30.0, 0.0) }.issued_by(Faction::A)),
+            _ => {}
+        }
+    };
+    let mut f = nameable_fixture();
+    f.app.insert_resource(StateHashLog::default());
+    let mut rec_ids = Vec::new();
+    for t in 0..TICKS {
+        script(&mut f, t);
+        step(&mut f.app);
+        rec_ids.push(issued(&f.app));
+    }
+    let recorded = f.app.world().resource::<StateHashLog>().clone();
+    let log = f.app.world().resource::<CommandLog>().log().clone();
+    assert!(
+        log.commands.iter().any(|c| c.fate == CommandFate::Late),
+        "the script produced no late command, so nothing is being tested"
+    );
+    assert!(log.commands.iter().any(|c| c.fate == CommandFate::Taken));
+    let path = scratch("late-match");
+    log.save(&path).expect("save");
+    let loaded = MatchLog::load_for(&path, &content()).expect("the front door refused the sim's own log");
+
+    let mut g = nameable_fixture();
+    g.app.insert_resource(StateHashLog::default());
+    g.app.insert_resource(CommandLog::new(loaded.seed));
+    g.app.insert_resource(ReplaySource::new(loaded));
+    let mut rep_ids = Vec::new();
+    for _ in 0..TICKS {
+        step(&mut g.app);
+        rep_ids.push(issued(&g.app));
+    }
+    let source = g.app.world().resource::<ReplaySource>();
+    assert_eq!(source.rejection(), None, "the replay was refused, so this proves nothing");
+    assert!(source.cursor() > 0, "the replay fed nothing");
+    assert_eq!(rec_ids, rep_ids, "the registries drifted");
+    assert_eq!(
+        recorded.first_divergence(&g.app.world().resource::<StateHashLog>().clone()),
+        None,
+        "a match containing late commands did not replay"
+    );
+    let again = g.app.world().resource::<CommandLog>().log().clone();
+    let path2 = scratch("late-match-again");
+    again.save(&path2).expect("save");
+    assert_eq!(
+        std::fs::read_to_string(&path).unwrap(),
+        std::fs::read_to_string(&path2).unwrap(),
+        "the replay wrote a different log than it consumed"
+    );
+    assert_eq!(
+        f.app.world().resource::<CommandLog>().late(),
+        g.app.world().resource::<CommandLog>().late(),
+        "the replay dropped a different number of commands than the recording"
+    );
+}
+
+fn f_app(f: &mut Named) -> &mut App {
+    &mut f.app
+}
+
+// ---- the version bump -------------------------------------------------------
+
+/// A version-1 log is refused **by name**, and never partially deserialized
+/// into a v2 struct. The three items are one format: all of them are absent
+/// from a v1 log, so there is nothing to half-read.
+#[test]
+fn a_version_one_log_is_refused_and_never_half_read() {
+    assert_eq!(LOG_FORMAT_VERSION, 2, "the bump did not happen");
+    // A v1 log, spelled exactly as the old format wrote it: no `content`, no
+    // `schedule`, no `fate`, and content named by index.
+    let v1 = r#"(
+    version: 1,
+    seed: 7,
+    commands: [
+        (
+            tick: 4,
+            attribution: By(A),
+            order: Place(
+                faction: A,
+                building: 0,
+                pos: (1.0, 2.0),
+            ),
+        ),
+    ],
+)"#;
+    let path = scratch("v1");
+    std::fs::write(&path, v1).unwrap();
+    for got in [MatchLog::from_ron(v1), MatchLog::load(&path)] {
+        let err = got.expect_err("a version-1 log was accepted by a build that writes version 2");
+        assert!(
+            err.contains('1') && (err.contains("version") || err.contains("parse")),
+            "a v1 log was refused, but not in terms a human can act on: {err}"
+        );
+    }
+    assert!(MatchLog::load_for(&path, &content()).is_err());
+    // And a v2 log with the version rewritten to 1 is refused too, so the
+    // refusal is the version check and not an accident of the old shape.
+    let mut ok = MatchLog::new(7);
+    ok.content = content().fingerprint();
+    let text = ok.to_ron().expect("serialize");
+    let downgraded = text.replacen(&format!("version: {LOG_FORMAT_VERSION}"), "version: 1", 1);
+    assert!(MatchLog::from_ron(&downgraded).is_err(), "a v1-labelled log was accepted");
+}
+
+/// An unstamped log is refused by the front door but still **readable** — the
+/// diagnostic path the design promises, checked rather than assumed.
+#[test]
+fn a_refused_log_is_still_readable_for_diagnosis() {
+    let mut unstamped = MatchLog::new(4);
+    unstamped.commands.push(LoggedCommand {
+        tick: 1,
+        schedule: CommandTick::Asap,
+        fate: CommandFate::Taken,
+        attribution: Attribution::By(Faction::A),
+        order: LoggedOrder::Place { faction: Faction::A, building: "hq".into(), pos: (0.0, 0.0) },
+    });
+    assert!(!unstamped.content.is_known());
+    let path = scratch("unstamped");
+    unstamped.save(&path).expect("an unstamped log still writes");
+    let back = MatchLog::load(&path).expect("...and still reads, for diagnosis");
+    assert_eq!(back.commands, unstamped.commands);
+    assert!(back.matches_content(&content()).is_err(), "an unstamped log was accepted to play");
+    assert!(MatchLog::load_for(&path, &content()).is_err());
 }
