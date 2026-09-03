@@ -439,6 +439,18 @@ pub struct MatchLog {
     /// refusal. Stamped by the sim itself (`replay::stamp_content`), never by
     /// the caller.
     pub content: ContentFingerprint,
+    /// The content **changed while this match was being recorded**, so no single
+    /// fingerprint describes the commands in this log: the ones before the
+    /// change were taken under different data than the ones after. Such a log
+    /// is refused by [`validate`](Self::validate) — at both boundaries — because
+    /// there is no content it could be replayed against correctly.
+    ///
+    /// `#[serde(default)]`: a log that does not say it was poisoned is not
+    /// poisoned. The flag only ever *adds* a refusal, and nothing can write a
+    /// poisoned log to disk in the first place (the write refuses), so it is a
+    /// guard on in-memory logs and on hand-edited ones.
+    #[serde(default)]
+    pub content_changed: bool,
     pub commands: Vec<LoggedCommand>,
 }
 
@@ -448,6 +460,7 @@ impl Default for MatchLog {
             version: LOG_FORMAT_VERSION,
             seed: 0,
             content: ContentFingerprint::unknown(),
+            content_changed: false,
             commands: Vec::new(),
         }
     }
@@ -490,6 +503,15 @@ impl MatchLog {
     /// version this build does not produce, reading refuses one it does not
     /// understand, and those are different sentences about the same number.
     pub fn validate(&self) -> Result<(), String> {
+        if self.content_changed {
+            return Err(
+                "log: the content changed while this match was being recorded, so \
+                 no single fingerprint describes it — the commands before the \
+                 change were taken under different data than the ones after, and \
+                 there is no content this log could be replayed against correctly"
+                    .to_string(),
+            );
+        }
         let mut last = 0u32;
         for c in &self.commands {
             for f in c.order.floats() {
@@ -581,6 +603,16 @@ impl MatchLog {
     /// [`load`](Self::load) does *not* run it, on purpose, so a log that fails
     /// here can still be read and inspected.
     pub fn matches_content(&self, content: &Content) -> Result<(), String> {
+        // A log that describes no single content matches none: the backstop
+        // (`feed_replay`) checks this too, so an in-memory poisoned log cannot
+        // be replayed even though it never went through a file.
+        if self.content_changed {
+            return Err(
+                "log: the content changed while this match was being recorded, so \
+                 it describes no single content and matches none"
+                    .to_string(),
+            );
+        }
         let mine = content.fingerprint();
         if !self.content.is_known() {
             return Err(format!(
@@ -732,16 +764,27 @@ impl CommandLog {
         }
     }
 
-    /// Stamp the content this match is being played with, once.
+    /// Stamp the content this match is being played with.
     ///
-    /// The sim does this itself (`replay::stamp_content`, which runs every tick
-    /// and does nothing after the first), so no caller can forget and no log the
-    /// sim writes is missing its fingerprint. Idempotent, and it never
-    /// *re-*stamps: content cannot change mid-match, and if it somehow did, the
-    /// first stamp is the one the recorded commands were taken under.
+    /// The sim does this itself (`replay::stamp_content`), so no caller can
+    /// forget and no log the sim writes is missing its fingerprint.
+    ///
+    /// It stamps the content the sim is **actually running on**, not the first
+    /// one it ever saw. Nothing shipped replaces the `Content` resource
+    /// mid-match, but "nothing does it today" is not a property — and a log
+    /// stamped with content its later commands were *not* taken under would be
+    /// accepted by the front door and replay as a different match, which is the
+    /// exact failure the fingerprint exists to prevent. So a change is followed,
+    /// and the log is marked as describing no single content
+    /// ([`MatchLog::content_changed`]), which `validate` refuses at both
+    /// boundaries — loud at the write, where the F3 rule requires it.
     pub(crate) fn stamp_content(&mut self, content: &Content) {
+        let now = content.fingerprint();
         if !self.log.content.is_known() {
-            self.log.content = content.fingerprint();
+            self.log.content = now;
+        } else if self.log.content.hash() != now.hash() {
+            self.log.content = now;
+            self.log.content_changed = true;
         }
     }
 
@@ -837,17 +880,24 @@ impl ReplaySource {
 /// Stamp the command log with the content the match is being played with.
 ///
 /// Runs **ungated**, so a match that is decided on its first tick still stamps
-/// the log it recorded, and runs every tick because the stamp is one comparison
-/// after the first (the fingerprint is computed once). It is a system rather
+/// the log it recorded, and every tick, so a content change is followed rather
+/// than assumed away (the fingerprint itself is only recomputed when it can
+/// have changed). It is a system rather
 /// than a constructor argument because the log is installed with the chain
 /// (`init_resource`) and the content is match setup: a `CommandLog::new(seed)`
 /// in a fixture cannot know the content, and a log that has to be stamped by
 /// its caller is a log that will eventually go unstamped — which is the exact
 /// shape of defect this milestone keeps paying for.
 pub fn stamp_content(content: Res<Content>, log: Option<ResMut<CommandLog>>) {
-    if let Some(mut log) = log {
-        log.stamp_content(&content);
+    let Some(mut log) = log else { return };
+    // The fingerprint is a walk over the whole content, so it is computed when
+    // it can have changed and not on every tick: the first time this log is
+    // seen (a fixture may install a fresh log mid-match), and whenever the
+    // `Content` resource itself changes.
+    if log.log().content.is_known() && !content.is_changed() {
+        return;
     }
+    log.stamp_content(&content);
 }
 
 /// Feed this tick's logged commands back onto the ordinary command queue.

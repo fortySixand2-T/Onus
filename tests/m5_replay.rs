@@ -2201,6 +2201,85 @@ fn the_shipped_content_loads_and_a_shared_id_across_namespaces_is_legal() {
     }
 }
 
+/// **The stamp must describe the content the recorded commands were actually
+/// taken under.** It used to be written once and never revisited, justified by
+/// "content cannot change mid-match" — which is a claim about callers, not a
+/// property of the code. A log stamped with content its later commands were not
+/// taken under passes the front door and replays as a different match: the
+/// exact failure 1a exists to prevent, reached through the sentence that
+/// explained why it could not happen.
+#[test]
+fn a_content_change_mid_match_is_followed_and_poisons_the_log() {
+    let before = content();
+    let after = content_edited("mid-match", "mvp_alloy_cost: 10", "mvp_alloy_cost: 11");
+    assert_ne!(before.fingerprint().hash(), after.fingerprint().hash());
+
+    let mut app = sim_app_with_alloy(5_000);
+    let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
+    tick(&mut app, 3);
+    assert_eq!(
+        app.world().resource::<CommandLog>().log().content,
+        before.fingerprint()
+    );
+
+    // The content the sim runs on changes underneath it.
+    app.insert_resource(after.clone());
+    app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+        Order::Train {
+            building: hq,
+            unit: 0,
+        }
+        .issued_by(Faction::A),
+    );
+    tick(&mut app, 3);
+
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert!(!log.commands.is_empty(), "nothing was recorded after the swap");
+    // It follows the content actually in use...
+    assert_eq!(
+        log.content.hash(),
+        after.fingerprint().hash(),
+        "the log still claims the content it started with"
+    );
+    // ...and says, loudly, that it describes no single content.
+    assert!(log.content_changed, "the change was not recorded");
+    let err = log.validate().expect_err("a poisoned log must be refused");
+    assert!(err.contains("content changed"), "unhelpful refusal: {err}");
+    let path = scratch("poisoned");
+    let _ = std::fs::remove_file(&path);
+    assert!(log.save(&path).is_err(), "a poisoned log was written to disk");
+    assert!(!path.exists());
+    assert!(log.matches_content(&after).is_err());
+}
+
+/// The direction that could break: an ordinary match is **never** poisoned, and
+/// a log installed part-way through a match is still stamped (the fingerprint
+/// is only recomputed when it can have changed, and that shortcut must not skip
+/// a log that has not been stamped yet).
+#[test]
+fn an_ordinary_match_is_never_poisoned_and_a_late_log_is_still_stamped() {
+    let mut app = ai_vs_ai(4);
+    for t in 0..1_500u32 {
+        step(&mut app);
+        if t % 300 == 0 || t == 1_499 {
+            let log = app.world().resource::<CommandLog>().log();
+            assert!(!log.content_changed, "tick {t}: an unchanged match was poisoned");
+            log.validate().unwrap_or_else(|e| panic!("tick {t}: {e}"));
+        }
+    }
+    // A fresh log installed mid-match, long after the content last changed.
+    app.insert_resource(CommandLog::new(4));
+    assert!(!app.world().resource::<CommandLog>().log().content.is_known());
+    step(&mut app);
+    let log = app.world().resource::<CommandLog>().log().clone();
+    assert!(
+        log.content.is_known(),
+        "a log installed mid-match never got stamped, so `load_for` would refuse it"
+    );
+    assert!(!log.content_changed);
+    log.matches_content(&content()).expect("it describes the running content");
+}
+
 // ---- a log names content by id, not by position -----------------------------
 
 /// **The property indices could not have.** A log records `Place`/`Train` by

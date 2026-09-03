@@ -879,3 +879,46 @@ the_tick_it_applies_on` keeps it that way. When M6 adds it, two things follow �
 the *queued* tick becomes worth recording (so the pending-queue rows of the
 state hash agree between a recording and its replay), and a command queued but
 never applied still appears in no log.
+
+**Extension (Phase 1 critic) — two more coordinates that were not what their
+prose said.**
+
+1. **1b replaced a positional coordinate with a string one and never proved the
+   string was injective.** `unit_index`/`building_index` return the *first*
+   match and `Content::validate` had no duplicate-id rule, so duplicated content
+   loaded happily: a recorded `Place` naming the second `foundry` (999 Alloy)
+   replayed as the first (150). The log validated, its fingerprint matched
+   exactly, every id resolved — and the replay was a different match. The sim
+   never notices, because it runs on indices; only a replay does.
+
+   Duplicate ids are now **impossible to load** (per namespace: units,
+   buildings, resources; an id shared *across* namespaces stays legal, because
+   every reference in the data and in the log says which kind it means).
+
+   This is the **third** log coordinate this project shipped without proving it
+   injective — `Entity::to_bits` (F-011), the lazily-issued `SimId` (F-012 ext.
+   3), and now the content id. The standing question, to be answered *before*
+   anything is keyed on a coordinate rather than after a critic asks: **is this
+   injective, and what enforces that?** Note where the answer keeps landing: in
+   the loader, as a refusal, not in the reader as a check.
+
+2. **The stamp described the first content the sim ever saw, not the content the
+   commands were taken under.** `stamp_content` stamped once, justified by
+   "content cannot change mid-match, and if it somehow did, the first stamp is
+   the one the recorded commands were taken under" — false in its second clause,
+   and written in the diff whose whole subject is "the log describes the content
+   it was played with". Eighth doc-comment defect of this shape.
+
+   The stamp now follows the content actually in use, and a change marks the log
+   as describing **no single content** (`MatchLog::content_changed`), which
+   `validate` and `matches_content` both refuse — loud at the write, which is
+   the escape clause the producer/validator rule allows for something no shipped
+   configuration does.
+
+**And a probe-writing lesson the critic handed back, worth more than the fixes:
+an assertion that something did not happen is vacuous unless you also assert the
+machinery ran.** Its version of the late-command probe pins `rejection() ==
+None` and `cursor() == 2` alongside "the replay did not apply it", because with
+the 1a backstop in place a refused replay feeds nothing and passes the negative
+assertion trivially. Every "X did not happen" assertion in this project should
+be read with that question attached.

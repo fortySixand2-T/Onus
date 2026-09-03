@@ -229,3 +229,6 @@
 - [2026-09-02] Modified: tests/critic_m5.rs — adjudicated the v2 log-format patch (late-command probe rewritten, strengthened); pass-5 probes for Phase 1 (content-id injectivity, fingerprint field coverage, stamp vs running content, schedule/fate validator, v1 refusal)
 - [2026-09-03] Modified: src/sim/content.rs — critic F1: duplicate unit/building/resource ids are refused at load; an id is the log's coordinate, so it must be injective
 - [2026-09-03] Modified: tests/m5_replay.rs — F1 probes: a duplicated id cannot load; every id in loadable content resolves back to its own definition; a cross-namespace shared id stays legal
+- [2026-09-03] Modified: src/sim/replay.rs — critic F2: the stamp follows the content actually in use; a mid-match change poisons the log, refused at both boundaries
+- [2026-09-03] Modified: tests/m5_replay.rs — F2 probes: a content swap is followed and poisons the log; an ordinary match is never poisoned and a late log is still stamped
+- [2026-09-03] Modified: FINDINGS.md — F-013 extension: two more coordinates that were not what their prose said; "is it injective, and what enforces that?"
