@@ -922,3 +922,50 @@ None` and `cursor() == 2` alongside "the replay did not apply it", because with
 the 1a backstop in place a refused replay feeds nothing and passes the negative
 assertion trivially. Every "X did not happen" assertion in this project should
 be read with that question attached.
+
+## F-014 — A feature nothing ships is a feature that does not exist (Phase 2)
+
+**Wall hit.** M5 spent four critic passes making a replay log correct — tick
+tags, persistence, a canonical state hash, `SimId` addressing, a content
+fingerprint, stable ids, schedules and fates — and **no run of the game ever
+wrote one**. Every path to disk was a test. That is the same shape as F-004
+(`economy::production` registered only in a test harness), one layer out: there,
+a system the game did not run; here, a whole feature the game could not reach.
+
+**Decision.** The driver writes the log, and does it through one registration,
+`add_replay_writer`, that the shipped `build_app` installs and the tests use —
+the same rule as `add_sim_systems`, for the same reason.
+
+| Question | Choice | Why |
+|---|---|---|
+| Where the config lives | `assets/data/replay.ron`, driver-side, **not** in `Content` | A fingerprint is a claim about the *match*; a directory name is not part of one. In `Content` it would be hashed (the standing every-field guard), so turning logging on would invalidate every replay already on disk. It also keeps a path out of sim state — one step from a filename reaching a hash. |
+| Default | **Off** | A log per run is unbounded growth on disk. A missing `replay.ron` is off; a malformed one is an error, because a missing optional config is a state and a broken one is a mistake. |
+| When | On **match decided**, and on exit | A crash or force-quit after a finished match must not lose the finished match — which is the one worth keeping. |
+| How often | **Exactly once per app**, by recording one outcome and never revisiting it | Makes "a decided match that keeps ticking does not rewrite" and "an exit after a decision does not write twice" the same statement. The probe asserts the writer was *asked* 300+ times, so the latch is demonstrably what holds. |
+| On failure | Reported on the writer and at `error!`; never fatal, never retried | A lost replay is not worth a lost match. Not retrying is what keeps a disk error from becoming one line of log per frame. |
+| Clock | Wall clock **in the driver only** | The sim may not read one (F-003). Pinned three ways: the same match hashes identically with no writer, a wall-clock writer and a fixed-clock writer; and no `SystemTime`/`ReplayWriter`/path is named anywhere under `src/sim/`. |
+
+**Filenames are a coordinate, and this one is not injective.** Two matches can
+finish in the same second with the same seed. The fourth time this project has
+had to answer "is this coordinate unique, and what enforces that?" — and the
+first time it was answered *before* shipping the thing keyed on it. The answer
+here is different from the previous three, and worth recording as a second
+pattern: where a coordinate **can** be made injective (`SimId`, unique content
+ids) the fix is a refusal at admission; where it **cannot** (a filename, which
+the outside world owns), do not trust it — `create_new` makes the *claim*
+atomic, the writer walks a suffix until it claims an unused name, and running
+out is reported rather than resolved by overwriting somebody else's log.
+
+**Evidence.** `tests/p2_log_writer.rs`, 13 probes; the four load-bearing ones
+run red first by stubbing out the latch, the no-clobber claim and the
+validating front door individually. The headline probe is end-to-end: a
+shipped-shape app plays an AI-vs-AI match to its decision, and the file it
+leaves is read back through `MatchLog::load_for` and replayed to the same
+verdict on the same tick with an identical per-tick hash trace. 425 tests green
+in debug and release.
+
+**Deliberately deferred.** Nothing *reads* a log back in the shipped binary —
+there is no "play this replay" entry point, because there is no UI or CLI for
+one and inventing either would be building ahead. The sim side has been able to
+do it since M5 (`ReplaySource`), and the headless tests do it; wiring it to a
+user gesture belongs with whatever menu M6 or the campaign layer brings.

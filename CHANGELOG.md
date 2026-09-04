@@ -239,3 +239,4 @@
 - [2026-09-03] Modified: src/lib.rs — build_app installs the writer through add_replay_writer, the one definition of when a log reaches disk
 - [2026-09-03] Created: tests/p2_log_writer.rs — Phase 2 probes: the shipped log round-trips and replays; write-once; collisions; failure is loud, not fatal; the clock never reaches the sim
 - [2026-09-03] Modified: .gitignore — the default replay output directory
+- [2026-09-03] Modified: FINDINGS.md — F-014: a feature nothing ships is a feature that does not exist; where the replay config lives, write-once, and the non-injective filename
