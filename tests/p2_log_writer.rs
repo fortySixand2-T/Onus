@@ -34,17 +34,41 @@ fn content() -> Content {
     Content::load_from_dir(&data_dir()).expect("assets/data/*.ron")
 }
 
-/// A scratch output directory of this test's own, emptied first and removed at
-/// the end: tests write to the OS temp dir, never into the repo or a home.
-fn scratch_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("onus-p2-{name}-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(&dir).expect("scratch dir");
-    dir
+/// A scratch output directory of this test's own, under the OS temp dir — never
+/// the repo, never a home.
+///
+/// It removes itself **on drop**, not at the end of the test body, so a test
+/// that fails or panics still leaves nothing behind. (The first version cleaned
+/// up on the success path only, and the deliberate red-check runs promptly left
+/// nineteen directories in `/tmp` — a test that litters only when it fails is a
+/// test that litters exactly when you are least likely to notice.)
+struct Scratch(PathBuf);
+
+impl Scratch {
+    fn new(name: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("onus-p2-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        Scratch(dir)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+
+    fn join(&self, name: &str) -> PathBuf {
+        self.0.join(name)
+    }
 }
 
-fn cleanup(dir: &Path) {
-    let _ = std::fs::remove_dir_all(dir);
+impl Drop for Scratch {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
+}
+
+fn scratch_dir(name: &str) -> Scratch {
+    Scratch::new(name)
 }
 
 fn logs_in(dir: &Path) -> Vec<PathBuf> {
@@ -170,7 +194,7 @@ fn play_to_decision(app: &mut App) -> MatchOutcome {
 #[test]
 fn a_decided_match_writes_a_log_that_loads_and_replays_to_the_same_verdict() {
     let dir = scratch_dir("roundtrip");
-    let mut app = ai_vs_ai(7, Some(ReplayWriter::new(config_writing_to(&dir))));
+    let mut app = ai_vs_ai(7, Some(ReplayWriter::new(config_writing_to(dir.path()))));
     app.insert_resource(StateHashLog::default());
     let outcome = play_to_decision(&mut app);
 
@@ -180,7 +204,7 @@ fn a_decided_match_writes_a_log_that_loads_and_replays_to_the_same_verdict() {
         .written()
         .expect("a decided match wrote no log")
         .to_path_buf();
-    assert_eq!(logs_in(&dir), vec![written.clone()], "one log, in the configured dir");
+    assert_eq!(logs_in(dir.path()), vec![written.clone()], "one log, in the configured dir");
     assert!(
         std::fs::metadata(&written).expect("stat").len() > 0,
         "the log is empty"
@@ -217,7 +241,6 @@ fn a_decided_match_writes_a_log_that_loads_and_replays_to_the_same_verdict() {
         None,
         "the replay of the shipped log diverged"
     );
-    cleanup(&dir);
 }
 
 /// **Exactly once.** A decided match keeps ticking, and then the app exits; one
@@ -226,7 +249,7 @@ fn a_decided_match_writes_a_log_that_loads_and_replays_to_the_same_verdict() {
 #[test]
 fn a_decided_match_writes_exactly_one_log_however_long_it_runs() {
     let dir = scratch_dir("once");
-    let mut app = ai_vs_ai(7, Some(ReplayWriter::new(config_writing_to(&dir))));
+    let mut app = ai_vs_ai(7, Some(ReplayWriter::new(config_writing_to(dir.path()))));
     play_to_decision(&mut app);
     let first = app
         .world()
@@ -249,13 +272,12 @@ fn a_decided_match_writes_exactly_one_log_however_long_it_runs() {
         writer.asks()
     );
     assert_eq!(writer.written(), Some(first.as_path()));
-    assert_eq!(logs_in(&dir), vec![first.clone()], "a second log was written");
+    assert_eq!(logs_in(dir.path()), vec![first.clone()], "a second log was written");
     assert_eq!(
         std::fs::read(&first).expect("read"),
         bytes,
         "the log was rewritten in place"
     );
-    cleanup(&dir);
 }
 
 /// A session that ends **before** a decision still leaves its log: the exit path
@@ -263,7 +285,7 @@ fn a_decided_match_writes_exactly_one_log_however_long_it_runs() {
 #[test]
 fn an_exit_before_any_decision_still_writes_what_was_played() {
     let dir = scratch_dir("exit");
-    let mut app = ai_vs_ai(7, Some(ReplayWriter::new(config_writing_to(&dir))));
+    let mut app = ai_vs_ai(7, Some(ReplayWriter::new(config_writing_to(dir.path()))));
     tick(&mut app, 600);
     assert!(
         app.world().resource::<MatchState>().outcome().is_none(),
@@ -282,8 +304,7 @@ fn an_exit_before_any_decision_still_writes_what_was_played() {
         .to_path_buf();
     let log = MatchLog::load_for(&written, &content()).expect("the partial log must load");
     assert!(log.commands.len() > 10, "the partial log is empty of commands");
-    assert_eq!(logs_in(&dir).len(), 1);
-    cleanup(&dir);
+    assert_eq!(logs_in(dir.path()).len(), 1);
 }
 
 // ---- off by default, and off means nothing on disk --------------------------
@@ -301,7 +322,7 @@ fn replay_logging_is_off_by_default_and_writes_nothing() {
         7,
         Some(ReplayWriter::new(ReplayConfig {
             enabled: false,
-            dir: dir.display().to_string(),
+            dir: dir.path().display().to_string(),
             ..ReplayConfig::default()
         })),
     );
@@ -312,8 +333,7 @@ fn replay_logging_is_off_by_default_and_writes_nothing() {
     let writer = app.world().resource::<ReplayWriter>();
     assert!(writer.asks() > 5, "the writer was never even asked");
     assert_eq!(writer.outcome(), None, "a disabled writer acted");
-    assert!(logs_in(&dir).is_empty(), "a disabled writer wrote a file");
-    cleanup(&dir);
+    assert!(logs_in(dir.path()).is_empty(), "a disabled writer wrote a file");
 }
 
 /// A missing `replay.ron` is a legitimate state — logging off — while a
@@ -322,13 +342,12 @@ fn replay_logging_is_off_by_default_and_writes_nothing() {
 fn a_missing_config_is_off_and_a_malformed_one_is_an_error() {
     let dir = scratch_dir("config");
     assert_eq!(
-        ReplayConfig::load_from_dir(&dir).expect("a missing config is not an error"),
+        ReplayConfig::load_from_dir(dir.path()).expect("a missing config is not an error"),
         ReplayConfig::default()
     );
     std::fs::write(dir.join(ReplayConfig::FILE), "(enabled: yes-please)").expect("write");
-    let err = ReplayConfig::load_from_dir(&dir).expect_err("a malformed config must be an error");
+    let err = ReplayConfig::load_from_dir(dir.path()).expect_err("a malformed config must be an error");
     assert!(err.contains("replay.ron"), "the error does not name the file: {err}");
-    cleanup(&dir);
 }
 
 // ---- the failure path is loud, and never fatal ------------------------------
@@ -366,7 +385,6 @@ fn a_write_that_fails_is_reported_and_the_game_keeps_running() {
         Some(err),
         "the failure changed after being recorded"
     );
-    cleanup(&dir);
 }
 
 /// A log the sim could not write back is refused **at the writer**, not written
@@ -375,7 +393,7 @@ fn a_write_that_fails_is_reported_and_the_game_keeps_running() {
 #[test]
 fn a_log_that_cannot_be_read_back_is_never_written() {
     let dir = scratch_dir("poisoned");
-    let mut app = ai_vs_ai(7, Some(ReplayWriter::new(config_writing_to(&dir))));
+    let mut app = ai_vs_ai(7, Some(ReplayWriter::new(config_writing_to(dir.path()))));
     tick(&mut app, 300);
     // Poison it the way the sim itself would: the content changes mid-match.
     let edited = {
@@ -389,7 +407,7 @@ fn a_log_that_cannot_be_read_back_is_never_written() {
             };
             std::fs::write(scratch.join(file), text).expect("write");
         }
-        Content::load_from_dir(&scratch).expect("edited content")
+        Content::load_from_dir(scratch.path()).expect("edited content")
     };
     app.insert_resource(edited);
     tick(&mut app, 5);
@@ -406,8 +424,7 @@ fn a_log_that_cannot_be_read_back_is_never_written() {
         "a log the sim refuses to write back was written anyway: {:?}",
         writer.outcome()
     );
-    assert!(logs_in(&dir).is_empty(), "an unloadable file was left on disk");
-    cleanup(&dir);
+    assert!(logs_in(dir.path()).is_empty(), "an unloadable file was left on disk");
 }
 
 // ---- filenames are a coordinate, and this one is not injective --------------
@@ -424,7 +441,7 @@ fn two_matches_in_one_second_with_one_seed_do_not_overwrite_each_other() {
             7,
             // The same fixed second every time, and the same seed: the filename
             // is identical by construction.
-            Some(ReplayWriter::with_fixed_clock(config_writing_to(&dir), 1_700_000_000)),
+            Some(ReplayWriter::with_fixed_clock(config_writing_to(dir.path()), 1_700_000_000)),
         );
         play_to_decision(&mut app);
         written.push(
@@ -439,7 +456,7 @@ fn two_matches_in_one_second_with_one_seed_do_not_overwrite_each_other() {
     unique.sort();
     unique.dedup();
     assert_eq!(unique.len(), 3, "three matches wrote {unique:?}");
-    assert_eq!(logs_in(&dir).len(), 3, "a log was overwritten");
+    assert_eq!(logs_in(dir.path()).len(), 3, "a log was overwritten");
     for path in &written {
         MatchLog::load_for(path, &content()).expect("every log must load");
     }
@@ -448,7 +465,6 @@ fn two_matches_in_one_second_with_one_seed_do_not_overwrite_each_other() {
     assert!(written[0].to_string_lossy().contains("-1700000000-seed7.ron"));
     assert!(written[1].to_string_lossy().ends_with("-seed7-1.ron"));
     assert!(written[2].to_string_lossy().ends_with("-seed7-2.ron"));
-    cleanup(&dir);
 }
 
 /// Rather than overwrite, the writer **gives up and says so** when every name it
@@ -461,7 +477,7 @@ fn a_writer_with_no_free_name_refuses_rather_than_overwriting() {
         Some(ReplayWriter::with_fixed_clock(
             ReplayConfig {
                 enabled: true,
-                dir: dir.display().to_string(),
+                dir: dir.path().display().to_string(),
                 max_collisions: 1,
                 ..ReplayConfig::default()
             },
@@ -486,7 +502,6 @@ fn a_writer_with_no_free_name_refuses_rather_than_overwriting() {
             "the writer overwrote an existing log"
         );
     }
-    cleanup(&dir);
 }
 
 // ---- the clock is the driver's, and the sim must not feel it ----------------
@@ -511,9 +526,9 @@ fn writing_a_log_does_not_perturb_the_match() {
     // a fixed clock. If the clock could reach the sim, the second and third
     // would differ.
     let (o1, h1, c1, f1, _) = trace(None);
-    let (o2, h2, c2, f2, wrote) = trace(Some(ReplayWriter::new(config_writing_to(&dir))));
+    let (o2, h2, c2, f2, wrote) = trace(Some(ReplayWriter::new(config_writing_to(dir.path()))));
     let (o3, h3, c3, f3, _) = trace(Some(ReplayWriter::with_fixed_clock(
-        config_writing_to(&dir),
+        config_writing_to(dir.path()),
         42,
     )));
 
@@ -527,7 +542,6 @@ fn writing_a_log_does_not_perturb_the_match() {
     assert_eq!((o1, f1), (o3, f3));
     assert_eq!(c1, c2, "writing a log changed the command stream");
     assert_eq!(c1, c3);
-    cleanup(&dir);
 }
 
 /// ...and structurally: the sim knows nothing about any of this. No replay-io
@@ -615,7 +629,7 @@ fn an_app_that_never_played_writes_nothing_and_says_so() {
         .init_resource::<Casualties>()
         .insert_resource(Stockpiles::starting(0));
     onus::add_sim_systems(&mut app, FixedUpdate);
-    onus::add_replay_writer(&mut app, config_writing_to(&dir));
+    onus::add_replay_writer(&mut app, config_writing_to(dir.path()));
     // Stop the clock the fixed-update accumulator is fed from: frames happen,
     // the sim never ticks.
     app.world_mut().resource_mut::<Time<Virtual>>().pause();
@@ -630,6 +644,5 @@ fn an_app_that_never_played_writes_nothing_and_says_so() {
     let writer = app.world().resource::<ReplayWriter>();
     assert!(writer.asks() >= 1, "the writer was never asked");
     assert_eq!(writer.outcome(), Some(&WriteOutcome::NothingToWrite));
-    assert!(logs_in(&dir).is_empty());
-    cleanup(&dir);
+    assert!(logs_in(dir.path()).is_empty());
 }

@@ -240,3 +240,4 @@
 - [2026-09-03] Created: tests/p2_log_writer.rs — Phase 2 probes: the shipped log round-trips and replays; write-once; collisions; failure is loud, not fatal; the clock never reaches the sim
 - [2026-09-03] Modified: .gitignore — the default replay output directory
 - [2026-09-03] Modified: FINDINGS.md — F-014: a feature nothing ships is a feature that does not exist; where the replay config lives, write-once, and the non-injective filename
+- [2026-09-03] Modified: tests/p2_log_writer.rs — scratch dirs clean up on drop, so a failing test litters nothing
