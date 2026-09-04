@@ -73,17 +73,39 @@ pub fn draw_selection(
 
 /// Show context options: resource details when a node is selected, otherwise a
 /// unit-count line. This is the minimal M1 stand-in for a real command card.
+#[allow(clippy::too_many_arguments)] // one system, one writer of the panel
 pub fn update_options_panel(
     selected_res: Query<&ResourceNode, With<Selected>>,
     selected_units: Query<&UnitKind, With<Selected>>,
     selected_buildings: Query<(&Building, &ProductionQueue), With<Selected>>,
     content: Res<Content>,
     stock: Res<Stockpiles>,
+    state: Res<MatchState>,
+    fixed: Res<Time<Fixed>>,
     mut text_q: Query<&mut Text, With<OptionsPanel>>,
 ) {
     let Ok(mut text) = text_q.single_mut() else {
         return;
     };
+
+    // **The result first, and instead of everything else.** Once the match is
+    // decided the sim's play chain is off and input is gated, so a panel still
+    // offering "right-click: move" would be describing a game that has stopped
+    // listening — which is precisely how a finished match read from the
+    // player's chair: correct, silent, and indistinguishable from a hang.
+    //
+    // It is a branch of this system rather than a second system for a reason:
+    // the panel has exactly one writer, and two systems writing one `Text`
+    // would make what the player sees depend on system order.
+    //
+    // `Time<Fixed>` is read for its **timestep**, the configured constant, not
+    // for a delta — reading `delta_secs()` outside `FixedUpdate` is what F-003
+    // was about, and this is the other thing.
+    if let Some(outcome) = state.outcome() {
+        text.0 = match_result_text(outcome, fixed.timestep().as_secs_f32());
+        return;
+    }
+
     let alloy = format!("Alloy: {}", stock.alloy(PLAYER_FACTION));
 
     // A selected building shows what it can train and its queue.

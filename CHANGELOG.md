@@ -252,3 +252,6 @@
 - [2026-09-03] Modified: tests/p2_log_writer.rs — the positional guard resolves build_app's callees and asks whether any can report; it fails against the real mutation (moving the call above add_plugins) and asserts it resolved something
 - [2026-09-03] Modified: FINDINGS.md — F-014 extension: a structural guard must assert it resolved something; red-verify against the mutation the defect would actually arrive as; corrected the false "everywhere" in the scratch-cleanup bullet
 - [2026-09-03] Modified: tests/critic_m5.rs, tests/critic_p2.rs — Phase 2 pass-2 critic probes (startup-order pinning, seam-is-the-shipped-path, symlink at a candidate name, callee-resolving diagnostic guard); Drop-based scratch cleanup; PASS
+- [2026-09-04] Modified: src/client.rs — match-result wording as presentation constants, plus the pure match_result_text / match_clock formatters
+- [2026-09-04] Modified: src/ui.rs — the options panel reports win/loss/draw, when it was decided, and why orders stopped
+- [2026-09-04] Created: tests/p3_match_result_panel.rs — headless probes on the panel's rendered text for all three outcomes and the running case
