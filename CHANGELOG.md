@@ -247,3 +247,7 @@
 - [2026-09-03] Modified: tests/p2_log_writer.rs — probes that observe the report itself under a capturing tracing subscriber, plus the structural position guard
 - [2026-09-03] Modified: tests/m5_replay.rs — scratch files and content dirs clean up on drop
 - [2026-09-03] Modified: FINDINGS.md — F-014 extension: a diagnostic emitted before a subscriber; observe the report, not the condition
+- [2026-09-03] Modified: tests/critic_p2.rs — pass-2 probes (callee-resolving guard against the void-defect regression, symlink safety for write_or_discard, startup-order pin)
+- [2026-09-03] Modified: tests/critic_m5.rs — scratch paths clean up on Drop, with a per-call serial so concurrent probes cannot delete each other's fixtures
+- [2026-09-03] Modified: tests/p2_log_writer.rs — the positional guard resolves build_app's callees and asks whether any can report; it fails against the real mutation (moving the call above add_plugins) and asserts it resolved something
+- [2026-09-03] Modified: FINDINGS.md — F-014 extension: a structural guard must assert it resolved something; red-verify against the mutation the defect would actually arrive as; corrected the false "everywhere" in the scratch-cleanup bullet

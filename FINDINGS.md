@@ -988,6 +988,24 @@ must exist is one that observes the report — not one that observes the
 condition.** A capturing subscriber makes that a two-line assertion; nothing
 weaker distinguishes "the code calls `error!`" from "somebody is told".
 
+*And its corollary, which cost a second pass.* The **positional** guard shipped
+alongside that probe — "no diagnostic macro appears in `build_app` above
+`add_plugins`" — went vacuous the instant the fix moved the reporting into a
+helper: it then scanned a body with no macros in it and passed on the empty set,
+reading as protection while guarding nothing. Two rules follow, and they are
+about how a guard is *written* and how it is *verified*:
+
+- **A structural guard must assert that it resolved something.** This one now
+  resolves `build_app`'s callees, asks whether any of them can report
+  (transitively, through this crate), asserts that its classifier recognises the
+  one reporter on the startup path, and asserts that it found the call that
+  matters. Any of those failing is a loud failure, not a silent pass.
+- **Red-verify against the mutation the defect would actually arrive as.** The
+  original guard was "verified" by pasting an `error!` back into `build_app` —
+  something nobody would do. The defect arrived, both times, by *moving the
+  call*; that is the mutation the guard is now checked against, and the one it
+  fails on by name.
+
 Two smaller things fixed alongside, both about not leaving things behind:
 
 - **A failed write removes its own partial file.** A fragment cannot be mistaken
@@ -997,6 +1015,16 @@ Two smaller things fixed alongside, both about not leaving things behind:
   "never overwrite somebody else's log": the fragment is neither somebody
   else's nor a log, and the cleanup only ever touches the path claimed with
   `create_new` in the same call.
-- **Scratch cleanup on `Drop`, everywhere.** Cleaning up on the success path
-  only means littering exactly when a run went wrong — which is when nobody
-  looks. Guards now remove the file, and the last one out removes the directory.
+- **Scratch cleanup on `Drop`.** Cleaning up on the success path only means
+  littering exactly when a run went wrong — which is when nobody looks. Guards
+  remove the file, and the last one out removes the directory.
+
+  *Correction (Phase 2 critic pass 2).* This bullet originally said "everywhere",
+  which was false when written: only `tests/p2_log_writer.rs` and
+  `tests/m5_replay.rs` — the two files this implementer owns — had been
+  converted, and the critic's own suite was still leaving hundreds of paths in
+  `/tmp`. It is true as of the critic's pass-2 fix to its files. The correction
+  is recorded rather than silently edited because it is the same defect this
+  entry exists to describe — a claim quantified over more than was checked — and
+  it appeared *in the entry recording that lesson*. State what was verified, and
+  when.

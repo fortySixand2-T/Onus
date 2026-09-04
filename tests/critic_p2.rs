@@ -879,3 +879,281 @@ fn the_loader_still_reports_a_broken_config_whatever_the_driver_does_with_it() {
         "the error does not name the file a human has to fix: {err}"
     );
 }
+
+// ---- 9. the guard against the void defect must guard against it ------------
+
+/// Resolve a `path::to::function` named in `src/lib.rs` to its body, searching
+/// every `.rs` under `src/`. `Err` on anything it cannot pin down to exactly
+/// one definition — a guard that skips what it cannot read is the shape of
+/// defect this whole milestone keeps paying for.
+fn resolve_src_fn(name: &str) -> Result<String, String> {
+    let needle = format!("pub fn {name}(");
+    let mut files: Vec<PathBuf> = Vec::new();
+    let mut stack = vec![src_dir()];
+    while let Some(dir) = stack.pop() {
+        for e in std::fs::read_dir(&dir).map_err(|e| e.to_string())? {
+            let p = e.map_err(|e| e.to_string())?.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                files.push(p);
+            }
+        }
+    }
+    files.sort();
+    let mut found = Vec::new();
+    for f in files {
+        let text = std::fs::read_to_string(&f).map_err(|e| e.to_string())?;
+        if let Some(at) = text.find(&needle) {
+            let rest = &text[at..];
+            let end = rest[1..]
+                .find("\n}\n")
+                .map(|i| i + 3)
+                .ok_or_else(|| format!("{name}: no closing brace at column 0 in {}", f.display()))?;
+            found.push(rest[..end].to_string());
+        }
+    }
+    match found.len() {
+        1 => Ok(found.pop().expect("one")),
+        0 => Err(format!("{name}: no `{needle}` anywhere under src/")),
+        n => Err(format!("{name}: `{needle}` is defined in {n} places")),
+    }
+}
+
+/// **The regression guard, guarding the regression.**
+///
+/// The pass-1 defect was a diagnostic emitted before `LogPlugin` installed a
+/// `tracing` subscriber, so the message was evaluated and dropped. The fix moved
+/// the reporting out of `build_app` and into `replay_io::load_config_or_report`
+/// — which means the positional guards that scan `build_app`'s body for
+/// `error!`/`warn!`/`info!` now scan a body that contains none, and pass on an
+/// empty set. Restoring the exact defect (moving the call back above
+/// `add_plugins`) leaves every such guard green.
+///
+/// So the property has to be about **what `build_app` calls**, not about what it
+/// spells: every function it invokes that can emit a diagnostic must be invoked
+/// after the plugin that can carry one.
+#[test]
+fn nothing_build_app_calls_can_report_before_the_subscriber_exists() {
+    let lib = std::fs::read_to_string(src_dir().join("lib.rs")).expect("lib.rs");
+    let at = lib.find("pub fn build_app").expect("build_app");
+    let end = at + lib[at..].find("\n}\n").expect("build_app ends");
+    let body = &lib[at..end];
+    let subscriber = body
+        .find("add_plugins(DefaultPlugins)")
+        .expect("build_app installs DefaultPlugins, which carries LogPlugin");
+
+    // Every `something::name(` call in the body, with where it is called.
+    let mut deaf: Vec<String> = Vec::new();
+    let mut checked = 0usize;
+    let mut i = 0usize;
+    while i < body.len() {
+        let Some(rel) = body[i..].find("::") else { break };
+        let colons = i + rel;
+        // The identifier after `::`, and the `(` that would make it a call.
+        let after = &body[colons + 2..];
+        let idl = after
+            .find(|c: char| !(c.is_alphanumeric() || c == '_'))
+            .unwrap_or(after.len());
+        let name = &after[..idl];
+        i = colons + 2 + idl.max(1);
+        if name.is_empty() || !after[idl..].starts_with('(') {
+            continue;
+        }
+        if name.starts_with(|c: char| c.is_uppercase()) || name == "new" || name == "from_hz" {
+            continue;
+        }
+        // Only functions this crate defines; anything else is Bevy's.
+        let Ok(callee) = resolve_src_fn(name) else { continue };
+        checked += 1;
+        let reports = ["error!", "warn!", "info!", "debug!", "trace!"]
+            .iter()
+            .any(|m| {
+                callee
+                    .lines()
+                    .any(|l| l.split("//").next().unwrap_or("").contains(m))
+            });
+        if reports && colons < subscriber {
+            let line = body[..colons].lines().count() + lib[..at].lines().count();
+            deaf.push(format!("lib.rs:{line}: {name}(..) can report, and is called here"));
+        }
+    }
+    assert!(
+        checked > 0,
+        "no callee of `build_app` was resolved, so this guard inspects nothing"
+    );
+    assert!(
+        deaf.is_empty(),
+        "these are called before `LogPlugin` installs a subscriber and can emit a \
+         diagnostic, which `tracing` will drop: {deaf:#?}"
+    );
+}
+
+/// The seam has to be the shipped path, not a parallel one: `build_app` must
+/// call the very function the capturing-subscriber test exercises.
+#[test]
+fn build_app_reports_through_the_function_the_tests_observe() {
+    let lib = std::fs::read_to_string(src_dir().join("lib.rs")).expect("lib.rs");
+    let at = lib.find("pub fn build_app").expect("build_app");
+    let end = at + lib[at..].find("\n}\n").expect("build_app ends");
+    assert!(
+        lib[at..end].contains("load_config_or_report("),
+        "the shipped app no longer loads its config through the reporting seam"
+    );
+    let seam = resolve_src_fn("load_config_or_report").expect("the seam is one function");
+    assert!(
+        seam.lines()
+            .any(|l| l.split("//").next().unwrap_or("").contains("error!")),
+        "the seam no longer reports anything, so the capture test observes nothing"
+    );
+    // ...and the loader it wraps still refuses, so the seam has something to report.
+    let dir = Scratch::new("seam");
+    std::fs::write(dir.path().join(ReplayConfig::FILE), "(enable: true)").expect("write");
+    assert!(ReplayConfig::load_from_dir(dir.path()).is_err());
+}
+
+// ---- 10. `write_or_discard`'s removal --------------------------------------
+
+/// **A cleanup that can remove a file it did not create is worse than the
+/// litter it fixes.** The claim is that only the path claimed with `create_new`
+/// in the same call is ever removed. A symlink is the sharpest test: if the
+/// claim followed one, the writer would write through it and then delete
+/// somebody else's file.
+#[test]
+fn a_symlink_at_a_candidate_name_is_neither_written_through_nor_removed() {
+    #[cfg(unix)]
+    {
+        let dir = Scratch::new("symlink");
+        let precious = dir.path().join("precious.txt");
+        std::fs::write(&precious, "an old log nobody may touch").expect("write");
+        const STAMP: u64 = 1_700_009_000;
+        let seed = 7u64;
+        // The first candidate name is a symlink pointing at the precious file.
+        let candidate = dir.path().join(format!("critic-{STAMP}-seed{seed}.ron"));
+        std::os::unix::fs::symlink(&precious, &candidate).expect("symlink");
+
+        let mut app = ai_vs_ai(
+            seed,
+            Some(ReplayWriter::with_fixed_clock(config_in(dir.path()), STAMP)),
+        );
+        while app.world().resource::<MatchState>().outcome().is_none() {
+            step(&mut app);
+        }
+        step(&mut app);
+
+        // The precious file is untouched...
+        assert_eq!(
+            std::fs::read_to_string(&precious).expect("the precious file was removed"),
+            "an old log nobody may touch",
+            "the writer wrote through a symlink"
+        );
+        // ...the symlink itself still points where it did...
+        assert!(
+            std::fs::symlink_metadata(&candidate).is_ok(),
+            "the writer removed a symlink it did not create"
+        );
+        // ...and the log went somewhere else entirely, and is usable.
+        let w = app.world().resource::<ReplayWriter>();
+        let written = w.written().unwrap_or_else(|| panic!("nothing written: {:?}", w.error()));
+        assert_ne!(written, candidate.as_path(), "the writer claimed the symlink");
+        assert!(MatchLog::load_for(written, &content()).is_ok());
+    }
+}
+
+/// The removal is reachable from exactly one place, and that place hands it the
+/// path it has just claimed. A second caller — or a caller that passes anything
+/// else — would put an arbitrary path within reach of a `remove_file`.
+#[test]
+fn only_the_freshly_claimed_path_can_reach_the_cleanup() {
+    let io = std::fs::read_to_string(src_dir().join("replay_io.rs")).expect("replay_io.rs");
+    // Call sites outside the definition and outside its own unit tests.
+    let tests_at = io.find("mod tests {").unwrap_or(io.len());
+    let shipped = &io[..tests_at];
+    let calls: Vec<usize> = shipped
+        .match_indices("write_or_discard(")
+        .map(|(i, _)| i)
+        .filter(|i| !shipped[..*i].ends_with("fn "))
+        .collect();
+    assert_eq!(
+        calls.len(),
+        1,
+        "`write_or_discard` is called from {} places in shipped code; each is a \
+         path a `remove_file` can reach",
+        calls.len()
+    );
+    // And `remove_file` appears nowhere else in the writer.
+    let removals: Vec<&str> = shipped
+        .lines()
+        .filter(|l| l.split("//").next().unwrap_or("").contains("remove_file"))
+        .collect();
+    assert_eq!(removals.len(), 1, "the writer deletes files from more than one place: {removals:?}");
+    // The one call site is the one that just claimed the path.
+    let at = calls[0];
+    let window = &shipped[at.saturating_sub(300)..at];
+    assert!(
+        window.contains("claim_path("),
+        "the cleanup is handed a path that was not claimed in the same expression"
+    );
+}
+
+/// **The startup order the sim's entity allocation depends on.** M5's first
+/// defect was `ReplaySource`'s insertion shifting every later entity id
+/// (F-011), so the order in which `build_app` mutates the `World` is not a free
+/// refactor. `DefaultPlugins` must stay the first thing that touches the app,
+/// and the config load — which touches only the filesystem — must not be
+/// interleaved among the resource insertions.
+#[test]
+fn build_app_touches_the_world_in_the_order_the_sim_was_pinned_against() {
+    let lib = std::fs::read_to_string(src_dir().join("lib.rs")).expect("lib.rs");
+    let at = lib.find("pub fn build_app").expect("build_app");
+    let end = at + lib[at..].find("\n}\n").expect("build_app ends");
+    let body = &lib[at..end];
+
+    let mut ops: Vec<&str> = Vec::new();
+    for line in body.lines() {
+        let code = line.split("//").next().unwrap_or("").trim();
+        for op in [
+            "App::new()",
+            "add_plugins(DefaultPlugins)",
+            "insert_resource(Time::<Fixed>",
+            "insert_resource(content)",
+            "init_resource::<CursorWorld>",
+            "init_resource::<DragState>",
+            "init_resource::<ClickTracker>",
+            "init_resource::<CommandQueue>",
+            "init_resource::<RateReport>",
+            "insert_resource(Stockpiles::starting",
+            "add_sim_systems(&mut app",
+            "add_replay_writer(&mut app",
+        ] {
+            if code.contains(op) {
+                ops.push(op);
+            }
+        }
+    }
+    assert_eq!(
+        ops,
+        vec![
+            "App::new()",
+            "add_plugins(DefaultPlugins)",
+            "insert_resource(Time::<Fixed>",
+            "insert_resource(content)",
+            "init_resource::<CursorWorld>",
+            "init_resource::<DragState>",
+            "init_resource::<ClickTracker>",
+            "init_resource::<CommandQueue>",
+            "init_resource::<RateReport>",
+            "insert_resource(Stockpiles::starting",
+            "add_sim_systems(&mut app",
+            "add_replay_writer(&mut app",
+        ],
+        "the order in which `build_app` populates the `World` changed; in Bevy \
+         0.19 a resource is an entity, so this shifts entity allocation, and \
+         the sim's allocation-independence was pinned against this order"
+    );
+    // The config load reads a file and touches no `World`, so it may sit
+    // anywhere after the subscriber — but it must not be an app operation.
+    let seam = body.find("load_config_or_report(").expect("the seam is called");
+    let plugins = body.find("add_plugins(DefaultPlugins)").expect("plugins");
+    assert!(seam > plugins, "the config load moved back above the subscriber");
+}

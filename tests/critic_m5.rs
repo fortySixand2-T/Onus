@@ -4,7 +4,7 @@
 //! Every probe here is written against the M5 spec and the project invariants,
 //! not against the implementation's own framing.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 
@@ -108,10 +108,51 @@ fn ai_vs_ai(seed: u64) -> App {
     ai_vs_ai_padded(seed, 0)
 }
 
-fn scratch(name: &str) -> PathBuf {
-    let p = std::env::temp_dir().join(format!("onus-critic-m5-{name}-{}.ron", std::process::id()));
+/// A scratch path — file or directory — that removes itself **on drop**, so a
+/// probe that fails or panics leaves nothing behind either. (A suite that
+/// litters only on the runs you are least likely to watch is the same class of
+/// problem this file exists to catch elsewhere.)
+struct ScratchPath(PathBuf);
+
+impl std::ops::Deref for ScratchPath {
+    type Target = Path;
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for ScratchPath {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for ScratchPath {
+    fn drop(&mut self) {
+        if self.0.is_dir() {
+            let _ = std::fs::remove_dir_all(&self.0);
+        } else {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
+}
+
+/// A serial number per scratch path. Probes run concurrently and two of them may
+/// ask for the same fixture *name*; without this, one probe's `Drop` could
+/// delete the directory another is still reading.
+fn scratch_serial() -> u64 {
+    static N: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    N.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+fn scratch(name: &str) -> ScratchPath {
+    let p = std::env::temp_dir().join(format!(
+        "onus-critic-m5-{name}-{}-{}.ron",
+        std::process::id(),
+        scratch_serial()
+    ));
     let _ = std::fs::remove_file(&p);
-    p
+    ScratchPath(p)
 }
 
 fn src_dir() -> PathBuf {
@@ -2221,8 +2262,13 @@ fn a_shipped_match_never_names_anything_it_cannot_name() {
 // named by id, recorded schedule and fate).
 // ============================================================================
 
-fn content_dir_with(name: &str, units_ron: String) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("onus-critic-p1-{name}-{}", std::process::id()));
+fn content_dir_with(name: &str, units_ron: String) -> ScratchPath {
+    let dir = std::env::temp_dir().join(format!(
+        "onus-critic-p1-{name}-{}-{}",
+        std::process::id(),
+        scratch_serial()
+    ));
+    let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("scratch content dir");
     std::fs::write(dir.join("units.ron"), units_ron).expect("write units.ron");
     std::fs::write(
@@ -2230,11 +2276,11 @@ fn content_dir_with(name: &str, units_ron: String) -> PathBuf {
         std::fs::read_to_string(data_dir().join("resources.ron")).expect("read resources.ron"),
     )
     .expect("write resources.ron");
-    dir
+    ScratchPath(dir)
 }
 
 /// A content directory built from the shipped one with `units.ron` edited.
-fn content_from_edited_units(name: &str, edit: impl Fn(String) -> String) -> PathBuf {
+fn content_from_edited_units(name: &str, edit: impl Fn(String) -> String) -> ScratchPath {
     let text = std::fs::read_to_string(data_dir().join("units.ron")).expect("units.ron");
     content_dir_with(name, edit(text))
 }

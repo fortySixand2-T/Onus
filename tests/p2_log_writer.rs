@@ -561,35 +561,183 @@ fn a_missing_or_valid_config_reports_nothing() {
     assert!(events.is_empty(), "a valid config was reported: {events:?}");
 }
 
-/// ...and the structural half, since the defect was one of *position*: nothing
-/// in `build_app` may emit a `tracing` diagnostic before `DefaultPlugins`
-/// installs the subscriber that would carry it.
+// ---- can anything `build_app` reaches report too early? ---------------------
+
+/// Every `.rs` file under `src/`, sorted.
+fn src_files() -> Vec<PathBuf> {
+    let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut files = Vec::new();
+    let mut stack = vec![src];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir).expect("read src") {
+            let p = entry.expect("entry").path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|e| e == "rs") {
+                files.push(p);
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+/// The body of `fn <name>(` if **exactly one** function in `src/` is called
+/// that. An ambiguous or unknown name (`new`, or anything from a dependency)
+/// resolves to `None` — the guard below counts what it could not resolve rather
+/// than assuming it was harmless.
+fn fn_body(name: &str) -> Option<String> {
+    let mut found: Vec<String> = Vec::new();
+    for file in src_files() {
+        let text = std::fs::read_to_string(&file).expect("read");
+        for needle in [format!("pub fn {name}("), format!("fn {name}(")] {
+            let mut from = 0usize;
+            while let Some(rel) = text[from..].find(&needle) {
+                let at = from + rel;
+                // `fn foo(` inside `pub fn foo(` would match twice; count the
+                // `pub` form only once by skipping a `fn` preceded by `pub `.
+                let preceded_by_pub = text[..at].ends_with("pub ");
+                if !(needle.starts_with("fn ") && preceded_by_pub) {
+                    let rest = &text[at..];
+                    let end = rest.find("\n}\n").map(|i| i + 2).unwrap_or(rest.len());
+                    found.push(rest[..end].to_string());
+                }
+                from = at + needle.len();
+            }
+        }
+    }
+    match found.len() {
+        1 => found.pop(),
+        _ => None,
+    }
+}
+
+/// Names called in `body`: every identifier immediately followed by `(`, taken
+/// as its last path segment (`replay_io::load_config_or_report(..)` ⇒
+/// `load_config_or_report`), with its offset.
+fn calls_in(body: &str) -> Vec<(usize, String)> {
+    let bytes = body.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let c = bytes[i] as char;
+        if c.is_alphanumeric() || c == '_' {
+            let start = i;
+            while i < bytes.len() && {
+                let c = bytes[i] as char;
+                c.is_alphanumeric() || c == '_'
+            } {
+                i += 1;
+            }
+            let is_declaration = body[..start].trim_end().ends_with("fn");
+            if body[i..].starts_with('(') && !is_declaration {
+                out.push((start, body[start..i].to_string()));
+            }
+        } else {
+            i += 1;
+        }
+    }
+    out
+}
+
+const DIAGNOSTIC_MACROS: [&str; 5] = ["error!", "warn!", "info!", "debug!", "trace!"];
+
+/// Can a call to `name` end up emitting a `tracing` diagnostic — directly, or
+/// through anything it calls in this crate?
+fn can_report(name: &str, depth: u32, seen: &mut Vec<String>) -> bool {
+    if depth == 0 || seen.iter().any(|s| s == name) {
+        return false;
+    }
+    seen.push(name.to_string());
+    let Some(body) = fn_body(name) else {
+        return false;
+    };
+    let code: String = body
+        .lines()
+        .map(|l| l.split("//").next().unwrap_or(""))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if DIAGNOSTIC_MACROS.iter().any(|m| code.contains(m)) {
+        return true;
+    }
+    calls_in(&code)
+        .into_iter()
+        .any(|(_, callee)| can_report(&callee, depth - 1, seen))
+}
+
+/// **Nothing `build_app` reaches may report before the subscriber exists.**
+///
+/// The defect was one of *position*: an `error!` five lines above
+/// `add_plugins(DefaultPlugins)`, which `tracing` evaluates and drops. The
+/// obvious guard — scan `build_app` for diagnostic macros — is worthless the
+/// moment the reporting moves into a helper, which is exactly what fixing it
+/// did: it then scans a body with no macros in it and passes on the empty set.
+/// A guard that passes on an empty set reads as protection and is not.
+///
+/// So this resolves what `build_app` *calls* and asks whether any of it can
+/// report, and it fails against the mutation that would actually reintroduce
+/// the defect: moving the `load_config_or_report(..)` call back above
+/// `add_plugins`.
 #[test]
-fn build_app_emits_no_diagnostic_before_the_subscriber_exists() {
+fn nothing_build_app_reaches_can_report_before_the_subscriber_exists() {
     let lib = std::fs::read_to_string(
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"),
     )
     .expect("src/lib.rs");
-    let at = lib.find("pub fn build_app()").expect("build_app");
+    let signature = lib.find("pub fn build_app()").expect("build_app");
+    // From the opening brace, so the function's own name in its signature is not
+    // read as a call to itself.
+    let at = signature + lib[signature..].find('{').expect("build_app has a body");
     let end = at + lib[at..].find("\n}\n").expect("build_app ends");
     let body = &lib[at..end];
-    let subscriber_at = body
+    let code: String = body
+        .lines()
+        .map(|l| l.split("//").next().unwrap_or(""))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let subscriber_at = code
         .find("add_plugins(DefaultPlugins)")
         .expect("build_app adds DefaultPlugins, which installs the subscriber");
-    let mut early = Vec::new();
+
+    // **The classifier has teeth**: it recognises the one reporter this crate
+    // has on the startup path. If this fails, the machinery below is inert and
+    // the rest of the test means nothing.
+    assert!(
+        can_report("load_config_or_report", 4, &mut Vec::new()),
+        "the guard cannot tell that `load_config_or_report` reports, so it \
+         cannot tell that anything else does either"
+    );
+
+    // **And it resolved the call that matters**, rather than skipping past it.
+    let calls = calls_in(&code);
+    assert!(
+        calls.iter().any(|(_, n)| n == "load_config_or_report"),
+        "`build_app` no longer calls `load_config_or_report`; if the reporting \
+         moved, move this guard with it — do not let it certify an empty set"
+    );
+
+    let mut offenders = Vec::new();
+    // Direct diagnostics in `build_app` itself...
     for (i, line) in body.lines().enumerate() {
-        let code = line.split("//").next().unwrap_or("");
-        let offset = body.find(line).unwrap_or(0);
-        for macro_name in ["error!", "warn!", "info!", "debug!", "trace!"] {
-            if code.contains(macro_name) && offset < subscriber_at {
-                early.push(format!("line {}: {}", i + 1, code.trim()));
-            }
+        let line_code = line.split("//").next().unwrap_or("");
+        let offset = code.find(line_code.trim()).unwrap_or(usize::MAX);
+        if DIAGNOSTIC_MACROS.iter().any(|m| line_code.contains(m)) && offset < subscriber_at {
+            offenders.push(format!("line {}: {}", i + 1, line_code.trim()));
+        }
+    }
+    // ...and anything it calls before the subscriber that can report.
+    for (offset, name) in calls {
+        if offset >= subscriber_at {
+            continue;
+        }
+        if can_report(&name, 4, &mut Vec::new()) {
+            offenders.push(format!("`{name}(..)` is called before the subscriber exists"));
         }
     }
     assert!(
-        early.is_empty(),
-        "these diagnostics are emitted before `LogPlugin` installs a subscriber, \
-         so `tracing` drops them and the condition they report is silent: {early:#?}"
+        offenders.is_empty(),
+        "these can report before `LogPlugin` installs a subscriber, so `tracing` \
+         drops the message and the condition they report is silent: {offenders:#?}"
     );
 }
 
