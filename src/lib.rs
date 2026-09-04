@@ -10,6 +10,8 @@
 //! at 60 Hz; presentation is written from it in `Update`. Input emits
 //! [`sim::Order`]s onto a queue applied only in the sim.
 
+use std::path::Path;
+
 use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::*;
 
@@ -33,17 +35,24 @@ pub fn build_app() -> App {
     // the driver and the sim see the same definitions.
     let content = Content::load_default().expect("assets/data/*.ron load");
     let starting_alloy = content.economy.starting_alloy;
-    // Replay logging is a *feature*, not the game: a malformed `replay.ron`
-    // disables it and says so, where malformed `units.ron` is fatal. Content is
-    // load-bearing (there is no match without it); where a log file goes is not
-    // worth refusing to start over.
-    let replay_config = replay_io::ReplayConfig::load_default().unwrap_or_else(|e| {
-        error!("{e} — replay logging disabled for this run");
-        replay_io::ReplayConfig::default()
-    });
 
     let mut app = App::new();
-    app.add_plugins(DefaultPlugins)
+    app.add_plugins(DefaultPlugins);
+    // **After the plugins, on purpose.** `DefaultPlugins` is what installs the
+    // `tracing` subscriber (`LogPlugin`), and `tracing` does not buffer events
+    // emitted before one exists — it evaluates them and drops them. Anything
+    // reported earlier is reported into the void, which for a *diagnostic about
+    // a misconfiguration* is the same as not reporting it: the operator sees a
+    // feature that looks broken instead of one that says it is misconfigured.
+    //
+    // So every diagnostic this function can emit is emitted from here down.
+    // Replay logging is a feature, not the game: a malformed `replay.ron`
+    // disables it and says so, where a malformed `units.ron` is fatal (content
+    // is load-bearing; where a log file goes is not worth refusing to start
+    // over). `Content`'s own failure is a panic, which reaches stderr with or
+    // without a subscriber.
+    let replay_config = replay_io::load_config_or_report(Path::new(sim::content::DATA_DIR));
+    app
         .insert_resource(Time::<Fixed>::from_hz(60.0))
         .insert_resource(content)
         .init_resource::<CursorWorld>()

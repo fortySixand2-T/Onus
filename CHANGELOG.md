@@ -241,3 +241,8 @@
 - [2026-09-03] Modified: .gitignore — the default replay output directory
 - [2026-09-03] Modified: FINDINGS.md — F-014: a feature nothing ships is a feature that does not exist; where the replay config lives, write-once, and the non-injective filename
 - [2026-09-03] Modified: tests/p2_log_writer.rs — scratch dirs clean up on drop, so a failing test litters nothing
+- [2026-09-03] Created: tests/critic_p2.rs — Phase 2 critic probes (writer cannot reach the sim, usable-log end to end, collision walk and budget, hostile filesystem, exactly-once edges, config loader, F-004)
+- [2026-09-03] Modified: src/lib.rs — critic P2 F1: diagnostics are emitted after DefaultPlugins installs the tracing subscriber, so a broken replay.ron is actually reported
+- [2026-09-03] Modified: src/replay_io.rs — load_config_or_report is the (testable) reporting seam; a failed write removes its own partial file rather than holding a name
+- [2026-09-03] Modified: tests/p2_log_writer.rs — probes that observe the report itself under a capturing tracing subscriber, plus the structural position guard
+- [2026-09-03] Modified: tests/m5_replay.rs — scratch files and content dirs clean up on drop

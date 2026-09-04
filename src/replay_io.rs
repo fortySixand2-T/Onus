@@ -78,6 +78,27 @@ impl ReplayConfig {
     }
 }
 
+/// Load the replay configuration, **reporting** a broken one rather than
+/// silently falling back to "off".
+///
+/// This is the seam the reporting is testable through — and the reason it is a
+/// function rather than three lines in `build_app` is that a diagnostic is only
+/// a diagnostic if something can observe it. `tracing` drops events emitted
+/// before a subscriber exists, so `build_app` calls this *after*
+/// `DefaultPlugins`, and a test calls it under a subscriber of its own and
+/// reads back what was emitted.
+///
+/// A missing file is not reported: that is the off state, not a mistake.
+pub fn load_config_or_report(dir: &Path) -> ReplayConfig {
+    match ReplayConfig::load_from_dir(dir) {
+        Ok(config) => config,
+        Err(e) => {
+            error!("{e} — replay logging disabled for this run");
+            ReplayConfig::default()
+        }
+    }
+}
+
 /// Where the writer's timestamp comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Clock {
@@ -213,13 +234,12 @@ impl ReplayWriter {
         }
         let stem = format!("{}-{}-seed{}", self.config.prefix, self.now(), log.seed());
         self.outcome = Some(match claim_path(&dir, &stem, self.config.max_collisions) {
-            Ok((path, mut file)) => match file.write_all(text.as_bytes()) {
+            Ok((path, mut file)) => match write_or_discard(&path, &mut file, &text) {
                 Ok(()) => {
                     info!("replay log written: {}", path.display());
                     WriteOutcome::Written(path)
                 }
-                Err(e) => {
-                    let msg = format!("replay log not written: {}: {e}", path.display());
+                Err(msg) => {
                     error!("{msg}");
                     WriteOutcome::Failed(msg)
                 }
@@ -273,6 +293,35 @@ fn claim_path(dir: &Path, stem: &str, max_collisions: u32) -> Result<(PathBuf, s
     ))
 }
 
+/// Write `text` into the file this writer just claimed, and **remove the file if
+/// the write does not complete**.
+///
+/// A half-written log is not a log: `MatchLog::load` refuses truncated RON, so
+/// nothing could ever mistake it for one. Left in place it would still be a
+/// fragment *holding a name* — and the collision walk steps over taken names
+/// forever, so a repeatedly failing write would eat a bounded name budget and
+/// eventually deny a working write. The general rule ("never delete somebody
+/// else's log") is not in tension with this: the fragment is not somebody
+/// else's and it is not a log. This function only ever removes the path it was
+/// handed, which the caller claimed with `create_new` in the same call — an old
+/// log can never be reached from here.
+///
+/// If the cleanup itself fails, both failures are reported: the operator needs
+/// to know a name is now held by a fragment.
+fn write_or_discard(path: &Path, file: &mut std::fs::File, text: &str) -> Result<(), String> {
+    let Err(e) = file.write_all(text.as_bytes()).and_then(|()| file.flush()) else {
+        return Ok(());
+    };
+    let mut msg = format!("replay log not written: {}: {e}", path.display());
+    if let Err(cleanup) = std::fs::remove_file(path) {
+        msg.push_str(&format!(
+            " (and the partial file could not be removed: {cleanup}; the name is \
+             now held by a fragment)"
+        ));
+    }
+    Err(msg)
+}
+
 /// Write the log the moment the match is decided.
 ///
 /// Not only on exit: a crash or a force-quit after a finished match would lose
@@ -296,5 +345,63 @@ pub fn write_on_exit(
 ) {
     if exits.read().next().is_some() {
         writer.write_once(&log);
+    }
+}
+
+// L1 unit tests: the file-level behaviour that has no ECS in it.
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A write that fails leaves **no file**, so a failing writer cannot eat the
+    /// collision-walk's name budget one fragment at a time.
+    ///
+    /// The failure is forced by handing `write_or_discard` a handle opened
+    /// read-only: `write_all` fails deterministically, on every platform, with
+    /// no full disk required.
+    #[test]
+    fn a_write_that_fails_leaves_no_file_behind() {
+        let dir = std::env::temp_dir().join(format!("onus-rio-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch");
+        let path = dir.join("claimed.ron");
+
+        // Claimed exactly as the writer claims it, then reopened read-only so
+        // the write cannot succeed.
+        let (claimed, _handle) = claim_path(&dir, "claimed", 0).expect("claim");
+        assert_eq!(claimed, path);
+        assert!(path.exists(), "the claim did not create the file");
+        let mut read_only = OpenOptions::new().read(true).open(&path).expect("reopen");
+
+        let err = write_or_discard(&path, &mut read_only, "(version: 2)")
+            .expect_err("a read-only handle must fail to write");
+        assert!(err.contains("not written"), "unhelpful message: {err}");
+        assert!(
+            !path.exists(),
+            "a failed write left a fragment holding the name"
+        );
+
+        // ...and the same path is claimable again afterwards, which is the
+        // point: the budget was not consumed.
+        let (again, _) = claim_path(&dir, "claimed", 0).expect("the name is free again");
+        assert_eq!(again, path);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The direction that could break: a write that succeeds keeps its file,
+    /// with exactly the bytes it was given.
+    #[test]
+    fn a_write_that_succeeds_keeps_its_file() {
+        let dir = std::env::temp_dir().join(format!("onus-rio-ok-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch");
+        let (path, mut file) = claim_path(&dir, "kept", 0).expect("claim");
+        write_or_discard(&path, &mut file, "(version: 2)").expect("write");
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("read"),
+            "(version: 2)"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

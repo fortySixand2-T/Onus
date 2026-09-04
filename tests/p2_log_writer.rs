@@ -427,6 +427,172 @@ fn a_log_that_cannot_be_read_back_is_never_written() {
     assert!(logs_in(dir.path()).is_empty(), "an unloadable file was left on disk");
 }
 
+// ---- a diagnostic nobody can see is not a diagnostic ------------------------
+
+/// A `tracing` subscriber that keeps what it is told, so a test can assert that
+/// a diagnostic was **emitted**, not merely that the condition it describes
+/// occurred.
+///
+/// This is the whole lesson of the finding: `tracing` evaluates an event with no
+/// subscriber installed and drops it, so "the code calls `error!`" and "the
+/// operator is told" are different claims. Only the second one matters, and only
+/// the second one is checked here.
+mod capture {
+    use bevy::log::tracing::{
+        field::{Field, Visit},
+        span, Event, Level, Metadata, Subscriber,
+    };
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    pub struct Captured {
+        pub events: Mutex<Vec<(Level, String)>>,
+    }
+
+    pub struct Recorder(pub Arc<Captured>);
+
+    struct Text(String);
+
+    impl Visit for Text {
+        fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+            if field.name() == "message" {
+                self.0 = format!("{value:?}");
+            }
+        }
+    }
+
+    impl Subscriber for Recorder {
+        fn enabled(&self, _: &Metadata<'_>) -> bool {
+            true
+        }
+        fn new_span(&self, _: &span::Attributes<'_>) -> span::Id {
+            span::Id::from_u64(1)
+        }
+        fn record(&self, _: &span::Id, _: &span::Record<'_>) {}
+        fn record_follows_from(&self, _: &span::Id, _: &span::Id) {}
+        fn event(&self, event: &Event<'_>) {
+            let mut text = Text(String::new());
+            event.record(&mut text);
+            self.0
+                .events
+                .lock()
+                .expect("lock")
+                .push((*event.metadata().level(), text.0));
+        }
+        fn enter(&self, _: &span::Id) {}
+        fn exit(&self, _: &span::Id) {}
+    }
+}
+
+/// Run `f` with a capturing subscriber installed, and return what was emitted.
+fn emitted<T>(f: impl FnOnce() -> T) -> (T, Vec<(bevy::log::tracing::Level, String)>) {
+    let captured = std::sync::Arc::new(capture::Captured::default());
+    let out = bevy::log::tracing::subscriber::with_default(
+        capture::Recorder(captured.clone()),
+        f,
+    );
+    let events = captured.events.lock().expect("lock").clone();
+    (out, events)
+}
+
+/// **A broken config is reported where a human can see it**, and the report
+/// names the file. Asserted by observing the *emission*, under a subscriber —
+/// the code path that produced this defect emitted its `error!` five lines
+/// before `LogPlugin` installed one, so the message was formatted and dropped.
+#[test]
+fn a_broken_config_is_reported_and_not_emitted_into_the_void() {
+    let dir = scratch_dir("broken-config");
+    std::fs::write(dir.join(ReplayConfig::FILE), "(enable: true)").expect("write");
+
+    let (config, events) = emitted(|| onus::replay_io::load_config_or_report(dir.path()));
+
+    // It fell back to off...
+    assert_eq!(config, ReplayConfig::default());
+    // ...and it *said so*, at error level, naming the file.
+    let errors: Vec<&(bevy::log::tracing::Level, String)> = events
+        .iter()
+        .filter(|(l, _)| *l == bevy::log::tracing::Level::ERROR)
+        .collect();
+    assert_eq!(
+        errors.len(),
+        1,
+        "a malformed config produced {} error diagnostics, not one: {events:?}",
+        errors.len()
+    );
+    assert!(
+        errors[0].1.contains("replay.ron"),
+        "the report does not name the file: {:?}",
+        errors[0].1
+    );
+    assert!(
+        errors[0].1.contains("disabled"),
+        "the report does not say what it did about it: {:?}",
+        errors[0].1
+    );
+}
+
+/// The direction that could break: the quiet cases stay quiet. A **missing**
+/// config is the off state, not a mistake, and a **valid** one is neither — so
+/// neither may emit anything, or the diagnostic that matters drowns.
+#[test]
+fn a_missing_or_valid_config_reports_nothing() {
+    let dir = scratch_dir("quiet-config");
+
+    let (config, events) = emitted(|| onus::replay_io::load_config_or_report(dir.path()));
+    assert_eq!(config, ReplayConfig::default());
+    assert!(events.is_empty(), "a missing config was reported: {events:?}");
+
+    // And a real one, parsed and returned, silently.
+    std::fs::write(
+        dir.join(ReplayConfig::FILE),
+        "(enabled: true, dir: \"somewhere\", prefix: \"p\", max_collisions: 3)",
+    )
+    .expect("write");
+    let (config, events) = emitted(|| onus::replay_io::load_config_or_report(dir.path()));
+    assert_eq!(
+        config,
+        ReplayConfig {
+            enabled: true,
+            dir: "somewhere".to_string(),
+            prefix: "p".to_string(),
+            max_collisions: 3
+        }
+    );
+    assert!(events.is_empty(), "a valid config was reported: {events:?}");
+}
+
+/// ...and the structural half, since the defect was one of *position*: nothing
+/// in `build_app` may emit a `tracing` diagnostic before `DefaultPlugins`
+/// installs the subscriber that would carry it.
+#[test]
+fn build_app_emits_no_diagnostic_before_the_subscriber_exists() {
+    let lib = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"),
+    )
+    .expect("src/lib.rs");
+    let at = lib.find("pub fn build_app()").expect("build_app");
+    let end = at + lib[at..].find("\n}\n").expect("build_app ends");
+    let body = &lib[at..end];
+    let subscriber_at = body
+        .find("add_plugins(DefaultPlugins)")
+        .expect("build_app adds DefaultPlugins, which installs the subscriber");
+    let mut early = Vec::new();
+    for (i, line) in body.lines().enumerate() {
+        let code = line.split("//").next().unwrap_or("");
+        let offset = body.find(line).unwrap_or(0);
+        for macro_name in ["error!", "warn!", "info!", "debug!", "trace!"] {
+            if code.contains(macro_name) && offset < subscriber_at {
+                early.push(format!("line {}: {}", i + 1, code.trim()));
+            }
+        }
+    }
+    assert!(
+        early.is_empty(),
+        "these diagnostics are emitted before `LogPlugin` installs a subscriber, \
+         so `tracing` drops them and the condition they report is silent: {early:#?}"
+    );
+}
+
 // ---- filenames are a coordinate, and this one is not injective --------------
 
 /// Two matches finishing **in the same second with the same seed** produce two

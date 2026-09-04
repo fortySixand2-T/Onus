@@ -11,7 +11,7 @@
 //! (`onus::add_sim_systems`) — no render types, no hand-rolled system list
 //! (F-004), one fixed timestep handed to the sim per step (F-003).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bevy::prelude::*;
 
@@ -347,10 +347,78 @@ fn a_hand_composed_app_without_the_tick_counter_still_applies_its_orders() {
 
 /// A scratch path for a log file. Under the OS temp dir, named per test, so two
 /// tests never race for one file.
-fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join("onus-m5");
+/// A scratch file under the OS temp dir — never the repo, never a home — that
+/// **deletes itself on drop**, so a test that fails or panics leaves nothing
+/// behind. (Cleaning up on the success path only means littering exactly when a
+/// run went wrong, which is when nobody is looking at `/tmp`.)
+///
+/// It derefs to `&Path`, so a call site reads the same as it did when this
+/// returned a `PathBuf`.
+struct ScratchFile(PathBuf);
+
+impl std::ops::Deref for ScratchFile {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for ScratchFile {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for ScratchFile {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
+        // ...and the directory too, once it is empty: `remove_dir` fails while
+        // any other scratch file is still alive, so the last one out closes the
+        // door and nothing has to coordinate.
+        if let Some(dir) = self.0.parent() {
+            let _ = std::fs::remove_dir(dir);
+        }
+    }
+}
+
+fn scratch(name: &str) -> ScratchFile {
+    let dir = std::env::temp_dir().join(format!("onus-m5-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("scratch dir");
-    dir.join(format!("{name}.ron"))
+    ScratchFile(dir.join(format!("{name}.ron")))
+}
+
+/// A scratch **directory** of content files, removed on drop for the same
+/// reason.
+struct ScratchDir(PathBuf);
+
+impl ScratchDir {
+    fn new(name: &str) -> Self {
+        let dir = std::env::temp_dir().join(format!("onus-p1-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch content dir");
+        ScratchDir(dir)
+    }
+}
+
+impl std::ops::Deref for ScratchDir {
+    type Target = Path;
+
+    fn deref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl AsRef<Path> for ScratchDir {
+    fn as_ref(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for ScratchDir {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 /// An AI match's whole command stream survives a trip through a file: same
@@ -1842,8 +1910,7 @@ fn try_content_edited(
     from: &str,
     to: &str,
 ) -> Result<Content, onus::sim::content::ContentError> {
-    let dir = std::env::temp_dir().join(format!("onus-p1-{name}"));
-    std::fs::create_dir_all(&dir).expect("scratch content dir");
+    let dir = ScratchDir::new(name);
     for file in ["units.ron", "resources.ron"] {
         let text = std::fs::read_to_string(data_dir().join(file)).expect("read content");
         let text = if file == which {
@@ -1854,6 +1921,8 @@ fn try_content_edited(
         };
         std::fs::write(dir.join(file), text).expect("write content");
     }
+    // The directory is removed when `dir` drops at the end of this function —
+    // `Content` is fully parsed by then and holds nothing but data.
     Content::load_from_dir(&dir)
 }
 
