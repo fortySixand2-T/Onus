@@ -1,0 +1,37 @@
+// assets/data/replay.ron — replay-log output, for the *driver*.
+//
+// This is the only content file the simulation never reads. It configures where
+// the shipped binary puts the command log of a finished match; it says nothing
+// about how a match plays, and it is deliberately kept out of `Content` (and so
+// out of the content fingerprint) for two reasons:
+//
+//   * a fingerprint is a claim about the match, and a directory name is not part
+//     of one — hashing it would mean that turning logging on, or moving the
+//     output directory, invalidated every replay already on disk;
+//   * a path in sim state is one step away from a filename influencing a hash,
+//     and the sim must stay render-free, clock-free and file-free.
+//
+// The file is optional: if it is missing, replay logging is simply off (which is
+// also the default below). A file that is *present but malformed* is an error —
+// a missing optional config is a state; a broken one is a mistake.
+(
+    // **Off by default.** A replay per run is unbounded growth on disk, and the
+    // machine this is developed on has ~1 GiB free. Turn it on deliberately.
+    enabled: false,
+
+    // Where logs go. A relative path is relative to the process's working
+    // directory (the repo root when run with `cargo run`).
+    dir: "replays",
+
+    // Filename: `<prefix>-<unix seconds>-seed<seed>.ron`, plus `-1`, `-2`, ...
+    // if that name is already taken. The timestamp and the seed do **not** make
+    // a name unique — two matches can finish in the same second with the same
+    // seed — so the writer never trusts the name: it claims the file with
+    // `create_new`, which fails if the file exists, and walks the suffix until
+    // it claims an unused one. It never overwrites a log.
+    prefix: "onus",
+
+    // How many taken names to walk before giving up. Giving up is reported and
+    // loses the *new* log; overwriting would lose an old one, which is worse.
+    max_collisions: 64,
+)

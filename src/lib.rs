@@ -15,6 +15,7 @@ use bevy::prelude::*;
 
 pub mod client;
 pub mod input;
+pub mod replay_io;
 pub mod setup;
 pub mod sim;
 pub mod ui;
@@ -32,6 +33,14 @@ pub fn build_app() -> App {
     // the driver and the sim see the same definitions.
     let content = Content::load_default().expect("assets/data/*.ron load");
     let starting_alloy = content.economy.starting_alloy;
+    // Replay logging is a *feature*, not the game: a malformed `replay.ron`
+    // disables it and says so, where malformed `units.ron` is fatal. Content is
+    // load-bearing (there is no match without it); where a log file goes is not
+    // worth refusing to start over.
+    let replay_config = replay_io::ReplayConfig::load_default().unwrap_or_else(|e| {
+        error!("{e} — replay logging disabled for this run");
+        replay_io::ReplayConfig::default()
+    });
 
     let mut app = App::new();
     app.add_plugins(DefaultPlugins)
@@ -67,7 +76,28 @@ pub fn build_app() -> App {
             ),
         );
     add_sim_systems(&mut app, FixedUpdate);
+    add_replay_writer(&mut app, replay_config);
     app
+}
+
+/// Register the replay writer on `app`. **The one definition of when a match's
+/// log reaches disk**, shared by the shipped app and the headless tests for the
+/// same reason [`add_sim_systems`] is (F-004): a writer that only exists in a
+/// test harness is a writer the game does not have.
+///
+/// Both systems run in `Last`, after the tick they are reacting to: the sim
+/// decides the match in `FixedUpdate`, and this sees the decision in the same
+/// frame. Neither is in the sim chain — the writer reads sim state and reads a
+/// clock, and the sim may do neither with it.
+pub fn add_replay_writer(app: &mut App, config: replay_io::ReplayConfig) {
+    app.insert_resource(replay_io::ReplayWriter::new(config));
+    app.add_systems(
+        Last,
+        (
+            replay_io::write_on_decision,
+            replay_io::write_on_exit.after(replay_io::write_on_decision),
+        ),
+    );
 }
 
 /// Register the sim chain on `schedule`. **The one definition of what the sim

@@ -234,3 +234,8 @@
 - [2026-09-03] Modified: FINDINGS.md — F-013 extension: two more coordinates that were not what their prose said; "is it injective, and what enforces that?"
 - [2026-09-03] Modified: tests/critic_m5.rs — adjudicated the F1 probe patch (round-trip kept, refusal probed in all three namespaces, load_from_dir guarded as the sole producer); pass-6 probes for the poison flag and the stamp shortcut
 - [2026-09-03] Modified: tests/critic_m5.rs — Phase 1 pass-2 critic probes (loader unavoidability, three-namespace duplicate refusal, cross-namespace legality, poisoned-log refusal at every boundary); PASS
+- [2026-09-03] Created: assets/data/replay.ron — Phase 2: replay-log output config for the driver (off by default; not part of Content, so not in the fingerprint)
+- [2026-09-03] Created: src/replay_io.rs — Phase 2: the shipped replay writer (wall clock and filesystem, driver-side; writes once, never overwrites, never fatal)
+- [2026-09-03] Modified: src/lib.rs — build_app installs the writer through add_replay_writer, the one definition of when a log reaches disk
+- [2026-09-03] Created: tests/p2_log_writer.rs — Phase 2 probes: the shipped log round-trips and replays; write-once; collisions; failure is loud, not fatal; the clock never reaches the sim
+- [2026-09-03] Modified: .gitignore — the default replay output directory
