@@ -251,3 +251,4 @@
 - [2026-09-03] Modified: tests/critic_m5.rs — scratch paths clean up on Drop, with a per-call serial so concurrent probes cannot delete each other's fixtures
 - [2026-09-03] Modified: tests/p2_log_writer.rs — the positional guard resolves build_app's callees and asks whether any can report; it fails against the real mutation (moving the call above add_plugins) and asserts it resolved something
 - [2026-09-03] Modified: FINDINGS.md — F-014 extension: a structural guard must assert it resolved something; red-verify against the mutation the defect would actually arrive as; corrected the false "everywhere" in the scratch-cleanup bullet
+- [2026-09-03] Modified: tests/critic_m5.rs, tests/critic_p2.rs — Phase 2 pass-2 critic probes (startup-order pinning, seam-is-the-shipped-path, symlink at a candidate name, callee-resolving diagnostic guard); Drop-based scratch cleanup; PASS
