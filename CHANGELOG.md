@@ -246,3 +246,4 @@
 - [2026-09-03] Modified: src/replay_io.rs — load_config_or_report is the (testable) reporting seam; a failed write removes its own partial file rather than holding a name
 - [2026-09-03] Modified: tests/p2_log_writer.rs — probes that observe the report itself under a capturing tracing subscriber, plus the structural position guard
 - [2026-09-03] Modified: tests/m5_replay.rs — scratch files and content dirs clean up on drop
+- [2026-09-03] Modified: FINDINGS.md — F-014 extension: a diagnostic emitted before a subscriber; observe the report, not the condition

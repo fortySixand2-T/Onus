@@ -969,3 +969,34 @@ there is no "play this replay" entry point, because there is no UI or CLI for
 one and inventing either would be building ahead. The sim side has been able to
 do it since M5 (`ReplaySource`), and the headless tests do it; wiring it to a
 user gesture belongs with whatever menu M6 or the campaign layer brings.
+
+**Extension (Phase 2 critic) — a diagnostic emitted before anything can hear it.**
+
+`build_app` reported a malformed `replay.ron` with `error!` five lines before
+`DefaultPlugins` installed the `tracing` subscriber. `tracing` does not buffer
+pre-subscriber events — it evaluates the message and drops it — so a typo in the
+config was observably identical to `enabled: false`: the feature looked broken
+instead of saying it was misconfigured, which is precisely the state three of
+this project's own comments said must not exist.
+
+Ninth defect here behind prose asserting a property the code lacked, and the
+**fourth where the false part was the justification rather than the claim**.
+"Disables it and says so" was half true, and the failing half was the half the
+design rested on. The rule that follows, and it is a rule about *probes* rather
+than about code: **when the prose says a condition is reported, the test that
+must exist is one that observes the report — not one that observes the
+condition.** A capturing subscriber makes that a two-line assertion; nothing
+weaker distinguishes "the code calls `error!`" from "somebody is told".
+
+Two smaller things fixed alongside, both about not leaving things behind:
+
+- **A failed write removes its own partial file.** A fragment cannot be mistaken
+  for a log (`load` refuses truncated RON), but it holds a *name*, and the
+  collision walk steps over taken names forever — so repeated failures would eat
+  a bounded budget and eventually deny a working write. This does not weaken
+  "never overwrite somebody else's log": the fragment is neither somebody
+  else's nor a log, and the cleanup only ever touches the path claimed with
+  `create_new` in the same call.
+- **Scratch cleanup on `Drop`, everywhere.** Cleaning up on the success path
+  only means littering exactly when a run went wrong — which is when nobody
+  looks. Guards now remove the file, and the last one out removes the directory.
