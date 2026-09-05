@@ -17,6 +17,7 @@ use bevy::prelude::*;
 
 pub mod client;
 pub mod input;
+pub mod net;
 pub mod replay_io;
 pub mod setup;
 pub mod sim;
@@ -135,6 +136,7 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
     app.init_resource::<sim::MatchState>();
     app.init_resource::<sim::replay::CommandLog>();
     app.init_resource::<sim::replay::SimIds>();
+    app.init_resource::<sim::TickGate>();
     app.add_systems(
         schedule,
         (
@@ -202,6 +204,11 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
             // frozen. Does nothing unless a `StateHashLog` was inserted.
             sim::replay::record_state_hash,
         )
-            .chain(),
+            .chain()
+            // **The whole chain, not part of it.** A stalled tick is not a tick:
+            // nothing advances, nothing is decided, nothing is hashed. The gate
+            // is open unless something (M6's lockstep link) closes it, so every
+            // single-player app runs exactly as it did.
+            .run_if(sim::may_tick),
     );
 }

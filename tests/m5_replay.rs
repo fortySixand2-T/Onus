@@ -1741,10 +1741,18 @@ fn a_command_still_held_when_the_match_ends_is_recorded_and_released() {
 fn every_scheduler_is_declared_and_only_the_sim_stamps_a_schedule() {
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
     // Files that may schedule a command for a later tick, and why.
-    let allowed: [(&str, &str); 1] = [(
-        "sim/replay.rs",
-        "a replay re-pushes each logged command on the tick it was queued on",
-    )];
+    let allowed: [(&str, &str); 2] = [
+        (
+            "sim/replay.rs",
+            "a replay re-pushes each logged command on the tick it was queued on",
+        ),
+        (
+            "net.rs",
+            "the lockstep link hands the sim a whole turn on the tick it applies \
+             on — it buffers both peers' commands itself, so what it pushes is \
+             always for the current tick and always in one canonical order",
+        ),
+    ];
 
     let mut files = Vec::new();
     let mut stack = vec![src.clone()];

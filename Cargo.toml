@@ -13,6 +13,11 @@ ron = "0.8"
 # Fast dev rebuilds (dev only): `cargo run --features bevy/dynamic_linking`
 # Pair with the `mold` linker on Linux for best iteration times.
 
+# The headless lockstep peer used by the cross-process determinism test (M6).
+[[bin]]
+name = "netpeer"
+path = "src/bin/netpeer.rs"
+
 [dev-dependencies]
 criterion = "0.5"
 

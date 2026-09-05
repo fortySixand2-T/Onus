@@ -259,3 +259,11 @@
 - [2026-09-05] Modified: src/sim/replay.rs — the log records a held command's queued tick; CommandFate::Unplayed; a replay re-pushes on the queued tick and keeps what it holds
 - [2026-09-05] Modified: src/lib.rs — the chain records and releases commands still held when the match is decided
 - [2026-09-05] Modified: tests/m5_replay.rs — ahead-scheduling probes; the push_at guard replaced by a declared-scheduler + push-API guard
+- [2026-09-05] Created: assets/data/net.ron — lockstep tunables (turn delay, hash interval, stall timeout), driver-side
+- [2026-09-05] Created: src/net.rs — M6: the lockstep link (framed TCP, handshake, turn exchange, hash comparison), sim-free
+- [2026-09-05] Created: src/bin/netpeer.rs — a headless peer binary, for cross-process determinism
+- [2026-09-05] Modified: src/sim/mod.rs — TickGate + may_tick: the sim's only notion of "wait", and take_unscheduled
+- [2026-09-05] Modified: src/lib.rs — the whole chain is gated on may_tick; net module registered
+- [2026-09-05] Created: tests/m6_lockstep.rs, tests/m6_cross_process.rs — M6 probes, in-process and across two real processes
+- [2026-09-05] Modified: Cargo.toml — the netpeer binary target
+- [2026-09-05] Modified: tests/m5_replay.rs — net.rs declared as the second scheduler

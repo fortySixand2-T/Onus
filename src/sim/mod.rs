@@ -274,6 +274,29 @@ impl OrderQueue {
         self.0.clear();
     }
 
+    /// Take out every command that has **no tick of its own** — the `Asap`
+    /// ones, which is what local input and the local AI produce — and leave
+    /// everything scheduled where it is.
+    ///
+    /// This is the hand-off a lockstep peer needs: a command a player issues
+    /// locally must not be applied locally on the next tick, because the other
+    /// peer has never heard of it. The link takes them out, sends them, and puts
+    /// them back on the turn both peers will apply them on. It takes only the
+    /// unscheduled ones so that re-pushing is not a loop, and only the unseen
+    /// ones so that a command the sim is already holding is never re-scheduled.
+    pub fn take_unscheduled(&mut self) -> Vec<SignedOrder> {
+        let mut taken = Vec::new();
+        let mut kept = VecDeque::with_capacity(self.0.len());
+        for cmd in self.0.drain(..) {
+            match (cmd.when, cmd.queued) {
+                (CommandTick::Asap, None) => taken.push(cmd.order),
+                _ => kept.push_back(cmd),
+            }
+        }
+        self.0 = kept;
+        taken
+    }
+
     /// Drop every command the sim has **not yet looked at**, and keep the ones
     /// it is already holding. Returns how many were dropped.
     ///
@@ -540,6 +563,63 @@ impl Order {
         }
     }
 
+}
+
+/// May the sim advance this frame?
+///
+/// **The sim's own switch, and it knows nothing about why it is thrown.** A
+/// lockstep peer (M6) closes it while it is waiting for the other side's
+/// commands, and a single-player match never touches it — the default is open,
+/// so every app that does not install a gate-keeper behaves exactly as it did.
+///
+/// It is not sim *state*: it is not hashed, it is not logged, and it never
+/// reaches a decision. A closed gate does not make a different tick happen; it
+/// makes **no tick happen**, which is the only shape "a tick advances only when
+/// all inputs for it are present" can honestly take. Everything else — blocking
+/// inside a system, or letting some systems run on a stalled tick — would either
+/// freeze the frame or produce a half-tick that no replay could reproduce.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TickGate {
+    open: bool,
+}
+
+impl Default for TickGate {
+    /// Open: a sim with nobody waiting on it runs.
+    fn default() -> Self {
+        Self { open: true }
+    }
+}
+
+impl TickGate {
+    pub fn open(&mut self) {
+        self.open = true;
+    }
+
+    pub fn close(&mut self) {
+        self.open = false;
+    }
+
+    pub fn set(&mut self, open: bool) {
+        self.open = open;
+    }
+
+    pub fn is_open(&self) -> bool {
+        self.open
+    }
+}
+
+/// Run condition for the **whole** sim chain: nothing at all happens on a
+/// stalled tick.
+///
+/// Deliberately wider than `match_running`, which gates only the systems that
+/// *play* the match and lets the win check keep running. The two conditions
+/// answer different questions: `match_running` is "is this match still being
+/// played", `may_tick` is "is this a tick at all". On a stalled tick the tick
+/// counter must not advance, the outcome must not be re-decided, and no hash
+/// may be recorded — a hash for a tick that did not happen is a desync report
+/// waiting to be filed against a peer that did nothing wrong.
+pub fn may_tick(gate: Option<Res<TickGate>>) -> bool {
+    gate.is_none_or(|g| g.is_open())
 }
 
 /// Counters for the once-per-second sim-tick vs. frame report. `sim_ticks` is

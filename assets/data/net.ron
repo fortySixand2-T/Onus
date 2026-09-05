@@ -1,0 +1,27 @@
+// assets/data/net.ron — lockstep networking, for the *driver*.
+//
+// Like `replay.ron`, this configures something the simulation never sees. The
+// sim has no notion of a peer, a socket or a timeout; it has a gate that some
+// outside thing may hold shut, and that is the whole of its involvement.
+//
+// Optional: a missing file means these defaults. A file that is present but
+// malformed is an error — a missing optional config is a state, a broken one is
+// a mistake.
+(
+    // How many ticks ahead a command is scheduled for. Every command a player
+    // issues on tick T is applied by **both** peers on tick T + this, which is
+    // what makes the two sides apply the same commands on the same tick without
+    // either waiting for the other's reflexes. Bigger is more forgiving of
+    // latency and more sluggish to play; 6 ticks is 100 ms at 60 Hz.
+    turn_delay_ticks: 6,
+
+    // How often the peers compare `sim::state_hash`. Every tick would be
+    // correct and wasteful; never would leave a desync undetected until the two
+    // screens visibly disagree. 30 ticks is twice a second.
+    hash_interval_ticks: 30,
+
+    // How long to wait for a turn that has not arrived before declaring the
+    // link stalled. **Wall-clock, and entirely the driver's**: the sim counts
+    // ticks and nothing else.
+    stall_timeout_secs: 10.0,
+)
