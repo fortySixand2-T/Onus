@@ -1028,3 +1028,54 @@ Two smaller things fixed alongside, both about not leaving things behind:
   entry exists to describe — a claim quantified over more than was checked — and
   it appeared *in the entry recording that lesson*. State what was verified, and
   when.
+
+## F-015 — Lockstep: the queue's *order* is state, and a stall is where local input escapes (M6)
+
+**Wall hit.** Two peers apply the same commands on the same ticks. Everything
+M0–M5 built exists to make that checkable — `SimId` because an `Entity` cannot
+cross a process boundary (F-011), one canonical `state_hash` because two notions
+of "identical" is none, the content fingerprint because two rosters cannot
+produce one match. Two defects turned up anyway, and both were found by tests
+that no single-process harness could have run.
+
+**1. The order of a turn's commands is part of the state.** The first cut pushed
+each peer's commands into the sim's queue as they were produced or as they
+arrived. Both peers then had the same commands for tick T in a *different order*
+— and the state hash counts the queue by position (F-012 ext.), so they hashed
+differently and filed a desync against each other for nothing. The link now
+buffers both sides' turns and pushes them as one canonical sequence (faction A's,
+then faction B's, each in its own issue order), identical on both peers by
+construction rather than by timing. **A lockstep peer must decide the order of a
+turn, not inherit it from the network.**
+
+**2. A stall is where local input escapes.** Local commands were taken out of the
+sim's queue only on the frame that *sent* a turn. The frame that resumes a
+stalled sim sends no turn — the tick has not advanced, so there is no new turn
+number — and the command sat in the queue as `Asap` until the resumed tick
+applied it **locally, on one peer only**. Two processes desynced at a different
+tick every run. Local commands are now drained every pump into a pending buffer;
+nothing local can reach the sim unscheduled.
+
+**What found it.** Not the twelve in-process probes — they were green. Two
+`App`s in one process share an allocator, a parsed `Content` and every static;
+two *processes* share a socket and some files. The cross-process test failed
+intermittently, and the peers' own command logs (dumped to disk, diffed)
+identified the escaping command in one line. **The critic probe said
+"determinism holds cross-process" for a reason: an in-process lockstep test is
+necessary and not sufficient.**
+
+**Decisions worth keeping.**
+
+| Question | Choice |
+|---|---|
+| What the sim knows | One resource, `TickGate`, and a run condition. No socket, no peer, no clock, no `async` — pinned by `the_sim_knows_nothing_about_the_network`. |
+| What runs on a stalled tick | **Nothing.** The gate holds the whole chain, wider than `match_running`: on a stalled tick the tick counter must not advance, the outcome must not be decided and no hash may be recorded, because a hash for a tick that did not happen is a desync report against an innocent peer. |
+| Transport | `std::net` TCP, length-prefixed RON, non-blocking. No new dependency (the project has three), and no async runtime in a codebase whose thesis is a dependency-light deterministic core. Non-blocking because a lockstep implementation that blocks the renderer is one nobody can watch. |
+| Peer identity | `Faction` — a two-valued enum, so the id space is injective by construction, and the handshake refuses a peer claiming the same side. The fifth time this project has asked "is this coordinate injective?", and the first where the answer was "the type already guarantees it". |
+| Turn identity | The tick a turn applies on: monotonic, one per peer per tick, and the peer that sends two for one tick is refused by the same `is_none_or(|last| turn > last)` latch that stops a stalled frame sending twice. |
+
+**Deliberately deferred.** No matchmaking, no reconnection, no lobby, no UI for
+any of it; the shipped binary still starts a local match. `netpeer` is the only
+thing that plays a networked one, which is enough to prove the property and
+nothing more. A peer that drops is reported and the match stops — there is no
+resume, because there is nowhere to resume *to* without a lobby.

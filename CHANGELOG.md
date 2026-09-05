@@ -267,3 +267,4 @@
 - [2026-09-05] Created: tests/m6_lockstep.rs, tests/m6_cross_process.rs — M6 probes, in-process and across two real processes
 - [2026-09-05] Modified: Cargo.toml — the netpeer binary target
 - [2026-09-05] Modified: tests/m5_replay.rs — net.rs declared as the second scheduler
+- [2026-09-05] Modified: FINDINGS.md — F-015: lockstep; the queue's order is state, and a stall is where local input escapes
