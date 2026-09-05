@@ -255,3 +255,7 @@
 - [2026-09-04] Modified: src/client.rs — match-result wording as presentation constants, plus the pure match_result_text / match_clock formatters
 - [2026-09-04] Modified: src/ui.rs — the options panel reports win/loss/draw, when it was decided, and why orders stopped
 - [2026-09-04] Created: tests/p3_match_result_panel.rs — headless probes on the panel's rendered text for all three outcomes and the running case
+- [2026-09-05] Modified: src/sim/mod.rs — M6 prerequisite: the queue stamps the tick it first saw a command (CommandTick::Scheduled); take_all_pending; discard_unseen
+- [2026-09-05] Modified: src/sim/replay.rs — the log records a held command's queued tick; CommandFate::Unplayed; a replay re-pushes on the queued tick and keeps what it holds
+- [2026-09-05] Modified: src/lib.rs — the chain records and releases commands still held when the match is decided
+- [2026-09-05] Modified: tests/m5_replay.rs — ahead-scheduling probes; the push_at guard replaced by a declared-scheduler + push-API guard

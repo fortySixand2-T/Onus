@@ -141,6 +141,7 @@ impl OrderQueue {
     pub fn push_back(&mut self, order: impl Into<SignedOrder>) {
         self.0.push_back(Command {
             when: CommandTick::Asap,
+            queued: None,
             order: order.into(),
         });
     }
@@ -152,6 +153,7 @@ impl OrderQueue {
     pub fn push_at(&mut self, at: u32, order: impl Into<SignedOrder>) {
         self.0.push_back(Command {
             when: CommandTick::At(at),
+            queued: None,
             order: order.into(),
         });
     }
@@ -176,20 +178,47 @@ impl OrderQueue {
         let mut taken = Vec::new();
         let mut kept = VecDeque::with_capacity(self.0.len());
         for cmd in self.0.drain(..) {
-            match cmd.when {
-                CommandTick::At(t) if t > now => kept.push_back(Command {
-                    when: CommandTick::At(t),
+            // The tick the sim first *saw* this command: stamped here, the first
+            // time it is looked at and not taken. A command held across a tick
+            // boundary is state the sim owns from that moment (the state hash
+            // counts it), so the log has to record it or a replay's queue fills
+            // up later than the recording's did.
+            let queued = cmd.queued.unwrap_or(now);
+            match cmd.when.apply_tick() {
+                Some(t) if t > now => kept.push_back(Command {
+                    when: cmd.when,
+                    queued: Some(queued),
                     order: cmd.order,
                 }),
-                CommandTick::At(t) if t < now => taken.push(TakenCommand {
+                Some(t) if t < now => taken.push(TakenCommand {
                     tick: now,
-                    schedule: CommandTick::At(t),
+                    // Late on first sight: never held, so never stamped, and the
+                    // schedule it carried is the whole story.
+                    schedule: cmd.when,
+                    queued,
                     late: true,
                     order: cmd.order,
                 }),
-                when => taken.push(TakenCommand {
+                Some(t) => taken.push(TakenCommand {
                     tick: now,
-                    schedule: when,
+                    // Held for at least one tick ⇒ the stamped form; taken on
+                    // sight ⇒ exactly what was pushed.
+                    schedule: if queued < now {
+                        CommandTick::Scheduled {
+                            queued,
+                            apply: t,
+                        }
+                    } else {
+                        cmd.when
+                    },
+                    queued,
+                    late: false,
+                    order: cmd.order,
+                }),
+                None => taken.push(TakenCommand {
+                    tick: now,
+                    schedule: CommandTick::Asap,
+                    queued,
                     late: false,
                     order: cmd.order,
                 }),
@@ -197,6 +226,32 @@ impl OrderQueue {
         }
         self.0 = kept;
         taken
+    }
+
+    /// Take everything still waiting, whatever tick it was for — the queue is
+    /// emptied and the caller gets what was in it.
+    ///
+    /// Used when the match is decided: the chain is off from that moment, so a
+    /// held command will never be applied, and leaving it in the queue would
+    /// leave sim state (the hash counts held commands) that a replay could not
+    /// reproduce, because a command that never applied is in no log.
+    pub fn take_all_pending(&mut self, now: u32) -> Vec<TakenCommand> {
+        let held: Vec<Command> = self.0.drain(..).collect();
+        held.into_iter()
+            .map(|cmd| {
+                let queued = cmd.queued.unwrap_or(now);
+                TakenCommand {
+                    tick: now,
+                    schedule: match cmd.when.apply_tick() {
+                        Some(apply) if queued < now => CommandTick::Scheduled { queued, apply },
+                        _ => cmd.when,
+                    },
+                    queued,
+                    late: false,
+                    order: cmd.order,
+                }
+            })
+            .collect()
     }
 
     pub fn front(&self) -> Option<&Command> {
@@ -218,6 +273,22 @@ impl OrderQueue {
     pub fn clear(&mut self) {
         self.0.clear();
     }
+
+    /// Drop every command the sim has **not yet looked at**, and keep the ones
+    /// it is already holding. Returns how many were dropped.
+    ///
+    /// "Not yet looked at" is exactly "unstamped": [`take_due`](Self::take_due)
+    /// stamps a command the first time it declines to take it, so an unstamped
+    /// command is one that arrived since the last tick. A replay uses this to
+    /// throw away live orders without throwing away its own held ones — the
+    /// difference matters the moment anything schedules ahead, because a
+    /// wholesale `clear` deletes a command the recording was still holding and
+    /// the two runs part company on the very next tick.
+    pub fn discard_unseen(&mut self) -> u32 {
+        let before = self.0.len();
+        self.0.retain(|cmd| cmd.queued.is_some());
+        (before - self.0.len()) as u32
+    }
 }
 
 /// When a [`Command`] is to be applied. Serializable: the command log records
@@ -229,8 +300,44 @@ pub enum CommandTick {
     /// click has no tick of its own — so the sim assigns it one, and that
     /// assignment is what the command log records.
     Asap,
-    /// On exactly this sim tick, or not at all.
+    /// On exactly this sim tick, or not at all. The form a **producer** pushes:
+    /// it knows which tick it wants, not which tick the sim will first see it
+    /// on.
     At(u32),
+    /// The **stamped** form, produced by the sim and by nothing else: the sim
+    /// first saw this command on tick `queued` and is holding it for tick
+    /// `apply`.
+    ///
+    /// A command that is held across a tick boundary is state the sim owns from
+    /// `queued` onwards — the state hash counts it (F-012 ext.) — so a log that
+    /// recorded only `apply` would replay into a queue that filled up later than
+    /// the recording's did, and the two would disagree on every hash in between.
+    /// The stamp is what closes that: a replay re-pushes each command on the
+    /// tick the sim first saw it, and holds it exactly as long.
+    ///
+    /// There is deliberately no way for a producer to construct this: the sim
+    /// stamps it in [`OrderQueue::take_due`], so a caller cannot claim to have
+    /// been queued earlier than it was.
+    Scheduled { queued: u32, apply: u32 },
+}
+
+impl CommandTick {
+    /// The tick this command is to be applied on, if it names one.
+    pub fn apply_tick(self) -> Option<u32> {
+        match self {
+            CommandTick::Asap => None,
+            CommandTick::At(t) => Some(t),
+            CommandTick::Scheduled { apply, .. } => Some(apply),
+        }
+    }
+
+    /// The tick the sim first saw it, if it has been stamped.
+    pub fn queued_tick(self) -> Option<u32> {
+        match self {
+            CommandTick::Scheduled { queued, .. } => Some(queued),
+            _ => None,
+        }
+    }
 }
 
 /// A [`SignedOrder`] plus the tick it is to be applied on: the unit the sim
@@ -243,6 +350,10 @@ pub enum CommandTick {
 #[derive(Debug)]
 pub struct Command {
     when: CommandTick,
+    /// The tick the sim first saw this command, stamped by
+    /// [`OrderQueue::take_due`] the first time it declines to take it. `None`
+    /// until then — a command the sim has not yet looked at has no such tick.
+    queued: Option<u32>,
     order: SignedOrder,
 }
 
@@ -252,8 +363,11 @@ pub struct Command {
 pub struct TakenCommand {
     /// The tick the sim took it on.
     pub tick: u32,
-    /// The schedule it was pushed with.
+    /// The schedule it carries: what the producer pushed, or — if the sim held
+    /// it across a tick — the stamped [`CommandTick::Scheduled`] form.
     pub schedule: CommandTick,
+    /// The tick the sim first saw it.
+    pub queued: u32,
     /// Its scheduled tick had already gone by: it is **not** applied, only
     /// recorded.
     pub late: bool,
@@ -263,6 +377,12 @@ pub struct TakenCommand {
 impl Command {
     pub fn when(&self) -> CommandTick {
         self.when
+    }
+
+    /// The tick the sim first saw this command, once it has been held across a
+    /// tick boundary and stamped. `None` while it is still unlooked-at.
+    pub fn queued(&self) -> Option<u32> {
+        self.queued
     }
 
     pub fn attribution(&self) -> Attribution {
@@ -476,6 +596,7 @@ pub fn apply_commands(
         let TakenCommand {
             tick,
             schedule,
+            queued: _,
             late,
             order: signed,
         } = taken;

@@ -186,6 +186,11 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
             // ordered after the sweep like everything else in `replay` (F-008's
             // pre-sweep stretch stays empty of anything but the win watch).
             sim::replay::stamp_content,
+            // The commands the sim was still holding when the match ended: put
+            // them in the log and let go of them, so a recording and its replay
+            // end holding the same nothing. Ungated and self-latching — it fires
+            // on the tick the outcome is written.
+            sim::replay::record_unplayed,
             // Deciding it: always runs, and writes the outcome exactly once.
             sim::victory::match_end,
             // The tail identification pass: whatever this tick spawned (a

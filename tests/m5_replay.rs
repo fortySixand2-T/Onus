@@ -560,7 +560,13 @@ fn an_unreadable_log_is_an_error_not_a_panic() {
     assert_eq!(MatchLog::from_ron(&text).expect("reads"), good);
 
     // Version.
-    assert!(MatchLog::from_ron(&text.replace("version: 2", "version: 3")).is_err());
+    assert!(MatchLog::from_ron(
+        &text.replace(
+            &format!("version: {}", onus::sim::replay::LOG_FORMAT_VERSION),
+            "version: 99"
+        )
+    )
+    .is_err());
 
     // Tick order, and a command naming an entity the sim never identified: no
     // replay can resolve either, so both are refused — at *both* boundaries,
@@ -1404,81 +1410,406 @@ fn the_new_rows_do_not_disturb_a_recorded_replay() {
     );
 }
 
-/// **The limit of the pending-command rows, made unreachable rather than
-/// documented.** The log records a command by the tick it *applied* on, not the
-/// tick it was queued on, so a producer that scheduled a command many ticks
-/// ahead would make a recording hold it while the replay of that recording does
-/// not — identical worlds, different hashes, until it fires. Nothing in `src/`
-/// schedules ahead: `push_at` is called only by the replay itself (which pushes
-/// for the current tick), and every other producer pushes `Asap`. If M6 adds
-/// ahead-scheduling, the log has to record the queued tick as well as the
-/// applied one.
+// ---- ahead-scheduling: the tick a command was queued on ---------------------
+
+/// **A command the sim *holds* records the tick it was queued on.**
+///
+/// Until now the log recorded only the tick a command applied. A held command is
+/// state the sim owns from the moment it arrives — the state hash counts held
+/// commands — so a replay that pushed it at the *applied* tick held it for zero
+/// ticks where the recording held it for fifty, and the two disagreed on every
+/// hash in between. That was reachable only because nothing scheduled ahead;
+/// M6's lockstep schedules ahead by construction.
 #[test]
-fn nothing_in_src_schedules_a_command_ahead_of_the_tick_it_applies_on() {
+fn a_command_held_across_ticks_records_the_tick_it_was_queued_on() {
+    let mut app = sim_app();
+    let unit = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    tick(&mut app, 5);
+    let queued_on = sim_tick(&app);
+    let apply_on = queued_on + 50;
+    push_at(
+        &mut app,
+        apply_on,
+        Order::MoveTo {
+            units: vec![unit],
+            dest: Vec2::new(120.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
+    // Held...
+    tick(&mut app, 50);
+    assert!(
+        app.world().resource::<CommandLog>().commands().is_empty(),
+        "a held command was logged before it was taken"
+    );
+    // ...then taken, on its tick.
+    step(&mut app);
+    let log = app.world().resource::<CommandLog>();
+    assert_eq!(log.commands().len(), 1);
+    let c = &log.commands()[0];
+    assert_eq!(
+        c.schedule,
+        CommandTick::Scheduled {
+            queued: queued_on,
+            apply: apply_on
+        },
+        "the log does not say when the sim first saw this command"
+    );
+    assert_eq!(c.fate, CommandFate::Taken);
+    assert_eq!(c.tick, apply_on);
+    assert!(log.log().validate().is_ok(), "{:?}", log.log().validate());
+    assert!(app.world().get::<MoveTarget>(unit).is_some(), "it never applied");
+}
+
+/// The direction the stamp could break: a command **taken on sight** still logs
+/// the schedule it was pushed with, unstamped. (Every M5 probe of the log's
+/// shape depends on that, and so does the validator's accept/reject matrix.)
+#[test]
+fn a_command_taken_on_sight_logs_the_schedule_it_was_pushed_with() {
+    let mut app = sim_app();
+    let unit = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+    tick(&mut app, 5);
+    // Asap.
+    app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+        Order::MoveTo {
+            units: vec![unit],
+            dest: Vec2::new(1.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
+    // At this very tick.
+    let now = sim_tick(&app);
+    push_at(
+        &mut app,
+        now,
+        Order::MoveTo {
+            units: vec![unit],
+            dest: Vec2::new(2.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
+    // And one whose tick has gone by.
+    push_at(
+        &mut app,
+        now - 3,
+        Order::MoveTo {
+            units: vec![unit],
+            dest: Vec2::new(3.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
+    step(&mut app);
+    let log = app.world().resource::<CommandLog>();
+    let shapes: Vec<(CommandTick, CommandFate)> = log
+        .commands()
+        .iter()
+        .map(|c| (c.schedule, c.fate))
+        .collect();
+    assert_eq!(
+        shapes,
+        vec![
+            (CommandTick::Asap, CommandFate::Taken),
+            (CommandTick::At(now), CommandFate::Taken),
+            (CommandTick::At(now - 3), CommandFate::Late),
+        ],
+        "a command taken on sight was stamped as though the sim had held it"
+    );
+    assert!(log.log().validate().is_ok());
+}
+
+/// **The headline: a match that schedules ahead replays hash for hash.** This is
+/// the property the queued-tick stamp exists for, and the one M6 will lean on
+/// every turn.
+#[test]
+fn a_match_with_ahead_scheduled_commands_replays_hash_for_hash() {
+    const TICKS: u32 = 400;
+    const AHEAD: u32 = 40;
+    let build = || {
+        let mut app = sim_app_with_alloy(5_000);
+        spawn_building(&mut app, "hq", Faction::A, Vec2::new(-200.0, 0.0));
+        spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+        app.insert_resource(StateHashLog::default());
+        app.insert_resource(CommandLog::new(11));
+        app
+    };
+    let mut rec = build();
+    let unit = {
+        let mut q = rec
+            .world_mut()
+            .query_filtered::<Entity, With<onus::sim::UnitKind>>();
+        q.iter(rec.world()).next().expect("a unit")
+    };
+    for t in 0..TICKS {
+        // A command queued now, for a tick well in the future — the shape a
+        // lockstep turn has. Only while it will still *apply* inside the
+        // recorded window: a command queued for a tick after the recording
+        // stops is in flight, not part of the account (see
+        // `a_command_still_in_flight_when_a_recording_stops_is_not_in_its_log`).
+        if t % 60 == 10 && t + AHEAD < TICKS {
+            let at = sim_tick(&rec) + AHEAD;
+            push_at(
+                &mut rec,
+                at,
+                Order::MoveTo {
+                    units: vec![unit],
+                    dest: Vec2::new(t as f32, 40.0),
+                }
+                .issued_by(Faction::A),
+            );
+        }
+        step(&mut rec);
+    }
+    let recorded = rec.world().resource::<StateHashLog>().clone();
+    let log = rec.world().resource::<CommandLog>().log().clone();
+    assert!(
+        log.commands
+            .iter()
+            .any(|c| matches!(c.schedule, CommandTick::Scheduled { .. })),
+        "the fixture never actually scheduled ahead, so this proves nothing"
+    );
+    assert!(log.validate().is_ok(), "{:?}", log.validate());
+
+    let mut rep = build();
+    rep.insert_resource(ReplaySource::new(log.clone()));
+    tick(&mut rep, TICKS);
+    assert_eq!(
+        recorded.first_divergence(&rep.world().resource::<StateHashLog>().clone()),
+        None,
+        "a replay of an ahead-scheduled match diverges — the queue it holds is \
+         not the queue the recording held"
+    );
+    assert_eq!(
+        rep.world().resource::<CommandLog>().log().commands,
+        log.commands,
+        "the replay recorded a different account"
+    );
+    assert_eq!(rep.world().resource::<ReplaySource>().skipped(), 0);
+}
+
+/// **The boundary of what a log describes.** A log is an account of the ticks
+/// the recording ran. A command queued during that window for a tick *after* it
+/// was never taken, so it is in no log — and a replay of that log holds nothing
+/// where the recording was still holding something.
+///
+/// This is a real limit, stated as a test rather than left to be discovered: the
+/// case that matters — a *match* that ends while commands are in flight — is
+/// closed by `record_unplayed` (the next test), because a match has a definite
+/// end and the log is complete at it. A recording that simply *stops* has an
+/// incomplete log by construction, and no amount of bookkeeping inside the sim
+/// can describe ticks that never happened.
+#[test]
+fn a_command_still_in_flight_when_a_recording_stops_is_not_in_its_log() {
+    const TICKS: u32 = 40;
+    let build = || {
+        let mut app = sim_app();
+        spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
+        app.insert_resource(StateHashLog::default());
+        app.insert_resource(CommandLog::new(3));
+        app
+    };
+    let mut rec = build();
+    let unit = {
+        let mut q = rec
+            .world_mut()
+            .query_filtered::<Entity, With<onus::sim::UnitKind>>();
+        q.iter(rec.world()).next().expect("a unit")
+    };
+    tick(&mut rec, 10);
+    let queued_on = sim_tick(&rec);
+    push_at(
+        &mut rec,
+        queued_on + 500, // long after the recording stops
+        Order::MoveTo {
+            units: vec![unit],
+            dest: Vec2::new(80.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
+    tick(&mut rec, TICKS - 10);
+    let log = rec.world().resource::<CommandLog>().log().clone();
+    assert!(
+        log.commands.is_empty(),
+        "a command that never applied is in the log of a recording that just stopped"
+    );
+    assert_eq!(
+        rec.world().resource::<CommandQueue>().0.len(),
+        1,
+        "the recording is not holding it, so this proves nothing"
+    );
+
+    // The replay is identical up to the tick it was queued, and holds nothing
+    // afterwards — which is what "the log does not describe it" means.
+    let mut rep = build();
+    rep.insert_resource(ReplaySource::new(log));
+    tick(&mut rep, TICKS);
+    let (a, b) = (
+        rec.world().resource::<StateHashLog>().clone(),
+        rep.world().resource::<StateHashLog>().clone(),
+    );
+    assert_eq!(
+        a.first_divergence(&b),
+        Some(queued_on as usize),
+        "the runs part company somewhere other than the tick the in-flight \
+         command was queued on"
+    );
+    assert_eq!(rep.world().resource::<CommandQueue>().0.len(), 0);
+}
+
+/// **A command the sim was still holding when the match ended is in the log**,
+/// with the fate that says so — and the queue is empty afterwards, in the
+/// recording and in the replay alike. A command that never applied used to
+/// appear in no log at all, which left the recording holding sim state its own
+/// replay never had.
+#[test]
+fn a_command_still_held_when_the_match_ends_is_recorded_and_released() {
+    let build = || {
+        let mut app = sim_app();
+        let mine = spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
+        let theirs = spawn_building(&mut app, "hq", Faction::B, Vec2::new(100.0, 0.0));
+        let unit = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(-90.0, 0.0));
+        app.insert_resource(StateHashLog::default());
+        app.insert_resource(CommandLog::new(5));
+        (app, mine, theirs, unit)
+    };
+    let (mut rec, _mine, theirs, unit) = build();
+    tick(&mut rec, 3);
+    push_at(
+        &mut rec,
+        900,
+        Order::MoveTo {
+            units: vec![unit],
+            dest: Vec2::new(700.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
+    step(&mut rec);
+    assert_eq!(
+        rec.world().resource::<CommandQueue>().0.len(),
+        1,
+        "the fixture is not holding anything"
+    );
+    rec.world_mut().despawn(theirs);
+    tick(&mut rec, 20);
+    assert!(rec.world().resource::<MatchState>().is_over());
+
+    // Recorded, released, and the log still validates.
+    let log = rec.world().resource::<CommandLog>().log().clone();
+    assert!(
+        log.commands
+            .iter()
+            .any(|c| c.fate == CommandFate::Unplayed),
+        "the held command is in no log: {:?}",
+        log.commands
+    );
+    assert!(log.validate().is_ok(), "{:?}", log.validate());
+    assert_eq!(
+        rec.world().resource::<CommandQueue>().0.len(),
+        0,
+        "a decided match is still holding a command nothing will ever apply"
+    );
+
+    // ...and the replay ends in exactly the same place.
+    let (mut rep, _, rep_theirs, _) = build();
+    rep.insert_resource(ReplaySource::new(log.clone()));
+    tick(&mut rep, 4);
+    rep.world_mut().despawn(rep_theirs);
+    tick(&mut rep, 20);
+    assert_eq!(
+        rec.world().resource::<StateHashLog>().clone().first_divergence(
+            &rep.world().resource::<StateHashLog>().clone()
+        ),
+        None,
+        "the replay of a match that ended holding a command diverged"
+    );
+    assert_eq!(rep.world().resource::<CommandQueue>().0.len(), 0);
+}
+
+/// **What replaced the "nothing schedules ahead" guard.** Ahead-scheduling is
+/// now legal — M6 is built on it — so the guard cannot forbid it. What it
+/// constrains instead:
+///
+/// - the set of things that may schedule is **declared**: every `push_at` call
+///   site in `src/` must be in the list below, and every entry in the list must
+///   still be a call site, so the allowlist cannot rot into permissiveness;
+/// - a schedule is **stamped by the sim**, not by its caller: nothing outside
+///   `take_due` may construct `CommandTick::Scheduled`, so a producer cannot
+///   claim to have been queued earlier than it was;
+/// - and what is scheduled is **recorded**, which is what makes it replayable —
+///   pinned behaviourally by
+///   `a_match_with_ahead_scheduled_commands_replays_hash_for_hash`.
+#[test]
+fn every_scheduler_is_declared_and_only_the_sim_stamps_a_schedule() {
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src");
+    // Files that may schedule a command for a later tick, and why.
+    let allowed: [(&str, &str); 1] = [(
+        "sim/replay.rs",
+        "a replay re-pushes each logged command on the tick it was queued on",
+    )];
+
+    let mut files = Vec::new();
     let mut stack = vec![src.clone()];
-    let mut callers: Vec<String> = Vec::new();
     while let Some(dir) = stack.pop() {
         for entry in std::fs::read_dir(&dir).expect("read src") {
             let p = entry.expect("entry").path();
             if p.is_dir() {
                 stack.push(p);
-                continue;
-            }
-            if p.extension().and_then(|e| e.to_str()) != Some("rs") {
-                continue;
-            }
-            let rel = p
-                .strip_prefix(&src)
-                .unwrap()
-                .to_string_lossy()
-                .replace('\\', "/");
-            for (i, line) in std::fs::read_to_string(&p).expect("read").lines().enumerate() {
-                let code = line.split("//").next().unwrap_or("");
-                // The definition itself is not a call site.
-                if code.contains("push_at(") && !code.contains("pub fn push_at") {
-                    callers.push(format!("{rel}:{}: {}", i + 1, code.trim()));
-                }
+            } else if p.extension().is_some_and(|e| e == "rs") {
+                files.push(p);
             }
         }
     }
+    files.sort();
+    let mut callers: Vec<(String, String)> = Vec::new();
+    for path in &files {
+        let rel = path
+            .strip_prefix(&src)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        for (i, line) in std::fs::read_to_string(path).expect("read").lines().enumerate() {
+            let code = line.split("//").next().unwrap_or("");
+            if code.contains("push_at(") && !code.contains("pub fn push_at") {
+                callers.push((rel.clone(), format!("{rel}:{}: {}", i + 1, code.trim())));
+            }
+        }
+    }
+
+    assert!(
+        !callers.is_empty(),
+        "no `push_at` call site found at all — the guard resolved nothing"
+    );
+    for (file, site) in &callers {
+        assert!(
+            allowed.iter().any(|(f, _)| f == file),
+            "`{file}` schedules a command and is not a declared scheduler: {site}"
+        );
+    }
+    for (file, why) in allowed {
+        assert!(
+            callers.iter().any(|(f, _)| f == file),
+            "`{file}` is declared as a scheduler ({why}) but no longer schedules \
+             anything — a stale allowlist entry is a hole waiting for a new caller"
+        );
+    }
+    // **A producer cannot state a schedule at all**, which is what makes the
+    // stamp the sim's alone: the queue's whole push API takes a plain tick or
+    // nothing, so there is no way to hand it a `CommandTick` — stamped or
+    // otherwise — from outside.
+    let queue_src = std::fs::read_to_string(src.join("sim/mod.rs")).expect("sim/mod.rs");
+    let mut push_signatures: Vec<&str> = queue_src
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| l.starts_with("pub fn push"))
+        .collect();
+    push_signatures.sort_unstable();
     assert_eq!(
-        callers.len(),
-        1,
-        "exactly one caller of `push_at` is expected (the replay, pushing for \
-         the current tick); found {callers:#?}"
-    );
-    assert!(
-        callers[0].starts_with("sim/replay.rs"),
-        "something other than the replay schedules a command: {callers:?}"
-    );
-    // And what it schedules is never *ahead* of the tick it is fed on. The
-    // replay re-pushes each command on the schedule the log recorded, so the
-    // check that matters is on the log: a command scheduled for a tick later
-    // than the one the sim took it on is a story the sim cannot produce, and
-    // `validate` refuses it. (Behavioural, not textual — the old spelling of
-    // this check pinned a line of code rather than the property.)
-    let replay = std::fs::read_to_string(src.join("sim/replay.rs")).expect("replay.rs");
-    assert!(
-        replay.contains("if entry.tick > now {"),
-        "the replay no longer stops at the first command past the current tick"
-    );
-    let mut ahead = MatchLog::new(1);
-    ahead.commands.push(LoggedCommand {
-        tick: 5,
-        schedule: CommandTick::At(900),
-        fate: CommandFate::Taken,
-        attribution: Attribution::By(Faction::A),
-        order: LoggedOrder::MoveTo {
-            units: vec![0],
-            dest: (1.0, 1.0),
-        },
-    });
-    assert!(
-        ahead.validate().is_err(),
-        "a log claiming a command was taken 895 ticks before its schedule was \
-         accepted — ahead-scheduling is M6's to introduce, and the format must \
-         not admit an incoherent version of it in the meantime"
+        push_signatures,
+        vec![
+            "pub fn push_at(&mut self, at: u32, order: impl Into<SignedOrder>) {",
+            "pub fn push_back(&mut self, order: impl Into<SignedOrder>) {",
+        ],
+        "the queue's push API changed: a producer that can hand it a \
+         `CommandTick` can claim to have been queued earlier than it was"
     );
 }
 

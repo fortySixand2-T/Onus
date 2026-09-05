@@ -40,7 +40,19 @@ use crate::sim::{
 /// changes; loading refuses a version it does not know, because a log it cannot
 /// read exactly is a log it cannot replay at all.
 ///
-/// **Version 2 (Phase 1)** added the content fingerprint. There is deliberately
+/// **Version 2 (Phase 1)** added the content fingerprint.
+///
+/// The M6 prerequisite — the stamped [`CommandTick::Scheduled`] schedule and the
+/// [`CommandFate::Unplayed`] fate — did **not** bump it, and that is a judgement
+/// worth stating rather than assuming. A version exists to stop this build
+/// reading a log it cannot read *exactly*; the two additions are new enum
+/// variants, so every version-2 log ever written still parses under this build
+/// and still means exactly what it meant (its commands were all taken on sight,
+/// which is what the absence of a stamp says). The direction that does not hold
+/// — a log written *today* handed to a build from before the addition — is not a
+/// direction that exists: nothing is distributed, and a version number cannot
+/// help a reader that predates it anyway. Phase 1 bumped because a v1 log would
+/// have been *misread* (content named by index); nothing here can be misread. There is deliberately
 /// **no migration shim**: a version-1 log is refused, loudly, by name. A shim
 /// would have to invent the one thing the old format is missing — which content
 /// the log was recorded against — and inventing it is precisely the silent
@@ -404,6 +416,14 @@ pub enum CommandFate {
     /// first saw it. A command applied off its tick is the divergence replay
     /// exists to rule out, so a missed tick is a lost command.
     Late,
+    /// Never processed: the match was decided while the sim was still holding
+    /// it for a later tick, and nothing runs after that.
+    ///
+    /// It is recorded rather than dropped because the sim *had* it — a held
+    /// command is state the hash counts — so a replay has to hold it for the
+    /// same ticks and let go of it at the same moment. A log that omitted it
+    /// would describe a queue that was never as full as the real one.
+    Unplayed,
 }
 
 /// One command as the sim took it: when it was *scheduled* for, when the sim
@@ -537,6 +557,16 @@ impl MatchLog {
                 (CommandTick::At(t), CommandFate::Taken) if t == c.tick => {}
                 // Missed: seen after the tick it was aimed at.
                 (CommandTick::At(t), CommandFate::Late) if t < c.tick => {}
+                // Held, then taken on exactly the tick it was held for. The
+                // stamp only exists because the sim kept it across a boundary,
+                // so `queued` is strictly earlier than the tick it was taken on.
+                (CommandTick::Scheduled { queued, apply }, CommandFate::Taken)
+                    if queued < c.tick && apply == c.tick => {}
+                // Held when the match ended: still waiting for a later tick that
+                // never came.
+                (CommandTick::Scheduled { queued, apply }, CommandFate::Unplayed)
+                    if queued <= c.tick && apply > c.tick => {}
+                (CommandTick::At(t), CommandFate::Unplayed) if t > c.tick => {}
                 (schedule, fate) => {
                     return Err(format!(
                         "log: the command at tick {} is {fate:?} with schedule \
@@ -809,10 +839,21 @@ impl CommandLog {
 #[derive(Resource, Debug)]
 pub struct ReplaySource {
     log: MatchLog,
-    /// How far through `log.commands` the replay has got. The log is ordered by
-    /// tick, so this only ever moves forward — the replay never searches, and
-    /// never depends on anything but its own position.
+    /// How far through [`feed_order`](Self::feed_order) the replay has got. It
+    /// only ever moves forward — the replay never searches, and never depends on
+    /// anything but its own position.
     cursor: usize,
+    /// Indices into `log.commands`, ordered by the tick each command must be
+    /// **pushed** on (the tick the sim first saw it), ties broken by position in
+    /// the log.
+    ///
+    /// The log itself is ordered by the tick each command was *taken* on, and
+    /// for a command the sim held those are different numbers — a command
+    /// queued at tick 5 for tick 900 is logged after everything taken at ticks
+    /// 6..900. Walking the log in its own order would try to push it 895 ticks
+    /// late. A stable sort by `(queued, position)` is deterministic and is
+    /// computed once.
+    feed_order: Vec<usize>,
     /// Commands the replay could not place because their tick had already gone
     /// by when it reached them. Zero for any log this build wrote.
     skipped: u32,
@@ -830,8 +871,14 @@ pub struct ReplaySource {
 
 impl ReplaySource {
     pub fn new(log: MatchLog) -> Self {
+        let mut feed_order: Vec<usize> = (0..log.commands.len()).collect();
+        feed_order.sort_by_key(|&i| {
+            let c = &log.commands[i];
+            (c.schedule.queued_tick().unwrap_or(c.tick), i)
+        });
         Self {
             log,
+            feed_order,
             cursor: 0,
             skipped: 0,
             discarded: 0,
@@ -873,7 +920,7 @@ impl ReplaySource {
 
     /// Has every logged command been fed?
     pub fn finished(&self) -> bool {
-        self.cursor >= self.log.commands.len()
+        self.cursor >= self.feed_order.len()
     }
 }
 
@@ -898,6 +945,51 @@ pub fn stamp_content(content: Res<Content>, log: Option<ResMut<CommandLog>>) {
         return;
     }
     log.stamp_content(&content);
+}
+
+/// Record — and release — the commands the sim was still holding when the match
+/// was decided.
+///
+/// Nothing runs after the outcome is written, so a held command will never be
+/// applied. Leaving it in the queue would leave *sim state* behind that a replay
+/// could not reproduce: the state hash counts held commands, and a command that
+/// never applied is in no log, so the recording would end holding something its
+/// own replay never had. Recording it as [`CommandFate::Unplayed`] and emptying
+/// the queue makes both runs end the same way, and keeps the log what it claims
+/// to be — an account of every command the sim saw and could name.
+///
+/// Runs **once**, on the tick the outcome is first written: `Res<MatchState>`'s
+/// change detection is not used for that (a resource can be marked changed by a
+/// write of the same value); the queue simply cannot refill, because every
+/// producer is gated off with the chain.
+pub fn record_unplayed(
+    state: Res<MatchState>,
+    content: Res<Content>,
+    ids: Option<Res<SimIds>>,
+    mut queue: ResMut<CommandQueue>,
+    mut log: Option<ResMut<CommandLog>>,
+    mut done: Local<bool>,
+) {
+    if !state.is_over() || *done {
+        return;
+    }
+    *done = true;
+    let held = queue.0.take_all_pending(state.tick());
+    let (Some(log), Some(ids)) = (log.as_mut(), ids.as_ref()) else {
+        return;
+    };
+    for taken in held {
+        let (attribution, order) = taken.order.into_parts();
+        log.record(
+            taken.tick,
+            taken.schedule,
+            CommandFate::Unplayed,
+            attribution,
+            &order,
+            &content,
+            |e| ids.id_of(e).unwrap_or(SimId::UNIDENTIFIED),
+        );
+    }
 }
 
 /// Feed this tick's logged commands back onto the ordinary command queue.
@@ -931,19 +1023,37 @@ pub fn feed_replay(
         }
     }
     if source.rejection.is_some() {
+        // Nothing of this log may ever be fed, so nothing it might already be
+        // holding may stay either.
         queue.0.clear();
         return;
     }
     let now = state.tick();
-    let discarded = queue.0.len() as u32;
-    queue.0.clear();
+    // Throw away what arrived since the last tick — a click, a stray fixture
+    // order — but **not** what the sim is already holding. A wholesale clear
+    // would delete a command this replay pushed on an earlier tick and is
+    // holding for a later one, which is precisely the state an ahead-scheduled
+    // recording is in; the two would then disagree from the next tick onwards.
+    let discarded = queue.0.discard_unseen();
     source.discarded = source.discarded.saturating_add(discarded);
 
-    while let Some(entry) = source.log.commands.get(source.cursor) {
-        if entry.tick > now {
+    while let Some(entry) = source
+        .feed_order
+        .get(source.cursor)
+        .and_then(|&i| source.log.commands.get(i))
+        .cloned()
+    {
+        // **Ordered by the tick the sim first saw each command**, which is the
+        // tick a replay has to re-push it on — not the tick it applied. For
+        // everything that was taken on sight those are the same number; for a
+        // command the sim *held*, they are not, and pushing it late would leave
+        // the replay's queue emptier than the recording's for every tick in
+        // between (the state hash counts held commands).
+        let feed_at = entry.schedule.queued_tick().unwrap_or(entry.tick);
+        if feed_at > now {
             break;
         }
-        if entry.tick < now {
+        if feed_at < now {
             // Only reachable from a hand-edited log: the sim's own ticks are
             // monotonic and `from_ron` rejects an out-of-order log. Counted, not
             // applied — a command off its tick is the divergence replay exists
@@ -956,13 +1066,14 @@ pub fn feed_replay(
             Ok(order) => {
                 let signed = SignedOrder::from_parts(entry.attribution, order);
                 // **On its original schedule**, not on the tick it applied.
-                // For everything today those are the same tick; for a command
-                // that missed its tick they are not, and re-pushing it with the
-                // tick it was *seen* on would silently turn a dropped command
-                // into an applied one.
+                // A command that missed its tick is re-pushed as missing it, and
+                // a command that was held is re-pushed to be held again — the
+                // sim re-stamps it with the same `queued`, because it is being
+                // pushed on the same tick it was pushed on the first time.
                 match entry.schedule {
                     CommandTick::Asap => queue.0.push_back(signed),
                     CommandTick::At(t) => queue.0.push_at(t, signed),
+                    CommandTick::Scheduled { apply, .. } => queue.0.push_at(apply, signed),
                 }
             }
             // An id this world has never issued: the log does not belong to
@@ -1053,6 +1164,25 @@ fn command_digest(cmd: &crate::sim::Command, mut id_of: impl FnMut(Entity) -> Si
         crate::sim::CommandTick::At(t) => {
             mix(1);
             mix(t as u64);
+        }
+        // The queue itself never holds the stamped form — the sim produces it
+        // when it *takes* a command — but the hash must be total over the type,
+        // and a distinct tag is what keeps "unreachable" from meaning "collides
+        // with something else".
+        crate::sim::CommandTick::Scheduled { queued, apply } => {
+            mix(2);
+            mix(queued as u64);
+            mix(apply as u64);
+        }
+    }
+    // **When the sim first saw it**, which is part of what it will log and so
+    // part of what two peers must agree on: two worlds holding the same command
+    // for different lengths of time are not the same world.
+    match cmd.queued() {
+        None => mix(0),
+        Some(q) => {
+            mix(1);
+            mix(q as u64);
         }
     }
     mix(match cmd.attribution() {
