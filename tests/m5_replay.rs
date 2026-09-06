@@ -1731,9 +1731,12 @@ fn a_command_still_held_when_the_match_ends_is_recorded_and_released() {
 /// - the set of things that may schedule is **declared**: every `push_at` call
 ///   site in `src/` must be in the list below, and every entry in the list must
 ///   still be a call site, so the allowlist cannot rot into permissiveness;
-/// - a schedule is **stamped by the sim**, not by its caller: nothing outside
-///   `take_due` may construct `CommandTick::Scheduled`, so a producer cannot
-///   claim to have been queued earlier than it was;
+/// - a schedule is **stamped by the sim**, not by its caller. The property that
+///   actually holds is a module one, not a function one: `take_due` and
+///   `take_all_pending` both construct `CommandTick::Scheduled`, and both are
+///   the command queue itself — what no *producer* can do is state a schedule
+///   at all, because the queue's whole push API takes a plain tick or nothing
+///   (asserted below). Saying "nothing outside `take_due`" was simply untrue;
 /// - and what is scheduled is **recorded**, which is what makes it replayable —
 ///   pinned behaviourally by
 ///   `a_match_with_ahead_scheduled_commands_replays_hash_for_hash`.
