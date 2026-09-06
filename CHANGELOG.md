@@ -270,3 +270,9 @@
 - [2026-09-05] Modified: FINDINGS.md — F-015: lockstep; the queue's order is state, and a stall is where local input escapes
 - [2026-09-05] Created: tests/critic_m6.rs — M6 critic probes (cross-process negative controls, handshake independence over a raw socket, the tick gate vs the win condition, turn-delay arithmetic, one turn per tick, stamped-schedule provenance, the no-bump argument's load-bearing fact)
 - [2026-09-06] Created: tests/critic_m6.rs — M6 critic probes (gate stops every part of a tick, turn-delay boundary, one turn per tick, four independent handshake refusals, sim is network/clock-free, stamped-schedule module guard, seed-dependence control)
+- [2026-09-06] Modified: src/bin/netpeer.rs — the fixture is seeded: a seeded starting layout plus each peer's own AiCommanders
+- [2026-09-06] Modified: src/net.rs — collect_local: a second drain between the commanders and apply_commands, so an in-chain producer's orders cross the wire
+- [2026-09-06] Modified: tests/m6_cross_process.rs — the seed control at two horizons; clippy fix (trim before split_whitespace)
+- [2026-09-06] Modified: tests/m6_lockstep.rs — an AI on each peer plays one identical match; a different seed is a different match
+- [2026-09-06] Modified: tests/m5_replay.rs — corrected the scheduler guard's wording
+- [2026-09-06] Modified: FINDINGS.md — F-015 extension: a headline test that could not tell a seeded match from a constant; the gate-flags hole

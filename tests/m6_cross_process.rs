@@ -15,6 +15,11 @@
 use std::io::{BufRead, BufReader};
 use std::process::{Child, Command, Stdio};
 
+/// Long enough for the seeded commander to have made a seeded decision — its
+/// first is placing a barracks, at `mvp_ai.barracks_at_tick` (300). A shorter
+/// run would compare two matches that had not yet used their seeds.
+const SEEDED_TICKS: u32 = 600;
+
 /// A child that is killed and reaped if the test unwinds past it.
 struct Peer(Child);
 
@@ -39,7 +44,7 @@ fn parse(line: &str) -> Outcome {
         agreed: 0,
         failure: String::new(),
     };
-    for field in line.trim().split_whitespace().skip(1) {
+    for field in line.split_whitespace().skip(1) {
         let (k, v) = field.split_once('=').unwrap_or((field, ""));
         match k {
             "tick" => out.tick = v.parse().unwrap_or(0),
@@ -119,7 +124,7 @@ fn play_across_processes(ticks: u32, seed: u64) -> (Outcome, Outcome) {
 /// exchanged along the way.
 #[test]
 fn two_processes_play_one_match_and_end_in_the_same_state() {
-    const TICKS: u32 = 240;
+    const TICKS: u32 = SEEDED_TICKS;
     let (host, client) = play_across_processes(TICKS, 7);
 
     assert_eq!(host.failure, "none", "the host reported {}", host.failure);
@@ -141,17 +146,77 @@ fn two_processes_play_one_match_and_end_in_the_same_state() {
 }
 
 /// ...and the same seed, played twice in fresh processes, is the same match
-/// both times — while a different seed is a different one, so the first
-/// assertion cannot be passing on a constant.
+/// both times.
+///
+/// This says nothing on its own — a match that ignored its seed would satisfy
+/// it, and for one round of M6 exactly that was true: `netpeer` installed
+/// `AiCommanders::default()`, which holds no commanders, so nothing seeded ever
+/// ran and five seeds produced one hash. The control is
+/// `different_seeds_are_different_matches_across_processes`, below, and the two
+/// tests are only worth anything together.
 #[test]
 fn the_same_match_played_twice_across_processes_is_the_same_match() {
-    const TICKS: u32 = 180;
+    const TICKS: u32 = SEEDED_TICKS;
     let (first, _) = play_across_processes(TICKS, 3);
     let (again, _) = play_across_processes(TICKS, 3);
     assert_eq!(first.failure, "none");
     assert_eq!(again.failure, "none");
+    assert_eq!(first.tick, TICKS, "the run stopped early");
     assert_eq!(
         first.hash, again.hash,
         "one seed produced two different matches across runs"
+    );
+}
+
+/// **The control.** Four seeds, four different matches — so "two runs of one
+/// seed agree" is a statement about determinism and not about a constant.
+///
+/// The seeded thing is the sim's own scripted commander: each peer runs its own
+/// side's `AiCommanders`, whose stream comes from the match seed and the faction
+/// slot, and whose decisions (where the barracks goes, where a wave aims) are
+/// the only randomness in the project. The match has to run past
+/// `mvp_ai.barracks_at_tick` for that to show, which is why these runs are
+/// longer than a handshake test needs.
+#[test]
+fn different_seeds_are_different_matches_across_processes() {
+    // Two horizons, because the fixture is seeded twice over and each could rot
+    // on its own: the **starting layout** comes from the seed (so a short run
+    // can already tell two seeds apart), and the **commander's decisions** come
+    // from it later (its first random choice is where to put a barracks, at
+    // `mvp_ai.barracks_at_tick`). A control that only ran long would not notice
+    // the layout going constant, and one that only ran short would not notice
+    // the commander going deaf to its seed.
+    for ticks in [120u32, SEEDED_TICKS] {
+        assert_seeds_differ(ticks);
+    }
+}
+
+fn assert_seeds_differ(ticks: u32) {
+    let mut seen: Vec<(u64, String)> = Vec::new();
+    for seed in [1u64, 3, 9, 12345] {
+        let (host, client) = play_across_processes(ticks, seed);
+        assert_eq!(host.failure, "none", "seed {seed}: {}", host.failure);
+        assert_eq!(client.failure, "none", "seed {seed}: {}", client.failure);
+        assert_eq!(host.tick, ticks, "seed {seed} stopped early");
+        // Each seed's two processes still agree with each other...
+        assert_eq!(
+            host.hash, client.hash,
+            "seed {seed}: two processes ended in different worlds"
+        );
+        assert!(
+            host.agreed >= 10,
+            "seed {seed}: only {} hashes were compared",
+            host.agreed
+        );
+        seen.push((seed, host.hash.clone()));
+    }
+    let mut hashes: Vec<&String> = seen.iter().map(|(_, h)| h).collect();
+    hashes.sort();
+    hashes.dedup();
+    assert_eq!(
+        hashes.len(),
+        seen.len(),
+        "over {ticks} ticks the match does not depend on the seed it is played \
+         with: {seen:?}"
     );
 }

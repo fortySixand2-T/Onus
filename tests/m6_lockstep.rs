@@ -275,6 +275,116 @@ fn commands_from_both_peers_produce_one_identical_match() {
     );
 }
 
+/// A pair of peers with a **seeded commander on each side** and a world worth
+/// playing: an HQ, a deposit and workers each. The commander is the sim's only
+/// randomness, so this is what makes a fixture depend on its seed at all.
+fn pair_of_ai_peers(seed: u64, config: NetConfig) -> (App, App) {
+    let (sa, sb) = socket_pair();
+    let build = |stream: TcpStream, me: Faction| {
+        let mut app = peer(stream, me, seed, config);
+        // The bare `peer` world has no economy; give both sides one, identically.
+        for (faction, base) in [
+            (Faction::A, Vec2::new(-750.0, 0.0)),
+            (Faction::B, Vec2::new(750.0, 0.0)),
+        ] {
+            app.world_mut().spawn((
+                Position(base + Vec2::new(0.0, 250.0)),
+                onus::sim::ResourceNode { amount: 100_000 },
+            ));
+            for i in 0..3 {
+                let (idx, kind, hp) = {
+                    let c = app.world().resource::<Content>();
+                    let idx = c.unit_index("worker").expect("worker");
+                    (idx, c.units[idx].mvp_kind, Health::from_def(c, idx))
+                };
+                app.world_mut().spawn((
+                    Position(base + Vec2::new(30.0, 20.0 * i as f32)),
+                    UnitDefIdx(idx),
+                    kind,
+                    faction,
+                    hp,
+                ));
+            }
+        }
+        app.insert_resource(onus::sim::AiCommanders::new(seed, &[me]));
+        app
+    };
+    (build(sa, Faction::A), build(sb, Faction::B))
+}
+
+/// **A producer inside the tick is still a networked producer.** The scripted
+/// commander runs *in* the sim chain, after the link's frame-time drain and
+/// before `apply_commands` — so without a second drain its orders would be
+/// applied locally, on the peer that thought of them, and the other side would
+/// never hear of them.
+///
+/// Both peers must end up with the same account of the match and nothing
+/// applied as a local `Asap` command.
+#[test]
+fn an_ai_on_each_peer_plays_one_identical_match() {
+    let (mut a, mut b) = pair_of_ai_peers(9, test_config());
+    step_both(&mut a, &mut b, 400);
+
+    let account = |app: &App| {
+        app.world()
+            .resource::<CommandLog>()
+            .commands()
+            .iter()
+            .map(|c| (c.tick, c.schedule, c.fate, c.order.clone()))
+            .collect::<Vec<_>>()
+    };
+    let (la, lb) = (account(&a), account(&b));
+    assert!(
+        la.len() >= 10,
+        "the commanders barely acted ({}), so this proves little",
+        la.len()
+    );
+    assert_eq!(
+        la, lb,
+        "the two peers recorded different accounts of one match"
+    );
+    assert!(
+        la.iter()
+            .all(|(_, schedule, _, _)| *schedule != onus::sim::CommandTick::Asap),
+        "a command was applied locally on the tick it was issued: {la:?}"
+    );
+    let (ha, hb) = (hashes_of(&a), hashes_of(&b));
+    let common = ha.0.len().min(hb.0.len());
+    assert!(common > 300, "the peers barely ran ({common})");
+    assert_eq!(ha.0[..common], hb.0[..common], "the peers diverged");
+    assert!(link_of(&a).failure().is_none() && link_of(&b).failure().is_none());
+    assert!(link_of(&a).hashes_agreed() > 20);
+}
+
+/// The control for every "two runs agree" claim in this file: with a seeded
+/// commander, **a different seed is a different match** — so agreement is
+/// determinism and not a constant. (The cross-process pair of tests makes the
+/// same pairing; this one is cheap enough to run alongside the rest.)
+#[test]
+fn a_different_seed_is_a_different_match() {
+    // The two peers are up to a turn apart, so they are compared at the last
+    // tick *both* have played — never at "the last one each", which are
+    // different ticks and would fail for a reason that is not a divergence.
+    let play = |seed: u64| {
+        let (mut a, mut b) = pair_of_ai_peers(seed, test_config());
+        step_both(&mut a, &mut b, 400);
+        let (ha, hb) = (hashes_of(&a), hashes_of(&b));
+        let common = ha.0.len().min(hb.0.len());
+        assert!(common > 300, "seed {seed}: the peers barely ran ({common})");
+        (ha.0[common - 1], hb.0[common - 1])
+    };
+    let (a9, b9) = play(9);
+    let (a9_again, _) = play(9);
+    let (a10, b10) = play(10);
+    assert_eq!(a9, b9, "seed 9's peers ended in different worlds");
+    assert_eq!(a10, b10, "seed 10's peers ended in different worlds");
+    assert_eq!(a9, a9_again, "one seed produced two different matches");
+    assert_ne!(
+        a9, a10,
+        "the match does not depend on the seed it is played with"
+    );
+}
+
 // ---- AC2: a tick advances only when all inputs for it are present -----------
 
 /// **AC2.** With the peer silent, the sim does not advance — at all. Not the

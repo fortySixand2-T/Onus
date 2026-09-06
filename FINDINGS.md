@@ -1079,3 +1079,54 @@ any of it; the shipped binary still starts a local match. `netpeer` is the only
 thing that plays a networked one, which is enough to prove the property and
 nothing more. A peer that drops is reported and the match stops — there is no
 resume, because there is nowhere to resume *to* without a lobby.
+
+**Extension (M6 critic) — the milestone's headline test could not tell a seeded
+match from a constant.**
+
+`the_same_match_played_twice_across_processes_is_the_same_match` asserted that
+two runs of one seed agree, and its doc explained why that was not vacuous:
+*"a different seed is a different one, so the first assertion cannot be passing
+on a constant."* It never played a different seed, and **could not have**:
+`netpeer` installed `AiCommanders::default()` — no commanders — so the only
+seeded thing in the sim never ran, and the seed reached nothing `state_hash`
+observes. Five seeds, one hash. The test would have passed with the seed wired
+to a literal.
+
+Tenth defect here behind prose asserting a property the code lacks, fifth where
+the false part is the *justification*, and the third vacuity catch — this one on
+the milestone's headline claim. The rule that keeps failing to be applied is not
+subtle, so state it as a procedure rather than a principle: **for every "X and Y
+agree" test, write the "X and Z differ" test in the same commit, and make the
+second one fail before you believe the first.**
+
+**Fix, in the fixture.** `netpeer` is now seeded twice over, on purpose:
+
+- its **starting layout** comes from `sim::random_layout(3, seed ^ slot, ..)`,
+  the sim's own generator, so a *short* run already distinguishes two seeds;
+- each peer runs **its own side's `AiCommanders`**, seeded from the match seed
+  and the faction slot, so a longer run also exercises seeded *decisions* (the
+  commander's first random choice is where to put its barracks, at
+  `mvp_ai.barracks_at_tick`).
+
+Both peers compute both sides' layouts from the same numbers, so the layout is
+match setup rather than local randomness. The control runs at **two horizons**
+(120 and 600 ticks) because each seeded element could rot on its own: a long-only
+control would not notice the layout going constant, a short-only one would not
+notice the commander going deaf.
+
+**What using the real AI required, and why it belongs in `src/`.** The scripted
+commander runs *inside* the sim chain — after the link's frame-time drain and
+before `apply_commands` — so its orders were applied locally, on the peer that
+thought of them, and never crossed the wire. The link now drains the queue
+twice: at the top of the frame, and again between the commanders and the
+application (`net::collect_local`). Nothing local reaches `apply_commands`
+unscheduled. That is the same defect as M6's stall escape, one producer further
+in, and it is why the fixture change could not be fixture-only.
+
+**A gate hole, recorded because it caused the second half of this round.** The
+clippy check that reported "0 errors" was `cargo clippy --lib --tests --benches`
+**without** `-D warnings`, so a lint that fails the real gate counted as a
+warning and was invisible. The gate is `cargo clippy --all-targets -- -D
+warnings`, with exactly one known exception (`tests/critic_m3.rs:234`, a
+critic-owned file this implementer may not edit). *A gate run with different
+flags than the gate is not the gate.*

@@ -26,7 +26,7 @@ use onus::sim::content::Content;
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use onus::sim::replay::{CommandLog, StateHashLog};
 use onus::sim::spatial::Faction;
-use onus::sim::{CommandQueue, MatchState, Order, Position, RateReport};
+use onus::sim::{AiCommanders, CommandQueue, MatchState, Position, RateReport, ResourceNode};
 
 /// Frames to keep servicing the socket after this peer has finished playing, so
 /// the partner — which is a turn behind by design — is not cut off mid-tick.
@@ -43,7 +43,15 @@ fn config() -> NetConfig {
 /// The same starting world on both sides, spawned in the same order — a
 /// lockstep match assumes it, and the handshake's content check is what makes
 /// assuming it safe.
-fn build(link: NetLink, seed: u64) -> App {
+///
+/// **Each peer runs its own side's scripted commander, seeded from the match
+/// seed.** That is what makes this a test of a *seeded* match rather than of a
+/// constant: `AiCommanders` is the only seeded thing in the sim, and its
+/// decisions (where a barracks goes, where a wave aims) come out of a stream
+/// derived from `seed` and the faction slot. Only the local side's commander
+/// runs here — its orders cross the wire like a player's, so both peers apply
+/// them on the same tick and neither computes the other's.
+fn build(link: NetLink, seed: u64, me: Faction) -> App {
     let content = Content::load_default().expect("assets/data/*.ron");
     let alloy = content.economy.starting_alloy;
     let mut app = App::new();
@@ -58,8 +66,8 @@ fn build(link: NetLink, seed: u64) -> App {
     onus::add_sim_systems(&mut app, Update);
     onus::net::add_net_link(&mut app, Update, link);
     for (faction, base) in [
-        (Faction::A, Vec2::new(-400.0, 0.0)),
-        (Faction::B, Vec2::new(400.0, 0.0)),
+        (Faction::A, Vec2::new(-750.0, 0.0)),
+        (Faction::B, Vec2::new(750.0, 0.0)),
     ] {
         let (def, hp) = {
             let c = app.world().resource::<Content>();
@@ -73,14 +81,37 @@ fn build(link: NetLink, seed: u64) -> App {
             ProductionQueue::default(),
             hp,
         ));
-        for i in 0..3 {
+        app.world_mut().spawn((
+            Position(base + Vec2::new(0.0, 250.0)),
+            ResourceNode { amount: 100_000 },
+        ));
+        // **The starting layout is seeded**, through the sim's own generator, so
+        // the match depends on its seed from tick 0 rather than only from the
+        // commander's first random decision (which is its barracks placement, at
+        // `mvp_ai.barracks_at_tick`). A short run must be able to tell two seeds
+        // apart, or "two runs of one seed agree" is a claim about a constant.
+        //
+        // Both peers compute **both** sides' layouts from the same numbers, so
+        // this is match setup, not local randomness: a pure function of
+        // `(seed, faction)`, evaluated identically in both processes.
+        let slot = match faction {
+            Faction::A => 0u64,
+            Faction::B => 1,
+        };
+        let spots = onus::sim::random_layout(
+            3,
+            seed ^ (slot.wrapping_mul(0x9E37_79B9_7F4A_7C15)),
+            base - Vec2::splat(60.0),
+            base + Vec2::splat(60.0),
+        );
+        for spot in spots {
             let (idx, kind, hp) = {
                 let c = app.world().resource::<Content>();
-                let idx = c.unit_index("ripper").expect("ripper");
+                let idx = c.unit_index("worker").expect("worker");
                 (idx, c.units[idx].mvp_kind, Health::from_def(c, idx))
             };
             app.world_mut().spawn((
-                Position(base + Vec2::new(0.0, 40.0 * i as f32)),
+                Position(spot.pos),
                 UnitDefIdx(idx),
                 kind,
                 faction,
@@ -88,6 +119,8 @@ fn build(link: NetLink, seed: u64) -> App {
             ));
         }
     }
+    // The seeded commander — this peer's side only.
+    app.insert_resource(AiCommanders::new(seed, &[me]));
     app
 }
 
@@ -95,34 +128,6 @@ fn step(app: &mut App) {
     let dt = app.world().resource::<Time<Fixed>>().timestep();
     app.world_mut().resource_mut::<Time<Fixed>>().advance_by(dt);
     app.update();
-}
-
-/// A scripted local command, so both peers have something to exchange that
-/// depends on which side they are.
-fn script(app: &mut App, me: Faction, tick: u32) {
-    if tick % 25 != 7 {
-        return;
-    }
-    let mut q = app
-        .world_mut()
-        .query::<(Entity, &onus::sim::SimId, &Faction, &UnitDefIdx)>();
-    let mut mine: Vec<(Entity, u64)> = q
-        .iter(app.world())
-        .filter(|(_, _, f, _)| **f == me)
-        .map(|(e, id, _, _)| (e, id.0))
-        .collect();
-    mine.sort_by_key(|(_, id)| *id);
-    let Some((unit, _)) = mine.first().copied() else {
-        return;
-    };
-    let dir = if me == Faction::A { 1.0 } else { -1.0 };
-    app.world_mut().resource_mut::<CommandQueue>().0.push_back(
-        Order::MoveTo {
-            units: vec![unit],
-            dest: Vec2::new(dir * (100.0 + tick as f32), 60.0),
-        }
-        .issued_by(me),
-    );
 }
 
 fn main() {
@@ -154,12 +159,10 @@ fn main() {
         }
     };
 
-    let mut app = build(link, seed);
+    let mut app = build(link, seed, me);
     let mut frames = 0u32;
     // A frame budget so a broken peer exits instead of hanging a test.
     while app.world().resource::<MatchState>().tick() < ticks && frames < ticks * 20 {
-        let tick = app.world().resource::<MatchState>().tick();
-        script(&mut app, me, tick);
         step(&mut app);
         frames += 1;
     }

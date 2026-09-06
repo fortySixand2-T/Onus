@@ -689,6 +689,27 @@ pub fn pump(
     }
 }
 
+/// Take local commands out of the sim's queue **inside** the tick, after the
+/// scripted commanders have had their say and before anything is applied.
+///
+/// [`pump`] drains the queue at the top of the frame, which catches everything
+/// a *frame-time* producer wrote — the mouse, a test fixture. It cannot catch a
+/// producer that lives **in the chain**: `ai::ai_commanders` runs after `pump`
+/// and pushes onto the same queue, and `apply_commands` runs a few systems
+/// later, so an AI's order would be applied locally on the tick it was thought
+/// of — a command the other peer has never heard of, which is a desync with a
+/// two-tick fuse.
+///
+/// So the drain happens twice: once at the top of the frame, once between the
+/// commanders and the application. Both put what they find in the same pending
+/// buffer, and the next turn carries it. **Nothing local reaches
+/// `apply_commands` unscheduled.**
+pub fn collect_local(mut queue: ResMut<CommandQueue>, mut link: ResMut<NetLink>) {
+    for signed in queue.0.take_unscheduled() {
+        link.pending_local.push(signed.into_parts());
+    }
+}
+
 /// Install the lockstep link on `app`: **the one definition of how a networked
 /// match is driven**, shared by the shipped binary and the tests, for the same
 /// reason `add_sim_systems` and `add_replay_writer` are (F-004).
@@ -701,5 +722,17 @@ pub fn pump(
 pub fn add_net_link(app: &mut App, schedule: impl bevy::ecs::schedule::ScheduleLabel + Clone, link: NetLink) {
     app.insert_resource(link);
     app.init_resource::<StateHashLog>();
-    app.add_systems(schedule, pump.before(crate::sim::victory::match_watch));
+    app.add_systems(
+        schedule.clone(),
+        pump.before(crate::sim::victory::match_watch),
+    );
+    // The second drain, inside the tick: after the commanders think, before
+    // anything is applied. See `collect_local` — an in-chain producer would
+    // otherwise have its orders applied locally, on one peer only.
+    app.add_systems(
+        schedule,
+        collect_local
+            .after(crate::sim::ai::ai_commanders)
+            .before(crate::sim::apply_commands),
+    );
 }
