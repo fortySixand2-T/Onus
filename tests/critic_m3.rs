@@ -231,10 +231,10 @@ fn flow_field_distances_equal_bfs_everywhere() {
         }
         let oracle = bfs_dist_from(&grid, goal);
         let field = FlowField::compute(&grid, goal);
-        for c in 0..n {
+        for (c, expected) in oracle.iter().enumerate().take(n) {
             assert_eq!(
                 field.distance(c),
-                oracle[c],
+                *expected,
                 "flow distance must equal BFS distance (seed {seed}, cell {c})"
             );
         }

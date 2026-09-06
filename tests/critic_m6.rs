@@ -1232,3 +1232,701 @@ fn a_command_held_when_the_match_ends_is_recorded_and_replays_identically() {
     assert_eq!(rec_hash, rep_hash, "the replayed world is not the recorded world");
     assert_eq!(again.commands, log.commands, "the replay recorded a different account");
 }
+
+// ============================================================================
+// Pass 2 — probes against the seeded fixture and the second drain.
+// ============================================================================
+
+/// A connected pair on an ephemeral loopback port; the listener dies with the
+/// call, so nothing stays bound.
+fn socket_pair() -> (TcpStream, TcpStream) {
+    let l = TcpListener::bind("127.0.0.1:0").expect("bind");
+    let a = l.local_addr().expect("addr");
+    let client = TcpStream::connect(a).expect("connect");
+    let (server, _) = l.accept().expect("accept");
+    (server, client)
+}
+
+fn net_cfg(delay: u32, hash_every: u32) -> NetConfig {
+    NetConfig {
+        turn_delay_ticks: delay,
+        hash_interval_ticks: hash_every,
+        stall_timeout_secs: 600.0,
+    }
+}
+
+/// The `netpeer` world, rebuilt here so the critic depends on no fixture the
+/// implementer owns: seeded layout for both sides, a resource node each, and —
+/// optionally — this side's own commander.
+fn seeded_world(app: &mut App, seed: u64, me: Option<Faction>) {
+    for (faction, base) in [
+        (Faction::A, Vec2::new(-750.0, 0.0)),
+        (Faction::B, Vec2::new(750.0, 0.0)),
+    ] {
+        let (def, hp) = {
+            let c = app.world().resource::<Content>();
+            let def = c.building_index("hq").expect("hq");
+            (def, Health::from_building_def(c, def))
+        };
+        app.world_mut().spawn((
+            Position(base),
+            Building { def },
+            faction,
+            ProductionQueue::default(),
+            hp,
+        ));
+        app.world_mut().spawn((
+            Position(base + Vec2::new(0.0, 250.0)),
+            onus::sim::ResourceNode { amount: 100_000 },
+        ));
+        let slot = match faction {
+            Faction::A => 0u64,
+            Faction::B => 1,
+        };
+        let spots = onus::sim::random_layout(
+            3,
+            seed ^ (slot.wrapping_mul(0x9E37_79B9_7F4A_7C15)),
+            base - Vec2::splat(60.0),
+            base + Vec2::splat(60.0),
+        );
+        for spot in spots {
+            let (idx, kind, hp) = {
+                let c = app.world().resource::<Content>();
+                let i = c.unit_index("worker").expect("worker");
+                (i, c.units[i].mvp_kind, Health::from_def(c, i))
+            };
+            app.world_mut()
+                .spawn((Position(spot.pos), UnitDefIdx(idx), kind, faction, hp));
+        }
+    }
+    if let Some(f) = me {
+        app.insert_resource(onus::sim::AiCommanders::new(seed, &[f]));
+    }
+}
+
+fn base_app(seed: u64) -> App {
+    let c = content();
+    let alloy = c.economy.starting_alloy;
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(Time::<Fixed>::from_hz(60.0))
+        .insert_resource(c)
+        .init_resource::<CommandQueue>()
+        .init_resource::<RateReport>()
+        .init_resource::<Casualties>()
+        .insert_resource(Stockpiles::starting(alloy))
+        .insert_resource(CommandLog::new(seed))
+        .insert_resource(StateHashLog::default());
+    app
+}
+
+/// Two linked peers, each with its own commander, built through the shipped
+/// installers.
+fn linked_pair(seed: u64, cfg: NetConfig) -> (App, App) {
+    let (sa, sb) = socket_pair();
+    let mut a = base_app(seed);
+    onus::add_sim_systems(&mut a, Update);
+    onus::net::add_net_link(
+        &mut a,
+        Update,
+        NetLink::from_stream(sa, Faction::A, cfg).expect("link a"),
+    );
+    seeded_world(&mut a, seed, Some(Faction::A));
+    let mut b = base_app(seed);
+    onus::add_sim_systems(&mut b, Update);
+    onus::net::add_net_link(
+        &mut b,
+        Update,
+        NetLink::from_stream(sb, Faction::B, cfg).expect("link b"),
+    );
+    seeded_world(&mut b, seed, Some(Faction::B));
+    (a, b)
+}
+
+fn step_both(a: &mut App, b: &mut App) {
+    step(a);
+    step(b);
+}
+
+// ---- 1. the second drain, as a principle rather than a patch ---------------
+
+/// **Nothing local may reach `apply_commands` unscheduled.** The behavioural
+/// form, over a match whose only producer is an in-chain one: every command
+/// either peer logs must carry a real schedule, because an `Asap` command is by
+/// definition one the other peer never heard of.
+#[test]
+fn no_command_in_a_networked_match_is_ever_applied_unscheduled() {
+    let (mut a, mut b) = linked_pair(11, net_cfg(4, 10));
+    for _ in 0..420 {
+        step_both(&mut a, &mut b);
+    }
+    for (who, app) in [("A", &a), ("B", &b)] {
+        let link = app.world().resource::<NetLink>();
+        assert!(link.failure().is_none(), "{who}: {:?}", link.failure());
+        let log = app.world().resource::<CommandLog>().log().clone();
+        assert!(
+            !log.commands.is_empty(),
+            "{who} logged no commands at all, so nothing is being tested"
+        );
+        let loose: Vec<_> = log
+            .commands
+            .iter()
+            .filter(|c| matches!(c.schedule, CommandTick::Asap))
+            .collect();
+        assert!(
+            loose.is_empty(),
+            "{who} applied {} command(s) unscheduled — a command the other peer \
+             never heard of: {:?}",
+            loose.len(),
+            loose.iter().map(|c| (c.tick, c.schedule)).collect::<Vec<_>>()
+        );
+    }
+    // ...and the two peers played the same match.
+    let ha = a.world().resource::<StateHashLog>().0.clone();
+    let hb = b.world().resource::<StateHashLog>().0.clone();
+    let n = ha.len().min(hb.len());
+    assert!(n > 300, "the peers barely advanced ({n} ticks)");
+    assert_eq!(ha[..n], hb[..n], "the two peers diverged");
+    assert_eq!(
+        a.world().resource::<CommandLog>().log().commands,
+        b.world().resource::<CommandLog>().log().commands,
+        "the peers recorded different command streams"
+    );
+}
+
+/// **The structural form, which is what stops a third gap.** The drain is
+/// placed after the one in-chain producer that exists today. The property it
+/// stands for is general: *every* system that can push an unscheduled order
+/// must run before `collect_local`. Anything that pushes and is ordered after it
+/// reintroduces exactly the defect, and nothing else would notice.
+#[test]
+fn every_in_chain_producer_of_unscheduled_orders_runs_before_the_drain() {
+    let lib = std::fs::read_to_string(src_dir().join("lib.rs")).expect("lib.rs");
+    let net = std::fs::read_to_string(src_dir().join("net.rs")).expect("net.rs");
+
+    // Where the drain sits, from its registration.
+    let reg = net
+        .find("collect_local\n")
+        .or_else(|| net.find("collect_local\r\n"))
+        .expect("collect_local is registered");
+    let window = &net[reg..reg + 260.min(net.len() - reg)];
+    let anchor_after = window
+        .find(".after(")
+        .map(|i| {
+            let r = &window[i + 7..];
+            r[..r.find(')').unwrap_or(0)].to_string()
+        })
+        .expect("the drain declares what it runs after");
+    let anchor_before = window
+        .find(".before(")
+        .map(|i| {
+            let r = &window[i + 8..];
+            r[..r.find(')').unwrap_or(0)].to_string()
+        })
+        .expect("the drain declares what it runs before");
+    assert!(
+        anchor_before.ends_with("apply_commands"),
+        "the drain no longer runs before the application: {anchor_before}"
+    );
+
+    // Every system in the chain that pushes an unscheduled order.
+    let mut pushers: Vec<String> = Vec::new();
+    let mut stack = vec![src_dir().join("sim")];
+    while let Some(dir) = stack.pop() {
+        for e in std::fs::read_dir(&dir).expect("read src/sim") {
+            let p = e.expect("entry").path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            if !p.extension().is_some_and(|x| x == "rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&p).expect("read");
+            // The enclosing `pub fn` of every `push_back(` call.
+            let mut at = 0usize;
+            while let Some(i) = text[at..].find("push_back(") {
+                let site = at + i;
+                at = site + 10;
+                let line_start = text[..site].rfind('\n').map(|n| n + 1).unwrap_or(0);
+                if text[line_start..site].trim_start().starts_with("//") {
+                    continue;
+                }
+                // Definitions of the queue's own API are not producers.
+                if text[line_start..site].contains("pub fn push_back") {
+                    continue;
+                }
+                let Some(fnpos) = text[..site].rfind("\npub fn ") else { continue };
+                let name: String = text[fnpos + 8..]
+                    .chars()
+                    .take_while(|c| c.is_alphanumeric() || *c == '_')
+                    .collect();
+                if !pushers.contains(&name) {
+                    pushers.push(name);
+                }
+            }
+        }
+    }
+    assert!(
+        !pushers.is_empty(),
+        "no in-chain producer of unscheduled orders was found — the guard \
+         resolved nothing"
+    );
+
+    // Each such system, if it is in the chain, must be registered no later than
+    // the drain's anchor.
+    let anchor_at = lib
+        .find(anchor_after.rsplit("::").next().unwrap_or(&anchor_after))
+        .expect("the drain's anchor is in the chain");
+    let mut late: Vec<String> = Vec::new();
+    let mut excluded: Vec<String> = Vec::new();
+    for name in &pushers {
+        // Only the ones the chain actually runs.
+        let Some(pos) = lib.find(&format!("::{name},")).or_else(|| lib.find(&format!("::{name}\n"))) else {
+            continue;
+        };
+        if pos <= anchor_at {
+            continue;
+        }
+        // A producer that cannot coexist with a lockstep link is not a hole in
+        // it. `feed_replay` is the only one: it is gated on a `ReplaySource`,
+        // and `ai_commanders` — which the drain anchors on — is gated on the
+        // absence of one, so a networked match never runs it. The exclusion is
+        // asserted, not assumed: if that gating ever goes, this fires.
+        let window = &lib[pos..(pos + 200).min(lib.len())];
+        if window.contains("run_if(resource_exists::<sim::replay::ReplaySource>)") {
+            excluded.push(name.clone());
+            continue;
+        }
+        late.push(format!("{name} (registered after {anchor_after})"));
+    }
+    assert_eq!(
+        excluded,
+        vec!["feed_replay".to_string()],
+        "the set of producers excused from the drain changed; each exclusion has \
+         to be a producer a networked match provably never runs"
+    );
+    assert!(
+        late.is_empty(),
+        "these chain systems push unscheduled orders after the lockstep drain, \
+         so their commands are applied locally and never cross the wire: \
+         {late:#?}"
+    );
+}
+
+/// **The drain must be inert where there is no peer.** The shipped binary plays
+/// a local match with no link at all; a networked concern must cost it nothing.
+#[test]
+fn a_local_match_is_untouched_by_the_lockstep_drain() {
+    let play = |with_link: bool| -> (Vec<u64>, MatchLog, u64) {
+        let seed = 21u64;
+        let mut app = base_app(seed);
+        onus::add_sim_systems(&mut app, Update);
+        if with_link {
+            // A link that exists but has no peer: the sim must still be the sim.
+            let (s, _keep) = socket_pair();
+            onus::net::add_net_link(
+                &mut app,
+                Update,
+                NetLink::from_stream(s, Faction::A, net_cfg(4, 10)).expect("link"),
+            );
+            std::mem::forget(_keep);
+        }
+        seeded_world(&mut app, seed, Some(Faction::A));
+        for _ in 0..40 {
+            step(&mut app);
+        }
+        let h = app.world().resource::<StateHashLog>().0.clone();
+        let log = app.world().resource::<CommandLog>().log().clone();
+        let s = onus::sim::state_hash(app.world_mut());
+        (h, log, s)
+    };
+    let (plain_hashes, plain_log, plain_state) = play(false);
+    assert!(plain_hashes.len() == 40, "a local match did not run every tick");
+    assert!(!plain_log.commands.is_empty(), "the local commander issued nothing");
+
+    // The same world again, with no link: bit-identical, which is the baseline
+    // the networked variant must not have disturbed.
+    let (again_hashes, again_log, again_state) = play(false);
+    assert_eq!(plain_hashes, again_hashes);
+    assert_eq!(plain_log.commands, again_log.commands);
+    assert_eq!(plain_state, again_state);
+
+    // And `collect_local` is registered only by `add_net_link`, so a local app
+    // never has it at all.
+    let net = std::fs::read_to_string(src_dir().join("net.rs")).expect("net.rs");
+    let at = net.find("pub fn add_net_link").expect("add_net_link");
+    let end = at + net[at..].find("\n}\n").expect("body");
+    assert!(
+        net[at..end].contains("collect_local"),
+        "the drain is registered somewhere other than the one installer"
+    );
+    let outside = net[..at].matches("collect_local").count() + net[end..].matches("collect_local").count();
+    assert!(
+        outside <= 2,
+        "`collect_local` is referenced {outside} times outside its installer — \
+         it should be its definition and its doc only"
+    );
+}
+
+// ---- 2. the canonical order, with two producers on one tick ----------------
+
+/// **The canonical sequence survives the second drain.** A commander's order
+/// and a human-equivalent order land in the queue at *different points in the
+/// frame* now — one at frame top, one mid-tick. Both peers must still apply the
+/// same commands in the same order, which is what the hash-counted queue order
+/// requires.
+#[test]
+fn a_commander_and_a_click_on_one_tick_still_reach_both_peers_in_one_order() {
+    let (mut a, mut b) = linked_pair(5, net_cfg(4, 10));
+    // Let the handshake settle and the commanders start thinking.
+    for _ in 0..40 {
+        step_both(&mut a, &mut b);
+    }
+    // On the same tick, both peers issue a "player" order as well as whatever
+    // their commander is doing.
+    for round in 0..6u32 {
+        for (app, f) in [(&mut a, Faction::A), (&mut b, Faction::B)] {
+            let mut q = app.world_mut().query::<(Entity, &onus::sim::SimId, &Faction)>();
+            let mut mine: Vec<(Entity, u64)> = q
+                .iter(app.world())
+                .filter(|(_, _, ff)| **ff == f)
+                .map(|(e, id, _)| (e, id.0))
+                .collect();
+            mine.sort_by_key(|(_, id)| *id);
+            if let Some((u, _)) = mine.first().copied() {
+                app.world_mut().resource_mut::<CommandQueue>().0.push_back(
+                    Order::MoveTo {
+                        units: vec![u],
+                        dest: Vec2::new(round as f32 * 7.0, 33.0),
+                    }
+                    .issued_by(f),
+                );
+            }
+        }
+        for _ in 0..25 {
+            step_both(&mut a, &mut b);
+        }
+    }
+    for (who, app) in [("A", &a), ("B", &b)] {
+        assert!(
+            app.world().resource::<NetLink>().failure().is_none(),
+            "{who}: {:?}",
+            app.world().resource::<NetLink>().failure()
+        );
+    }
+    let la = a.world().resource::<CommandLog>().log().commands.clone();
+    let lb = b.world().resource::<CommandLog>().log().commands.clone();
+    assert!(la.len() >= 12, "too few commands to test an order ({})", la.len());
+    assert_eq!(
+        la, lb,
+        "two producers on one tick reached the peers in different orders"
+    );
+    // Both sides are represented, so the ordering rule is actually exercised.
+    let from_a = la.iter().filter(|c| c.attribution == onus::sim::Attribution::By(Faction::A)).count();
+    let from_b = la.iter().filter(|c| c.attribution == onus::sim::Attribution::By(Faction::B)).count();
+    assert!(from_a > 0 && from_b > 0, "only one side issued anything (A {from_a}, B {from_b})");
+    let ha = a.world().resource::<StateHashLog>().0.clone();
+    let hb = b.world().resource::<StateHashLog>().0.clone();
+    let n = ha.len().min(hb.len());
+    assert_eq!(ha[..n], hb[..n], "the peers' per-tick hashes parted company");
+}
+
+// ---- 3. the seeded layout ---------------------------------------------------
+
+/// `random_layout` is a pure function of its arguments — the property the
+/// headline cross-process claim now rests on. Same seed, same layout, every
+/// time; different seeds, different layouts; and the two sides' derived seeds
+/// can never collide.
+#[test]
+fn the_seeded_layout_is_a_pure_function_and_the_two_sides_never_share_one() {
+    let at = |seed: u64| {
+        onus::sim::random_layout(3, seed, Vec2::splat(-60.0), Vec2::splat(60.0))
+            .into_iter()
+            .map(|u| (u.pos.x.to_bits(), u.pos.y.to_bits()))
+            .collect::<Vec<_>>()
+    };
+    for s in [0u64, 1, 7, 12345, u64::MAX] {
+        assert_eq!(at(s), at(s), "the layout for seed {s} is not stable");
+    }
+    let distinct: std::collections::BTreeSet<Vec<(u32, u32)>> =
+        [0u64, 1, 7, 12345, u64::MAX].iter().map(|s| at(*s)).collect();
+    assert_eq!(distinct.len(), 5, "different seeds produced the same layout");
+
+    // `seed ^ slot * K`: slot 0 is the seed itself, slot 1 is never equal to it.
+    const K: u64 = 0x9E37_79B9_7F4A_7C15;
+    for s in [0u64, 1, 7, 12345, u64::MAX, K] {
+        let a = s ^ 0u64.wrapping_mul(K);
+        let b = s ^ 1u64.wrapping_mul(K);
+        assert_eq!(a, s, "slot 0 does not use the match seed unchanged");
+        assert_ne!(a, b, "the two sides derived the same layout seed from {s}");
+        assert_ne!(at(a), at(b), "the two sides were given the same layout");
+    }
+}
+
+// ---- 4. the control's two horizons, and whether each is load-bearing -------
+
+/// **Is 600 ticks actually past the first seeded *decision*?** The two-horizon
+/// control is justified on the ground that a short run tests the layout and a
+/// long one tests the commander. That is only true if the commander has in fact
+/// made a random choice by the long horizon — otherwise the long run adds
+/// nothing the short one did not already have, and the justification is
+/// decorative.
+///
+/// Watched directly, through the generator: the commander's RNG state must have
+/// moved.
+#[test]
+fn the_long_horizon_reaches_a_seeded_decision_and_the_short_one_does_not() {
+    let rng_of = |app: &App| -> u64 {
+        app.world()
+            .resource::<onus::sim::AiCommanders>()
+            .commanders()
+            .first()
+            .expect("a commander")
+            .rng_state()
+    };
+    let (mut a, mut b) = linked_pair(7, net_cfg(4, 10));
+    let start = rng_of(&a);
+
+    for _ in 0..120 {
+        step_both(&mut a, &mut b);
+    }
+    let at_short = rng_of(&a);
+    assert!(
+        a.world().resource::<MatchState>().tick() >= 115,
+        "the peers did not reach the short horizon"
+    );
+
+    for _ in 0..500 {
+        step_both(&mut a, &mut b);
+    }
+    assert!(
+        a.world().resource::<MatchState>().tick() >= 595,
+        "the peers did not reach the long horizon (tick {})",
+        a.world().resource::<MatchState>().tick()
+    );
+    let at_long = rng_of(&a);
+
+    assert_eq!(
+        at_short, start,
+        "the commander already rolled a number before tick 120, so the short \
+         horizon is not the layout-only control it is described as"
+    );
+    assert_ne!(
+        at_long, start,
+        "the commander never rolled a number by tick 600, so the long horizon \
+         tests nothing the short one did not — the two-horizon justification \
+         does not hold"
+    );
+    assert!(a.world().resource::<NetLink>().failure().is_none());
+    assert!(b.world().resource::<NetLink>().failure().is_none());
+}
+
+/// **The other direction of the control's sensitivity.** With the commander
+/// intact but the layout held constant, a short run must no longer tell two
+/// seeds apart — which is what makes the *short* horizon the layout's guard,
+/// and what a layout-only regression would look like.
+#[test]
+fn a_constant_layout_makes_the_short_horizon_blind_which_is_why_it_exists() {
+    let play = |seed: u64, seeded_layout: bool, ticks: u32| -> u64 {
+        let mut app = base_app(seed);
+        onus::add_sim_systems(&mut app, Update);
+        for (faction, base) in [
+            (Faction::A, Vec2::new(-750.0, 0.0)),
+            (Faction::B, Vec2::new(750.0, 0.0)),
+        ] {
+            let (def, hp) = {
+                let c = app.world().resource::<Content>();
+                let def = c.building_index("hq").expect("hq");
+                (def, Health::from_building_def(c, def))
+            };
+            app.world_mut().spawn((
+                Position(base),
+                Building { def },
+                faction,
+                ProductionQueue::default(),
+                hp,
+            ));
+            app.world_mut().spawn((
+                Position(base + Vec2::new(0.0, 250.0)),
+                onus::sim::ResourceNode { amount: 100_000 },
+            ));
+            let slot = match faction {
+                Faction::A => 0u64,
+                Faction::B => 1,
+            };
+            let positions: Vec<Vec2> = if seeded_layout {
+                onus::sim::random_layout(
+                    3,
+                    seed ^ (slot.wrapping_mul(0x9E37_79B9_7F4A_7C15)),
+                    base - Vec2::splat(60.0),
+                    base + Vec2::splat(60.0),
+                )
+                .into_iter()
+                .map(|u| u.pos)
+                .collect()
+            } else {
+                (0..3).map(|i| base + Vec2::new(0.0, 20.0 * i as f32)).collect()
+            };
+            for pos in positions {
+                let (idx, kind, hp) = {
+                    let c = app.world().resource::<Content>();
+                    let i = c.unit_index("worker").expect("worker");
+                    (i, c.units[i].mvp_kind, Health::from_def(c, i))
+                };
+                app.world_mut().spawn((Position(pos), UnitDefIdx(idx), kind, faction, hp));
+            }
+        }
+        app.insert_resource(onus::sim::AiCommanders::new(seed, &[Faction::A, Faction::B]));
+        for _ in 0..ticks {
+            step(&mut app);
+        }
+        onus::sim::state_hash(app.world_mut())
+    };
+
+    // Seeded layout: two seeds differ at the short horizon.
+    assert_ne!(
+        play(3, true, 120),
+        play(9, true, 120),
+        "the seeded layout does not distinguish two seeds at 120 ticks, so the \
+         short horizon guards nothing"
+    );
+    // Constant layout: they do not — which is precisely the regression the
+    // short horizon exists to catch, and the reason a long-only control would
+    // have missed it.
+    assert_eq!(
+        play(3, false, 120),
+        play(9, false, 120),
+        "a constant layout still distinguished two seeds at 120 ticks, so the \
+         short horizon is not testing what it is described as testing"
+    );
+    // ...and at the long horizon the commander alone is enough.
+    assert_ne!(
+        play(3, false, 620),
+        play(9, false, 620),
+        "with a constant layout the long horizon cannot tell two seeds apart \
+         either, so nothing in the fixture is seeded after tick 120"
+    );
+}
+
+// ---- 5. the gate and the guards, re-established under the second drain -----
+
+/// The second drain must not have loosened the stall properties: a peer with no
+/// turn still stops dead, and a command issued during the stall is still
+/// exchanged rather than applied locally.
+#[test]
+fn the_second_drain_did_not_weaken_the_stall() {
+    let (mut a, mut b) = linked_pair(13, net_cfg(3, 5));
+    for _ in 0..40 {
+        step_both(&mut a, &mut b);
+    }
+    let tick_before = a.world().resource::<MatchState>().tick();
+
+    // B stops taking part; A must stall rather than run on.
+    for _ in 0..60 {
+        step(&mut a);
+    }
+    let stalled_at = a.world().resource::<MatchState>().tick();
+    // A may play through the last turn B sent before falling silent — that is
+    // what a turn delay *is* — and then must stop. What it may not do is run on.
+    let ceiling = tick_before + net_cfg(3, 5).turn_delay_ticks + 1;
+    assert!(
+        stalled_at <= ceiling,
+        "peer A ran on without its partner: {tick_before} -> {stalled_at} (ceiling {ceiling})"
+    );
+    // From here on nothing may move: not the tick, and not the hash log.
+    let hashes_at_stall = a.world().resource::<StateHashLog>().0.len();
+    for _ in 0..40 {
+        step(&mut a);
+    }
+    assert_eq!(
+        a.world().resource::<MatchState>().tick(),
+        stalled_at,
+        "peer A kept advancing while stalled"
+    );
+    assert_eq!(
+        a.world().resource::<StateHashLog>().0.len(),
+        hashes_at_stall,
+        "a stalled peer recorded hashes for ticks that did not happen"
+    );
+    assert!(!a.world().resource::<TickGate>().is_open(), "the gate stayed open");
+
+    // A command issued during the stall must not be applied locally.
+    let mut q = a.world_mut().query::<(Entity, &onus::sim::SimId, &Faction)>();
+    let victim = q
+        .iter(a.world())
+        .filter(|(_, _, f)| **f == Faction::A)
+        .map(|(e, id, _)| (e, id.0))
+        .min_by_key(|(_, id)| *id)
+        .map(|(e, _)| e)
+        .expect("a unit of A");
+    a.world_mut().resource_mut::<CommandQueue>().0.push_back(
+        Order::MoveTo { units: vec![victim], dest: Vec2::new(-1234.0, 0.0) }.issued_by(Faction::A),
+    );
+    for _ in 0..30 {
+        step(&mut a);
+    }
+    assert_eq!(
+        a.world().resource::<MatchState>().tick(),
+        stalled_at,
+        "a command issued during a stall let the sim advance"
+    );
+    let log = a.world().resource::<CommandLog>().log().clone();
+    assert!(
+        !log.commands.iter().any(|c| matches!(
+            &c.order,
+            onus::sim::replay::LoggedOrder::MoveTo { dest, .. } if dest.0 == -1234.0
+        )),
+        "a command issued during a stall was applied locally"
+    );
+    assert_eq!(
+        a.world().resource::<StateHashLog>().0.len(),
+        hashes_at_stall,
+        "issuing a command during a stall recorded a hash for a tick that did \
+         not happen"
+    );
+
+    // B comes back: both resume and stay together.
+    for _ in 0..200 {
+        step_both(&mut a, &mut b);
+    }
+    assert!(a.world().resource::<NetLink>().failure().is_none(), "A: {:?}", a.world().resource::<NetLink>().failure());
+    assert!(b.world().resource::<NetLink>().failure().is_none(), "B: {:?}", b.world().resource::<NetLink>().failure());
+    let ha = a.world().resource::<StateHashLog>().0.clone();
+    let hb = b.world().resource::<StateHashLog>().0.clone();
+    let n = ha.len().min(hb.len());
+    assert!(n > tick_before as usize, "the peers never resumed");
+    assert_eq!(ha[..n], hb[..n], "the peers diverged across the stall");
+    // ...and the stalled command did eventually cross the wire.
+    assert!(
+        a.world()
+            .resource::<CommandLog>()
+            .log()
+            .commands
+            .iter()
+            .any(|c| matches!(
+                &c.order,
+                onus::sim::replay::LoggedOrder::MoveTo { dest, .. } if dest.0 == -1234.0
+            )),
+        "the command issued during the stall was lost rather than deferred"
+    );
+}
+
+/// The clippy gate is what it says it is: the one documented exception, and no
+/// other, and the command in the ledger is the full one.
+#[test]
+fn the_recorded_clippy_gate_is_the_real_gate() {
+    let findings = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("FINDINGS.md"),
+    )
+    .expect("FINDINGS.md");
+    let flat: String = findings.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert!(
+        flat.contains("cargo clippy --all-targets -- -D warnings"),
+        "the ledger does not record the gate as `--all-targets -- -D warnings`"
+    );
+    assert!(
+        flat.contains("critic_m3.rs:234"),
+        "the ledger does not name the one known exception"
+    );
+}

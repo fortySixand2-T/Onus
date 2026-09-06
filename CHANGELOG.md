@@ -276,3 +276,8 @@
 - [2026-09-06] Modified: tests/m6_lockstep.rs — an AI on each peer plays one identical match; a different seed is a different match
 - [2026-09-06] Modified: tests/m5_replay.rs — corrected the scheduler guard's wording
 - [2026-09-06] Modified: FINDINGS.md — F-015 extension: a headline test that could not tell a seeded match from a constant; the gate-flags hole
+- [2026-09-06] Modified: tests/critic_m6.rs — pass-2 probes (the second drain as a general rule, canonical order with two producers on one tick, seeded-layout purity, the two-horizon control's sensitivity in both directions, the stall re-established)
+- [2026-09-06] Modified: tests/critic_m3.rs — closed the project's last clippy-gate exception (needless_range_loop) without changing what the probe compares
+- [2026-09-06] Modified: tests/critic_m3.rs — close the project's last standing clippy exception (needless_range_loop); suite still 16/16
+- [2026-09-06] Modified: BUILD_PLAN.md — M6 acceptance criteria ticked after critic PASS; the ladder is closed
+- [2026-09-06] Modified: CLAUDE.md — status: M0–M6 complete

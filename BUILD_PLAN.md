@@ -175,8 +175,8 @@ Critic probes: AI is deterministic given the seed (same seed ⇒ same actions); 
 Critic probes: same seed + same log ⇒ identical per-tick hash; commands never apply off their scheduled tick; no HashMap/iteration-order nondeterminism affects outcomes; no wall-clock in sim.
 
 ### M6 — lockstep networking (optional)
-- [ ] Commands exchanged between two clients.
-- [ ] A tick advances only when all inputs for it are present.
-- [ ] Periodic state-hash exchange detects desync.
+- [x] Commands exchanged between two clients.
+- [x] A tick advances only when all inputs for it are present.
+- [x] Periodic state-hash exchange detects desync.
 
 Critic probes: injected divergence is caught by the hash exchange; a tick never advances on missing input; determinism holds cross-process.
