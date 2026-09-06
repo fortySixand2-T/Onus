@@ -268,3 +268,5 @@
 - [2026-09-05] Modified: Cargo.toml — the netpeer binary target
 - [2026-09-05] Modified: tests/m5_replay.rs — net.rs declared as the second scheduler
 - [2026-09-05] Modified: FINDINGS.md — F-015: lockstep; the queue's order is state, and a stall is where local input escapes
+- [2026-09-05] Created: tests/critic_m6.rs — M6 critic probes (cross-process negative controls, handshake independence over a raw socket, the tick gate vs the win condition, turn-delay arithmetic, one turn per tick, stamped-schedule provenance, the no-bump argument's load-bearing fact)
+- [2026-09-06] Created: tests/critic_m6.rs — M6 critic probes (gate stops every part of a tick, turn-delay boundary, one turn per tick, four independent handshake refusals, sim is network/clock-free, stamped-schedule module guard, seed-dependence control)
