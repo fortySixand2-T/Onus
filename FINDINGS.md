@@ -1175,3 +1175,39 @@ actually happens. The gate is a golden state hash taken from the pre-B1 binary a
 tick 3_000 of the standard AI-vs-AI fixture for two seeds
 (`the_one_barracks_default_replays_exactly_as_it_did_before_b1`). A refactor of
 the sim that cannot point at a pre-refactor number is a re-tune nobody noticed.
+
+## F-017 — A commander carries a strategy *index*, and an unknown name is refused (B1 AC2)
+
+`AiCommander` now holds `Option<usize>` — an index into `Content::strategies`
+(stable RON order), `None` meaning "this content's default". A name is resolved
+once, at construction; the decision path never compares strings, and the type
+stays `Copy`-cheap.
+
+**Refusal, not fallback, in both directions.** `AiCommander::with_strategy` /
+`AiCommanders::matchup` return `Err(UnknownStrategy { id, faction })` when a name
+is unknown: B2/B3 key every recorded row by strategy pair, so a typo that
+silently played the default would mislabel its own data — the one failure mode a
+balance report cannot survive. For the same reason, resolving an index that is
+out of range for the running content *panics* rather than falling back to the
+default: an index can only be foreign if the commanders were built against
+different content than the match runs, and quietly playing the default there
+produces a result filed under a strategy nobody ran.
+
+**The seed derivation deliberately did not change.** A commander's stream is
+still a function of (match seed, faction slot) *only* — never of its strategy —
+so one seed means the same map opening across every matchup and a difference
+between two matchups is attributable to the scripts. The closed M5/M6 seed-control
+probes depend on this too, and `a_matchup_seeds_exactly_as_the_default_constructor_does`
+pins it.
+
+**`think_interval_ticks` became per-commander.** It was read from `content.ai` in
+`ai_commanders` before `think` was called; left there, two strategies with
+different APMs would both have thought on the default's cadence, and every APM in
+the probe set would have been a decorative number.
+`each_side_thinks_on_its_own_cadence` is the test that would have caught it.
+
+**Behaviour-preserving, proved against the pre-AC2 binary.** The default matchup
+is pinned by golden `state_hash` *and* a golden `AiJournal` digest at tick 3_000
+for three seeds, and naming `mvp` on both sides is asserted to play exactly the
+match that defaulting to it plays
+(`the_default_matchup_is_byte_for_byte_what_it_was_before_ac2`).

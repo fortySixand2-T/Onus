@@ -30,7 +30,7 @@
 use bevy::ecs::prelude::*;
 use bevy::math::Vec2;
 
-use crate::sim::content::Content;
+use crate::sim::content::{Content, StrategyDef};
 use crate::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use crate::sim::spatial::{Faction, SplitMix64};
 use crate::sim::{CommandQueue, GatherTarget, Order, Position, ResourceNode};
@@ -79,6 +79,11 @@ impl AiJournal {
 #[derive(Debug, Clone)]
 pub struct AiCommander {
     pub faction: Faction,
+    /// Which script it runs: an index into [`Content::strategies`] (the stable
+    /// RON order), or `None` for "whatever the content's default is". An index,
+    /// never a name — resolving a name happens once, at construction, so the
+    /// decision path never compares strings.
+    strategy: Option<usize>,
     rng: SplitMix64,
     /// Ticks this commander has been alive (its only clock).
     tick: u32,
@@ -93,13 +98,65 @@ impl AiCommander {
     /// `seed` and its faction slot — so one seed fixes both sides' behaviour,
     /// and the two sides do not share a stream.
     pub fn new(faction: Faction, seed: u64) -> Self {
+        Self::with_index(faction, seed, None)
+    }
+
+    /// A commander for `faction` running the strategy named `id`, refused
+    /// (never silently defaulted) if `content` has no such strategy: a typo in
+    /// a matchup must not quietly play the default and report the result under
+    /// a name nobody ran.
+    ///
+    /// The RNG stream is derived exactly as [`AiCommander::new`]'s is — from
+    /// (`seed`, faction slot) **only**, never from the strategy — so one seed
+    /// means one opening across every matchup, and a difference between two
+    /// matchups is attributable to the scripts.
+    pub fn with_strategy(
+        content: &Content,
+        faction: Faction,
+        seed: u64,
+        id: &str,
+    ) -> Result<Self, UnknownStrategy> {
+        match content.strategy_index(id) {
+            Some(i) => Ok(Self::with_index(faction, seed, Some(i))),
+            None => Err(UnknownStrategy {
+                id: id.to_string(),
+                faction: Some(faction),
+            }),
+        }
+    }
+
+    fn with_index(faction: Faction, seed: u64, strategy: Option<usize>) -> Self {
         let slot = faction_slot(faction) as u64;
         Self {
             faction,
+            strategy,
             rng: SplitMix64::new(seed ^ slot.wrapping_mul(0x9E37_79B9_7F4A_7C15)),
             tick: 0,
             army_cursor: 0,
             next_attack_tick: 0,
+        }
+    }
+
+    /// The index of the strategy it was named with, or `None` if it runs the
+    /// content's default.
+    pub fn strategy_index(&self) -> Option<usize> {
+        self.strategy
+    }
+
+    /// The script it actually runs, resolved against the content it plays on.
+    /// Panics if the index is out of range, which can only mean the commander
+    /// was built against *different* content than the match is running — a
+    /// silent fallback there would report a match under the wrong strategy.
+    pub fn strategy<'a>(&self, content: &'a Content) -> &'a StrategyDef {
+        match self.strategy {
+            None => &content.ai,
+            Some(i) => content.strategies.get(i).unwrap_or_else(|| {
+                panic!(
+                    "commander's strategy index {i} is out of range for this content \
+                     ({} strategies) — it was built against different content",
+                    content.strategies.len()
+                )
+            }),
         }
     }
 
@@ -140,10 +197,51 @@ impl AiCommanders {
         Self(cs)
     }
 
+    /// The commanders of one match: **one strategy per side**, named. Refused
+    /// if either name is unknown to `content` (the error says which side and
+    /// which id). Stored in faction-slot order, one commander per faction, and
+    /// seeded exactly as [`AiCommanders::new`] seeds them — so the same seed
+    /// means the same opening whatever the pairing.
+    pub fn matchup(
+        content: &Content,
+        seed: u64,
+        sides: &[(Faction, &str)],
+    ) -> Result<Self, UnknownStrategy> {
+        let mut cs: Vec<AiCommander> = sides
+            .iter()
+            .map(|(f, id)| AiCommander::with_strategy(content, *f, seed, id))
+            .collect::<Result<_, _>>()?;
+        cs.sort_by_key(|c| faction_slot(c.faction));
+        cs.dedup_by_key(|c| faction_slot(c.faction));
+        Ok(Self(cs))
+    }
+
     pub fn commanders(&self) -> &[AiCommander] {
         &self.0
     }
 }
+
+/// A strategy was named that the loaded content does not have. Returned rather
+/// than defaulted: every number B2/B3 print is keyed by strategy name, so a
+/// typo must stop the caller, not mislabel a row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnknownStrategy {
+    /// The id that named nothing.
+    pub id: String,
+    /// The side that asked for it, when it was asked for on a side's behalf.
+    pub faction: Option<Faction>,
+}
+
+impl std::fmt::Display for UnknownStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.faction {
+            Some(who) => write!(f, "no strategy `{}` (asked for by {:?})", self.id, who),
+            None => write!(f, "no strategy `{}`", self.id),
+        }
+    }
+}
+
+impl std::error::Error for UnknownStrategy {}
 
 // ---- world snapshot ---------------------------------------------------------
 
@@ -236,7 +334,9 @@ pub fn ai_commanders(
     for commander in ai.0.iter_mut() {
         let tick = commander.tick;
         commander.tick = commander.tick.saturating_add(1);
-        if tick % content.ai.think_interval_ticks != 0 {
+        // Its *own* cadence: two strategies with different APMs must not both
+        // think on the default's beat.
+        if tick % commander.strategy(&content).think_interval_ticks != 0 {
             continue;
         }
         think(
@@ -267,7 +367,7 @@ fn think(
     queue: &mut CommandQueue,
     journal: &mut AiJournal,
 ) {
-    let script = &content.ai;
+    let script = c.strategy(content);
     let me = c.faction;
 
     let order = |queue: &mut CommandQueue, journal: &mut AiJournal, o: Order, a: AiAction| {
@@ -509,8 +609,62 @@ mod tests {
     }
 
     #[test]
+    fn a_named_strategy_resolves_to_an_index_and_an_unknown_one_is_refused() {
+        let c = content();
+        let cmd = AiCommander::with_strategy(&c, Faction::A, 3, &c.default_strategy)
+            .expect("the default is a named strategy");
+        assert_eq!(cmd.strategy_index(), c.strategy_index(&c.default_strategy));
+        assert_eq!(cmd.strategy(&c).id, c.default_strategy);
+        // `new` carries no index and resolves to the content's default.
+        let plain = AiCommander::new(Faction::A, 3);
+        assert_eq!(plain.strategy_index(), None);
+        assert_eq!(plain.strategy(&c).id, c.default_strategy);
+        // A name nobody has is an error, not a quiet default.
+        let err = AiCommander::with_strategy(&c, Faction::B, 3, "no_such_plan").unwrap_err();
+        assert_eq!(err.id, "no_such_plan");
+        assert_eq!(err.faction, Some(Faction::B));
+    }
+
+    #[test]
+    fn a_matchup_seeds_exactly_as_the_default_constructor_does() {
+        let c = content();
+        let pair = AiCommanders::matchup(
+            &c,
+            7,
+            &[
+                (Faction::B, c.default_strategy.as_str()),
+                (Faction::A, c.default_strategy.as_str()),
+            ],
+        )
+        .expect("both sides name the default");
+        let plain = AiCommanders::new(7, &[Faction::A, Faction::B]);
+        assert_eq!(
+            pair.commanders()
+                .iter()
+                .map(|k| (k.faction, k.rng_state()))
+                .collect::<Vec<_>>(),
+            plain
+                .commanders()
+                .iter()
+                .map(|k| (k.faction, k.rng_state()))
+                .collect::<Vec<_>>(),
+            "naming the default changed the seed derivation"
+        );
+    }
+
+    #[test]
     fn a_faction_gets_exactly_one_commander() {
         let cs = AiCommanders::new(1, &[Faction::A, Faction::A, Faction::B]);
+        assert_eq!(cs.commanders().len(), 2, "a faction was given two brains");
+        // ...and so does a matchup, however it was spelled.
+        let c = content();
+        let d = c.default_strategy.as_str();
+        let cs = AiCommanders::matchup(
+            &c,
+            1,
+            &[(Faction::A, d), (Faction::A, d), (Faction::B, d)],
+        )
+        .unwrap();
         assert_eq!(cs.commanders().len(), 2, "a faction was given two brains");
     }
 }

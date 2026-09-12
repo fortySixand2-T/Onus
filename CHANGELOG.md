@@ -302,3 +302,8 @@
 - [2026-09-12] Modified: FINDINGS.md — F-016: promoting one AI script into a set of strategies
 - [2026-09-12] Created: tests/critic_b1.rs — B1 critic probes: load-time refusal of every broken non-default strategy by name, RNG-stream independence from budget and clock, multi-barracks placement/army/determinism/side-independence, fingerprint coverage of the whole set
 - [2026-09-12] Modified: CHANGELOG.md — logged the B1 critic probe file
+- [2026-09-12] Modified: src/sim/ai.rs — B1 AC2: commanders carry a strategy index; AiCommander::with_strategy / AiCommanders::matchup (one strategy per side, unknown names refused via UnknownStrategy); think cadence and script are per-commander
+- [2026-09-12] Modified: src/sim/mod.rs — re-export UnknownStrategy
+- [2026-09-12] Created: tests/b1_matchup.rs — B1 AC2 L2 tests: construction from a name, refusal of unknown ids, per-side script and cadence, side independence, seed/strategy replay identity, golden default matchup
+- [2026-09-12] Modified: FINDINGS.md — F-017: strategy index, refusal over fallback, unchanged seed derivation
+- [2026-09-12] Modified: CHANGELOG.md — logged the B1 AC2 changes
