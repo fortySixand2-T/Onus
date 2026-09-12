@@ -300,3 +300,5 @@
 - [2026-09-12] Modified: tests/m6_lockstep.rs — mechanical: the content fixture copies strategies.ron
 - [2026-09-12] Modified: tests/p2_log_writer.rs — mechanical: the content fixture copies strategies.ron
 - [2026-09-12] Modified: FINDINGS.md — F-016: promoting one AI script into a set of strategies
+- [2026-09-12] Created: tests/critic_b1.rs — B1 critic probes: load-time refusal of every broken non-default strategy by name, RNG-stream independence from budget and clock, multi-barracks placement/army/determinism/side-independence, fingerprint coverage of the whole set
+- [2026-09-12] Modified: CHANGELOG.md — logged the B1 critic probe file
