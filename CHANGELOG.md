@@ -281,3 +281,5 @@
 - [2026-09-06] Modified: tests/critic_m3.rs — close the project's last standing clippy exception (needless_range_loop); suite still 16/16
 - [2026-09-06] Modified: BUILD_PLAN.md — M6 acceptance criteria ticked after critic PASS; the ladder is closed
 - [2026-09-06] Modified: CLAUDE.md — status: M0–M6 complete
+- [2026-09-12] Created: BALANCE_PLAN.md — the balance harness & fun gate (B1–B5): strategies as data, batch runner, metrics/kill-criteria, first tuning pass, human fun gate
+- [2026-09-12] Modified: DESIGN_BRIEF.md — the hook/fantasy drafted (disgraced synthesist house, the Rupture); title and status line updated

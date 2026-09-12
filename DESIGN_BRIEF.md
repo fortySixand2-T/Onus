@@ -1,8 +1,8 @@
-# <Game Title> — Design Brief
+# <Game Onus> — Design Brief
 
 **One-line pitch:** <"X meets Y" — e.g., "AoE-style economy with Total War positioning, in 5-minute matches">
 
-> Status: DRAFT — pillars, roster, stats, counters, economy, win condition, nations, and campaign layer drafted; hook / core loop / fun-hypothesis still open.
+> Status: DRAFT — pillars, roster, stats, counters, economy, win condition, nations, campaign layer, and hook drafted; core loop / fun-hypothesis still open.
 > Source of truth for M4 content: every stat here is mirrored in `assets/data/*.ron`.
 
 **Two layers:** the **battle layer** (real-time 1v1 skirmish — the MVP) and the **campaign layer** (strategic meta of nations, rounds, diplomacy, dominance — post-MVP). Build the battle layer to *fun* before any campaign layer exists.
@@ -21,9 +21,17 @@ Load-bearing principles. When a decision is a coin-flip, the pillars break the t
 
 ## Hook / fantasy
 
-<One paragraph: the player fantasy and its emotional core.>
+**You are the heir of a disgraced house — the last *synthesists* in an age that damns the mixing of the three arts as heresy.**
 
-Theme: one faction wages war through three technological **domains** — **Machine**, **Flesh**, **Energy** — each its own barracks. (Rename freely.)
+Generations ago a unified craft that married **Machine**, **Flesh**, and **Energy** fell; its heirs fractured into pure houses, each canonizing one art as holy truth and the mix as profane. Your family quietly kept the old synthesis alive — until **the Rupture**: a great ley-well torn open, a region unmade, thousands lost. Your house was blamed, its heresy named as the cause, and cast down — name disgraced, works burned, holdings carved up among the very houses that condemned it. But the record is ash, and no one truly knows: did your ancestors' forbidden synthesis tear the world, or did the pure houses seize a convenient catastrophe to be rid of a heresy they already feared? You are what's left — rising through **guile** because no army was left to inherit, rebuilding the forbidden synthesis that is either your vindication or the seed of the next Rupture.
+
+**Drive:** *vengeance* against the houses that broke you · *glory* to reclaim the name they stripped · *legacy* to prove the synthesis was never the sin.
+
+**Why the fiction is the mechanics:** combining domains — exactly what the counter pentagon and coupled economy reward — is your family's heresy and birthright. Every mixed army re-enacts the transgression that damned your house; the pure houses stay single-domain out of *doctrine*, and your edge is having no pride left to lose. The RTS opening (a lone HQ, a few workers, building up from nothing) is the disgraced heir's rise, literally.
+
+**Moral ambiguity (seeded for sequels):** the truth of the Rupture is never confirmed. You rebuild the very art that may have caused a catastrophe — vindication or hubris left open. A sequel can resolve it, or make your own synthesis court a second Rupture.
+
+> Naming: keep **Machine / Flesh / Energy** as the legible category labels (pillar P3). Proper names for the three sacred arts, the fallen unified craft, and the five houses are a *flavor layer* on top (see Open questions).
 
 ## Core loop
 
