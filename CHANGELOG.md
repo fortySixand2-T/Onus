@@ -307,3 +307,4 @@
 - [2026-09-12] Created: tests/b1_matchup.rs — B1 AC2 L2 tests: construction from a name, refusal of unknown ids, per-side script and cadence, side independence, seed/strategy replay identity, golden default matchup
 - [2026-09-12] Modified: FINDINGS.md — F-017: strategy index, refusal over fallback, unchanged seed derivation
 - [2026-09-12] Modified: CHANGELOG.md — logged the B1 AC2 changes
+- [2026-09-12] Created: tests/critic_b1_ac2.rs — B1 AC2 critic probes: default-by-None vs default-by-name off index zero, per-side script/cadence/worker-target, opponent-independent openings, cross-profile replay pins, seed-and-slot-only RNG, refusal on either side, degenerate matchups, and a characterisation of foreign-content index resolution
