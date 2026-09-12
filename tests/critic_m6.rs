@@ -345,7 +345,10 @@ fn every_handshake_check_refuses_on_its_own() {
                     let _ = std::fs::create_dir_all(&d);
                     let t = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
                     std::fs::write(d.join("units.ron"), t.replacen("mvp_alloy_cost: 10,", "mvp_alloy_cost: 12,", 1)).unwrap();
-                    std::fs::copy(data_dir().join("resources.ron"), d.join("resources.ron")).unwrap();
+                    // B1: the content set is three files.
+                    for file in ["resources.ron", "strategies.ron"] {
+                        std::fs::copy(data_dir().join(file), d.join(file)).unwrap();
+                    }
                     d
                 })
                 .expect("edited content")

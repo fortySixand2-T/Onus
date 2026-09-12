@@ -625,7 +625,7 @@ fn a_peer_running_different_content_is_refused() {
         let dir = std::env::temp_dir().join(format!("onus-m6-content-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("scratch");
-        for file in ["units.ron", "resources.ron"] {
+        for file in ["units.ron", "resources.ron", "strategies.ron"] {
             let text = std::fs::read_to_string(data_dir().join(file)).expect("read");
             let text = if file == "units.ron" {
                 text.replacen("mvp_alloy_cost: 10", "mvp_alloy_cost: 11", 1)

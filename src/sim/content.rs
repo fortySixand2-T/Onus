@@ -111,22 +111,37 @@ pub struct ArmyItem {
     pub count: u32,
 }
 
-/// The scripted AI's whole script (M4c) — build order, thresholds and timings.
-/// **Every duration is in `FixedUpdate` ticks**, never seconds, and every number
-/// here is content: there are no AI tuning constants in Rust.
+/// One tech opening in a strategy's `barracks` list: which building, the
+/// earliest tick it may go up, and how far from the HQ it stands.
 #[derive(Debug, Clone, Deserialize)]
-pub struct AiDef {
+pub struct BarracksOpening {
+    /// Placeable (non-victory) building id.
+    pub building: String,
+    /// Earliest tick the commander will place this one.
+    pub at_tick: u32,
+    /// How far from its HQ it goes (world units; the seeded RNG picks only the
+    /// direction).
+    pub offset: f32,
+}
+
+/// One named strategy (B1) — a complete script a commander can be built from:
+/// build order, thresholds and timings. **Every duration is in `FixedUpdate`
+/// ticks**, never seconds, and every number here is content: there are no AI
+/// tuning constants in Rust.
+///
+/// A strategy may open **several** barracks, which is how its army spans
+/// domains; every unit of `army` must be producible by one of them, and is
+/// trained there.
+#[derive(Debug, Clone, Deserialize)]
+pub struct StrategyDef {
+    /// How everything else names this strategy (unique across the set).
+    pub id: String,
     /// Ticks between two decisions (the commander's "APM").
     pub think_interval_ticks: u32,
     /// Workers it keeps mining before spending on anything else.
     pub worker_target: u32,
-    /// Building id it tech-opens with.
-    pub barracks: String,
-    /// Earliest tick it will place that barracks.
-    pub barracks_at_tick: u32,
-    /// How far from its HQ the barracks goes (world units; the direction is the
-    /// only thing the seeded RNG picks).
-    pub barracks_offset: f32,
+    /// The tech openings, in the order it wants them.
+    pub barracks: Vec<BarracksOpening>,
     /// The repeating army build order.
     pub army: Vec<ArmyItem>,
     /// Combat units it wants before it attacks.
@@ -137,7 +152,7 @@ pub struct AiDef {
     pub attack_spread: f32,
 }
 
-impl AiDef {
+impl StrategyDef {
     /// Total units in one cycle of the build order, or `None` if the counts do
     /// not fit a `u32`. Checked, not wrapping: the cursor arithmetic below
     /// divides by this, and `Content::validate` refuses content it cannot hold
@@ -278,7 +293,13 @@ struct UnitsFile {
     mvp_buildings: Vec<BuildingDef>,
     mvp_combat: CombatDef,
     nemesis_bonus: NemesisBonus,
-    mvp_ai: AiDef,
+}
+
+#[derive(Deserialize)]
+struct StrategiesFile {
+    /// Id of the strategy a match uses when nothing names one.
+    default: String,
+    strategies: Vec<StrategyDef>,
 }
 
 #[derive(Deserialize)]
@@ -300,8 +321,15 @@ pub struct Content {
     /// Stat scaling for combat (M4b).
     pub combat: CombatDef,
     pub nemesis_bonus: NemesisBonus,
-    /// The scripted AI's script (M4c).
-    pub ai: AiDef,
+    /// Every named strategy, in RON order (B1).
+    pub strategies: Vec<StrategyDef>,
+    /// Id of the strategy a match uses when nothing names one; always resolves
+    /// to one of [`Content::strategies`] (the loader refuses content where it
+    /// does not).
+    pub default_strategy: String,
+    /// The default strategy, resolved — the script a commander runs when no
+    /// other is named (M4c's `mvp_ai`, promoted).
+    pub ai: StrategyDef,
     pub resources: Vec<ResourceDef>,
     pub mvp_active: Vec<String>,
     pub economy: EconomyDef,
@@ -485,26 +513,48 @@ impl Content {
         Self::load_from_dir(Path::new(DATA_DIR))
     }
 
-    /// Load `units.ron` + `resources.ron` from a data directory. Pure `std` file
-    /// IO — works headless, with no engine asset pipeline.
+    /// Load `units.ron` + `resources.ron` + `strategies.ron` from a data
+    /// directory. Pure `std` file IO — works headless, with no engine asset
+    /// pipeline.
     pub fn load_from_dir(dir: &Path) -> Result<Self, ContentError> {
         let units_file: UnitsFile = load_ron(&dir.join("units.ron"))?;
         let resources_file: ResourcesFile = load_ron(&dir.join("resources.ron"))?;
+        let strategies_file: StrategiesFile = load_ron(&dir.join("strategies.ron"))?;
 
         let mut units = units_file.workers;
         units.extend(units_file.combat);
 
-        let content = Content {
+        let mut content = Content {
             units,
             buildings: units_file.mvp_buildings,
             combat: units_file.mvp_combat,
             nemesis_bonus: units_file.nemesis_bonus,
-            ai: units_file.mvp_ai,
+            strategies: strategies_file.strategies,
+            default_strategy: strategies_file.default,
+            // Resolved below — `validate` refuses content whose default names
+            // no strategy, so this placeholder never survives a load.
+            ai: StrategyDef {
+                id: String::new(),
+                think_interval_ticks: 0,
+                worker_target: 0,
+                barracks: Vec::new(),
+                army: Vec::new(),
+                attack_at_army: 0,
+                attack_interval_ticks: 0,
+                attack_spread: 0.0,
+            },
             resources: resources_file.resources,
             mvp_active: resources_file.mvp_active,
             economy: resources_file.mvp_economy,
         };
         content.validate()?;
+        // `validate` has just proved the default names a strategy, so this
+        // lookup cannot fail.
+        let default = content
+            .strategy(&content.default_strategy)
+            .expect("validate admits only a default that names a strategy")
+            .clone();
+        content.ai = default;
         Ok(content)
     }
 
@@ -531,7 +581,7 @@ impl Content {
         // The namespaces are separate on purpose. Units, buildings and
         // resources are looked up by three different functions, and every
         // reference in the data says which kind it means (`produces` names
-        // units, `mvp_ai.barracks` names a building, `economy.currency` names a
+        // units, a strategy's `barracks` names a building, `economy.currency` names a
         // resource), so a unit and a building *may* share an id — nothing can
         // confuse them. What may never repeat is an id inside one list.
         for (what, ids) in [
@@ -551,6 +601,13 @@ impl Content {
                 self.resources
                     .iter()
                     .map(|r| r.id.as_str())
+                    .collect::<Vec<_>>(),
+            ),
+            (
+                "strategy",
+                self.strategies
+                    .iter()
+                    .map(|s| s.id.as_str())
                     .collect::<Vec<_>>(),
             ),
         ] {
@@ -754,62 +811,117 @@ impl Content {
             ));
         }
 
-        // The AI script (M4c). Everything it counts is ticks, and every id it
-        // names has to resolve — a script with a typo would show up as an AI
-        // that quietly never builds anything.
-        let ai = &self.ai;
-        if ai.think_interval_ticks == 0 {
-            return bad("mvp_ai think_interval_ticks must be positive".to_string());
+        // The strategies (B1, promoted from M4c's single `mvp_ai`). Everything
+        // they count is ticks, and every id they name has to resolve — a script
+        // with a typo would show up as a commander that quietly never builds
+        // anything. **Every** strategy is checked, not merely the default: an
+        // entry is only unreachable until the day a match names it, and content
+        // the sim cannot run must never be admitted in the first place.
+        if self.strategies.is_empty() {
+            return bad("strategies: the set is empty".to_string());
         }
-        if ai.attack_interval_ticks == 0 {
-            return bad("mvp_ai attack_interval_ticks must be positive".to_string());
-        }
-        if ai.worker_target == 0 {
-            return bad("mvp_ai worker_target must be positive".to_string());
-        }
-        if ai.attack_at_army == 0 {
-            return bad("mvp_ai attack_at_army must be positive".to_string());
-        }
-        if !(ai.barracks_offset.is_finite() && ai.barracks_offset > 0.0) {
-            return bad("mvp_ai barracks_offset must be finite and positive".to_string());
-        }
-        if !(ai.attack_spread.is_finite() && ai.attack_spread >= 0.0) {
-            return bad("mvp_ai attack_spread must be finite and non-negative".to_string());
-        }
-        let Some(barracks) = self.building_index(&ai.barracks) else {
-            return bad(format!(
-                "mvp_ai barracks `{}` is not a building",
-                ai.barracks
-            ));
-        };
-        if self.buildings[barracks].victory {
-            return bad(format!(
-                "mvp_ai barracks `{}` is the victory target, not a placeable barracks",
-                ai.barracks
-            ));
-        }
-        if ai.army.is_empty() {
-            return bad("mvp_ai army build order is empty".to_string());
-        }
-        for item in &ai.army {
-            if item.count == 0 {
-                return bad(format!("mvp_ai army entry `{}` has count 0", item.unit));
+        for s in &self.strategies {
+            let who = &s.id;
+            if s.think_interval_ticks == 0 {
+                return bad(format!("strategy `{who}` think_interval_ticks must be positive"));
             }
-            let Some(unit) = self.unit_index(&item.unit) else {
-                return bad(format!("mvp_ai army names unknown unit `{}`", item.unit));
-            };
-            if !self.produces(barracks, unit) {
+            if s.attack_interval_ticks == 0 {
+                return bad(format!("strategy `{who}` attack_interval_ticks must be positive"));
+            }
+            if s.worker_target == 0 {
+                return bad(format!("strategy `{who}` worker_target must be positive"));
+            }
+            if s.attack_at_army == 0 {
+                return bad(format!("strategy `{who}` attack_at_army must be positive"));
+            }
+            if !(s.attack_spread.is_finite() && s.attack_spread >= 0.0) {
                 return bad(format!(
-                    "mvp_ai army names `{}`, which `{}` cannot produce",
-                    item.unit, ai.barracks
+                    "strategy `{who}` attack_spread must be finite and non-negative"
                 ));
             }
+
+            // The tech openings. A strategy with none could never train the
+            // army it declares (every unit must come from one of them), and a
+            // building opened twice is a second placement the commander would
+            // never make — content stating something it cannot mean.
+            if s.barracks.is_empty() {
+                return bad(format!("strategy `{who}` opens no barracks"));
+            }
+            let mut opened: Vec<usize> = Vec::with_capacity(s.barracks.len());
+            for opening in &s.barracks {
+                if !(opening.offset.is_finite() && opening.offset > 0.0) {
+                    return bad(format!(
+                        "strategy `{who}` barracks `{}` offset must be finite and positive",
+                        opening.building
+                    ));
+                }
+                let Some(def) = self.building_index(&opening.building) else {
+                    return bad(format!(
+                        "strategy `{who}` barracks `{}` is not a building",
+                        opening.building
+                    ));
+                };
+                if self.buildings[def].victory {
+                    return bad(format!(
+                        "strategy `{who}` barracks `{}` is the victory target, not a \
+                         placeable barracks",
+                        opening.building
+                    ));
+                }
+                if opened.contains(&def) {
+                    return bad(format!(
+                        "strategy `{who}` opens `{}` twice",
+                        opening.building
+                    ));
+                }
+                opened.push(def);
+            }
+
+            if s.army.is_empty() {
+                return bad(format!("strategy `{who}` army build order is empty"));
+            }
+            for item in &s.army {
+                if item.count == 0 {
+                    return bad(format!(
+                        "strategy `{who}` army entry `{}` has count 0",
+                        item.unit
+                    ));
+                }
+                let Some(unit) = self.unit_index(&item.unit) else {
+                    return bad(format!(
+                        "strategy `{who}` army names unknown unit `{}`",
+                        item.unit
+                    ));
+                };
+                // The heart of it: a strategy may only ask for what the
+                // barracks *it opens* can produce. Otherwise the commander
+                // would stall forever on a unit it has nowhere to train.
+                if !opened.iter().any(|&b| self.produces(b, unit)) {
+                    return bad(format!(
+                        "strategy `{who}` army names `{}`, which none of its barracks \
+                         ({}) can produce",
+                        item.unit,
+                        s.barracks
+                            .iter()
+                            .map(|o| o.building.as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ));
+                }
+            }
+            // Checked, in the arithmetic the sim will actually do: the
+            // build-order cursor is taken modulo this sum, and a sum that wraps
+            // would silently re-point the commander at a different unit (F-005).
+            if s.cycle_len().is_none() {
+                return bad(format!("strategy `{who}` army counts overflow u32"));
+            }
         }
-        // Checked, in the arithmetic the sim will actually do: the build-order
-        // cursor is taken modulo this sum, and a sum that wraps would silently
-        // re-point the AI at a different unit (F-005).
-        if ai.cycle_len().is_none() {
-            return bad("mvp_ai army counts overflow u32".to_string());
+        // The default has to name one of them, or a match has no script at all.
+        if self.strategy_index(&self.default_strategy).is_none() {
+            return bad(format!(
+                "default strategy `{}` names no strategy",
+                self.default_strategy
+            ));
         }
 
         if self.resources.iter().all(|r| r.id != self.economy.currency) {
@@ -891,19 +1003,31 @@ impl Content {
         h.f32(self.nemesis_bonus.damage_mult)
             .bool(self.nemesis_bonus.ignore_armor);
 
-        h.str("ai");
-        h.u32(self.ai.think_interval_ticks)
-            .u32(self.ai.worker_target)
-            .str(&self.ai.barracks)
-            .u32(self.ai.barracks_at_tick)
-            .f32(self.ai.barracks_offset)
-            .u32(self.ai.attack_at_army)
-            .u32(self.ai.attack_interval_ticks)
-            .f32(self.ai.attack_spread)
-            .u64(self.ai.army.len() as u64);
-        for item in &self.ai.army {
-            h.str(&item.unit).u32(item.count);
+        // The strategies, in RON order — never a map's, and never only the
+        // default: an edit to any entry is an edit to the content a log was
+        // recorded under.
+        h.str("strategies").u64(self.strategies.len() as u64);
+        for s in &self.strategies {
+            h.str(&s.id)
+                .u32(s.think_interval_ticks)
+                .u32(s.worker_target)
+                .u32(s.attack_at_army)
+                .u32(s.attack_interval_ticks)
+                .f32(s.attack_spread)
+                .u64(s.barracks.len() as u64);
+            for o in &s.barracks {
+                h.str(&o.building).u32(o.at_tick).f32(o.offset);
+            }
+            h.u64(s.army.len() as u64);
+            for item in &s.army {
+                h.str(&item.unit).u32(item.count);
+            }
         }
+        // The default is part of the content: the same set with a different
+        // default plays a different match.
+        h.str("default_strategy").str(&self.default_strategy);
+        // `ai` is the resolved default, hashed by the id it resolved to.
+        h.str("ai").str(&self.ai.id);
 
         h.str("resources").u64(self.resources.len() as u64);
         for r in &self.resources {
@@ -966,6 +1090,15 @@ impl Content {
         self.buildings.iter().find(|b| b.id == id)
     }
 
+    /// Index of a strategy by id (stable: the RON order).
+    pub fn strategy_index(&self, id: &str) -> Option<usize> {
+        self.strategies.iter().position(|s| s.id == id)
+    }
+
+    pub fn strategy(&self, id: &str) -> Option<&StrategyDef> {
+        self.strategies.iter().find(|s| s.id == id)
+    }
+
     /// Can `building` train `unit`? Production is data-driven: a building may
     /// only make what its RON `produces` list names.
     pub fn produces(&self, building: usize, unit: usize) -> bool {
@@ -996,6 +1129,43 @@ mod tests {
         assert_eq!(c.building_index("hq"), Some(0));
         assert_eq!(c.unit_index("nonesuch"), None);
         assert_eq!(c.building_index("nonesuch"), None);
+    }
+
+    #[test]
+    fn strategy_lookups_resolve_by_id_in_ron_order() {
+        let c = content();
+        // The set is a list, scanned in RON order — never a map.
+        assert_eq!(c.strategy_index(&c.default_strategy), Some(0));
+        assert_eq!(c.strategy_index("nonesuch"), None);
+        assert!(c.strategy("nonesuch").is_none());
+        for (i, s) in c.strategies.iter().enumerate() {
+            assert_eq!(c.strategy_index(&s.id), Some(i), "`{}` moved", s.id);
+        }
+        // The default is resolved at load, not re-looked-up per decision.
+        assert_eq!(c.ai.id, c.default_strategy);
+    }
+
+    #[test]
+    fn every_strategy_can_train_its_own_army() {
+        // The invariant `validate` enforces, stated as a property of the
+        // shipped set: every army entry has a barracks *this* strategy opens.
+        let c = content();
+        for s in &c.strategies {
+            let opened: Vec<usize> = s
+                .barracks
+                .iter()
+                .map(|o| c.building_index(&o.building).expect("a building"))
+                .collect();
+            for item in &s.army {
+                let unit = c.unit_index(&item.unit).expect("a unit");
+                assert!(
+                    opened.iter().any(|&b| c.produces(b, unit)),
+                    "strategy `{}` cannot train `{}`",
+                    s.id,
+                    item.unit
+                );
+            }
+        }
     }
 
     #[test]

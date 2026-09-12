@@ -478,33 +478,36 @@ fn the_ai_puts_its_workers_on_a_deposit_and_banks_alloy() {
 #[test]
 fn the_ai_builds_one_barracks_and_not_before_its_tick() {
     let script = content().ai;
+    // The MVP opener opens exactly one barracks; `opening` is that one entry.
+    assert_eq!(script.barracks.len(), 1, "the default strategy changed shape");
+    let opening = &script.barracks[0];
     let mut app = ai_match(11);
-    tick(&mut app, script.barracks_at_tick);
+    tick(&mut app, opening.at_tick);
     assert_eq!(
-        my_buildings(&mut app, Faction::A, &script.barracks),
+        my_buildings(&mut app, Faction::A, &opening.building),
         0,
         "the barracks went up before the script's tick"
     );
     tick(&mut app, 4_000);
     assert_eq!(
-        my_buildings(&mut app, Faction::A, &script.barracks),
+        my_buildings(&mut app, Faction::A, &opening.building),
         1,
         "the AI built no barracks, or more than one"
     );
     // The only randomness in the placement is its direction: it lands exactly
-    // `barracks_offset` from the HQ.
+    // the opening's `offset` from the HQ.
     let placed = journal(&app, Faction::A)
         .into_iter()
         .find_map(|(_, a)| match a {
-            AiAction::PlaceBarracks { pos } => Some(pos),
+            AiAction::PlaceBarracks { pos, .. } => Some(pos),
             _ => None,
         })
         .expect("a barracks was placed");
     assert!(
-        (placed.length() - script.barracks_offset).abs() < 0.01,
+        (placed.length() - opening.offset).abs() < 0.01,
         "the barracks is {} from the HQ, not {}",
         placed.length(),
-        script.barracks_offset
+        opening.offset
     );
 }
 
@@ -623,7 +626,7 @@ fn the_ai_is_deterministic_given_the_seed() {
     let c = run(12);
     let spoke = |acts: &[(u32, AiAction)]| {
         acts.iter().find_map(|(_, a)| match a {
-            AiAction::PlaceBarracks { pos } => Some(*pos),
+            AiAction::PlaceBarracks { pos, .. } => Some(*pos),
             _ => None,
         })
     };
@@ -654,7 +657,7 @@ fn the_ai_commands_only_its_own_side() {
         );
     }
     assert_eq!(
-        my_buildings(&mut app, Faction::B, &content().ai.barracks),
+        my_buildings(&mut app, Faction::B, &content().ai.barracks[0].building),
         0,
         "the AI built in the enemy's name"
     );
@@ -704,10 +707,20 @@ fn load_mutated(name: &str, from: &str, to: &str) -> Result<Content, String> {
         .join("target/m4c_content")
         .join(name);
     std::fs::create_dir_all(&dir).unwrap();
-    let units = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
-    assert!(units.contains(from), "anchor `{from}` missing from units.ron");
-    std::fs::write(dir.join("units.ron"), units.replace(from, to)).unwrap();
-    std::fs::copy(data_dir().join("resources.ron"), dir.join("resources.ron")).unwrap();
+    // The edit lands in whichever shipped file states the anchor — the unit
+    // stats in `units.ron`, the AI script in `strategies.ron` (B1).
+    let mut hit = 0;
+    for file in ["units.ron", "resources.ron", "strategies.ron"] {
+        let text = std::fs::read_to_string(data_dir().join(file)).unwrap();
+        let edited = if text.contains(from) {
+            hit += 1;
+            text.replace(from, to)
+        } else {
+            text
+        };
+        std::fs::write(dir.join(file), edited).unwrap();
+    }
+    assert_eq!(hit, 1, "anchor `{from}` is in {hit} shipped files, not exactly 1");
     Content::load_from_dir(&dir).map_err(|e| e.to_string())
 }
 
@@ -724,8 +737,8 @@ fn an_unrunnable_ai_script_is_refused_at_load() {
         ("wave0", "attack_interval_ticks: 600", "attack_interval_ticks: 0"),
         ("workers0", "worker_target: 6", "worker_target: 0"),
         ("army0", "attack_at_army: 3", "attack_at_army: 0"),
-        ("nobarracks", "barracks: \"foundry\"", "barracks: \"nonesuch\""),
-        ("hqbarracks", "barracks: \"foundry\"", "barracks: \"hq\""),
+        ("nobarracks", "(building: \"foundry\", at_tick", "(building: \"nonesuch\", at_tick"),
+        ("hqbarracks", "(building: \"foundry\", at_tick", "(building: \"hq\", at_tick"),
         (
             "wrongunit",
             "(unit: \"sentinel\", count: 2)",
@@ -746,7 +759,7 @@ fn an_unrunnable_ai_script_is_refused_at_load() {
             "(unit: \"sentinel\", count: 2)",
             "(unit: \"sentinel\", count: 4294967295)",
         ),
-        ("offset", "barracks_offset: 130.0", "barracks_offset: 0.0"),
+        ("offset", "offset: 130.0", "offset: 0.0"),
         ("spread", "attack_spread: 60.0", "attack_spread: -1.0"),
     ] {
         let got = load_mutated(name, from, to);
@@ -1412,7 +1425,7 @@ fn every_legitimate_order_still_applies_under_coherent_self_signing() {
         "an order variant stopped applying (gather, train worker, place, train army)"
     );
     assert!(
-        my_buildings(&mut app, Faction::A, &content().ai.barracks) == 1,
+        my_buildings(&mut app, Faction::A, &content().ai.barracks[0].building) == 1,
         "the barracks order stopped applying"
     );
     assert!(

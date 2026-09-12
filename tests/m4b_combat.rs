@@ -571,7 +571,10 @@ fn out_of_scale_stats_are_rejected_and_the_bonus_never_wraps() {
         units.replace("speed: 2, offense: 4,", "speed: 2, offense: 4000000000,"),
     )
     .unwrap();
-    std::fs::copy(data_dir().join("resources.ron"), dir.join("resources.ron")).unwrap();
+    // B1: the content set is three files.
+    for file in ["resources.ron", "strategies.ron"] {
+        std::fs::copy(data_dir().join(file), dir.join(file)).unwrap();
+    }
     assert!(
         Content::load_from_dir(&dir).is_err(),
         "an offense far outside the design scale must not load"
@@ -635,7 +638,10 @@ fn a_scale_the_validator_cannot_multiply_is_an_error_not_a_panic() {
             units = units.replace(from, to);
         }
         std::fs::write(dir.join("units.ron"), units).unwrap();
-        std::fs::copy(data_dir().join("resources.ron"), dir.join("resources.ron")).unwrap();
+        // B1: the content set is three files.
+        for file in ["resources.ron", "strategies.ron"] {
+            std::fs::copy(data_dir().join(file), dir.join(file)).unwrap();
+        }
         Content::load_from_dir(&dir)
     };
 
@@ -866,7 +872,10 @@ fn a_nemesis_multiplier_is_exact_or_refused() {
         let units = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
         assert!(units.contains(from), "anchor `{from}` missing");
         std::fs::write(dir.join("units.ron"), units.replace(from, to)).unwrap();
-        std::fs::copy(data_dir().join("resources.ron"), dir.join("resources.ron")).unwrap();
+        // B1: the content set is three files.
+        for file in ["resources.ron", "strategies.ron"] {
+            std::fs::copy(data_dir().join(file), dir.join(file)).unwrap();
+        }
         Content::load_from_dir(&dir)
     };
 

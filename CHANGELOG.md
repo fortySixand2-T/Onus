@@ -283,3 +283,20 @@
 - [2026-09-06] Modified: CLAUDE.md — status: M0–M6 complete
 - [2026-09-12] Created: BALANCE_PLAN.md — the balance harness & fun gate (B1–B5): strategies as data, batch runner, metrics/kill-criteria, first tuning pass, human fun gate
 - [2026-09-12] Modified: DESIGN_BRIEF.md — the hook/fantasy drafted (disgraced synthesist house, the Rupture); title and status line updated
+- [2026-09-12] Created: assets/data/strategies.ron — the AI scripts promoted out of units.ron into a named strategy set (multi-barracks schema)
+- [2026-09-12] Modified: assets/data/units.ron — removed the mvp_ai block (it now lives in strategies.ron)
+- [2026-09-12] Modified: src/sim/content.rs — StrategyDef/BarracksOpening, the strategies set + default resolution, per-strategy validation, fingerprint coverage, lookups
+- [2026-09-12] Modified: src/sim/ai.rs — the commander opens every barracks its strategy lists and trains each army entry at the barracks that produces it
+- [2026-09-12] Created: tests/b1_strategies.rs — L2 tests for B1 AC1 (the set, multi-barracks matches, load-time refusals, fingerprint, pre-B1 golden replay)
+- [2026-09-12] Modified: tests/m4c_ai.rs — mechanical: the AI script moved to strategies.ron (fixture + anchors + the barracks-opening fields)
+- [2026-09-12] Modified: tests/critic_m4c.rs — mechanical: same fixture/anchor follow-through for the AI-script probes
+- [2026-09-12] Modified: tests/critic_m4a.rs — mechanical: the content fixture writes all three data files
+- [2026-09-12] Modified: tests/critic_m4b.rs — mechanical: the content fixture copies strategies.ron
+- [2026-09-12] Modified: tests/m4b_combat.rs — mechanical: the content fixture copies strategies.ron
+- [2026-09-12] Modified: tests/m4a_economy.rs — mechanical: the content fixture copies strategies.ron
+- [2026-09-12] Modified: tests/critic_m5.rs — mechanical: the fingerprint guard's struct list, and the fixture writes strategies.ron
+- [2026-09-12] Modified: tests/critic_m6.rs — mechanical: the content fixture copies strategies.ron
+- [2026-09-12] Modified: tests/m5_replay.rs — mechanical: the content fixture copies strategies.ron
+- [2026-09-12] Modified: tests/m6_lockstep.rs — mechanical: the content fixture copies strategies.ron
+- [2026-09-12] Modified: tests/p2_log_writer.rs — mechanical: the content fixture copies strategies.ron
+- [2026-09-12] Modified: FINDINGS.md — F-016: promoting one AI script into a set of strategies

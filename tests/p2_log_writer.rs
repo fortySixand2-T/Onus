@@ -398,7 +398,7 @@ fn a_log_that_cannot_be_read_back_is_never_written() {
     // Poison it the way the sim itself would: the content changes mid-match.
     let edited = {
         let scratch = scratch_dir("poisoned-content");
-        for file in ["units.ron", "resources.ron"] {
+        for file in ["units.ron", "resources.ron", "strategies.ron"] {
             let text = std::fs::read_to_string(data_dir().join(file)).expect("read");
             let text = if file == "units.ron" {
                 text.replacen("mvp_alloy_cost: 10", "mvp_alloy_cost: 11", 1)

@@ -13,8 +13,8 @@
 //! match replays identically at any frame rate.
 //!
 //! ## Determinism
-//! - The script (build order, thresholds, timings) is data: `mvp_ai` in
-//!   `units.ron`. There are no AI constants in Rust.
+//! - The script (build order, thresholds, timings) is data: a named strategy in
+//!   `strategies.ron`. There are no AI constants in Rust.
 //! - The only randomness is [`SplitMix64`], seeded per commander from the match
 //!   seed and stepped **only here**, inside the sim.
 //! - Every world scan is snapshotted into a `Vec` sorted by ascending
@@ -45,8 +45,9 @@ pub enum AiAction {
     Gather { unit: Entity, node: Entity },
     /// Queued a worker at its HQ.
     TrainWorker { at: Entity },
-    /// Placed its barracks.
-    PlaceBarracks { pos: Vec2 },
+    /// Placed one of the barracks its strategy opens (index into
+    /// [`Content::buildings`], so a multi-barracks strategy's trace says *which*).
+    PlaceBarracks { building: usize, pos: Vec2 },
     /// Queued the next unit of the army build order (index into
     /// [`Content::units`]).
     TrainArmy { unit: usize },
@@ -339,17 +340,27 @@ fn think(
         }
     }
 
-    // ---- 3. tech: one barracks, once the script says so --------------------
-    let barracks_def = content.building_index(&script.barracks);
-    let my_barracks: Option<&BuildingRow> =
-        barracks_def.and_then(|def| buildings.iter().find(|b| b.faction == me && b.def == def));
-    if let (Some(def), None) = (barracks_def, my_barracks) {
+    // ---- 3. tech: every barracks the script opens, in RON order ------------
+    // Each opening goes up once, on the first decision at or after its own tick
+    // that the commander can pay for — and a strategy may open several, which
+    // is how its army spans domains. With a one-entry list this is exactly the
+    // M4c behaviour, RNG included: one draw, taken only when the placement
+    // actually happens.
+    let mut my_barracks: Vec<(usize, &BuildingRow)> = Vec::new();
+    for opening in &script.barracks {
+        let Some(def) = content.building_index(&opening.building) else {
+            continue;
+        };
+        if let Some(mine) = buildings.iter().find(|b| b.faction == me && b.def == def) {
+            my_barracks.push((def, mine));
+            continue;
+        }
         let cost = content.buildings[def].alloy_cost;
-        if tick >= script.barracks_at_tick && budget >= cost {
+        if tick >= opening.at_tick && budget >= cost {
             budget -= cost;
             // The only thing chance decides: which way the barracks goes.
             let angle = c.rng.range_f32(0.0, std::f32::consts::TAU);
-            let pos = hq_pos + Vec2::new(angle.cos(), angle.sin()) * script.barracks_offset;
+            let pos = hq_pos + Vec2::new(angle.cos(), angle.sin()) * opening.offset;
             order(
                 queue,
                 journal,
@@ -358,18 +369,29 @@ fn think(
                     building: def,
                     pos,
                 },
-                AiAction::PlaceBarracks { pos },
+                AiAction::PlaceBarracks {
+                    building: def,
+                    pos,
+                },
             );
         }
     }
 
     // ---- 4. army: the repeating build order --------------------------------
-    if let Some(b) = my_barracks {
-        if b.queued == 0 {
-            if let Some(unit) = script
-                .army_at(c.army_cursor)
-                .and_then(|id| content.unit_index(id))
-            {
+    // The next unit of the cursor is trained at whichever of *its own* barracks
+    // produces it (the loader has already refused a strategy asking for a unit
+    // none of them can make). If that barracks is not up yet, or is busy, the
+    // cursor waits for it rather than skipping ahead — the build order is an
+    // order.
+    if let Some(unit) = script
+        .army_at(c.army_cursor)
+        .and_then(|id| content.unit_index(id))
+    {
+        if let Some((_, b)) = my_barracks
+            .iter()
+            .find(|(def, _)| content.produces(*def, unit))
+        {
+            if b.queued == 0 {
                 let cost = content.units[unit].mvp_alloy_cost;
                 if budget >= cost {
                     budget -= cost;

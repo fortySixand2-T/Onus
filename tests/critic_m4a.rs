@@ -507,19 +507,24 @@ mod pass2 {
             .join("target/critic_content")
             .join(name);
         std::fs::create_dir_all(&dir).unwrap();
-        let mut units = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
-        let mut res = std::fs::read_to_string(data_dir().join("resources.ron")).unwrap();
+        // B1: the content set is three files — `strategies.ron` joined it.
+        let names = ["units.ron", "resources.ron", "strategies.ron"];
+        let mut texts: Vec<String> = names
+            .iter()
+            .map(|f| std::fs::read_to_string(data_dir().join(f)).unwrap())
+            .collect();
         for (file, from, to) in edits {
-            let buf = if *file == "units.ron" {
-                &mut units
-            } else {
-                &mut res
-            };
+            let at = names
+                .iter()
+                .position(|f| f == file)
+                .unwrap_or_else(|| panic!("unknown content file `{file}`"));
+            let buf = &mut texts[at];
             assert!(buf.contains(from), "anchor `{from}` missing from {file}");
             *buf = buf.replace(from, to);
         }
-        std::fs::write(dir.join("units.ron"), units).unwrap();
-        std::fs::write(dir.join("resources.ron"), res).unwrap();
+        for (file, text) in names.iter().zip(&texts) {
+            std::fs::write(dir.join(file), text).unwrap();
+        }
         Content::load_from_dir(&dir).map_err(|e| e.to_string())
     }
 

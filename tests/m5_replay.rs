@@ -2253,7 +2253,7 @@ fn try_content_edited(
     to: &str,
 ) -> Result<Content, onus::sim::content::ContentError> {
     let dir = ScratchDir::new(name);
-    for file in ["units.ron", "resources.ron"] {
+    for file in ["units.ron", "resources.ron", "strategies.ron"] {
         let text = std::fs::read_to_string(data_dir().join(file)).expect("read content");
         let text = if file == which {
             assert!(text.contains(from), "`{from}` is not in {file}");

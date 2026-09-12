@@ -1,0 +1,52 @@
+// assets/data/strategies.ron
+// The scripted commanders' scripts (B1). One entry per *strategy*: a complete
+// build order a commander can be constructed from. Promoted out of `units.ron`'s
+// `mvp_ai` block — `units.ron` is about units — so the balance sim can hold a
+// whole set of them and play them against each other.
+//
+// SCHEMA NOTE (B1) — build order, thresholds and timings are content; there are
+// no AI tuning constants in Rust, and **every duration is counted in
+// FixedUpdate ticks (60 Hz), never seconds**.
+//   default               — the strategy a match uses when nothing names one.
+//                           Must name an entry below, or the content is refused.
+//   id                    — how everything else names this strategy (unique).
+//   think_interval_ticks  — ticks between two decisions (the commander's APM)
+//   worker_target         — workers it keeps mining
+//   barracks              — the list of tech openings, in the order it wants
+//                           them. Each is (building, at_tick, offset):
+//                             building — a placeable (non-victory) building id
+//                             at_tick  — earliest tick it may place that one
+//                             offset   — how far from its HQ it goes (world
+//                                        units; the seeded RNG picks only the
+//                                        direction)
+//                           A strategy may open several — that is how an army
+//                           spans domains (Foundry + Gene-Vats + Aether Spire).
+//                           No building may be opened twice.
+//   army                  — the repeating build order; **every unit must be
+//                           producible by one of the barracks opened above**,
+//                           and each entry is trained at that barracks.
+//   attack_at_army        — combat units it wants before the first wave
+//   attack_interval_ticks — ticks between waves
+//   attack_spread         — seeded scatter around the enemy HQ per wave
+(
+    default: "mvp",
+    strategies: [
+        // The MVP opener, number for number as `units.ron`'s `mvp_ai` block had
+        // it: one Foundry, fast Sentinel pressure behind an armoured Bulwark.
+        (
+            id: "mvp",
+            think_interval_ticks: 30,
+            worker_target: 6,
+            barracks: [
+                (building: "foundry", at_tick: 300, offset: 130.0),
+            ],
+            army: [
+                (unit: "sentinel", count: 2),   // fast, cheap pressure
+                (unit: "bulwark",  count: 1),   // the armoured front
+            ],
+            attack_at_army: 3,
+            attack_interval_ticks: 600,
+            attack_spread: 60.0,
+        ),
+    ],
+)

@@ -632,10 +632,20 @@ fn load_mutated(from: &str, to: &str) -> Result<Content, String> {
         std::process::id()
     ));
     std::fs::create_dir_all(&dir).expect("tmp dir");
-    let units = std::fs::read_to_string(data_dir().join("units.ron")).expect("units.ron");
-    assert!(units.contains(from), "fixture: `{from}` not in units.ron");
-    std::fs::write(dir.join("units.ron"), units.replacen(from, to, 1)).expect("write");
-    std::fs::copy(data_dir().join("resources.ron"), dir.join("resources.ron")).expect("copy");
+    // The edit lands in whichever shipped file states the anchor: unit stats in
+    // `units.ron`, the AI script in `strategies.ron` (B1).
+    let mut hit = 0;
+    for file in ["units.ron", "resources.ron", "strategies.ron"] {
+        let text = std::fs::read_to_string(data_dir().join(file)).expect("shipped file");
+        let edited = if text.contains(from) {
+            hit += 1;
+            text.replacen(from, to, 1)
+        } else {
+            text
+        };
+        std::fs::write(dir.join(file), edited).expect("write");
+    }
+    assert_eq!(hit, 1, "fixture: `{from}` is in {hit} shipped files, not exactly 1");
     let r = Content::load_from_dir(&dir).map_err(|e| e.to_string());
     let _ = std::fs::remove_dir_all(&dir);
     r
@@ -670,14 +680,14 @@ fn the_ai_script_is_data_and_a_broken_script_is_refused() {
         ("worker_target: 6", "worker_target: 0"),
         ("attack_at_army: 3", "attack_at_army: 0"),
         (
-            "barracks: \"foundry\",\n        barracks_at_tick",
-            "barracks: \"hq\",\n        barracks_at_tick",
+            "(building: \"foundry\", at_tick",
+            "(building: \"hq\", at_tick",
         ),
         (
-            "barracks: \"foundry\",\n        barracks_at_tick",
-            "barracks: \"nonesuch\",\n        barracks_at_tick",
+            "(building: \"foundry\", at_tick",
+            "(building: \"nonesuch\", at_tick",
         ),
-        ("barracks_offset: 130.0", "barracks_offset: 0.0"),
+        ("offset: 130.0", "offset: 0.0"),
         ("(unit: \"sentinel\", count: 2)", "(unit: \"sentinel\", count: 0)"),
         ("(unit: \"sentinel\", count: 2)", "(unit: \"worker\", count: 2)"),
         ("(unit: \"sentinel\", count: 2)", "(unit: \"nonesuch\", count: 2)"),
@@ -691,7 +701,7 @@ fn the_ai_script_is_data_and_a_broken_script_is_refused() {
     for from in [
         "think_interval_ticks: 30,",
         "worker_target: 6,",
-        "barracks_at_tick: 300,",
+        "at_tick: 300,",
         "attack_spread: 60.0,",
     ] {
         assert!(
@@ -708,17 +718,22 @@ fn changing_the_ron_changes_the_ai() {
     let c = content();
     let dir = std::env::temp_dir().join(format!("onus-critic-m4c-slow-{}", std::process::id()));
     std::fs::create_dir_all(&dir).expect("tmp dir");
-    let units = std::fs::read_to_string(data_dir().join("units.ron")).expect("units.ron");
+    // B1: the AI script lives in `strategies.ron`; the opening's tick is
+    // `at_tick`.
+    let strategies =
+        std::fs::read_to_string(data_dir().join("strategies.ron")).expect("strategies.ron");
     std::fs::write(
-        dir.join("units.ron"),
-        units.replacen("barracks_at_tick: 300", "barracks_at_tick: 1200", 1),
+        dir.join("strategies.ron"),
+        strategies.replacen("at_tick: 300", "at_tick: 1200", 1),
     )
     .expect("write");
-    std::fs::copy(data_dir().join("resources.ron"), dir.join("resources.ron")).expect("copy");
+    for file in ["units.ron", "resources.ron"] {
+        std::fs::copy(data_dir().join(file), dir.join(file)).expect("copy");
+    }
     let slow = Content::load_from_dir(&dir).expect("mutated content loads");
     let _ = std::fs::remove_dir_all(&dir);
-    assert_eq!(c.ai.barracks_at_tick, 300, "fixture drifted");
-    assert_eq!(slow.ai.barracks_at_tick, 1_200);
+    assert_eq!(c.ai.barracks[0].at_tick, 300, "fixture drifted");
+    assert_eq!(slow.ai.barracks[0].at_tick, 1_200);
 
     let barracks_tick = |content: Content| {
         let mut app = App::new();
@@ -758,7 +773,7 @@ fn changing_the_ron_changes_the_ai() {
     let fast = barracks_tick(content()).expect("the AI never opened its barracks");
     let late = barracks_tick(slow).expect("the AI never opened its barracks (slow script)");
     assert!((300..600).contains(&fast), "shipped script: barracks at {fast}");
-    assert!(late >= 1_200, "the RON's barracks_at_tick was ignored: {late}");
+    assert!(late >= 1_200, "the RON's at_tick was ignored: {late}");
 }
 
 // ============================================================================

@@ -2271,11 +2271,14 @@ fn content_dir_with(name: &str, units_ron: String) -> ScratchPath {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("scratch content dir");
     std::fs::write(dir.join("units.ron"), units_ron).expect("write units.ron");
-    std::fs::write(
-        dir.join("resources.ron"),
-        std::fs::read_to_string(data_dir().join("resources.ron")).expect("read resources.ron"),
-    )
-    .expect("write resources.ron");
+    // B1: the shipped set is three files; only `units.ron` is edited here.
+    for file in ["resources.ron", "strategies.ron"] {
+        std::fs::write(
+            dir.join(file),
+            std::fs::read_to_string(data_dir().join(file)).expect("read a shipped file"),
+        )
+        .expect("write a shipped file");
+    }
     ScratchPath(dir)
 }
 
@@ -2620,8 +2623,8 @@ fn the_fingerprint_reads_every_field_of_every_content_struct() {
 
     // Field names of the content structs, read off the source.
     let structs = [
-        "Cost", "UnitDef", "BuildingDef", "ArmyItem", "AiDef", "NemesisBonus", "CombatDef",
-        "ResourceDef", "EconomyDef", "Content",
+        "Cost", "UnitDef", "BuildingDef", "ArmyItem", "BarracksOpening", "StrategyDef",
+        "NemesisBonus", "CombatDef", "ResourceDef", "EconomyDef", "Content",
     ];
     let mut missing: Vec<String> = Vec::new();
     for name in structs {

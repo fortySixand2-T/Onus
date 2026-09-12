@@ -675,7 +675,10 @@ fn load_mutated(dir_name: &str, from: &str, to: &str) -> Result<Content, String>
     let units = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
     assert!(units.contains(from), "the probe's anchor text still exists");
     std::fs::write(dir.join("units.ron"), units.replace(from, to)).unwrap();
-    std::fs::copy(data_dir().join("resources.ron"), dir.join("resources.ron")).unwrap();
+    // B1: the content set is three files.
+    for file in ["resources.ron", "strategies.ron"] {
+        std::fs::copy(data_dir().join(file), dir.join(file)).unwrap();
+    }
     Content::load_from_dir(&dir).map_err(|e| e.to_string())
 }
 

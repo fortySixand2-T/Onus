@@ -1130,3 +1130,48 @@ warning and was invisible. The gate is `cargo clippy --all-targets -- -D
 warnings`, with exactly one known exception (`tests/critic_m3.rs:234`, a
 critic-owned file this implementer may not edit). *A gate run with different
 flags than the gate is not the gate.*
+
+---
+
+## F-016 — A build order is an *order*: promoting one script into a set of strategies (B1)
+
+**Why this is a finding and not a rename.** `mvp_ai` was a single block in
+`units.ron` with `barracks: String` — one building, so three of the five units
+were unreachable by any AI and the pentagon could never be measured. B1 makes it
+`strategies.ron`: a *set* of named entries, each opening a **list** of barracks.
+Three decisions came out of doing that, and each is a place the next reader could
+reasonably have chosen otherwise.
+
+**1. The default is a name the loader resolves, not a position.** `Content.ai`
+stays (a large closed-milestone surface reads it), but it is now the *resolved*
+entry named by `strategies.ron`'s `default:` field, cloned once at load. The
+alternative — "the first entry is the default" — makes reordering a data file a
+behaviour change, and reordering a list is exactly what authoring the probe set
+(AC3) will do. Content whose `default` names no strategy is refused.
+
+**2. Validation is over the whole set, not the entry in use.** Every strategy is
+checked — unknown ids, a barracks that is not a building or is the victory
+target, the same building opened twice, an army entry naming a unit **none of
+that strategy's own barracks can produce**. An unreachable strategy is only
+unreachable until the day a match names it, and a set the loader half-checks is a
+set whose errors surface as a commander that silently never builds. Every message
+names the offending strategy by id, because with ten entries "army names unknown
+unit `x`" is not a diagnosis.
+
+**3. The cursor waits for its own barracks; it does not skip ahead.** With
+several barracks, the next unit of the build order is trained at whichever opened
+barracks produces it — and if that one is busy or not yet up, the commander
+*waits* rather than stepping past it to something it can afford. Skipping would
+make the build order a wish list whose realised composition depends on queue
+timing, and the balance sim measures compositions: "mass Ripper" has to actually
+mass Rippers. The cost is that a stalled barracks stalls the whole order, which
+is a property the B2 batch runner can see (units produced per side) rather than a
+silent one.
+
+**The refactor is proved behaviour-preserving, not asserted to be.** A one-entry
+barracks list must replay bit-identically to the pre-B1 build — the RNG stream
+especially, which draws one angle per placement and only when the placement
+actually happens. The gate is a golden state hash taken from the pre-B1 binary at
+tick 3_000 of the standard AI-vs-AI fixture for two seeds
+(`the_one_barracks_default_replays_exactly_as_it_did_before_b1`). A refactor of
+the sim that cannot point at a pre-refactor number is a re-tune nobody noticed.
