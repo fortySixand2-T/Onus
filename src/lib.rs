@@ -2,6 +2,9 @@
 //!
 //! Library root. Layers, innermost first:
 //! - [`sim`]  — render-free simulation core; the unit the harness judges.
+//! - [`headless`] — the shared headless-match constructor (render-free driver:
+//!   `MinimalPlugins` + the shipped sim chain), used by the bench, the balance
+//!   runner and the tests.
 //! - [`client`] — client-side state & presentation constants (selection, colors).
 //! - [`input`] / [`ui`] / [`setup`] — the Bevy driver: turn input into orders,
 //!   render sim state, and spawn the world. May use render types; `sim` may not.
@@ -16,6 +19,7 @@ use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::*;
 
 pub mod client;
+pub mod headless;
 pub mod input;
 pub mod net;
 pub mod replay_io;

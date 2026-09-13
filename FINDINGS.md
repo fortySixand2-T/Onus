@@ -1265,3 +1265,43 @@ at a single barracks, not by the economy: the AI trains one unit at a time and
 waits for the queue. B4 should expect army sizes in the single digits over a
 28_800-tick cap, and that is a tempo question for the *content*, not a bug in
 the probes.
+
+---
+
+## F-019 — The headless match is driver code, and "lifted unchanged" has to be provable (B2 AC1)
+
+**Where it lives: `src/headless.rs`, not `src/sim/`.** The constructor builds a
+Bevy `App`, adds `MinimalPlugins` and installs the shipped sim chain. That is
+app assembly, and the sim's standing rule is that it is ECS + math + time with
+no plugin or `App` construction in it — a sim module that knows how to build an
+app is a sim module a renderer can reach through. It stays render-free and runs
+headless on the box, so it costs the balance runner nothing to have it one layer
+out.
+
+**Settings struct, not positional flags.** The bench's fixture was
+`ai_vs_ai(seed, hashing)`; B2 alone adds a strategy pair and a spawn
+orientation, and B3 will want a tick cap. Four positional arguments of which two
+are `bool` is a call site nobody can read. `MatchSettings` (`Clone + Debug +
+Default`, builder setters) means each later checkbox adds a *field*, and every
+existing caller keeps compiling with unchanged behaviour. `Default` is defined
+to be the M5 bench fixture: seed 0, both sides on the content's default
+strategy, no hashing.
+
+**Naming a strategy stays fallible through the lift.** `ai_vs_ai` returns
+`Result<App, UnknownStrategy>` and resolves both names *before* anything is
+spawned — no `unwrap` buried in the constructor, no half-built match left behind
+by a refusal. F-017's rule survives the move: every number B2/B3 print is keyed
+by strategy name, so a typo must stop the caller rather than mislabel a row.
+
+**"I lifted it unchanged" is demonstrated, not asserted.** Before touching the
+bench, its own `ai_vs_ai(4, true)` was run for 600 ticks and its per-tick
+`state_hash` captured — six pinned ticks plus an FNV fold of all 600, so no tick
+in between can drift unseen. Those constants are the gate on the default
+settings (`default_settings_reproduce_the_bench_fixture_tick_for_tick`). A
+fixture-shape test (positions, node depth, worker count, starting Alloy,
+commanders) reads the same thing in human terms, but the hashes are what make
+the equivalence a fact rather than a claim about what was intended.
+
+**Both bases are described in one function.** `base_of(faction)` is the only
+place spawn geometry exists, because B2's side-balanced sampling is exactly
+"swap these two" — that checkbox should change one function and nothing else.

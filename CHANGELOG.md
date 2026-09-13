@@ -314,3 +314,9 @@
 - [2026-09-12] Modified: CHANGELOG.md — logged the B1 AC3 changes
 - [2026-09-12] Created: tests/critic_b1_ac3.rs — B1 AC3 critic probes: the spec's full probe set, whole-struct knob identity for the mass probes, realised composition and per-barracks training measured off live entities, rush/turtle extremes, per-strategy and head-to-head replay identity, all 25 mass-vs-mass cells resolving in both orientations, and a from-scratch re-derivation of the M5 namespace collision
 - [2026-09-12] Modified: BALANCE_PLAN.md — B1 acceptance criteria ticked after critic PASS on all three
+- [2026-09-12] Created: src/headless.rs — B2 AC1: the shared headless-match constructor (`MatchSettings`, `ai_vs_ai`, `content`, `step`, `tick`) lifted out of the bench, render-free and fallible on an unknown strategy name
+- [2026-09-12] Modified: src/lib.rs — expose `onus::headless` and document it in the layer list
+- [2026-09-12] Created: tests/b2_headless.rs — B2 AC1 tests: golden per-tick state hashes pinning equivalence with the pre-B2 bench fixture, fixture shape, unknown-strategy refusal, named strategies, opt-in hashing, determinism, and the stepping helper
+- [2026-09-12] Modified: benches/replay_hash.rs — bench the lifted constructor instead of a private copy of the fixture; the measurement is unchanged
+- [2026-09-12] Modified: FINDINGS.md — F-019: why the headless match is driver code, why it takes a settings struct, and how the lift was pinned
+- [2026-09-12] Modified: CHANGELOG.md — logged the B2 AC1 changes
