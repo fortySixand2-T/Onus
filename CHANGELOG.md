@@ -313,3 +313,4 @@
 - [2026-09-12] Modified: FINDINGS.md — F-018: why the mass probes are knob-identical, why the all-in is an early rush, and what the solo probe runs measured
 - [2026-09-12] Modified: CHANGELOG.md — logged the B1 AC3 changes
 - [2026-09-12] Created: tests/critic_b1_ac3.rs — B1 AC3 critic probes: the spec's full probe set, whole-struct knob identity for the mass probes, realised composition and per-barracks training measured off live entities, rush/turtle extremes, per-strategy and head-to-head replay identity, all 25 mass-vs-mass cells resolving in both orientations, and a from-scratch re-derivation of the M5 namespace collision
+- [2026-09-12] Modified: BALANCE_PLAN.md — B1 acceptance criteria ticked after critic PASS on all three

@@ -30,12 +30,12 @@ One scripted AI can't measure balance — it runs one build order (and today `mv
 only opens `foundry`, so it never fields 3 of the 5 units). Generalize it into a *set*
 of named strategies that, between them, exercise every unit and the whole pentagon.
 
-- [ ] Promote `mvp_ai` → a `strategies` set in data (`assets/data/strategies.ron` or a
+- [x] Promote `mvp_ai` → a `strategies` set in data (`assets/data/strategies.ron` or a
       `strategies:` list), same schema per entry, extended so a strategy may open
       **multiple barracks** and build across domains.
-- [ ] `AiCommander` constructible from any named strategy; a match takes a
+- [x] `AiCommander` constructible from any named strategy; a match takes a
       (strategy, strategy) pair, one per side.
-- [ ] Author the probe set: **five "mass-unit" strategies** (mass bulwark / sentinel /
+- [x] Author the probe set: **five "mass-unit" strategies** (mass bulwark / sentinel /
       ripper / ravager / arclight — each hard-commits to one unit), **≥2 mixed
       "synthesis" builds**, one **all-in worker/early rush**, one **turtle**. All must
       be buildable in the Alloy-only MVP economy.
