@@ -320,3 +320,5 @@
 - [2026-09-12] Modified: benches/replay_hash.rs — bench the lifted constructor instead of a private copy of the fixture; the measurement is unchanged
 - [2026-09-12] Modified: FINDINGS.md — F-019: why the headless match is driver code, why it takes a settings struct, and how the lift was pinned
 - [2026-09-12] Modified: CHANGELOG.md — logged the B2 AC1 changes
+- [2026-09-12] Created: tests/critic_b2_ac1.rs — B2 AC1 critic probes: the pre-B2 bench fixture reconstructed verbatim as a differential oracle over 1500 ticks (hashed and unhashed), all four `Option` shapes of the strategy pair, unknown-name refusal on either side and half-named, exact step/tick semantics, cwd-independent `content()`, fold sensitivity of the equivalence pin at every intermediate tick, and isolation of the plain-vs-hashed raw-entity-id offset as pre-existing
+- [2026-09-12] Modified: CHANGELOG.md — logged the B2 AC1 critic probes
