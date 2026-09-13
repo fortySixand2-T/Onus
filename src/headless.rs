@@ -33,6 +33,12 @@ use crate::sim::{
 /// order, and never a map's.
 pub const SIDES: [Faction; 2] = [Faction::A, Faction::B];
 
+/// The sim's fixed rate, in ticks per second — the one number every duration
+/// in this module and in [`crate::batch`] is expressed in. It is the rate the
+/// shipped game runs at (`Time::<Fixed>::from_hz`), stated once so a "tick
+/// budget" can be written as a *time* and read back as one.
+pub const SIM_HZ: u32 = 60;
+
 /// Where each side's base stands. Both bases are described here, in one place,
 /// because B2's side-balanced sampling will need to *swap* them — that
 /// checkbox changes this function and nothing else.
@@ -54,7 +60,7 @@ const STARTING_WORKERS: u32 = 3;
 /// no per-tick hashing.
 ///
 /// Grown by adding fields, never by adding parameters to [`ai_vs_ai`].
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct MatchSettings {
     /// The match seed: fixes both commanders' RNG streams and stamps the
     /// [`CommandLog`].
@@ -68,6 +74,32 @@ pub struct MatchSettings {
     /// because it costs a tick's worth of work (F-013's measurement); it reads
     /// the world and never writes it, so it cannot change a match.
     pub hashing: bool,
+    /// How many ticks a match may run before the runner gives up on it and
+    /// records a [`crate::batch::MatchResult::Timeout`]. Harness
+    /// configuration, not game content, so it lives here and not in RON — and
+    /// it is nothing to do with the sim: [`ai_vs_ai`] never reads it. A cap is
+    /// a statement about how long an observer is willing to watch, which is
+    /// why a capped match is *undecided* rather than drawn.
+    pub tick_cap: u32,
+}
+
+/// The budget for one match: **eight minutes of play**, the top of the 5-8 min
+/// target arc in DESIGN_BRIEF. Written as a duration times the sim's own rate
+/// rather than as `28_800`, so the number explains itself and follows
+/// [`SIM_HZ`] if the rate ever moves.
+pub const DEFAULT_MATCH_SECS: u32 = 8 * 60;
+/// [`DEFAULT_MATCH_SECS`] in sim ticks.
+pub const DEFAULT_TICK_CAP: u32 = DEFAULT_MATCH_SECS * SIM_HZ;
+
+impl Default for MatchSettings {
+    fn default() -> Self {
+        Self {
+            seed: 0,
+            strategies: [None, None],
+            hashing: false,
+            tick_cap: DEFAULT_TICK_CAP,
+        }
+    }
 }
 
 impl MatchSettings {
@@ -85,6 +117,11 @@ impl MatchSettings {
 
     pub fn with_hashing(mut self, hashing: bool) -> Self {
         self.hashing = hashing;
+        self
+    }
+
+    pub fn with_tick_cap(mut self, tick_cap: u32) -> Self {
+        self.tick_cap = tick_cap;
         self
     }
 }
@@ -124,7 +161,7 @@ pub fn ai_vs_ai(content: Content, settings: &MatchSettings) -> Result<App, Unkno
     let alloy = content.economy.starting_alloy;
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
-        .insert_resource(Time::<Fixed>::from_hz(60.0))
+        .insert_resource(Time::<Fixed>::from_hz(SIM_HZ as f64))
         .insert_resource(content)
         .init_resource::<CommandQueue>()
         .init_resource::<RateReport>()

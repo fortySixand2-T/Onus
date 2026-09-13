@@ -322,3 +322,10 @@
 - [2026-09-12] Modified: CHANGELOG.md — logged the B2 AC1 changes
 - [2026-09-12] Created: tests/critic_b2_ac1.rs — B2 AC1 critic probes: the pre-B2 bench fixture reconstructed verbatim as a differential oracle over 1500 ticks (hashed and unhashed), all four `Option` shapes of the strategy pair, unknown-name refusal on either side and half-named, exact step/tick semantics, cwd-independent `content()`, fold sensitivity of the equivalence pin at every intermediate tick, and isolation of the plain-vs-hashed raw-entity-id offset as pre-existing
 - [2026-09-12] Modified: CHANGELOG.md — logged the B2 AC1 critic probes
+- [2026-09-13] Created: src/batch.rs — B2 AC2: the balance batch loop (every ordered matchup incl. mirrors x K derived seeds, per-match tick cap, three-valued MatchResult, Tally summary)
+- [2026-09-13] Created: src/bin/balance.rs — B2 AC2: thin CLI over onus::batch (--seeds/--seed-base/--tick-cap/--minutes/--only), progress on stderr, summary on stdout
+- [2026-09-13] Created: tests/b2_batch.rs — B2 AC2 L2 tests: full ordered product from content, cap→timeout, no over-stepping a decision, batch determinism, timeout≠draw, unknown-name refusal
+- [2026-09-13] Modified: src/headless.rs — added SIM_HZ, DEFAULT_MATCH_SECS/DEFAULT_TICK_CAP and the MatchSettings::tick_cap field (manual Default keeps the pre-B2 fixture)
+- [2026-09-13] Modified: src/lib.rs — registered the batch module
+- [2026-09-13] Modified: FINDINGS.md — F-020: a cap is not a draw; the cap is harness config; batch order is an outcome; first instrument reading
+- [2026-09-13] Modified: CHANGELOG.md — logged the B2 AC2 changes

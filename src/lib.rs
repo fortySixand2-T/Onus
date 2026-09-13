@@ -5,6 +5,8 @@
 //! - [`headless`] — the shared headless-match constructor (render-free driver:
 //!   `MinimalPlugins` + the shipped sim chain), used by the bench, the balance
 //!   runner and the tests.
+//! - [`batch`] — the balance batch loop over [`headless`] matches (B2), wrapped
+//!   by `src/bin/balance.rs`.
 //! - [`client`] — client-side state & presentation constants (selection, colors).
 //! - [`input`] / [`ui`] / [`setup`] — the Bevy driver: turn input into orders,
 //!   render sim state, and spawn the world. May use render types; `sim` may not.
@@ -18,6 +20,7 @@ use std::path::Path;
 use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::*;
 
+pub mod batch;
 pub mod client;
 pub mod headless;
 pub mod input;

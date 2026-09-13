@@ -1305,3 +1305,46 @@ the equivalence a fact rather than a claim about what was intended.
 **Both bases are described in one function.** `base_of(faction)` is the only
 place spawn geometry exists, because B2's side-balanced sampling is exactly
 "swap these two" — that checkbox should change one function and nothing else.
+
+## F-020 — A cap is not a draw: the batch runner's three-valued result (B2 AC2)
+
+BALANCE_PLAN's checkbox says "cap → draw/timeout", and the obvious reading is
+that they are the same thing: nobody won, call it a draw. The runner refuses
+that reading and carries three values — `Decided(Faction)`, `MutualLoss`,
+`Timeout`.
+
+`MatchOutcome::winner == None` is a fact the *sim* established: both HQs fell on
+the same tick, the match ended, and it ended even. A capped match established
+nothing. The two sides were still playing; an observer stopped watching. Folding
+them together makes a batch of stalemates arrive at B3 looking like a batch of
+fair games, and B3's own probes require the opposite — it must report "% hitting
+the cap" and **flag an all-timeout run rather than reporting it as balanced**. A
+win rate computed over matches that never finished is a number about the cap,
+not about the roster. So the distinction is load-bearing at the type level:
+`MatchResult::winner()` returns `None` for both, and `is_decided()` is the thing
+callers must ask.
+
+**The cap is harness configuration, not content.** It lives on `MatchSettings`
+(default `8 min * SIM_HZ`, overridable from the CLI), never in RON: `units.ron`
+describes the game, and how long an operator is willing to watch is not part of
+the game. It is written as a duration times the sim's rate so the constant
+explains itself, and `ai_vs_ai` never reads it — the sim does not know it is
+being timed.
+
+**The batch order is an outcome.** The matchup list is a walk over
+`Content::strategies` in RON order (never a map, never a name list written down
+a second time — a strategy added to `strategies.ron` is played with no code
+change), and the batch runs seed-major, then row-major, sequentially. That
+vector *is* the report's row order, and B2's critic probe is that re-running the
+whole batch is identical; unordered parallel collection is the cheapest way to
+lose that, so the loop is not parallel. It does not need to be: 200 matches
+(10 strategies, both orders, 2 seeds) run in **2m09s** in release on the box.
+
+**First look at the instrument.** That run decided every one of its 200 matches
+— **zero timeouts** — with a median length of **1:16** and a maximum of 4:45.
+The 8-minute cap is nowhere near binding; the problem is the other end. The
+5-8 min arc DESIGN_BRIEF targets is not what the sim plays: matches end in
+around a fifth of it. That, and the mirror asymmetry visible in the same run
+(A 94 / B 106 overall, and `mvp` vs itself won by B on the sampled seed), are
+readings for the side-balance checkbox and for B3/B4 — recorded here, not acted
+on.
