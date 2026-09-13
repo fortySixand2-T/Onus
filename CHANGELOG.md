@@ -308,3 +308,7 @@
 - [2026-09-12] Modified: FINDINGS.md — F-017: strategy index, refusal over fallback, unchanged seed derivation
 - [2026-09-12] Modified: CHANGELOG.md — logged the B1 AC2 changes
 - [2026-09-12] Created: tests/critic_b1_ac2.rs — B1 AC2 critic probes: default-by-None vs default-by-name off index zero, per-side script/cadence/worker-target, opponent-independent openings, cross-profile replay pins, seed-and-slot-only RNG, refusal on either side, degenerate matchups, and a characterisation of foreign-content index resolution
+- [2026-09-12] Modified: assets/data/strategies.ron — B1 AC3: authored the probe set (five knob-identical mass_* probes, synth_steel_flesh, synth_triad, rush, turtle) on top of the unchanged mvp default
+- [2026-09-12] Created: tests/b1_probe_set.rs — B1 AC3 L2 tests: roster-derived coverage, knob-identical mass probes, cross-domain synthesis, every strategy places its barracks and builds its own order, rush-vs-turtle differentiation
+- [2026-09-12] Modified: FINDINGS.md — F-018: why the mass probes are knob-identical, why the all-in is an early rush, and what the solo probe runs measured
+- [2026-09-12] Modified: CHANGELOG.md — logged the B1 AC3 changes

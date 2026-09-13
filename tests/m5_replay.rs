@@ -2243,6 +2243,24 @@ fn content_edited(name: &str, from: &str, to: &str) -> Content {
     try_content_edited(name, "units.ron", from, to).expect("the edited content still loads")
 }
 
+/// Load `assets/data` with a substitution applied to each named file — the
+/// multi-file form of [`content_edited`]. Needed because a *barracks* cannot be
+/// renamed in `units.ron` alone any more: the shipped strategies (B1) open all
+/// three of them by id, so a one-file rename leaves a strategy naming a
+/// building that no longer exists and the loader rightly refuses it.
+fn content_edited_in(name: &str, edits: &[(&str, &str, &str)]) -> Content {
+    let dir = ScratchDir::new(name);
+    for file in ["units.ron", "resources.ron", "strategies.ron"] {
+        let mut text = std::fs::read_to_string(data_dir().join(file)).expect("read content");
+        for (_, from, to) in edits.iter().filter(|(which, _, _)| *which == file) {
+            assert!(text.contains(from), "`{from}` is not in {file}");
+            text = text.replace(from, to);
+        }
+        std::fs::write(dir.join(file), text).expect("write content");
+    }
+    Content::load_from_dir(&dir).expect("the edited content still loads")
+}
+
 /// Load `assets/data` with one textual substitution applied to `which` file,
 /// into a scratch directory. Returns the loader's own `Result`, so a test can
 /// assert an edit is **refused**.
@@ -2587,7 +2605,13 @@ fn the_shipped_content_loads_and_a_shared_id_across_namespaces_is_legal() {
     assert!(!c.units.is_empty() && !c.buildings.is_empty());
 
     // A *building* named exactly like a *unit*.
-    let shared = content_edited("shared-id", "id: \"gene_vats\"", "id: \"worker\"");
+    let shared = content_edited_in(
+        "shared-id",
+        &[
+            ("units.ron", "id: \"gene_vats\"", "id: \"worker\""),
+            ("strategies.ron", "building: \"gene_vats\"", "building: \"worker\""),
+        ],
+    );
     assert_eq!(
         shared.building_index("worker"),
         shared.buildings.iter().position(|b| b.id == "worker"),

@@ -28,6 +28,33 @@
 //   attack_at_army        — combat units it wants before the first wave
 //   attack_interval_ticks — ticks between waves
 //   attack_spread         — seeded scatter around the enemy HQ per wave
+//
+// THE PROBE SET (B1 AC3) — what these entries are *for*. B3 measures the
+// counter pentagon with them, so the set is an instrument, not a roster of
+// personalities:
+//
+//   * The five `mass_*` entries hard-commit to one unit each and are
+//     **knob-identical**: same think interval, worker target, opening tick,
+//     offset, attack threshold, wave interval and spread. Only the barracks
+//     they open and the unit they mass differ. If those knobs ever diverge,
+//     B3's pentagon assertion measures the knobs instead of the units and the
+//     whole instrument is void (F-018). The one asymmetry that stays is a real
+//     one from the design: an Aether Spire costs 200 Alloy where a Foundry or
+//     Gene-Vats costs 150.
+//   * The `synth_*` entries are mixed builds that cross domains — one spans two
+//     barracks, one spans all three — so the multi-barracks path is exercised
+//     by the shipped content and not only by test fixtures.
+//   * `rush` is the all-in: minimum economy, earliest opening, the cheapest
+//     unit in the game, attacking with the first body out of the door. (A
+//     literal *worker* rush is unbuildable — the Worker has `offense: 0` and no
+//     attack cadence or range, so it cannot damage a unit or an HQ. The all-in
+//     early rush is the playable form of the same idea.)
+//   * `turtle` is its opposite pole: a deep economy, late tech and a big
+//     massed force before it commits.
+//
+// Everything here is priced in the Alloy-only MVP economy (300 starting Alloy;
+// Foundry 150, Gene-Vats 150, Aether Spire 200; worker 10, ripper 40,
+// sentinel 70, arclight 80, ravager 90, bulwark 110).
 (
     default: "mvp",
     strategies: [
@@ -47,6 +74,170 @@
             attack_at_army: 3,
             attack_interval_ticks: 600,
             attack_spread: 60.0,
+        ),
+
+        // ---- the five mass-unit probes -------------------------------------
+        // Knob-identical by construction; see THE PROBE SET above. Do not tune
+        // one of these without tuning all five.
+
+        // Machine / armour. The anvil: slow, heavily armoured, nemesis Ravager.
+        (
+            id: "mass_bulwark",
+            think_interval_ticks: 30,
+            worker_target: 6,
+            barracks: [
+                (building: "foundry", at_tick: 300, offset: 130.0),
+            ],
+            army: [
+                (unit: "bulwark", count: 1),
+            ],
+            attack_at_army: 3,
+            attack_interval_ticks: 600,
+            attack_spread: 60.0,
+        ),
+        // Machine / skirmish. Fast, mid-range, nemesis Ripper.
+        (
+            id: "mass_sentinel",
+            think_interval_ticks: 30,
+            worker_target: 6,
+            barracks: [
+                (building: "foundry", at_tick: 300, offset: 130.0),
+            ],
+            army: [
+                (unit: "sentinel", count: 1),
+            ],
+            attack_at_army: 3,
+            attack_interval_ticks: 600,
+            attack_spread: 60.0,
+        ),
+        // Flesh / swarm. The cheapest body in the game, nemesis Arclight.
+        (
+            id: "mass_ripper",
+            think_interval_ticks: 30,
+            worker_target: 6,
+            barracks: [
+                (building: "gene_vats", at_tick: 300, offset: 130.0),
+            ],
+            army: [
+                (unit: "ripper", count: 1),
+            ],
+            attack_at_army: 3,
+            attack_interval_ticks: 600,
+            attack_spread: 60.0,
+        ),
+        // Flesh / bruiser. Heavy hitter, nemesis Sentinel.
+        (
+            id: "mass_ravager",
+            think_interval_ticks: 30,
+            worker_target: 6,
+            barracks: [
+                (building: "gene_vats", at_tick: 300, offset: 130.0),
+            ],
+            army: [
+                (unit: "ravager", count: 1),
+            ],
+            attack_at_army: 3,
+            attack_interval_ticks: 600,
+            attack_spread: 60.0,
+        ),
+        // Energy / artillery. Glass cannon at 120 range, nemesis Bulwark. Pays
+        // 200 for its Aether Spire where the other four pay 150 — a designed
+        // economic asymmetry, and the only one the five do not share.
+        (
+            id: "mass_arclight",
+            think_interval_ticks: 30,
+            worker_target: 6,
+            barracks: [
+                (building: "aether_spire", at_tick: 300, offset: 130.0),
+            ],
+            army: [
+                (unit: "arclight", count: 1),
+            ],
+            attack_at_army: 3,
+            attack_interval_ticks: 600,
+            attack_spread: 60.0,
+        ),
+
+        // ---- the synthesis builds ------------------------------------------
+
+        // Two domains: Machine + Flesh. Cheap Flesh bodies screening a Machine
+        // core — the army a single barracks could never field.
+        (
+            id: "synth_steel_flesh",
+            think_interval_ticks: 30,
+            worker_target: 8,
+            barracks: [
+                (building: "foundry",   at_tick: 300, offset: 130.0),
+                (building: "gene_vats", at_tick: 900, offset: 160.0),
+            ],
+            army: [
+                (unit: "sentinel", count: 1),
+                (unit: "ripper",   count: 2),
+                (unit: "bulwark",  count: 1),
+            ],
+            attack_at_army: 4,
+            attack_interval_ticks: 600,
+            attack_spread: 70.0,
+        ),
+        // All three domains: a Ripper screen, a Sentinel, an Arclight behind.
+        // The widest opening in the set — 500 Alloy of tech before a shot is
+        // fired — so it also probes whether spreading tech is affordable at all.
+        (
+            id: "synth_triad",
+            think_interval_ticks: 30,
+            worker_target: 8,
+            barracks: [
+                (building: "foundry",      at_tick: 300,  offset: 130.0),
+                (building: "gene_vats",    at_tick: 900,  offset: 160.0),
+                (building: "aether_spire", at_tick: 1500, offset: 190.0),
+            ],
+            army: [
+                (unit: "sentinel", count: 1),
+                (unit: "ripper",   count: 1),
+                (unit: "arclight", count: 1),
+            ],
+            attack_at_army: 4,
+            attack_interval_ticks: 600,
+            attack_spread: 70.0,
+        ),
+
+        // ---- the two poles --------------------------------------------------
+
+        // All-in. No economy past the starting three workers, a Gene-Vats on
+        // the first decision, and the first Ripper out of it goes straight at
+        // the enemy HQ; waves every 120 ticks after that.
+        (
+            id: "rush",
+            think_interval_ticks: 15,
+            worker_target: 1,
+            barracks: [
+                (building: "gene_vats", at_tick: 0, offset: 90.0),
+            ],
+            army: [
+                (unit: "ripper", count: 1),
+            ],
+            attack_at_army: 1,
+            attack_interval_ticks: 120,
+            attack_spread: 40.0,
+        ),
+        // The opposite pole: twelve workers, late tech, and nothing leaves home
+        // until a real force exists.
+        (
+            id: "turtle",
+            think_interval_ticks: 30,
+            worker_target: 12,
+            barracks: [
+                (building: "foundry",   at_tick: 600,  offset: 110.0),
+                (building: "gene_vats", at_tick: 1200, offset: 140.0),
+            ],
+            army: [
+                (unit: "sentinel", count: 1),
+                (unit: "ripper",   count: 2),
+                (unit: "bulwark",  count: 1),
+            ],
+            attack_at_army: 8,
+            attack_interval_ticks: 900,
+            attack_spread: 80.0,
         ),
     ],
 )

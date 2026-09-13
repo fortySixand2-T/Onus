@@ -1211,3 +1211,57 @@ is pinned by golden `state_hash` *and* a golden `AiJournal` digest at tick 3_000
 for three seeds, and naming `mvp` on both sides is asserted to play exactly the
 match that defaulting to it plays
 (`the_default_matchup_is_byte_for_byte_what_it_was_before_ac2`).
+
+## F-018 — The five mass probes must be knob-identical, or the pentagon measures the knobs (B1 AC3)
+
+**What the probe set is for.** `strategies.ron` now carries nine entries beyond
+the default: five `mass_*` probes (one per combat unit), two `synth_*` builds
+that cross domains, an all-in `rush` and a `turtle`. They are not personalities
+for a player to meet — they are the *instrument* B3 reads the counter pentagon
+off. That changes what "good" means for them.
+
+**The comparability rule.** The five `mass_*` entries differ **only** in the
+barracks they open and the unit they mass. Same `think_interval_ticks`, same
+`worker_target`, same opening `at_tick` and `offset`, same `attack_at_army`,
+`attack_interval_ticks` and `attack_spread`. If any of those diverged, then
+`W[mass_sentinel][mass_ripper] > 0.5` would no longer be a statement about
+Sentinel versus Ripper — it would be a statement about whichever knob differed,
+and B3's pentagon assertion (the one test this whole plan exists to run) would
+be reading its own tuning back to itself. `the_mass_probes_are_knob_identical`
+asserts it field by field, so the day someone "fixes" one probe the instrument
+says so instead of quietly re-scaling.
+
+The one asymmetry left standing is a real one from the design brief, not a knob:
+an Aether Spire costs 200 Alloy where a Foundry or Gene-Vats costs 150, so
+`mass_arclight` opens later in practice. That is an economy fact about Energy
+tech and belongs in the measurement.
+
+**A literal worker rush is unbuildable, so the all-in is an early rush.** The
+Worker has `offense: 0`, `mvp_attack_ticks: 0`, `mvp_attack_range: 0.0`: it
+cannot damage a unit or an HQ, and `ai::think` only ever sends `offense > 0`
+units at the enemy. Giving the Worker an offense value to make the probe
+literal would be a *design* change smuggled in as balance tooling. `rush` is
+therefore the playable form of the same idea — `worker_target: 1`, the opening
+at tick 0, the cheapest unit in the game (Ripper, 40), `attack_at_army: 1`,
+120-tick waves. It commits at tick ~750 where `turtle` commits at ~6000.
+
+**Loading is not playing.** A strategy that parses but stalls — cannot afford
+its opening, or waits forever on a barracks it never places — is worthless to
+B3 and would show up there as a mysterious row of timeouts. So every entry in
+the shipped set, *iterated from the content rather than listed by hand*, plays a
+headless solo match and must place all of its barracks, train real units, and
+produce exactly the prefix of its own repeating build order
+(`every_strategy_places_its_barracks_and_builds_its_own_order`). The same
+iteration is what makes a sixth combat unit added to `units.ron` fail the
+coverage test instead of slipping through unprobed.
+
+**Measurement, for B2/B3.** In the solo fixture (one commander, an inert
+opponent, seed 4) the whole set is comfortably solvent — nothing is marginal.
+First attack ticks: rush 750, mass_ripper 2580, mass_sentinel 3120,
+synth_steel_flesh 3240, synth_triad 3390, mass_arclight 3660, mvp 3720,
+mass_ravager 4020, mass_bulwark 4920, turtle 6000. Alloy is *piling up* in every
+run (570–1620 banked at the end), so production is limited by `mvp_train_ticks`
+at a single barracks, not by the economy: the AI trains one unit at a time and
+waits for the queue. B4 should expect army sizes in the single digits over a
+28_800-tick cap, and that is a tempo question for the *content*, not a bug in
+the probes.
