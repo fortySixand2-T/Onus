@@ -329,3 +329,5 @@
 - [2026-09-13] Modified: src/lib.rs — registered the batch module
 - [2026-09-13] Modified: FINDINGS.md — F-020: a cap is not a draw; the cap is harness config; batch order is an outcome; first instrument reading
 - [2026-09-13] Modified: CHANGELOG.md — logged the B2 AC2 changes
+- [2026-09-13] Created: tests/critic_b2_ac2.rs — B2 AC2 critic probes: tick off-by-one vs the sim counters, cap boundary either side, degenerate caps, cap-not-sim-input, coverage/order, only-filter, determinism, seed_at purity, progress, CLI stdout/stderr separation
+- [2026-09-13] Modified: CHANGELOG.md — logged the B2 AC2 critic probe file
