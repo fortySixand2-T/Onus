@@ -20,7 +20,7 @@
 //! the bin's job, not the suite's.
 
 use onus::batch::{self, BatchSettings, MatchResult};
-use onus::headless::{self, MatchSettings};
+use onus::headless::{self, MatchSettings, Orientation};
 use onus::sim::content::Content;
 use onus::sim::spatial::Faction;
 use onus::sim::MatchState;
@@ -51,13 +51,15 @@ fn every_ordered_pair_including_mirrors_is_played_once_per_seed() {
     let seeds = 2;
     let records = run(&subset_settings(3, seeds));
     let n = SUBSET.len();
-    assert_eq!(records.len(), n * n * seeds as usize);
+    // AC3: every matchup is now played in both spawn orientations, so this
+    // counts pairs within one orientation.
+    assert_eq!(records.len(), n * n * seeds as usize * 2);
 
     for k in 0..seeds {
         let seed = batch::seed_at(BatchSettings::default().seed_base, k);
         let mut pairs: Vec<(&str, &str)> = records
             .iter()
-            .filter(|r| r.seed == seed)
+            .filter(|r| r.seed == seed && r.orientation == Orientation::Normal)
             .map(|r| (r.strategies[0].as_str(), r.strategies[1].as_str()))
             .collect();
         assert_eq!(pairs.len(), n * n, "seed {seed} plays the whole product");
@@ -88,11 +90,12 @@ fn the_unfiltered_batch_is_read_out_of_the_content_in_ron_order() {
     let names: Vec<&str> = c.strategies.iter().map(|s| s.id.as_str()).collect();
     assert_eq!(
         records.len(),
-        names.len() * names.len(),
-        "every ordered pair of every strategy the content ships"
+        names.len() * names.len() * 2,
+        "every ordered pair of every strategy the content ships, both orientations"
     );
     let played: Vec<(&str, &str)> = records
         .iter()
+        .filter(|r| r.orientation == Orientation::Normal)
         .map(|r| (r.strategies[0].as_str(), r.strategies[1].as_str()))
         .collect();
     let expected: Vec<(&str, &str)> = names
@@ -107,7 +110,7 @@ fn the_unfiltered_batch_is_read_out_of_the_content_in_ron_order() {
 #[test]
 fn a_capped_match_times_out_with_no_winner_and_no_panic() {
     let records = run(&subset_settings(10, 1));
-    assert_eq!(records.len(), 9);
+    assert_eq!(records.len(), 18, "9 matchups x 2 orientations");
     for r in &records {
         assert_eq!(
             r.result,
@@ -142,7 +145,7 @@ fn a_timeout_is_not_a_mutual_loss_draw() {
         "a stalemate must not be counted as a fair draw"
     );
     let tally = batch::Tally::of(&records);
-    assert_eq!(tally.timeouts, 9);
+    assert_eq!(tally.timeouts, 18);
     assert_eq!(tally.mutual_losses, 0);
     assert_eq!(tally.decided, 0);
 }
@@ -199,7 +202,7 @@ fn the_same_batch_twice_yields_identical_records_in_identical_order() {
     let a = run(&settings);
     let b = run(&settings);
     assert_eq!(a, b, "a re-run of the whole batch must be identical");
-    assert_eq!(a.len(), 18);
+    assert_eq!(a.len(), 36);
 }
 
 #[test]

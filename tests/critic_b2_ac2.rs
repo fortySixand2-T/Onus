@@ -9,7 +9,7 @@
 use std::process::Command;
 
 use onus::batch::{self, BatchSettings, MatchResult, MatchRecord};
-use onus::headless::{self, MatchSettings, DEFAULT_TICK_CAP, SIM_HZ};
+use onus::headless::{self, MatchSettings, Orientation, DEFAULT_TICK_CAP, SIM_HZ};
 use onus::sim::content::Content;
 use onus::sim::replay::StateHashLog;
 use onus::sim::MatchState;
@@ -125,9 +125,9 @@ fn probe_degenerate_caps_are_total() {
         &mut |_| {},
     )
     .expect("known names");
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].result, MatchResult::Timeout);
-    assert_eq!(rows[0].ticks, 0);
+    assert_eq!(rows.len(), 2, "one mirror in each orientation");
+    assert!(rows.iter().all(|r| r.result == MatchResult::Timeout));
+    assert!(rows.iter().all(|r| r.ticks == 0));
 }
 
 /// A timeout and a mutual loss are both winner-less and both *different*: B3
@@ -148,8 +148,8 @@ fn probe_timeout_is_never_conflated_with_a_mutual_loss() {
     )
     .expect("known names");
     let t = batch::Tally::of(&rows);
-    assert_eq!(t.total, 4);
-    assert_eq!(t.timeouts, 4);
+    assert_eq!(t.total, 8);
+    assert_eq!(t.timeouts, 8);
     assert_eq!(t.mutual_losses, 0, "a stalemate is not a draw");
     assert_eq!(t.decided, 0);
     assert_eq!(t.timeout_rate(), 1.0);
@@ -214,16 +214,27 @@ fn probe_full_roster_coverage_is_complete_and_ordered() {
         &mut |_| {},
     )
     .expect("content's own names");
-    assert_eq!(rows.len(), n * n * k as usize);
+    assert_eq!(rows.len(), n * n * k as usize * 2);
 
-    let mut keys: Vec<(String, String, u64)> = rows
+    let mut keys: Vec<(String, String, u64, usize)> = rows
         .iter()
-        .map(|r| (r.strategies[0].clone(), r.strategies[1].clone(), r.seed))
+        .map(|r| {
+            (
+                r.strategies[0].clone(),
+                r.strategies[1].clone(),
+                r.seed,
+                r.orientation.index(),
+            )
+        })
         .collect();
     let expected_len = keys.len();
     keys.sort();
     keys.dedup();
-    assert_eq!(keys.len(), expected_len, "some (a, b, seed) played twice");
+    assert_eq!(
+        keys.len(),
+        expected_len,
+        "some (a, b, seed, orientation) played twice"
+    );
 
     let ids: Vec<&str> = c.strategies.iter().map(|s| s.id.as_str()).collect();
     let mut i = 0;
@@ -231,17 +242,20 @@ fn probe_full_roster_coverage_is_complete_and_ordered() {
         let seed = batch::seed_at(0, kk);
         for a in &ids {
             for b in &ids {
-                let r = &rows[i];
-                assert_eq!((r.strategies[0].as_str(), r.strategies[1].as_str()), (*a, *b), "row {i}");
-                assert_eq!(r.seed, seed, "row {i} seed-major order");
-                i += 1;
+                for o in Orientation::ALL {
+                    let r = &rows[i];
+                    assert_eq!((r.strategies[0].as_str(), r.strategies[1].as_str()), (*a, *b), "row {i}");
+                    assert_eq!(r.seed, seed, "row {i} seed-major order");
+                    assert_eq!(r.orientation, o, "row {i} orientation order");
+                    i += 1;
+                }
             }
         }
     }
     assert_eq!(
         rows.iter().filter(|r| r.strategies[0] == r.strategies[1]).count(),
-        n * k as usize,
-        "one mirror per strategy per seed"
+        n * k as usize * 2,
+        "one mirror per strategy per seed per orientation"
     );
 }
 
@@ -279,7 +293,7 @@ fn probe_only_filters_without_reordering() {
         .iter()
         .filter(|r| pick.contains(&r.strategies[0].as_str()) && pick.contains(&r.strategies[1].as_str()))
         .collect();
-    assert_eq!(expect.len(), 4);
+    assert_eq!(expect.len(), 8);
     let got: Vec<&MatchRecord> = forward.iter().collect();
     assert_eq!(got, expect, "filtering must not reorder or alter rows");
 }
@@ -320,7 +334,7 @@ fn probe_a_rerun_of_the_batch_is_identical() {
     let a = batch::run_batch(&content(), &s, &mut |_| {}).expect("names");
     let b = batch::run_batch(&content(), &s, &mut |_| {}).expect("names");
     assert_eq!(a, b);
-    assert_eq!(a.len(), 8);
+    assert_eq!(a.len(), 16);
 }
 
 /// Determinism at the tick level, not just at the record level: two runs of the
@@ -384,7 +398,7 @@ fn probe_progress_observes_every_match_exactly_once_and_changes_nothing() {
     let silent = batch::run_batch(&content(), &s, &mut |_| {}).expect("names");
     assert_eq!(seen, with_cb, "progress order == record order, once each");
     assert_eq!(with_cb, silent, "the callback changed the results");
-    assert_eq!(seen.len(), 8);
+    assert_eq!(seen.len(), 16);
 }
 
 /// B1's rule survives the batch: an unknown name is refused at every entry
@@ -449,8 +463,9 @@ fn probe_cli_run_separates_report_from_progress() {
     assert!(ok, "stderr: {stderr}");
     assert!(stdout.contains("matches"), "{stdout}");
     assert!(stdout.contains("timeouts"), "{stdout}");
-    assert!(!stdout.contains("[1/1]"), "progress leaked into stdout: {stdout}");
-    assert!(stderr.contains("[1/1]"), "no progress on stderr: {stderr}");
+    assert!(!stdout.contains("[1/2]"), "progress leaked into stdout: {stdout}");
+    assert!(stderr.contains("[1/2]"), "no progress on stderr: {stderr}");
+    assert!(stderr.contains("[2/2]"), "both orientations must be played: {stderr}");
     // The same run twice is the same report, out of process.
     let (_, stdout2, _) = balance(&["--only", "rush", "--seeds", "1", "--tick-cap", "5"]);
     assert_eq!(stdout, stdout2, "the report is not reproducible");

@@ -1348,3 +1348,69 @@ around a fifth of it. That, and the mirror asymmetry visible in the same run
 (A 94 / B 106 overall, and `mvp` vs itself won by B on the sampled seed), are
 readings for the side-balance checkbox and for B3/B4 — recorded here, not acted
 on.
+
+## F-021 — Orientation flips the geography; ordered pairs flip the slot (B2 AC3)
+
+The mirror lean the first batch showed (B won 34 of 59 decided mirrors, 57.6%)
+has two possible causes that look identical in the record: the **faction slot**
+(who thinks first, whose RNG stream is whose) and the **spawn position** (who
+starts at the left-hand base). The instrument could not tell them apart, because
+only one of the two ever moved — every ordered pair was played, so the slot
+varied, but slot A had always spawned at `(-750, 0)`.
+
+So the two axes are separated rather than merged. `Orientation::{Normal,
+Swapped}` changes *only* which base each faction spawns at; the slot order, the
+strategy-to-slot assignment and the seed are untouched. Everything else in the
+fixture (the deposit, the starting workers) is placed relative to its base, so
+`Swapped` is exactly the map reflected in x — the same two scripts on reflected
+ground, and a test asserts precisely that reflection. The batch plays every
+`(a, b, seed)` in both orientations **on the same seed**: the seed is the
+control, the geometry is the variable. Row order gains a third, innermost key —
+seed-major, then RON row-major, then orientation — and the row count is
+`N·N·K·2`.
+
+**A record that cannot name its geography cannot be audited.** `MatchRecord`
+carries the orientation, and `Tally` keeps `spawn_wins` (which *base* won) and
+`by_orientation` next to the slot counts, so a report prints the raw asymmetry
+beside the corrected number instead of averaging it into invisibility. That is
+the difference between cancelling a bias and hiding it: a positional edge that
+survives reflection is a finding B3 needs, not noise.
+
+**Why not seed-randomize the spawn instead.** Randomizing would also balance in
+expectation, but it costs the pairing: with both orientations of the same seed
+played, each `(matchup, seed)` is its own controlled experiment and the
+positional effect is recoverable exactly, from two rows that differ in one
+variable. Randomization converts a measurable quantity into sampling noise.
+
+**Measured — the lean was noise, but the instrument now shows both axes.**
+240 mirror matches in release on the box (10 mirrors x 12 seeds x 2
+orientations, 238 decided, zero timeouts):
+
+| reading | count | rate |
+| --- | --- | --- |
+| slot A wins (side-balanced aggregate) | 129 / 238 | **54.2%** (z 1.30, p 0.19) |
+| wins from the left-hand base | 125 / 238 | **52.5%** (z 0.78, p 0.44) |
+| slot A in `normal` (A on the left) | 67 / 118 | 56.8% |
+| slot A in `swapped` (A on the right) | 62 / 120 | 51.7% |
+
+The 57.6%-B mirror lean that motivated this checkbox does not reproduce: on a
+larger seed set the single-orientation half leans the *other* way (A 56.8%), and
+the positional split is 52.5% left — no demonstrated spawn bias at this sample
+size. What survives reflection is a small **slot** lean (A 54.2%), which is a
+turn-order question, not a geography one, and which ordered pairs cannot cancel
+for a mirror (a mirror's ordered pair is itself). Not significant at n = 238;
+B3 should keep watching it.
+
+Two per-strategy readings show the decomposition earning its keep. `mass_arclight`
+wins 17 of 24 mirrors **from the left base** (70.8%, z 2.04) — consistent across
+both orientations (normal A 9/12, swapped B 8/12) and invisible to a
+single-orientation run, which would have reported a tidy A 9 / B 3. `mvp` wins 17
+of 24 by **slot** (A 70.8%), equally in both orientations (8/12 and 9/12) — a
+turn-order edge that reflection does not touch. One is geography, one is the
+slot, and only playing both axes tells them apart.
+
+**Cost.** The full batch doubles: 400 matches (10 strategies, ordered pairs,
+2 seeds, 2 orientations) in **4m21s** release on the box, against 2m09s for the
+200-match single-orientation run — linear in matches, as expected. Still zero
+timeouts, median length 1:16, max 4:45 (F-020's "matches are far shorter than
+the 5-8 min target" reading is unchanged).

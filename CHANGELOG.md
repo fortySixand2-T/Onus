@@ -331,3 +331,11 @@
 - [2026-09-13] Modified: CHANGELOG.md — logged the B2 AC2 changes
 - [2026-09-13] Created: tests/critic_b2_ac2.rs — B2 AC2 critic probes: tick off-by-one vs the sim counters, cap boundary either side, degenerate caps, cap-not-sim-input, coverage/order, only-filter, determinism, seed_at purity, progress, CLI stdout/stderr separation
 - [2026-09-13] Modified: CHANGELOG.md — logged the B2 AC2 critic probe file
+- [2026-09-13] Created: tests/b2_orientation.rs — B2 AC3 L2 tests: orientation swaps only the bases (x-reflection), default stays the pinned fixture, batch plays both orientations in a stated order, determinism in and out of process, mirror side-balance measurement, CLI range/precedence/help fixes
+- [2026-09-13] Modified: src/headless.rs — B2 AC3: Orientation enum (Normal/Swapped, ALL/index/left/name), MatchSettings::orientation + with_orientation, base_of takes the orientation
+- [2026-09-13] Modified: src/batch.rs — B2 AC3: MatchRecord::orientation + winner_at_left, run_batch plays both orientations (seed-major, RON row-major, orientation innermost), Tally::spawn_wins/by_orientation/left_spawn_rate/slot_a_rate + SplitTally
+- [2026-09-13] Modified: src/bin/balance.rs — B2 AC3: doubled batch header/progress, spawn and mirror side-balance summary; refuse out-of-range --seeds/--tick-cap/--minutes instead of wrapping or truncating, document last-flag-wins, --help succeeds on stdout
+- [2026-09-13] Modified: tests/b2_batch.rs — mechanical: row counts doubled, per-pair assertions filtered to one orientation
+- [2026-09-13] Modified: tests/critic_b2_ac2.rs — mechanical: row counts doubled, coverage walk gains the orientation key, CLI progress expects [1/2]
+- [2026-09-13] Modified: FINDINGS.md — F-021: orientation flips geography, ordered pairs flip the slot
+- [2026-09-13] Modified: CHANGELOG.md — logged the B2 AC3 changes

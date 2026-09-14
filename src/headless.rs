@@ -39,13 +39,76 @@ pub const SIDES: [Faction; 2] = [Faction::A, Faction::B];
 /// budget" can be written as a *time* and read back as one.
 pub const SIM_HZ: u32 = 60;
 
-/// Where each side's base stands. Both bases are described here, in one place,
-/// because B2's side-balanced sampling will need to *swap* them — that
-/// checkbox changes this function and nothing else.
-fn base_of(faction: Faction) -> Vec2 {
-    match faction {
-        Faction::A => Vec2::new(-750.0, 0.0),
-        Faction::B => Vec2::new(750.0, 0.0),
+/// Which base each faction spawns at — the map's geography, and the *only*
+/// thing this flips.
+///
+/// The batch already varies the **faction slot** by playing every ordered pair:
+/// `(a, b)` and `(b, a)` exchange who thinks first and whose RNG stream is
+/// whose. Spawn position is a separate axis. Keeping them separate is the whole
+/// point (F-021): ordered pairs vary the slot, orientation varies the
+/// geography, and only with both moving can a positional edge be told apart
+/// from a turn-order one.
+///
+/// Two named variants rather than a bare `bool`, so a report can name the run
+/// each row came from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Orientation {
+    /// The shipped geometry: [`Faction::A`] at the left-hand base. The default,
+    /// and the pre-B2 fixture.
+    #[default]
+    Normal,
+    /// The map reflected: [`Faction::A`] at the right-hand base. Same slots,
+    /// same seed, same strategies — only the ground moves.
+    Swapped,
+}
+
+impl Orientation {
+    /// Both orientations, in the order the batch plays them. A fixed array, so
+    /// row order never depends on a map or on insertion order.
+    pub const ALL: [Orientation; 2] = [Orientation::Normal, Orientation::Swapped];
+
+    /// Index into per-orientation arrays, matching [`Orientation::ALL`].
+    pub fn index(self) -> usize {
+        match self {
+            Orientation::Normal => 0,
+            Orientation::Swapped => 1,
+        }
+    }
+
+    /// Which faction holds the **left-hand** base in this orientation. The
+    /// bridge between a faction slot (what a record names) and a spawn position
+    /// (what a positional bias is about).
+    pub fn left(self) -> Faction {
+        match self {
+            Orientation::Normal => Faction::A,
+            Orientation::Swapped => Faction::B,
+        }
+    }
+
+    /// Short, stable name for reports and logs.
+    pub fn name(self) -> &'static str {
+        match self {
+            Orientation::Normal => "normal",
+            Orientation::Swapped => "swapped",
+        }
+    }
+}
+
+/// The two bases, left first — stated once, in one place, so "the map" is a
+/// single fact and an orientation is a choice of which faction gets which of
+/// these.
+const BASES: [Vec2; 2] = [Vec2::new(-750.0, 0.0), Vec2::new(750.0, 0.0)];
+
+/// Where `faction` spawns under `orientation`.
+///
+/// Everything else in the fixture (the deposit, the starting workers) is placed
+/// *relative* to the base, so swapping here reflects the whole map in x and
+/// nothing else.
+fn base_of(faction: Faction, orientation: Orientation) -> Vec2 {
+    if faction == orientation.left() {
+        BASES[0]
+    } else {
+        BASES[1]
     }
 }
 
@@ -81,6 +144,10 @@ pub struct MatchSettings {
     /// a statement about how long an observer is willing to watch, which is
     /// why a capped match is *undecided* rather than drawn.
     pub tick_cap: u32,
+    /// Which side of the map each faction spawns on. `Normal` is the shipped
+    /// geometry; the batch plays every matchup in both, so a left-hand edge
+    /// cannot masquerade as strategy strength.
+    pub orientation: Orientation,
 }
 
 /// The budget for one match: **eight minutes of play**, the top of the 5-8 min
@@ -98,6 +165,7 @@ impl Default for MatchSettings {
             strategies: [None, None],
             hashing: false,
             tick_cap: DEFAULT_TICK_CAP,
+            orientation: Orientation::Normal,
         }
     }
 }
@@ -122,6 +190,11 @@ impl MatchSettings {
 
     pub fn with_tick_cap(mut self, tick_cap: u32) -> Self {
         self.tick_cap = tick_cap;
+        self
+    }
+
+    pub fn with_orientation(mut self, orientation: Orientation) -> Self {
+        self.orientation = orientation;
         self
     }
 }
@@ -172,7 +245,7 @@ pub fn ai_vs_ai(content: Content, settings: &MatchSettings) -> Result<App, Unkno
     crate::add_sim_systems(&mut app, Update);
 
     for faction in SIDES {
-        let base = base_of(faction);
+        let base = base_of(faction, settings.orientation);
         let def = app
             .world()
             .resource::<Content>()

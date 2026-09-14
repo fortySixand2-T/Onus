@@ -18,15 +18,27 @@
 //! report "% hitting the cap" and flag an all-timeout run instead of reporting
 //! a hundred stalemates as a hundred fair draws (F-020).
 //!
+//! ## Side-balanced sampling
+//!
+//! Every `(a, b, seed)` is played in **both** [`Orientation`]s, on the same
+//! seed: the seed is the control, only the geography differs. Ordered pairs
+//! already vary the faction slot; orientation varies the ground, so a left-hand
+//! spawn advantage lands once on each slot and cancels in the aggregate instead
+//! of masquerading as strategy strength (F-021). Each record says which
+//! orientation it was played in, so the raw asymmetry stays auditable rather
+//! than being silently averaged away.
+//!
 //! ## Order is an outcome
 //!
 //! The matchup list is built by walking [`Content::strategies`] in RON order,
-//! never a map, and the batch is played sequentially in that order (seed outer,
-//! then row, then column). The record vector *is* the report's row order, so it
-//! has to be reproducible — re-running the batch must produce the identical
+//! never a map, and the batch is played sequentially in that order. The rule,
+//! stated once: **seed-major, then RON row-major, then orientation** — for each
+//! seed, for each row `a`, for each column `b`, the match is played on the
+//! normal map and then on the swapped one. The record vector *is* the report's
+//! row order, so it has to be reproducible — re-running the batch must produce the identical
 //! list. That is also why this loop is not parallel.
 
-use crate::headless::{self, MatchSettings};
+use crate::headless::{self, MatchSettings, Orientation};
 use crate::sim::ai::UnknownStrategy;
 use crate::sim::content::Content;
 use crate::sim::spatial::Faction;
@@ -77,6 +89,10 @@ pub struct MatchRecord {
     /// The seed this match was played on.
     pub seed: u64,
     pub result: MatchResult,
+    /// Which spawn orientation this match was played in. Recorded, not
+    /// implied: a row whose geography cannot be recovered cannot be audited,
+    /// and B3 aggregates over orientation pairs.
+    pub orientation: Orientation,
     /// Sim ticks actually played — the number of steps the runner took. For a
     /// decided match this is `MatchOutcome::tick + 1` (the outcome's tick is
     /// the zero-based index of the last tick played); for a timeout it is
@@ -87,6 +103,15 @@ pub struct MatchRecord {
 impl MatchRecord {
     pub fn winner(&self) -> Option<Faction> {
         self.result.winner()
+    }
+
+    /// Did the winner hold the **left-hand** base? `None` if nobody won.
+    ///
+    /// The bridge from a slot-keyed result to a positional one: in
+    /// [`Orientation::Normal`] the left base is [`Faction::A`]'s, in
+    /// [`Orientation::Swapped`] it is [`Faction::B`]'s.
+    pub fn winner_at_left(&self) -> Option<bool> {
+        self.winner().map(|f| f == self.orientation.left())
     }
 
     /// The match length in seconds of play, at the sim's fixed rate.
@@ -191,6 +216,7 @@ pub fn run_match(
         strategies: [name(&settings.strategies[0]), name(&settings.strategies[1])],
         seed: settings.seed,
         result,
+        orientation: settings.orientation,
         ticks,
     })
 }
@@ -226,26 +252,33 @@ pub fn roster(content: &Content, only: Option<&[String]>) -> Result<Vec<String>,
 /// `progress` is called once per finished match, in batch order — the bin uses
 /// it to keep a long run from being silent. It observes; it cannot steer.
 ///
-/// Sequential and deterministic: for `N` strategies and `K` seeds this is
-/// `N·N·K` records, seed-major then row-major, identical on every re-run.
+/// Every matchup is played in **both** spawn orientations on the same seed, so
+/// for `N` strategies and `K` seeds this is `N·N·K·2` records — seed-major,
+/// then RON row-major, then orientation ([`Orientation::ALL`] order).
+/// Sequential and deterministic: identical on every re-run.
 pub fn run_batch(
     content: &Content,
     settings: &BatchSettings,
     progress: &mut dyn FnMut(&MatchRecord),
 ) -> Result<Vec<MatchRecord>, UnknownStrategy> {
     let roster = roster(content, settings.only.as_deref())?;
-    let mut records = Vec::with_capacity(roster.len() * roster.len() * settings.seeds as usize);
+    let mut records = Vec::with_capacity(
+        roster.len() * roster.len() * settings.seeds as usize * Orientation::ALL.len(),
+    );
     for k in 0..settings.seeds {
         let seed = seed_at(settings.seed_base, k);
         for a in &roster {
             for b in &roster {
-                let match_settings = MatchSettings::default()
-                    .with_seed(seed)
-                    .with_strategies(a, b)
-                    .with_tick_cap(settings.tick_cap);
-                let record = run_match(content, &match_settings)?;
-                progress(&record);
-                records.push(record);
+                for orientation in Orientation::ALL {
+                    let match_settings = MatchSettings::default()
+                        .with_seed(seed)
+                        .with_strategies(a, b)
+                        .with_tick_cap(settings.tick_cap)
+                        .with_orientation(orientation);
+                    let record = run_match(content, &match_settings)?;
+                    progress(&record);
+                    records.push(record);
+                }
             }
         }
     }
@@ -267,9 +300,52 @@ pub struct Tally {
     /// Matches that hit the cap undecided.
     pub timeouts: usize,
     pub wins: [usize; 2],
+    /// Wins by **spawn position** rather than by faction slot: `[0]` is the
+    /// left-hand base, `[1]` the right-hand one. This is the raw positional
+    /// asymmetry — the thing side-balanced sampling exists to expose and then
+    /// cancel.
+    pub spawn_wins: [usize; 2],
+    /// The same counts split by orientation, in [`Orientation::ALL`] order, so
+    /// a report can print what each half of the sample did next to the
+    /// balanced aggregate instead of averaging the asymmetry away unseen.
+    pub by_orientation: [SplitTally; 2],
     /// Ticks played, ascending — the raw material for the median and the
     /// spread.
     pub lengths: Vec<u32>,
+}
+
+/// One orientation's slice of a [`Tally`] — the same counters, minus the
+/// length distribution (lengths are pooled across orientations; the split
+/// exists to show *who won where*).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SplitTally {
+    pub total: usize,
+    pub decided: usize,
+    pub mutual_losses: usize,
+    pub timeouts: usize,
+    pub wins: [usize; 2],
+}
+
+impl SplitTally {
+    fn add(&mut self, r: &MatchRecord) {
+        self.total += 1;
+        match r.result {
+            MatchResult::Decided(f) => {
+                self.decided += 1;
+                self.wins[side_index(f)] += 1;
+            }
+            MatchResult::MutualLoss => self.mutual_losses += 1,
+            MatchResult::Timeout => self.timeouts += 1,
+        }
+    }
+}
+
+/// The index of a faction in [`headless::SIDES`] — slot order, never a map's.
+fn side_index(f: Faction) -> usize {
+    headless::SIDES
+        .iter()
+        .position(|s| *s == f)
+        .expect("SIDES lists every faction")
 }
 
 impl Tally {
@@ -291,10 +367,29 @@ impl Tally {
                 MatchResult::MutualLoss => t.mutual_losses += 1,
                 MatchResult::Timeout => t.timeouts += 1,
             }
+            if let Some(left) = r.winner_at_left() {
+                t.spawn_wins[usize::from(!left)] += 1;
+            }
+            t.by_orientation[r.orientation.index()].add(r);
             t.lengths.push(r.ticks);
         }
         t.lengths.sort_unstable();
         t
+    }
+
+    /// The share of *decided* matches won from the left-hand base, or `None`
+    /// if nothing was decided. 0.5 means the map is not picking the winner.
+    pub fn left_spawn_rate(&self) -> Option<f32> {
+        let n = self.spawn_wins[0] + self.spawn_wins[1];
+        (n > 0).then(|| self.spawn_wins[0] as f32 / n as f32)
+    }
+
+    /// The share of decided matches won by faction slot A — the side-balanced
+    /// figure, since every matchup is played from both spawns. `None` if
+    /// nothing was decided.
+    pub fn slot_a_rate(&self) -> Option<f32> {
+        let n = self.wins[0] + self.wins[1];
+        (n > 0).then(|| self.wins[0] as f32 / n as f32)
     }
 
     /// Fraction of matches that ran into the cap. B3 turns this into a gate;
@@ -332,12 +427,59 @@ mod tests {
     use super::*;
 
     fn rec(result: MatchResult, ticks: u32) -> MatchRecord {
+        oriented(result, ticks, Orientation::Normal)
+    }
+
+    fn oriented(result: MatchResult, ticks: u32, orientation: Orientation) -> MatchRecord {
         MatchRecord {
             strategies: ["a".into(), "b".into()],
             seed: 0,
             result,
+            orientation,
             ticks,
         }
+    }
+
+    /// A win from the left-hand base counts as a left win in *either*
+    /// orientation — that is the whole point of recording the orientation.
+    #[test]
+    fn spawn_wins_are_positional_and_slot_wins_are_not() {
+        let t = Tally::of(&[
+            oriented(MatchResult::Decided(Faction::A), 10, Orientation::Normal),
+            oriented(MatchResult::Decided(Faction::B), 10, Orientation::Swapped),
+        ]);
+        assert_eq!(t.wins, [1, 1], "one win per slot");
+        assert_eq!(t.spawn_wins, [2, 0], "both won from the left base");
+        assert_eq!(t.left_spawn_rate(), Some(1.0));
+        assert_eq!(t.slot_a_rate(), Some(0.5));
+        assert_eq!(t.by_orientation[0].wins, [1, 0]);
+        assert_eq!(t.by_orientation[1].wins, [0, 1]);
+        assert_eq!(t.by_orientation[0].total, 1);
+        assert_eq!(t.by_orientation[1].total, 1);
+
+        // Undecided rows are counted, but never as a positional win.
+        let u = Tally::of(&[
+            oriented(MatchResult::Timeout, 5, Orientation::Swapped),
+            oriented(MatchResult::MutualLoss, 5, Orientation::Swapped),
+        ]);
+        assert_eq!(u.spawn_wins, [0, 0]);
+        assert_eq!(u.left_spawn_rate(), None);
+        assert_eq!(u.slot_a_rate(), None);
+        assert_eq!(u.by_orientation[1].timeouts, 1);
+        assert_eq!(u.by_orientation[1].mutual_losses, 1);
+        assert_eq!(u.by_orientation[0].total, 0);
+    }
+
+    #[test]
+    fn a_record_reports_the_spawn_its_winner_held() {
+        let normal = oriented(MatchResult::Decided(Faction::A), 1, Orientation::Normal);
+        assert_eq!(normal.winner_at_left(), Some(true));
+        let swapped = oriented(MatchResult::Decided(Faction::A), 1, Orientation::Swapped);
+        assert_eq!(swapped.winner_at_left(), Some(false));
+        assert_eq!(
+            oriented(MatchResult::Timeout, 1, Orientation::Normal).winner_at_left(),
+            None
+        );
     }
 
     #[test]
