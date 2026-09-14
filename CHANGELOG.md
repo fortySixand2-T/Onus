@@ -339,3 +339,4 @@
 - [2026-09-13] Modified: tests/critic_b2_ac2.rs — mechanical: row counts doubled, coverage walk gains the orientation key, CLI progress expects [1/2]
 - [2026-09-13] Modified: FINDINGS.md — F-021: orientation flips geography, ordered pairs flip the slot
 - [2026-09-13] Modified: CHANGELOG.md — logged the B2 AC3 changes
+- [2026-09-13] Created: tests/critic_b2_ac3.rs — B2 AC3 critic probes: exhaustive x-reflection of the whole fixture, orientation leaks nothing but geometry (RNG streams, slot order, spawn order, sim never names it), default is the old geometry, batch product/order/only-filter, winner_at_left checked against the winning HQ's actual position, undecided rows never booked as spawn wins, positional edge cancels / turn-order edge does not, CLI range boundaries, cap precedence, --help
