@@ -219,10 +219,39 @@ fn placed(app: &App, f: Faction) -> Vec<String> {
 }
 
 /// A stable digest of the whole action trace — what "the same decisions" means.
+///
+/// Entities in the trace are **relabelled by first appearance** before hashing.
+/// Raw `Entity` bits are an ECS allocation detail and not sim state (F-011):
+/// in Bevy a resource *is* an entity, so installing one more sim-owned resource
+/// shifts every id the world hands out afterwards, without changing a single
+/// decision. Relabelling keeps everything the trace actually says — which
+/// commander acted, on which tick, on which *same* unit and node — and drops
+/// only the allocation offset. The per-tick `state_hash` golden beside this one
+/// is the real regression floor, and it is keyed by `SimId`, so it is untouched
+/// by the same shift.
 fn journal_digest(app: &App) -> u64 {
+    let mut seen: Vec<u64> = Vec::new();
+    let mut label = |e: Entity| -> usize {
+        let bits = e.to_bits();
+        match seen.iter().position(|b| *b == bits) {
+            Some(i) => i,
+            None => {
+                seen.push(bits);
+                seen.len() - 1
+            }
+        }
+    };
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for (t, f, a) in &app.world().resource::<AiJournal>().0 {
-        for b in format!("{t}|{f:?}|{a:?}").as_bytes() {
+        let action = match *a {
+            AiAction::Gather { unit, node } => {
+                format!("Gather{{unit:{},node:{}}}", label(unit), label(node))
+            }
+            AiAction::TrainWorker { at } => format!("TrainWorker{{at:{}}}", label(at)),
+            // The rest name content indices and positions, never entities.
+            other => format!("{other:?}"),
+        };
+        for b in format!("{t}|{f:?}|{action}").as_bytes() {
             h ^= *b as u64;
             h = h.wrapping_mul(0x100_0000_01b3);
         }
@@ -436,13 +465,17 @@ fn the_same_strategy_pair_and_seed_replays_bit_identically() {
 
 /// The regression floor: a match where both sides run the default plays exactly
 /// the match it played before AC2 — same per-tick `state_hash` and the same
-/// `AiJournal`. Goldens captured from the pre-AC2 build.
+/// `AiJournal`. The state-hash goldens are the pre-AC2 build's, untouched. The
+/// journal goldens were **recomputed once** at B2 AC4, when `journal_digest`
+/// stopped hashing raw entity bits (see its docs): adding the sim's `Produced`
+/// resource shifts every entity id by one without changing any decision, and a
+/// golden that moves for that is measuring the allocator, not the AI.
 #[test]
 fn the_default_matchup_is_byte_for_byte_what_it_was_before_ac2() {
     for (seed, state_golden, journal_golden) in [
-        (4u64, 0xa71f_64ca_d502_03e9u64, 0x43be_f686_b9d6_f5a8u64),
-        (11, 0x5b39_8ee4_7854_23dc, 0xd506_d4f7_9931_2ebc),
-        (23, 0xf4b5_7d1c_3c3f_2af7, 0x38ba_0a36_8a04_d52d),
+        (4u64, 0xa71f_64ca_d502_03e9u64, 0xe78e_ebdc_5c2c_a733u64),
+        (11, 0x5b39_8ee4_7854_23dc, 0x00b7_f8d8_713f_e467),
+        (23, 0xf4b5_7d1c_3c3f_2af7, 0x4682_1006_f2fa_e62a),
     ] {
         // The implicit default, through the untouched constructor.
         let mut app = ai_vs_ai_with(content(), AiCommanders::new(seed, &[Faction::A, Faction::B]));

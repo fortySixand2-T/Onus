@@ -138,6 +138,9 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
     // has to remember a resource is a caller that will eventually forget one.
     // (Content and the starting Stockpiles are match setup — the caller's.)
     app.init_resource::<Casualties>();
+    // Its counterpart: what each side *built*. Same reason, same place — a
+    // counter the chain writes is installed with the chain (F-004, F-022).
+    app.init_resource::<sim::economy::Produced>();
     app.init_resource::<sim::AiCommanders>();
     app.init_resource::<sim::AiJournal>();
     app.init_resource::<sim::MatchState>();

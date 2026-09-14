@@ -124,6 +124,65 @@ pub struct QueuedUnit {
     pub ticks_left: u32,
 }
 
+/// Units each side has **built**, per unit type — the sim's own count of what
+/// production actually put on the map.
+///
+/// Modelled on [`crate::sim::combat::Casualties`]: a sim-owned resource,
+/// incremented at the site of the event it counts, installed with the sim chain
+/// (F-004). It holds counts and never an [`Entity`] — a count is comparable
+/// across runs and configurations, where raw entity bits are not (F-011).
+///
+/// **Counted at the spawn, not at the order** (F-022). An order can be refused
+/// for want of Alloy, and a queued item can be sitting in a queue when the
+/// match ends; neither is a unit that ever existed. [`production`] increments
+/// this on the tick it spawns the unit, so "produced" means exactly "was on the
+/// map at some point". It is therefore independent of
+/// [`crate::sim::combat::Casualties`]: a unit that is built and then killed
+/// counts in both.
+///
+/// Indexed by **faction slot** then by index into [`Content::units`] — the RON
+/// order, fixed-size arrays and a `Vec`, never a map, so no iteration order can
+/// reach a number.
+#[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+pub struct Produced {
+    counts: [Vec<u32>; 2],
+}
+
+impl Produced {
+    /// How many of unit definition `unit` `f` has built. An index the run never
+    /// produced reads as 0 rather than panicking — a count nobody reached is 0.
+    pub fn count(&self, f: Faction, unit: usize) -> u32 {
+        self.counts[faction_slot(f)].get(unit).copied().unwrap_or(0)
+    }
+
+    /// `f`'s whole column, by unit index. Shorter than the roster (possibly
+    /// empty) when the tail of the roster was never built — read it through
+    /// [`Produced::count`] if you need a fixed width.
+    pub fn counts(&self, f: Faction) -> &[u32] {
+        &self.counts[faction_slot(f)]
+    }
+
+    /// Every unit `f` built, of any type.
+    pub fn total(&self, f: Faction) -> u32 {
+        self.counts[faction_slot(f)].iter().sum()
+    }
+
+    /// Both sides, every type.
+    pub fn grand_total(&self) -> u32 {
+        self.total(Faction::A) + self.total(Faction::B)
+    }
+
+    /// Record one spawned unit. Private: only [`production`] may say a unit was
+    /// produced.
+    fn record(&mut self, f: Faction, unit: usize) {
+        let column = &mut self.counts[faction_slot(f)];
+        if column.len() <= unit {
+            column.resize(unit + 1, 0);
+        }
+        column[unit] += 1;
+    }
+}
+
 /// A building's production queue. Costs are charged when an item is *enqueued*,
 /// never again when it completes.
 #[derive(Component, Debug, Default)]
@@ -409,6 +468,7 @@ pub fn enqueue_unit(
 /// the item was enqueued, so a unit is paid for exactly once.
 pub fn production(
     content: Res<Content>,
+    mut produced: ResMut<Produced>,
     mut buildings: Query<(Entity, &Position, &Faction, &mut ProductionQueue)>,
     mut commands: Commands,
 ) {
@@ -448,6 +508,10 @@ pub fn production(
         if def.gathers {
             spawned.insert(Carrying(0));
         }
+        // Counted here and nowhere else: the unit exists as of this tick
+        // (F-022). Inside the same stable, entity-ordered loop that spawns it,
+        // so the count is as deterministic as the spawn.
+        produced.record(faction, done.unit);
     }
 }
 

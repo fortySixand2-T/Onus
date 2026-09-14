@@ -23,7 +23,7 @@ use std::process::Command;
 
 use bevy::prelude::*;
 
-use onus::batch::{self, BatchSettings, MatchRecord, MatchResult};
+use onus::batch::{self, BatchSettings, MatchRecord, MatchResult, ProductionCounts};
 use onus::headless::{self, MatchSettings, Orientation};
 use onus::sim::combat::Health;
 use onus::sim::content::Content;
@@ -435,6 +435,9 @@ fn probe_the_tally_never_miscounts_an_undecided_row() {
         result,
         orientation: o,
         ticks: 10,
+        // Mechanical: `produced` was added to the record by B2 AC4. A synthetic
+        // row was never played, so it carries the empty block.
+        produced: ProductionCounts::default(),
     };
     let rows = vec![
         rec(MatchResult::Decided(Faction::A), Orientation::Normal),
@@ -677,6 +680,7 @@ fn probe_a_purely_positional_edge_cancels_exactly_in_the_slot_split() {
                 result: MatchResult::Decided(o.left()),
                 orientation: o,
                 ticks: 100,
+                produced: ProductionCounts::default(),
             });
         }
     }
@@ -706,6 +710,7 @@ fn probe_a_turn_order_edge_survives_reflection_and_is_reported_as_such() {
                 result: MatchResult::Decided(Faction::A),
                 orientation: o,
                 ticks: 100,
+                produced: ProductionCounts::default(),
             });
         }
     }

@@ -1414,3 +1414,71 @@ slot, and only playing both axes tells them apart.
 200-match single-orientation run — linear in matches, as expected. Still zero
 timeouts, median length 1:16, max 4:45 (F-020's "matches are far shorter than
 the 5-8 min target" reading is unchanged).
+
+## F-022 — Production is counted at the spawn, not at the order (B2 AC4)
+
+**Wall.** A match record said who won and how long it took. B3 has to evaluate a
+kill criterion from DESIGN_BRIEF — *"no unit winning >65% regardless of
+counter"* — which is a statement about **units**, not strategies. Nothing in the
+record named a unit, and nothing in the sim counted one.
+
+**The choice that matters.** There are two places a "unit produced" could be
+counted: where training is **ordered** (`enqueue_unit`) and where the unit
+actually **spawns** (`production`). They are not the same number:
+
+- an order is refused outright when the faction cannot pay for it;
+- an order that *is* paid for sits in a `ProductionQueue` for
+  `mvp_train_ticks`, and a match can end — decided or capped — with items still
+  in flight.
+
+Counting orders would therefore report units that never stood on the map, and a
+timeout would inflate exactly the strategies with the longest build items. So
+the counter is incremented inside `production`, on the tick the entity is
+spawned, in the same stable entity-ordered loop that spawns it. "Produced"
+means precisely **"existed at some point"**.
+
+**Consequences, stated so B3 does not have to guess.** Production is *not*
+survival: a unit that is built and then killed is counted in `Produced` and in
+`Casualties` both, and the two resources are independent. And the headless
+fixture's three starting workers a side are placed by the harness, not by
+`production`, so they are not production — a batch that counted them would
+report three free workers in every row.
+
+**Shape.** `sim::economy::Produced` is modelled on `combat::Casualties`: a
+sim-owned resource, incremented at the site of the event, installed with the
+chain (F-004). Counts only, never an `Entity` — a count is comparable across
+runs and app configurations where raw entity bits are not (F-011). Indexed by
+faction slot, then by index into `Content::units` (RON order), never a map.
+
+**The record carries its own header.** `batch::ProductionCounts` snapshots
+`Produced` and ships the unit ids alongside the columns (`Arc<[String]>`, shared
+across a batch's rows). A bare `Vec<u32>` whose meaning depends on remembering
+the content's unit order is a mislabel waiting to happen, and every figure B3
+prints is keyed by a unit name.
+
+**Evidence.** No per-tick `state_hash` moved: the hash covers entity components,
+not resources, and the pinned goldens (`b2_orientation`'s AC1 fixture pin, the
+B1 golden hashes, the M5/M6 replay tests) are untouched and green.
+
+## F-023 — "Side-balancing bounds the slot split" is not a theorem (B2 AC3 follow-up)
+
+**Wall.** `mirrors_are_side_balanced_across_the_two_orientations` ended with
+`dev(slot wins) <= dev(spawn wins)`, documented as a consequence of playing both
+orientations. It is not. It holds only if the edge is purely positional; an edge
+that follows the **slot** (turn order) survives reflection untouched and
+falsifies it — `critic_b2_ac3.rs` already carried that counterexample.
+
+**Measurement.** The claim is already false on real data: at 12 seeds
+`mass_ripper` mirrors give slot deviation 6 against spawn deviation 2, and `mvp`
+gives 10 against 2. The shipped test passed only because it used `mass_ripper`
+at 3 seeds — a latent flake that would have fired the moment anyone raised the
+seed count.
+
+**Decision.** Assert what side-balanced sampling actually guarantees. Every
+(mirror, seed) **cell** is played once per orientation, so for a cell decided in
+both games exactly one of these holds: the same *slot* won twice (then the bases
+differed — the cell is positionally even), or the same *base* won twice (then
+the slots differed — the cell is even by slot). Hence the slot split comes only
+from slot-persistent cells and the positional split only from base-persistent
+ones, each exactly `2 x |imbalance in cells|`. Both identities are asserted per
+cell. The observed deviations are printed, not asserted.

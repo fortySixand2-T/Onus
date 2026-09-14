@@ -340,3 +340,15 @@
 - [2026-09-13] Modified: FINDINGS.md — F-021: orientation flips geography, ordered pairs flip the slot
 - [2026-09-13] Modified: CHANGELOG.md — logged the B2 AC3 changes
 - [2026-09-13] Created: tests/critic_b2_ac3.rs — B2 AC3 critic probes: exhaustive x-reflection of the whole fixture, orientation leaks nothing but geometry (RNG streams, slot order, spawn order, sim never names it), default is the old geometry, batch product/order/only-filter, winner_at_left checked against the winning HQ's actual position, undecided rows never booked as spawn wins, positional edge cancels / turn-order edge does not, CLI range boundaries, cap precedence, --help
+- [2026-09-13] Modified: src/sim/economy.rs — B2 AC4: `Produced`, the sim's per-faction per-unit-type count of what `production` actually spawned (counted at the spawn, never at the order)
+- [2026-09-13] Modified: src/lib.rs — B2 AC4: install `Produced` with the sim chain, beside `Casualties` (F-004)
+- [2026-09-13] Modified: src/batch.rs — B2 AC4: `ProductionCounts` (self-labelling per-unit counts), `MatchRecord::produced` + the one `MatchRecord::new` constructor, `production_totals`
+- [2026-09-13] Modified: src/bin/balance.rs — B2 AC4: print what the batch built, per unit, with its share
+- [2026-09-13] Created: tests/b2_production.rs — B2 AC4 L2 tests: a spawn is counted once for the right faction/type, starting workers are not production, refused and unfinished orders count nothing, production is independent of casualties, counts map to the right unit ids, determinism, every outcome carries counts
+- [2026-09-13] Modified: tests/b2_orientation.rs — replaced the non-theorem `dev(slot) <= dev(spawn)` assertion with the per-cell identity side-balancing actually guarantees (F-023)
+- [2026-09-13] Modified: tests/critic_b2_ac3.rs — mechanical: synthetic `MatchRecord` literals gain `produced: ProductionCounts::default()`
+- [2026-09-13] Modified: FINDINGS.md — F-022 (count at the spawn, not at the order) and F-023 (the side-balancing non-theorem)
+- [2026-09-13] Modified: CHANGELOG.md — logged the B2 AC4 changes
+- [2026-09-13] Modified: tests/b1_matchup.rs — journal digest relabels entities by first appearance (raw Entity bits are allocation detail, F-011); journal goldens recomputed once, state-hash goldens untouched
+- [2026-09-13] Modified: tests/critic_b1_ac2.rs — cross-process journal pin relabels entities by first appearance, so the pin survives a resource being added (F-011)
+- [2026-09-13] Modified: tests/critic_m4a.rs — mechanical: the hand-rolled economy chain installs `Produced`, which `production` now writes

@@ -269,6 +269,22 @@ fn main() -> ExitCode {
             );
         }
     }
+    // What the batch actually *built*, per unit — the check that the probe set
+    // fields the units it claims to. A strategy that never produces its own
+    // unit is a row of zeros here, visible before any win rate is computed.
+    let produced = batch::production_totals(&records);
+    if !produced.is_empty() {
+        let total: u32 = produced.iter().map(|(_, n)| n).sum();
+        println!("produced     {total} units (both sides, whole batch)");
+        for (id, n) in &produced {
+            let share = if total > 0 {
+                format!(" ({:.1}%)", 100.0 * *n as f32 / total as f32)
+            } else {
+                String::new()
+            };
+            println!("  {id:<10} {n}{share}");
+        }
+    }
     if t.total > 0 && t.timeouts == t.total {
         println!(
             "WARNING: every match hit the cap. This batch measures nothing about \

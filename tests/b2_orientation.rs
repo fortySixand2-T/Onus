@@ -315,16 +315,68 @@ fn mirrors_are_side_balanced_across_the_two_orientations() {
     let right = t.spawn_wins[1];
     assert_eq!(left + right, t.decided);
 
-    // The corrected figure: each (mirror, seed) is played once with A on the
-    // left and once with A on the right, so an edge that is purely positional
-    // contributes one win to each slot. The slot split must therefore be no
-    // further from even than the positional split is.
+    // The guarantee, stated exactly. Every (mirror, seed) cell is played once
+    // in each orientation, so each decided cell contributes to *both* splits at
+    // once, and which split it moves is decided by the cell itself:
+    //
+    //   - the same **slot** won both games  => the bases differed, so the cell
+    //     is even positionally and moves only the slot split;
+    //   - the same **base** won both games  => the slots differed, so the cell
+    //     is even by slot and moves only the positional split.
+    //
+    // Exactly one of the two holds for a cell decided in both orientations.
+    // That is the theorem: a purely positional edge cancels exactly between the
+    // slots, while staying fully visible in `spawn_wins`. What is *not* a
+    // theorem is that the slot split ends up no further from even than the
+    // positional one — a turn-order edge survives reflection untouched and
+    // falsifies it (see `tests/critic_b2_ac3.rs`), and it is false on this
+    // fixture at larger seed counts. So the identity is asserted and the
+    // observed deviations are only reported.
+    let mut slot_persistent = [0i64; 2]; // cells the same slot won twice
+    let mut base_persistent = [0i64; 2]; // cells the same base won twice
+    for id in MIRRORS {
+        for k in 0..SEEDS {
+            let seed = batch::seed_at(0, k);
+            let cell: Vec<&batch::MatchRecord> = records
+                .iter()
+                .filter(|r| r.strategies[0] == id && r.seed == seed)
+                .collect();
+            assert_eq!(cell.len(), 2, "{id} seed {seed} is played in both orientations");
+            let mut by_o: Vec<&batch::MatchRecord> = cell.clone();
+            by_o.sort_by_key(|r| r.orientation.index());
+            assert_eq!(by_o[0].orientation, Orientation::Normal);
+            assert_eq!(by_o[1].orientation, Orientation::Swapped);
+            let slots: Vec<Faction> = by_o.iter().map(|r| r.winner().expect("decided")).collect();
+            let lefts: Vec<bool> = by_o
+                .iter()
+                .map(|r| r.winner_at_left().expect("decided"))
+                .collect();
+            if slots[0] == slots[1] {
+                assert_ne!(lefts[0], lefts[1], "a slot-persistent cell must swap bases");
+                slot_persistent[usize::from(slots[0] == Faction::B)] += 1;
+            } else {
+                assert_eq!(lefts[0], lefts[1], "a base-persistent cell must swap slots");
+                base_persistent[usize::from(!lefts[0])] += 1;
+            }
+        }
+    }
     let dev = |a: usize, b: usize| (a as i64 - b as i64).abs();
-    assert!(
-        dev(t.wins[0], t.wins[1]) <= dev(left, right),
-        "side-balancing made the slot split worse than the raw positional \
-         split: slots {:?}, spawns [{left}, {right}]",
-        t.wins
+    assert_eq!(
+        dev(t.wins[0], t.wins[1]),
+        2 * (slot_persistent[0] - slot_persistent[1]).abs(),
+        "the slot split must come only from cells one slot won in both orientations"
+    );
+    assert_eq!(
+        dev(left, right),
+        2 * (base_persistent[0] - base_persistent[1]).abs(),
+        "the positional split must come only from cells one base won in both orientations"
+    );
+    // Reported, never asserted: the raw asymmetry of this small sample.
+    eprintln!(
+        "mirrors: slots {:?} (dev {}), spawns [{left}, {right}] (dev {})",
+        t.wins,
+        dev(t.wins[0], t.wins[1]),
+        dev(left, right)
     );
 }
 

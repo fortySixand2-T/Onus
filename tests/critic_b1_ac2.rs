@@ -194,10 +194,34 @@ fn trace(app: &App, f: Faction) -> Vec<(u32, AiAction)> {
     app.world().resource::<AiJournal>().for_faction(f)
 }
 
+/// A digest of the whole action trace, with entities **relabelled by first
+/// appearance**. Raw `Entity` bits are an ECS allocation detail, not sim state
+/// (F-011): in Bevy a resource is an entity, so installing one more sim-owned
+/// resource shifts every id handed out afterwards without changing a decision.
+/// This pin crosses processes and profiles and must survive that; the per-tick
+/// `state_hash` it is pinned beside is keyed by `SimId` and already does.
 fn digest(app: &App) -> u64 {
+    let mut seen: Vec<u64> = Vec::new();
+    let mut label = |e: Entity| -> usize {
+        let bits = e.to_bits();
+        match seen.iter().position(|b| *b == bits) {
+            Some(i) => i,
+            None => {
+                seen.push(bits);
+                seen.len() - 1
+            }
+        }
+    };
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for (t, f, a) in &app.world().resource::<AiJournal>().0 {
-        for b in format!("{t}|{f:?}|{a:?}").as_bytes() {
+        let action = match *a {
+            AiAction::Gather { unit, node } => {
+                format!("Gather{{unit:{},node:{}}}", label(unit), label(node))
+            }
+            AiAction::TrainWorker { at } => format!("TrainWorker{{at:{}}}", label(at)),
+            other => format!("{other:?}"),
+        };
+        for b in format!("{t}|{f:?}|{action}").as_bytes() {
             h ^= *b as u64;
             h = h.wrapping_mul(0x100_0000_01b3);
         }

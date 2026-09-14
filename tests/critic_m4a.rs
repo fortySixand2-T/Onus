@@ -9,7 +9,9 @@
 use bevy::prelude::*;
 
 use onus::sim::content::Content;
-use onus::sim::economy::{gather, production, Building, Carrying, ProductionQueue, Stockpiles, UnitDefIdx};
+use onus::sim::economy::{
+    gather, production, Building, Carrying, Produced, ProductionQueue, Stockpiles, UnitDefIdx,
+};
 use onus::sim::spatial::Faction;
 use onus::sim::{
     apply_commands, movement, CommandQueue, Order, Position, RateReport, ResourceNode,
@@ -267,6 +269,10 @@ fn econ_app(content: Content, starting: u32) -> App {
         .insert_resource(content)
         .init_resource::<CommandQueue>()
         .init_resource::<RateReport>()
+        // Mechanical (B2 AC4): `production` now counts what it spawns into the
+        // sim-owned `Produced`. This probe hand-rolls its chain instead of using
+        // `add_sim_systems`, so it has to install the resource that chain does.
+        .init_resource::<Produced>()
         .insert_resource(Stockpiles::starting(starting))
         .add_systems(
             Update,

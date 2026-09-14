@@ -38,9 +38,12 @@
 //! row order, so it has to be reproducible — re-running the batch must produce the identical
 //! list. That is also why this loop is not parallel.
 
+use std::sync::Arc;
+
 use crate::headless::{self, MatchSettings, Orientation};
 use crate::sim::ai::UnknownStrategy;
 use crate::sim::content::Content;
+use crate::sim::economy::Produced;
 use crate::sim::spatial::Faction;
 use crate::sim::MatchState;
 
@@ -77,6 +80,100 @@ impl MatchResult {
     }
 }
 
+/// What a match **built**, per side and per unit type — a snapshot of the sim's
+/// [`Produced`] taken when the match stopped.
+///
+/// Carries its own column header ([`ProductionCounts::unit_ids`]): a bare
+/// `Vec<u32>` whose meaning depends on remembering the content's unit order is
+/// a mislabel waiting to happen, and every figure B3 prints is keyed by a unit
+/// name. The header is shared (`Arc`) across the records of a batch, so naming
+/// the columns on every row costs one pointer per row.
+///
+/// Counts, never entities: a count is comparable across runs and app
+/// configurations where raw entity bits are not (F-011).
+///
+/// `Default` is the **empty, unlabelled** block: no roster, no counts. It is
+/// what a synthetic record (one that was never played) carries, and it reads
+/// as zero for every unit id — never as a wrong count under a right name.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ProductionCounts {
+    /// Unit ids in **content (RON) order** — the header for both columns.
+    units: Arc<[String]>,
+    /// Units built, by faction slot then by unit index. Always exactly
+    /// `units.len()` wide, so a row is readable without knowing what the run
+    /// happened to build.
+    counts: [Vec<u32>; 2],
+}
+
+impl ProductionCounts {
+    /// Snapshot `produced` against `content`'s roster, padded to the full
+    /// roster width.
+    pub fn of(content: &Content, produced: &Produced) -> Self {
+        let column = |f: Faction| (0..content.units.len()).map(|u| produced.count(f, u)).collect();
+        Self {
+            units: Self::header(content),
+            counts: [column(Faction::A), column(Faction::B)],
+        }
+    }
+
+    /// An all-zero block over `content`'s roster — what a match that built
+    /// nothing reports. Still fully labelled.
+    pub fn zeroed(content: &Content) -> Self {
+        Self {
+            units: Self::header(content),
+            counts: [vec![0; content.units.len()], vec![0; content.units.len()]],
+        }
+    }
+
+    fn header(content: &Content) -> Arc<[String]> {
+        content
+            .units
+            .iter()
+            .map(|u| u.id.clone())
+            .collect::<Vec<String>>()
+            .into()
+    }
+
+    /// The column header: unit ids in content order. `counts(f)[i]` is the
+    /// count of `unit_ids()[i]`.
+    pub fn unit_ids(&self) -> &[String] {
+        &self.units
+    }
+
+    /// `f`'s whole row, one entry per unit id, in header order.
+    pub fn counts(&self, f: Faction) -> &[u32] {
+        &self.counts[side_index(f)]
+    }
+
+    /// How many of the unit at index `unit` `f` built.
+    pub fn count(&self, f: Faction, unit: usize) -> u32 {
+        self.counts[side_index(f)].get(unit).copied().unwrap_or(0)
+    }
+
+    /// How many of unit `id` `f` built. A linear scan of six names, not a map:
+    /// nothing here may depend on hash order, and the roster is tiny.
+    /// An id this block does not name reads as 0.
+    pub fn get(&self, f: Faction, id: &str) -> u32 {
+        match self.units.iter().position(|u| u == id) {
+            Some(i) => self.count(f, i),
+            None => 0,
+        }
+    }
+
+    /// Everything `f` built, of any type.
+    pub fn total(&self, f: Faction) -> u32 {
+        self.counts[side_index(f)].iter().sum()
+    }
+
+    /// `(unit id, count)` for `f`, in header order.
+    pub fn by_unit(&self, f: Faction) -> impl Iterator<Item = (&str, u32)> {
+        self.units
+            .iter()
+            .map(|s| s.as_str())
+            .zip(self.counts[side_index(f)].iter().copied())
+    }
+}
+
 /// One played match. Deliberately small for this checkbox — the per-side
 /// production counts and the `balance_report.ron` shape belong to the later B2
 /// checkboxes, and are added as *fields*, not as a second record type.
@@ -98,9 +195,36 @@ pub struct MatchRecord {
     /// the zero-based index of the last tick played); for a timeout it is
     /// exactly the cap.
     pub ticks: u32,
+    /// What each side **built** during the match, per unit type. Not "what
+    /// survived" — a unit that was produced and then died is counted here and
+    /// in `Casualties` both, because B3 asks how many were built. Carries its
+    /// own unit-id header, so a column cannot be read against the wrong unit.
+    pub produced: ProductionCounts,
 }
 
 impl MatchRecord {
+    /// Build a record for a finished match. **The** constructor — every branch
+    /// of [`run_match`] goes through it, so which way a match ended can never
+    /// decide which facts its row carries.
+    pub fn new(
+        content: &Content,
+        settings: &MatchSettings,
+        result: MatchResult,
+        ticks: u32,
+        produced: ProductionCounts,
+    ) -> Self {
+        let default = content.default_strategy.as_str();
+        let name = |s: &Option<String>| s.clone().unwrap_or_else(|| default.to_string());
+        Self {
+            strategies: [name(&settings.strategies[0]), name(&settings.strategies[1])],
+            seed: settings.seed,
+            result,
+            orientation: settings.orientation,
+            ticks,
+            produced,
+        }
+    }
+
     pub fn winner(&self) -> Option<Faction> {
         self.result.winner()
     }
@@ -210,15 +334,32 @@ pub fn run_match(
             break;
         }
     }
-    let default = content.default_strategy.as_str();
-    let name = |s: &Option<String>| s.clone().unwrap_or_else(|| default.to_string());
-    Ok(MatchRecord {
-        strategies: [name(&settings.strategies[0]), name(&settings.strategies[1])],
-        seed: settings.seed,
-        result,
-        orientation: settings.orientation,
-        ticks,
-    })
+    // Read after the loop, on whichever branch left it: production is a fact
+    // about the match, not about how it ended.
+    let produced = ProductionCounts::of(content, app.world().resource::<Produced>());
+    Ok(MatchRecord::new(content, settings, result, ticks, produced))
+}
+
+/// Everything a batch built, per unit id, in the header order of its first
+/// record — the one production number a whole run can be read at a glance from.
+///
+/// Summed **by unit id**, not by column index, so records carrying different
+/// headers could never be added together misaligned. An empty batch totals
+/// nothing (not a row of zeros: there is no roster to name).
+pub fn production_totals(records: &[MatchRecord]) -> Vec<(String, u32)> {
+    let Some(first) = records.first() else {
+        return Vec::new();
+    };
+    let ids: Vec<String> = first.produced.unit_ids().to_vec();
+    ids.into_iter()
+        .map(|id| {
+            let n = records
+                .iter()
+                .map(|r| r.produced.get(Faction::A, &id) + r.produced.get(Faction::B, &id))
+                .sum();
+            (id, n)
+        })
+        .collect()
 }
 
 /// The strategy ids this batch plays, in content (RON) order.
@@ -437,6 +578,7 @@ mod tests {
             result,
             orientation,
             ticks,
+            produced: ProductionCounts::default(),
         }
     }
 
