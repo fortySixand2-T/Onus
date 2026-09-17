@@ -200,15 +200,22 @@ impl WinMatrix {
 
     /// Row `i`'s overall strength — see [`RowMean`]. Out of range is an
     /// undefined mean over zero cells.
+    ///
+    /// **A function of the multiset of the row's defined cells, never of their
+    /// order** (F-024). Column order is first appearance in the records, and
+    /// float addition is not associative, so summing `f64` rates in column
+    /// order would let a reordering of the same batch move a mean across a
+    /// gate threshold. Instead the mean is computed **exactly** as a rational
+    /// from each cell's integers and converted to `f64` once.
     pub fn row_mean(&self, i: usize) -> RowMean {
-        let rates: Vec<f64> = (0..self.len())
+        let cells: Vec<&Cell> = (0..self.len())
             .filter(|&j| j != i)
-            .filter_map(|j| self.rate(i, j))
+            .filter_map(|j| self.cell(i, j))
+            .filter(|c| c.n_decided > 0)
             .collect();
-        let cells = rates.len();
         RowMean {
-            mean: (cells > 0).then(|| rates.iter().sum::<f64>() / cells as f64),
-            cells,
+            mean: exact_mean(&cells),
+            cells: cells.len(),
         }
     }
 
@@ -244,5 +251,242 @@ impl WinMatrix {
             .flat_map(|i| (i..n).map(move |j| (i, j)))
             .map(|(i, j)| f(&self.cells[i * n + j]))
             .sum()
+    }
+}
+
+/// The mean of the cells' rates: the `f64` **nearest** the exact rational
+/// mean (ties to even). `None` for no cells.
+///
+/// `mean = (1/k) · Σ h_i / (2·n_i)`. It is computed over a common denominator
+/// `D = k · Π 2·n_i` with an arbitrary-precision integer ([`Big`]), then
+/// rounded once by long division ([`nearest`]). Integer addition and
+/// multiplication are exact and commutative, so the result is a function of the
+/// multiset of cells — never of column order — and there is **no fallback
+/// path**: an earlier `u128` version overflowed (and fell back to a float sum)
+/// once the lcm of the cells' denominators passed ~2^128/k, which with timeouts
+/// making per-cell `n_decided` differ is reachable at realistic scale (F-024).
+///
+/// Cost: `k` cells of at most 33-bit denominators give a numerator of at most
+/// `33·k + 32` bits; `k` multiplications per term, `k` terms — trivial for any
+/// roster a batch can play.
+fn exact_mean(cells: &[&Cell]) -> Option<f64> {
+    if cells.is_empty() {
+        return None;
+    }
+    let dens: Vec<u64> = cells.iter().map(|c| WIN as u64 * c.n_decided as u64).collect();
+    let mut num = Big::from(0);
+    for (i, c) in cells.iter().enumerate() {
+        let mut term = Big::from(c.half_wins as u64);
+        for (j, &d) in dens.iter().enumerate() {
+            if j != i {
+                term.mul_small(d);
+            }
+        }
+        num.add(&term);
+    }
+    let mut den = Big::from(cells.len() as u64);
+    for &d in &dens {
+        den.mul_small(d);
+    }
+    Some(nearest(num, &den))
+}
+
+/// The `f64` nearest `num / den`, ties to even, for `0 <= num <= den`, `den > 0`
+/// (a mean of rates lies in `[0, 1]`).
+///
+/// Long division, one bit at a time: skip the leading zero bits after the
+/// binary point (at most `den`'s bit length of them), take 53 significant bits
+/// and a guard bit, and let the remainder be the sticky bit. The significand is
+/// below 2^53 and the scale a power of two no smaller than 2^-(bits + 54), far
+/// above the subnormal range for any denominator that fits in memory, so the
+/// final multiplication is exact.
+fn nearest(num: Big, den: &Big) -> f64 {
+    use std::cmp::Ordering;
+    match num.cmp(den) {
+        Ordering::Equal => return 1.0,
+        Ordering::Greater => unreachable!("a mean of rates is at most 1"),
+        Ordering::Less => {}
+    }
+    if num.is_zero() {
+        return 0.0;
+    }
+    let mut r = num;
+    // The next bit of the quotient, and the remainder updated past it.
+    let next_bit = |r: &mut Big| {
+        r.shl1();
+        if r.cmp(den) != Ordering::Less {
+            r.sub(den);
+            true
+        } else {
+            false
+        }
+    };
+    let mut exp: i32 = 0; // value = significand · 2^-exp
+    loop {
+        exp += 1;
+        if next_bit(&mut r) {
+            break;
+        }
+    }
+    let mut sig: u64 = 1;
+    for _ in 0..52 {
+        exp += 1;
+        sig = (sig << 1) | u64::from(next_bit(&mut r));
+    }
+    let guard = next_bit(&mut r);
+    let sticky = !r.is_zero();
+    if guard && (sticky || sig & 1 == 1) {
+        sig += 1; // may reach 2^53: still exact as an f64
+    }
+    let mut scale = 1.0f64;
+    for _ in 0..exp {
+        scale *= 0.5;
+    }
+    sig as f64 * scale
+}
+
+/// A minimal unsigned big integer — little-endian `u32` limbs, no leading zero
+/// limbs — with only what [`exact_mean`] and [`nearest`] need.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Big(Vec<u32>);
+
+impl From<u64> for Big {
+    fn from(v: u64) -> Self {
+        let mut b = Big(vec![v as u32, (v >> 32) as u32]);
+        b.trim();
+        b
+    }
+}
+
+impl Big {
+    fn trim(&mut self) {
+        while self.0.last() == Some(&0) {
+            self.0.pop();
+        }
+    }
+
+    fn is_zero(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    fn mul_small(&mut self, m: u64) {
+        let mut out = vec![0u32; self.0.len() + 2];
+        for (shift, part) in [(0, m & 0xFFFF_FFFF), (1, m >> 32)] {
+            let mut carry = 0u64;
+            for (i, &limb) in self.0.iter().enumerate() {
+                let t = out[i + shift] as u64 + limb as u64 * part + carry;
+                out[i + shift] = t as u32;
+                carry = t >> 32;
+            }
+            let mut k = self.0.len() + shift;
+            while carry > 0 {
+                let t = out[k] as u64 + carry;
+                out[k] = t as u32;
+                carry = t >> 32;
+                k += 1;
+            }
+        }
+        self.0 = out;
+        self.trim();
+    }
+
+    fn add(&mut self, other: &Big) {
+        if self.0.len() < other.0.len() {
+            self.0.resize(other.0.len(), 0);
+        }
+        let mut carry = 0u64;
+        for i in 0..self.0.len() {
+            let t = self.0[i] as u64 + other.0.get(i).copied().unwrap_or(0) as u64 + carry;
+            self.0[i] = t as u32;
+            carry = t >> 32;
+        }
+        if carry > 0 {
+            self.0.push(carry as u32);
+        }
+    }
+
+    /// `self -= other`; requires `self >= other`.
+    fn sub(&mut self, other: &Big) {
+        let mut borrow = 0i64;
+        for i in 0..self.0.len() {
+            let t = self.0[i] as i64 - other.0.get(i).copied().unwrap_or(0) as i64 - borrow;
+            self.0[i] = t.rem_euclid(1 << 32) as u32;
+            borrow = i64::from(t < 0);
+        }
+        debug_assert_eq!(borrow, 0, "Big::sub underflow");
+        self.trim();
+    }
+
+    fn shl1(&mut self) {
+        let mut carry = 0u32;
+        for limb in &mut self.0 {
+            let next = *limb >> 31;
+            *limb = (*limb << 1) | carry;
+            carry = next;
+        }
+        if carry > 0 {
+            self.0.push(carry);
+        }
+    }
+
+    fn cmp(&self, other: &Big) -> std::cmp::Ordering {
+        self.0
+            .len()
+            .cmp(&other.0.len())
+            .then_with(|| self.0.iter().rev().cmp(other.0.iter().rev()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn big(v: u128) -> Big {
+        let mut b = Big::from((v >> 64) as u64);
+        b.mul_small(1 << 32);
+        b.mul_small(1 << 32);
+        b.add(&Big::from(v as u64));
+        b
+    }
+
+    /// Expected values are Python `float(Fraction(n, d))` — correctly rounded.
+    #[test]
+    fn nearest_is_correctly_rounded_ties_to_even() {
+        let cases: [(u128, u128, f64); 10] = [
+            (0, 7, 0.0),
+            (5, 5, 1.0),
+            (1, 3, 0.3333333333333333),
+            (2, 3, 0.6666666666666666),
+            (1, 10, 0.1),
+            (7, 10, 0.7),
+            // Exactly halfway, significand even: rounds down.
+            ((1 << 53) + 1, 1 << 54, 0.5),
+            // Exactly halfway, significand odd: rounds up.
+            ((1 << 53) + 3, 1 << 54, 0.5000000000000002),
+            // Just above halfway (sticky bit): rounds down only below halfway.
+            ((1 << 60) + 1, 1 << 61, 0.5),
+            ((1 << 100) - 1, (1 << 127) + 5, 7.450580596923828e-09),
+        ];
+        for (n, d, want) in cases {
+            assert_eq!(nearest(big(n), &big(d)), want, "{n}/{d}");
+        }
+    }
+
+    #[test]
+    fn big_arithmetic_matches_u128() {
+        let a: u128 = 0xDEAD_BEEF_1234_5678_9ABC_DEF0_0FED_CBA9;
+        let mut x = big(a >> 80);
+        x.mul_small(0xFFFF_FFFF_FFF1);
+        assert_eq!(x, big((a >> 80) * 0xFFFF_FFFF_FFF1));
+        let mut y = big(a >> 2);
+        y.add(&big(a >> 2));
+        assert_eq!(y, big((a >> 2) * 2));
+        y.sub(&big(a >> 3));
+        assert_eq!(y, big((a >> 2) * 2 - (a >> 3)));
+        let mut z = big(a >> 1);
+        z.shl1();
+        assert_eq!(z, big((a >> 1) << 1));
+        assert_eq!(big(5).cmp(&big(1 << 70)), std::cmp::Ordering::Less);
+        assert!(Big::from(0).is_zero());
     }
 }

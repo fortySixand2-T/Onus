@@ -362,3 +362,6 @@
 - [2026-09-16] Modified: FINDINGS.md — F-024: win-rate matrix outcome semantics (timeouts excluded, undecided cells undefined, diagonal = slot-A share of the mirror) and the first real matrix reading
 - [2026-09-16] Created: tests/critic_b3_ac1.rs — B3 AC1 critic probes: attribution, mirrors, uneven sampling, undefined propagation, oracle, order independence, injected fixture, all-timeout binary
 - [2026-09-16] Modified: tests/critic_b3_ac1.rs — oracle row mean now the nearest f64 to the exact rational mean (integer long division), plus a probe pinning that requirement
+- [2026-09-16] Modified: src/metrics.rs — row means are the f64 nearest the exact rational mean (arbitrary-precision sum, correctly rounded division), so a strategy's strength no longer depends on record order; no overflow fallback (F-024)
+- [2026-09-16] Modified: tests/b3_matrix.rs — row means are exact and order-free: many-cell exact 1/2, a 161-bit-denominator case that must round to the nearest float, and every ordering of a small table
+- [2026-09-16] Modified: FINDINGS.md — F-024: exact row means, why column-order float sums and the u128 fallback were rejected, and the fallback's reachability bound

@@ -521,3 +521,95 @@ fn a_real_batch_yields_a_complementary_matrix_in_ron_order() {
     // Deterministic: the same records give the same matrix.
     assert_eq!(m, WinMatrix::of(&records));
 }
+
+// ---- row means are order-free (critic finding on AC1) ------------------------------
+
+/// Records putting `row` against `opp` so that `row` scores exactly `half_wins`
+/// half-wins over `n` decided matches, from slot A.
+fn scored(row: &str, opp: &str, half_wins: u32, n: u32) -> Vec<MatchRecord> {
+    assert!(half_wins <= 2 * n);
+    let wins = half_wins / 2;
+    let draws = half_wins % 2;
+    let mut v = Vec::new();
+    v.extend((0..wins).map(|_| rec(row, opp, A_WINS)));
+    v.extend((0..draws).map(|_| rec(row, opp, DRAW)));
+    v.extend((0..n - wins - draws).map(|_| rec(row, opp, B_WINS)));
+    v
+}
+
+fn primes(count: usize) -> Vec<u32> {
+    let mut out = Vec::new();
+    let mut k = 2u32;
+    while out.len() < count {
+        if (2..k).take_while(|d| d * d <= k).all(|d| !k.is_multiple_of(d)) {
+            out.push(k);
+        }
+        k += 1;
+    }
+    out
+}
+
+/// The same records under several permutations: reversed, rotated, and
+/// interleaved by a fixed stride. None of them may move a row mean by a bit.
+fn permutations(records: &[MatchRecord]) -> Vec<Vec<MatchRecord>> {
+    let mut out = vec![records.to_vec()];
+    out.push(records.iter().rev().cloned().collect());
+    let mut rotated = records.to_vec();
+    rotated.rotate_left(records.len() / 3);
+    out.push(rotated);
+    let n = records.len();
+    let stride = (1..n).rev().find(|s| (2..=*s).all(|d| !(s.is_multiple_of(d) && n.is_multiple_of(d)))).unwrap_or(1);
+    out.push((0..n).map(|k| records[(k * stride) % n].clone()).collect());
+    out
+}
+
+#[test]
+fn a_row_mean_over_many_cells_is_exact_and_order_free() {
+    // 60 opponents in 30 pairs; each pair has rates w/2p and (2p-w)/2p for a
+    // distinct prime p, so the true mean is exactly 1/2 while every partial
+    // float sum in column order wanders off it.
+    let mut records = Vec::new();
+    for (k, p) in primes(30).into_iter().enumerate() {
+        let w = (k as u32 * 13 + 5) % (2 * p);
+        records.extend(scored("s", &format!("lo{k}"), w, p));
+        records.extend(scored("s", &format!("hi{k}"), 2 * p - w, p));
+    }
+    for perm in permutations(&records) {
+        let m = WinMatrix::of(&perm);
+        let s = m.row_mean(idx(&m, "s"));
+        assert_eq!(s.cells, 60);
+        assert_eq!(s.mean, Some(0.5), "exactly one half, whatever the order");
+    }
+}
+
+#[test]
+fn a_row_mean_beyond_u128_is_still_the_nearest_float_and_order_free() {
+    // Rates 1/2p over 30 distinct primes: no denominators cancel, and the exact
+    // mean has a 161-bit denominator — past u128, past any fixed-width shortcut.
+    // Its nearest f64 is 0.03082994321422019 (computed with Python's
+    // `fractions.Fraction`); a naive float sum gives ...018 in ascending-prime
+    // order and ...0185 in descending order. Nearest, on every path.
+    const NEAREST: f64 = 0.03082994321422019;
+    let ps = primes(30);
+    let mut records = Vec::new();
+    for (k, &p) in ps.iter().enumerate() {
+        records.extend(scored("s", &format!("o{k}"), 1, p));
+    }
+    for perm in permutations(&records) {
+        let m = WinMatrix::of(&perm);
+        let s = m.row_mean(idx(&m, "s"));
+        assert_eq!(s.cells, 30);
+        assert_eq!(s.mean, Some(NEAREST));
+    }
+}
+
+#[test]
+fn row_means_are_order_free_on_a_small_table() {
+    // 3/5, 7/10, 1/5: exactly 1/2, in any opponent order.
+    let blocks = [scored("s", "o60", 6, 5), scored("s", "o70", 7, 5), scored("s", "o20", 2, 5)];
+    for order in [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]] {
+        let records: Vec<MatchRecord> = order.iter().flat_map(|&k| blocks[k].clone()).collect();
+        let m = WinMatrix::of(&records);
+        assert_eq!(m.row_mean(idx(&m, "s")).mean, Some(0.5), "order {order:?}");
+    }
+}

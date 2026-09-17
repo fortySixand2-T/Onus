@@ -1514,6 +1514,32 @@ matrix. That is the exact failure B3's critic probe names.
   slot B), a linear scan — never a caller's list, never a map. For a
   `run_batch` result that is RON order. An empty slice is the empty matrix.
 
+**Row means are exact (critic follow-up).** The first cut summed the cells'
+`f64` rates in column order. Column order is first appearance in the records
+and float addition is not associative, so the same batch in another order gave
+`0.49999999999999994` instead of `0.5` — a strength that depends on record order
+could pass or fail a `> 0.65` or "within tolerance of 0.5" gate on nothing but
+ordering. Rejected. The requirement is now: **a row mean is the `f64` nearest
+the exact rational mean of its defined off-diagonal cells** (ties to even).
+
+Implementation: `mean = (1/k) Σ h_i / (2·n_i)` is summed over the common
+denominator `k · Π 2·n_i` in a small arbitrary-precision integer and rounded
+once by bit-by-bit long division (53 bits + guard + sticky). Integer arithmetic
+is exact and commutative, so the mean is a function of the multiset of cells.
+
+A `u128` rational with a canonical-order float fallback was tried first and
+**rejected, because the fallback was reachable**. The sum stays below 2^128 for
+any timeout pattern only while `k·(2N)^k < 2^128` (`N` = largest per-cell
+`n_decided`): for a 10-strategy roster (`k = 9`) that is `2N ≲ 14,900`, about
+1,860 seeds; for a 20-strategy roster (`k = 19`) about 11 seeds. Timeouts make
+`n_decided` differ per cell, so the lcm of the denominators really does grow
+toward the product. Converting a `u128` fraction to `f64` by shifting was also
+not nearest once either term passed 2^53 — reachable with nine cells at about
+100 seeds. The test `a_row_mean_beyond_u128_is_still_the_nearest_float_and_order_free`
+(30 prime denominators, a 161-bit exact denominator) fails on that version
+(`…018`) and passes on this one (`…019`, the nearest). There is no fallback now.
+Cost is trivial: `k` terms of `k` 33-bit multiplications each.
+
 **Noted, not fixed.** `batch::production_totals` takes its column header from
 `records.first()` and silently reads every later row through it; the matrix
 deliberately does not repeat that (every record contributes its own labels).
