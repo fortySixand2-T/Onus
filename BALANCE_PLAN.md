@@ -45,15 +45,15 @@ the two sides stay independent; same (strategy, seed) replays bit-identically.
 
 ## B2 — Headless batch runner (bin)
 
-- [ ] Lift `ai_vs_ai` out of the bench into `onus::` so bench, bin, and tests share one
+- [x] Lift `ai_vs_ai` out of the bench into `onus::` so bench, bin, and tests share one
       headless-match constructor (no duplicate match-setup code).
-- [ ] `src/bin/balance.rs`: play every ordered matchup (all strategy pairs incl. mirrors)
+- [x] `src/bin/balance.rs`: play every ordered matchup (all strategy pairs incl. mirrors)
       across K seeds; each match runs headless to termination or a **tick cap**
       (`8 min * 60 Hz = 28_800`; cap → draw/timeout).
-- [ ] **Side-balanced sampling:** play each matchup in both spawn orientations (or
+- [x] **Side-balanced sampling:** play each matchup in both spawn orientations (or
       seed-randomize spawn and verify), so a left/first-mover edge can't masquerade as
       strategy strength.
-- [ ] Record per match: winner (A / B / draw), length in ticks, units produced per side.
+- [x] Record per match: winner (A / B / draw), length in ticks, units produced per side.
 
 Critic probes: a capped match records a draw, never panics; **a strategy mirrored
 against itself is ~50% across seeds** (else spawn/turn bias — a blocker, it confounds

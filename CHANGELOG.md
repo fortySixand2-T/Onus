@@ -354,3 +354,4 @@
 - [2026-09-13] Modified: tests/critic_m4a.rs — mechanical: the hand-rolled economy chain installs `Produced`, which `production` now writes
 - [2026-09-13] Created: tests/critic_b2_ac4.rs — critic probes for B2 AC4: perturbation control on the recomputed journal goldens, independent state-hash pins, digest sensitivity, production counting under simultaneity/resize/death, a conservation oracle, a real mutual loss, and B3 reachability
 - [2026-09-13] Modified: CHANGELOG.md — logged the B2 AC4 critic probes
+- [2026-09-16] Modified: BALANCE_PLAN.md — B2 acceptance criteria ticked after critic PASS on all four
