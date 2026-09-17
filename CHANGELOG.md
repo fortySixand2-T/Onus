@@ -360,3 +360,4 @@
 - [2026-09-16] Modified: src/lib.rs — registered the `metrics` module
 - [2026-09-16] Modified: src/bin/balance.rs — prints the win-rate matrix, per-cell sample and row-mean strength after the batch summary
 - [2026-09-16] Modified: FINDINGS.md — F-024: win-rate matrix outcome semantics (timeouts excluded, undecided cells undefined, diagonal = slot-A share of the mirror) and the first real matrix reading
+- [2026-09-16] Created: tests/critic_b3_ac1.rs — B3 AC1 critic probes: attribution, mirrors, uneven sampling, undefined propagation, oracle, order independence, injected fixture, all-timeout binary
