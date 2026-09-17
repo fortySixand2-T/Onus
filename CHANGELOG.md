@@ -355,3 +355,8 @@
 - [2026-09-13] Created: tests/critic_b2_ac4.rs — critic probes for B2 AC4: perturbation control on the recomputed journal goldens, independent state-hash pins, digest sensitivity, production counting under simultaneity/resize/death, a conservation oracle, a real mutual loss, and B3 reachability
 - [2026-09-13] Modified: CHANGELOG.md — logged the B2 AC4 critic probes
 - [2026-09-16] Modified: BALANCE_PLAN.md — B2 acceptance criteria ticked after critic PASS on all four
+- [2026-09-16] Created: tests/b3_matrix.rs — B3 AC1 L2 tests: hand-computed win-rate cells, slot/orientation aggregation, exact complementarity, mutual loss as a half, timeouts excluded, all-timeout cells/runs undefined, mirror diagonal as slot-A share, row means, first-appearance order, empty input, and a real batch
+- [2026-09-16] Created: src/metrics.rs — `WinMatrix` win-rate matrix over match records (integer half-wins, undecided cells undefined, diagonal = slot-A share of the mirror, row means over defined off-diagonal cells) (F-024)
+- [2026-09-16] Modified: src/lib.rs — registered the `metrics` module
+- [2026-09-16] Modified: src/bin/balance.rs — prints the win-rate matrix, per-cell sample and row-mean strength after the batch summary
+- [2026-09-16] Modified: FINDINGS.md — F-024: win-rate matrix outcome semantics (timeouts excluded, undecided cells undefined, diagonal = slot-A share of the mirror) and the first real matrix reading

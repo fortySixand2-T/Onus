@@ -1482,3 +1482,45 @@ the slots differed — the cell is even by slot). Hence the slot split comes onl
 from slot-persistent cells and the positional split only from base-persistent
 ones, each exactly `2 x |imbalance in cells|`. Both identities are asserted per
 cell. The observed deviations are printed, not asserted.
+
+## F-024 — A timeout is not half a win; an undecided cell is not 0.5 (B3 AC1)
+
+**Wall.** B3 turns match records into `W[i][j] = P(s_i beats s_j)`. A record
+ends one of three ways (F-020), and the obvious reduction — "winner gets 1,
+anything else is 0.5 each" — makes a matchup that never finishes read as a
+perfectly balanced 50%. An all-timeout batch would then produce a flawless
+matrix. That is the exact failure B3's critic probe names.
+
+**Decisions** (`metrics::WinMatrix`, a pure function of `&[MatchRecord]`):
+
+- **Decided** is a whole win for whoever played the surviving faction.
+  **MutualLoss** is a decided draw: half a win to each side. **Timeout** is
+  *undecided*: excluded from the rate and counted beside it (`n_timeout`).
+- A cell with **zero decided matches has no rate** (`None`). An unplayed cell and
+  an all-timeout cell are both unknown; `played()` tells them apart. A row with
+  no defined off-diagonal cell has no mean.
+- **Both slot orderings aggregate** into one cell, in both orientations, so the
+  slot and spawn edges B2 measured cancel. Wins are accumulated as integer
+  half-wins (win = 2, mutual loss = 1) and divided once, so for `i != j`
+  `W[i][j] + W[j][i] = 1` holds exactly in integers — asserted on synthetic data
+  and on a real batch.
+- **The diagonal is the slot-A share of the mirror.** "Does `i` beat `i`" is
+  vacuous; the claim "mirror ≈ 0.5" is really about seat bias, so that is what
+  the diagonal measures. It is excluded from row means.
+- **Row mean = mean of defined off-diagonal cell rates**, reported with its cell
+  count: one reading per opponent, not pooled matches (pooling would let the
+  most-decided opponent dominate a strategy's strength).
+- **Labels and order come from the records**, first appearance (slot A before
+  slot B), a linear scan — never a caller's list, never a map. For a
+  `run_batch` result that is RON order. An empty slice is the empty matrix.
+
+**Noted, not fixed.** `batch::production_totals` takes its column header from
+`records.first()` and silently reads every later row through it; the matrix
+deliberately does not repeat that (every record contributes its own labels).
+
+**First reading** (release, full roster, `--seeds 4`, 800 matches, 16 decided per
+off-diagonal cell, 8 per mirror, 0 timeouts). Row means: turtle 90.3%,
+synth_triad 78.5%, mass_sentinel 68.8%, synth_steel_flesh 68.1%, mass_ravager
+47.9%, mass_arclight 47.9%, mvp 41.0%, mass_ripper 36.1%, rush 21.5%,
+mass_bulwark 0.0% (loses every decided match to every opponent, rush included).
+Recorded as an observation for B3's later checkboxes and B4; nothing was tuned.

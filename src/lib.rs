@@ -24,6 +24,7 @@ pub mod batch;
 pub mod client;
 pub mod headless;
 pub mod input;
+pub mod metrics;
 pub mod net;
 pub mod replay_io;
 pub mod setup;

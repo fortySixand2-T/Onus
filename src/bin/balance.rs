@@ -27,13 +27,15 @@
 //! if it had been enforced.
 //!
 //! Progress goes to **stderr** (a hundred matches is a long silence otherwise);
-//! the summary goes to stdout. The machine-readable `balance_report.ron` is a
-//! later checkbox — nothing here writes a file.
+//! the summary goes to stdout, followed by the win-rate matrix (B3,
+//! [`onus::metrics::WinMatrix`]). The machine-readable `balance_report.ron` is
+//! a later checkbox — nothing here writes a file.
 
 use std::process::ExitCode;
 
 use onus::batch::{self, BatchSettings, MatchRecord, MatchResult, Tally};
 use onus::headless::{self, Orientation, SIM_HZ};
+use onus::metrics::WinMatrix;
 
 fn usage() -> &'static str {
     "usage: balance [--seeds K] [--seed-base N] [--tick-cap T] [--minutes M] [--only a,b,c] [--help]\n\
@@ -125,6 +127,55 @@ fn rate(label: &str, r: Option<f32>) -> String {
 fn mmss(ticks: u32) -> String {
     let secs = ticks / SIM_HZ;
     format!("{}:{:02}", secs / 60, secs % 60)
+}
+
+/// The win-rate matrix, as a human reads it: `W[row][col]` in percent, then
+/// the per-cell sample (decided/timeouts), then each row's mean strength over
+/// its defined off-diagonal cells. An undefined cell prints `--`, never 50.
+/// The diagonal is the slot-A share of the mirror, not "beats itself".
+fn print_matrix(m: &WinMatrix) {
+    if m.is_empty() {
+        return;
+    }
+    let w = m.ids().iter().map(|s| s.len()).max().unwrap_or(0).max(6);
+    let header = |title: &str| {
+        let cols: String = (0..m.len()).map(|j| format!(" {:>7}", format!("[{j}]"))).collect();
+        println!("{title:<w$} {cols}", w = w + 4);
+    };
+    println!(
+        "win rate     W[row][col] %, decided only; diagonal = slot-A share of the mirror; -- = nothing decided"
+    );
+    header("");
+    for (i, id) in m.ids().iter().enumerate() {
+        let cells: String = (0..m.len())
+            .map(|j| match m.rate(i, j) {
+                Some(r) => format!(" {:>7.1}", 100.0 * r),
+                None => format!(" {:>7}", "--"),
+            })
+            .collect();
+        println!("[{i}] {id:<w$} {cells}");
+    }
+    println!("sample       decided/timeouts per cell");
+    header("");
+    for (i, id) in m.ids().iter().enumerate() {
+        let cells: String = (0..m.len())
+            .map(|j| {
+                let c = m.cell(i, j).copied().unwrap_or_default();
+                format!(" {:>7}", format!("{}/{}", c.n_decided, c.n_timeout))
+            })
+            .collect();
+        println!("[{i}] {id:<w$} {cells}");
+    }
+    println!("strength     row mean over defined off-diagonal cells");
+    for (id, r) in m.row_means() {
+        match r.mean {
+            Some(mean) => println!("  {id:<w$} {:>5.1}% over {} cells", 100.0 * mean, r.cells),
+            None => println!("  {id:<w$}    -- (no decided matchup)"),
+        }
+    }
+    if m.defined_cells() == 0 {
+        println!("WARNING: no cell of the matrix is defined — nothing was decided.");
+    }
 }
 
 fn main() -> ExitCode {
@@ -285,6 +336,7 @@ fn main() -> ExitCode {
             println!("  {id:<10} {n}{share}");
         }
     }
+    print_matrix(&WinMatrix::of(&records));
     if t.total > 0 && t.timeouts == t.total {
         println!(
             "WARNING: every match hit the cap. This batch measures nothing about \
