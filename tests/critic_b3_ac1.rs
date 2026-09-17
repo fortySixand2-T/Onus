@@ -331,6 +331,89 @@ fn random_records(seed: u64, count: usize, ids: &[&str]) -> Vec<MatchRecord> {
         .collect()
 }
 
+fn gcd(mut a: u128, mut b: u128) -> u128 {
+    while b != 0 {
+        (a, b) = (b, a % b);
+    }
+    a
+}
+
+/// The exact mean of fractions `num/den`, reduced, as `(p, q)`; `None` if empty.
+/// Checked arithmetic: an overflow is a panic in the oracle, never a wrap.
+fn exact_mean(fracs: &[(u128, u128)]) -> Option<(u128, u128)> {
+    if fracs.is_empty() {
+        return None;
+    }
+    let (mut p, mut q) = (0u128, 1u128);
+    for &(n, d) in fracs {
+        let np = p.checked_mul(d).and_then(|x| x.checked_add(n.checked_mul(q)?)).expect("u128 sum");
+        let nq = q.checked_mul(d).expect("u128 denominator");
+        let g = gcd(np, nq).max(1);
+        (p, q) = (np / g, nq / g);
+    }
+    let nq = q.checked_mul(fracs.len() as u128).expect("u128 denominator");
+    let g = gcd(p, nq).max(1);
+    Some((p / g, nq / g))
+}
+
+/// The f64 nearest `p / q` for `0 <= p <= q`, round-half-to-even, by binary long
+/// division in integers (so the remainder `r < q` doubles without overflow as
+/// long as `q < 2^127`).
+fn nearest_f64(p: u128, q: u128) -> f64 {
+    assert!(q > 0 && p <= q && q < (1u128 << 126));
+    if p == 0 {
+        return 0.0;
+    }
+    if p == q {
+        return 1.0;
+    }
+    let (mut r, mut m, mut bits, mut k) = (p, 0u64, 0u32, 0u32);
+    while bits < 53 {
+        r *= 2;
+        k += 1;
+        let bit = r >= q;
+        if bit {
+            r -= q;
+        }
+        if m > 0 || bit {
+            m = m * 2 + bit as u64;
+            bits += 1;
+        }
+    }
+    // Guard bit and sticky remainder.
+    r *= 2;
+    let guard = r >= q;
+    if guard {
+        r -= q;
+    }
+    if guard && (r != 0 || m & 1 == 1) {
+        m += 1; // may reach 2^53, still exactly representable
+    }
+    let mut v = m as f64;
+    for _ in 0..k {
+        v *= 0.5; // exact: no subnormals at these magnitudes
+    }
+    v
+}
+
+#[test]
+fn the_nearest_float_helper_is_itself_correct() {
+    assert_eq!(nearest_f64(1, 2), 0.5);
+    assert_eq!(nearest_f64(1, 3), 1.0 / 3.0);
+    assert_eq!(nearest_f64(2, 3), 2.0 / 3.0);
+    assert_eq!(nearest_f64(1, 10), 0.1);
+    assert_eq!(nearest_f64(7, 10), 0.7);
+    assert_eq!(nearest_f64(61, 112), 61.0 / 112.0);
+    for q in 1..300u128 {
+        for p in 0..=q {
+            // For p, q < 2^53 the IEEE division is itself correctly rounded.
+            assert_eq!(nearest_f64(p, q), p as f64 / q as f64, "{p}/{q}");
+        }
+    }
+    assert_eq!(exact_mean(&[(3, 5), (7, 10), (1, 5)]), Some((1, 2)));
+    assert_eq!(exact_mean(&[]), None);
+}
+
 /// Brute force: for each (row, col) scan every record, written independently
 /// of the implementation (strategy-centric, rational arithmetic).
 fn oracle(recs: &[MatchRecord], row: &str, col: &str) -> (u32, u32, u32) {
@@ -414,14 +497,16 @@ fn matrix_matches_a_brute_force_oracle_on_random_records() {
                     assert_eq!(other.n_decided, got.n_decided);
                     assert_eq!(other.n_timeout, got.n_timeout);
                     assert_eq!(other.half_wins + got.half_wins, 2 * got.n_decided);
-                    if let Some(v) = want {
-                        means.push(v);
+                    if d > 0 {
+                        // Exact rate, as integers: w2 / (2 d).
+                        means.push((w2 as u128, 2 * d as u128));
                     }
                 }
             }
             let rm = m.row_mean(m.index(row).unwrap());
             assert_eq!(rm.cells, means.len());
-            let want_mean = (!means.is_empty()).then(|| means.iter().sum::<f64>() / means.len() as f64);
+            // The f64 nearest the exact rational mean — no float sum anywhere.
+            let want_mean = exact_mean(&means).map(|(p, q)| nearest_f64(p, q));
             assert_eq!(rm.mean, want_mean, "seed {seed} row {row}");
         }
     }
@@ -580,4 +665,34 @@ fn a_row_mean_does_not_depend_on_record_order() {
         s1.mean, s2.mean,
         "the same records in another order give a different strength for `s`"
     );
+}
+
+/// The fixed requirement: a row mean is the `f64` nearest the exact rational
+/// mean of its defined off-diagonal cells. Rates 3/5, 7/10, 1/5 (exact mean
+/// 1/2) summed as floats in column order o60, o70, o20 give
+/// 0.49999999999999994; the nearest float to 1/2 is 0.5, in every order.
+/// Likewise 1/12, 1/2, 11/12 (half-wins 1/12, 6/12, 11/12 over 6 matches).
+#[test]
+fn a_row_mean_is_the_nearest_float_to_the_exact_rational_mean() {
+    let block = |opp: &str, wins: usize, draws: usize, losses: usize| -> Vec<MatchRecord> {
+        let mut v = vec![];
+        v.extend((0..wins).map(|_| n("s", opp, A_WINS)));
+        v.extend((0..draws).map(|_| n("s", opp, DRAW)));
+        v.extend((0..losses).map(|_| n("s", opp, B_WINS)));
+        v
+    };
+    let fixtures: [Vec<Vec<MatchRecord>>; 2] = [
+        vec![block("o60", 3, 0, 2), block("o70", 3, 1, 1), block("o20", 1, 0, 4)],
+        vec![block("h06", 3, 0, 3), block("h11", 5, 1, 0), block("h01", 0, 1, 5)],
+    ];
+    for blocks in fixtures {
+        // Every column order of the three opponents.
+        for perm in [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]] {
+            let recs: Vec<MatchRecord> = perm.iter().flat_map(|&k| blocks[k].clone()).collect();
+            let m = WinMatrix::of(&recs);
+            let rm = m.row_mean(m.index("s").unwrap());
+            assert_eq!(rm.cells, 3);
+            assert_eq!(rm.mean, Some(0.5), "order {perm:?}");
+        }
+    }
 }
