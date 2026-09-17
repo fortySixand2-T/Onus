@@ -696,3 +696,226 @@ fn a_row_mean_is_the_nearest_float_to_the_exact_rational_mean() {
         }
     }
 }
+
+// ============================================================================================
+// Re-review of the exact row mean (arbitrary-precision sum + nearest rounding).
+// `Big`/`nearest` are private, so every probe below reaches them through
+// `WinMatrix::row_mean`, against oracles that do not share their method:
+// the u128 long-division helper above (inside u128), and exact values computed
+// offline with Python's `fractions.Fraction` (whose `float()` is correctly
+// rounded) for sums past u128.
+// ============================================================================================
+
+/// Records giving `row` exactly `h` half-wins over `n` decided matches against
+/// `opp`. `flip` seats `row` in slot B instead of A, so both slot paths feed
+/// the cells the mean is built from.
+fn scored_cell(row: &str, opp: &str, h: u32, n: u32, flip: bool) -> Vec<MatchRecord> {
+    assert!(h <= 2 * n);
+    let (wins, draws) = (h / 2, h % 2);
+    let losses = n - wins - draws;
+    let (win, loss) = if flip { (B_WINS, A_WINS) } else { (A_WINS, B_WINS) };
+    let seat = |res| if flip { n_rec(opp, row, res) } else { n_rec(row, opp, res) };
+    let mut v = Vec::with_capacity(n as usize);
+    v.extend((0..wins).map(|_| seat(win)));
+    v.extend((0..draws).map(|_| seat(DRAW)));
+    v.extend((0..losses).map(|_| seat(loss)));
+    v
+}
+
+fn n_rec(a: &str, b: &str, res: MatchResult) -> MatchRecord {
+    n(a, b, res)
+}
+
+fn row_records(cells: &[(u32, u32)]) -> Vec<MatchRecord> {
+    cells
+        .iter()
+        .enumerate()
+        .flat_map(|(k, &(h, n))| scored_cell("s", &format!("o{k}"), h, n, k % 3 == 1))
+        .collect()
+}
+
+fn s_mean(recs: &[MatchRecord]) -> onus::metrics::RowMean {
+    let m = WinMatrix::of(recs);
+    m.row_mean(m.index("s").expect("s is a row"))
+}
+
+fn shuffle(recs: &mut [MatchRecord], g: &mut Lcg) {
+    for k in (1..recs.len()).rev() {
+        let j = g.below(k as u64 + 1) as usize;
+        recs.swap(k, j);
+    }
+}
+
+/// `(tag, expected f64 bits, cells as (half_wins, n_decided))`. Expected values
+/// are `float(sum(Fraction(h, 2n)) / k)`. The unreduced common denominator
+/// `k * prod(2n)` is 153-273 bits; the reduced one 78-196 bits. Tags: `random`;
+/// `low`/`high` (means near 0 / near 1); `mid` (exact value within 0.002 ulp of
+/// the midpoint between two floats: the guard/sticky decision); `exact` (within
+/// 0.002 ulp above a float); `next` (within 0.002 ulp below the next float).
+type Fixture = (&'static str, u64, &'static [(u32, u32)]);
+const BEYOND_U128: &[Fixture] = &[
+    ("random", 0x3FE200554A2B2A76, &[(349, 193), (325, 541), (222, 809), (1033, 528), (780, 397), (896, 754), (1173, 827), (1025, 767), (1254, 725), (497, 697), (177, 404), (550, 596), (1307, 703), (843, 614), (853, 802), (829, 693), (496, 280), (93, 197), (1222, 637), (696, 457), (981, 692), (31, 344), (24, 227), (50, 523), (488, 482), (416, 415)]),
+    ("random", 0x3FE204A985D9D68C, &[(228, 200), (1202, 696), (719, 460), (119, 275), (384, 204), (1273, 740), (287, 370), (1011, 745), (18, 282), (193, 720), (174, 227), (686, 377), (170, 270), (339, 641), (29, 158), (772, 512), (756, 544), (916, 707), (404, 597), (787, 599), (471, 303), (845, 635), (285, 333), (360, 248), (639, 333)]),
+    ("random", 0x3FE204688A4D661E, &[(497, 267), (271, 353), (336, 353), (1356, 786), (1510, 889), (109, 332), (404, 269), (276, 738), (462, 437), (263, 208), (670, 466), (812, 837), (1062, 644), (170, 629), (573, 552), (988, 881)]),
+    ("random", 0x3FDA8B0506974A24, &[(261, 152), (178, 900), (49, 322), (1543, 894), (551, 510), (308, 601), (243, 398), (31, 639), (235, 282), (49, 249), (107, 286), (315, 677), (66, 566), (800, 496), (387, 230), (652, 445), (294, 519), (9, 459), (99, 256), (1284, 789), (945, 832), (976, 560), (546, 787), (246, 151), (202, 396), (452, 596), (420, 787)]),
+    ("random", 0x3FDE613359719675, &[(239, 172), (751, 738), (278, 576), (185, 216), (418, 278), (252, 651), (696, 425), (414, 391), (181, 832), (166, 221), (773, 639), (1132, 784), (83, 541), (99, 162), (235, 760), (202, 589), (1329, 670), (1099, 766), (661, 618), (321, 662), (862, 877), (579, 531), (308, 172), (288, 690), (265, 261), (987, 666), (424, 833)]),
+    ("random", 0x3FDEB029C2072C38, &[(381, 428), (763, 899), (191, 855), (166, 577), (51, 154), (328, 616), (318, 371), (1304, 801), (432, 485), (748, 632), (243, 174), (85, 257), (271, 245), (1266, 758), (1243, 846), (856, 497), (1099, 649), (90, 532), (498, 556), (326, 179), (992, 767), (77, 383), (930, 644), (514, 615), (59, 613), (195, 457), (328, 199)]),
+    ("random", 0x3FE0F6460F81F53F, &[(492, 498), (233, 173), (344, 335), (557, 302), (264, 245), (574, 287), (241, 466), (248, 651), (24, 491), (266, 226), (12, 378), (698, 466), (741, 398), (389, 596), (154, 323), (937, 512), (1043, 547), (1010, 705), (61, 820), (818, 794)]),
+    ("random", 0x3FDED3D86C605A27, &[(188, 840), (382, 248), (78, 667), (878, 578), (570, 405), (1212, 706), (114, 527), (336, 551), (268, 321), (627, 609), (464, 789), (292, 244), (497, 822), (208, 857), (617, 374), (495, 564), (689, 486), (562, 893), (849, 451)]),
+    ("low", 0x3F8A99137917A463, &[(5, 627), (7, 411), (7, 340), (11, 566), (10, 394), (8, 223), (0, 418), (28, 622), (3, 255), (13, 276), (7, 265), (19, 386), (15, 323), (15, 335), (11, 514), (12, 461), (12, 671), (8, 230), (33, 727), (3, 877), (1, 593), (22, 635), (16, 509), (6, 619)]),
+    ("high", 0x3FEFA349AD135394, &[(628, 317), (1629, 833), (972, 491), (1444, 740), (686, 344), (1094, 555), (933, 478), (655, 330), (978, 493), (507, 259), (488, 246), (721, 363), (705, 355), (1473, 746), (1320, 665), (1492, 753), (1609, 806), (712, 358), (429, 218), (1289, 656), (1660, 833), (1017, 521), (1612, 807), (1406, 707)]),
+    ("mid", 0x3FE31793C8B5CE36, &[(294, 424), (949, 488), (380, 251), (454, 270), (224, 446), (194, 157), (324, 492), (305, 260), (139, 110), (432, 240), (155, 266), (922, 500), (218, 200), (359, 339), (123, 118), (771, 396), (19, 105), (595, 470)]),
+    ("mid", 0x3FD87494BA7E25B3, &[(14, 475), (345, 384), (148, 479), (271, 230), (167, 286), (575, 452), (341, 346), (148, 366), (270, 599), (364, 582), (169, 156), (700, 376), (10, 110), (334, 434), (85, 147), (232, 417), (804, 548), (452, 575), (184, 312)]),
+    ("mid", 0x3FE1F7427D1988BB, &[(224, 382), (710, 410), (327, 209), (278, 469), (369, 285), (186, 265), (637, 584), (291, 326), (186, 227), (373, 273), (133, 228), (198, 127), (908, 491), (265, 306), (205, 171), (255, 180), (834, 594), (348, 502)]),
+    ("exact", 0x3FE1CCDFD7491BB3, &[(807, 406), (203, 438), (478, 243), (424, 591), (733, 495), (455, 249), (238, 127), (331, 291), (16, 480), (241, 360), (50, 333), (740, 378), (120, 551), (82, 296), (441, 484), (281, 264), (791, 554), (255, 137)]),
+    ("exact", 0x3FDF27A171BD159E, &[(454, 295), (319, 355), (22, 164), (773, 456), (95, 474), (138, 353), (107, 291), (98, 228), (109, 123), (687, 399), (627, 346), (306, 251), (283, 287), (584, 388), (772, 450), (31, 410)]),
+    ("exact", 0x3FDE1E42711C9DB5, &[(204, 218), (140, 502), (581, 379), (336, 360), (283, 296), (479, 381), (506, 267), (305, 388), (468, 558), (360, 296), (84, 121), (37, 249), (345, 298), (448, 485), (68, 237), (831, 503), (164, 317), (173, 104), (310, 533), (123, 197), (368, 416)]),
+    ("next", 0x3FE21B62894A782A, &[(706, 529), (347, 421), (203, 254), (489, 544), (873, 467), (2, 326), (782, 421), (524, 505), (108, 572), (223, 196), (921, 554), (94, 130), (272, 450), (305, 255), (160, 168), (277, 220), (700, 465), (617, 501), (449, 262), (956, 522)]),
+    ("next", 0x3FE2A9742C613EC8, &[(302, 303), (382, 196), (324, 237), (484, 438), (12, 104), (294, 454), (999, 510), (526, 474), (159, 124), (244, 138), (480, 499), (97, 139), (347, 225), (363, 225), (38, 196), (200, 136), (318, 289), (427, 383)]),
+    ("next", 0x3FD9B43A3F75B6EE, &[(331, 507), (103, 168), (209, 475), (667, 554), (658, 366), (293, 164), (229, 195), (49, 254), (394, 310), (31, 163), (271, 464), (120, 532), (691, 447), (356, 299), (15, 102), (795, 468), (11, 265), (46, 573), (400, 432), (17, 108), (442, 466)]),
+];
+
+#[test]
+fn row_mean_beyond_u128_matches_offline_exact_values() {
+    let mut g = Lcg(0xB16);
+    for (tag, want_bits, cells) in BEYOND_U128 {
+        let want = f64::from_bits(*want_bits);
+        let mut recs = row_records(cells);
+        let rm = s_mean(&recs);
+        assert_eq!(rm.cells, cells.len(), "{tag}");
+        assert_eq!(rm.mean.map(f64::to_bits), Some(*want_bits), "{tag}: got {:?}, want {want:?}", rm.mean);
+        // Order independence at this size: bit-identical under shuffles.
+        for _ in 0..2 {
+            shuffle(&mut recs, &mut g);
+            assert_eq!(s_mean(&recs).mean.map(f64::to_bits), Some(*want_bits), "{tag} shuffled");
+        }
+    }
+}
+
+#[test]
+fn row_mean_inside_u128_matches_the_long_division_oracle() {
+    let mut g = Lcg(0xD1FF);
+    for round in 0..300 {
+        let k = 1 + g.below(7) as usize;
+        let cells: Vec<(u32, u32)> = (0..k)
+            .map(|_| {
+                let n = 1 + g.below(if round % 2 == 0 { 40 } else { 2500 }) as u32;
+                let h = match g.below(6) {
+                    0 => 0,
+                    1 => 2 * n,
+                    2 => n,
+                    _ => g.below(2 * n as u64 + 1) as u32,
+                };
+                (h, n)
+            })
+            .collect();
+        let fracs: Vec<(u128, u128)> = cells.iter().map(|&(h, n)| (h as u128, 2 * n as u128)).collect();
+        let (p, q) = exact_mean(&fracs).unwrap();
+        let want = nearest_f64(p, q);
+        let rm = s_mean(&row_records(&cells));
+        assert_eq!(rm.mean.map(f64::to_bits), Some(want.to_bits()), "round {round} cells {cells:?}");
+    }
+}
+
+/// Denominators built from powers of two land exactly on limb boundaries
+/// (`k * prod(2n)` = 2^32, 2^64, 2^96 times small factors), and `n = 2^15 - 1`
+/// / `2^16 - 1` put all-ones limbs through the carries.
+#[test]
+fn row_mean_at_limb_boundaries_matches_the_oracle() {
+    let fixtures: &[&[(u32, u32)]] = &[
+        &[(1, 32768), (65535, 32768)],
+        &[(1, 32768), (3, 32768), (65535, 32768)],
+        &[(1, 32768), (3, 32768), (5, 32768), (65535, 32768)],
+        &[(1, 32767), (32767, 32767), (65533, 32767), (2, 32767)],
+        &[(1, 65535), (131069, 65535), (7, 32768)],
+        &[(0, 32768), (0, 32767), (0, 65535)],
+        &[(65536, 32768), (65534, 32767), (131070, 65535)],
+        &[(1, 1), (1, 32768), (65533, 32767), (1, 65535)],
+    ];
+    for cells in fixtures {
+        let fracs: Vec<(u128, u128)> = cells.iter().map(|&(h, n)| (h as u128, 2 * n as u128)).collect();
+        let (p, q) = exact_mean(&fracs).unwrap();
+        let want = nearest_f64(p, q);
+        let rm = s_mean(&row_records(cells));
+        assert_eq!(rm.mean.map(f64::to_bits), Some(want.to_bits()), "cells {cells:?}");
+    }
+}
+
+#[test]
+fn exact_zero_one_and_half_over_many_coprime_cells() {
+    let ns: Vec<u32> = (0..40).map(|k| 101 + 2 * k).collect(); // odd, many coprime
+    let zero: Vec<(u32, u32)> = ns.iter().map(|&n| (0, n)).collect();
+    assert_eq!(s_mean(&row_records(&zero)).mean.map(f64::to_bits), Some(0.0f64.to_bits()));
+    let one: Vec<(u32, u32)> = ns.iter().map(|&n| (2 * n, n)).collect();
+    assert_eq!(s_mean(&row_records(&one)).mean, Some(1.0));
+    let half: Vec<(u32, u32)> = ns.iter().map(|&n| (n, n)).collect();
+    assert_eq!(s_mean(&row_records(&half)).mean, Some(0.5));
+    // Complementary pairs around 1/2 over coprime n: exactly 1/2.
+    let mut pairs = vec![];
+    for (k, &n) in ns.iter().enumerate() {
+        let h = (k as u32 * 37 + 1) % (2 * n);
+        pairs.push((h, n));
+        pairs.push((2 * n - h, n));
+    }
+    assert_eq!(s_mean(&row_records(&pairs)).mean, Some(0.5));
+    // One win in one cell, everything else lost: the smallest positive mean
+    // here is exactly 1 / (2 * 101 * 40), strictly positive, never rounded to 0.
+    let mut tiny = zero.clone();
+    tiny[0] = (1, ns[0]);
+    assert_eq!(s_mean(&row_records(&tiny)).mean, Some(nearest_f64(1, 2 * 101 * 40)));
+}
+
+/// `run_batch`-shaped input at scale: every ordered pair of a roster, both
+/// orientations, uneven decided counts and timeouts per cell. Nothing panics,
+/// every row mean matches the oracle where the oracle fits, and `row_means()`
+/// is cheap.
+#[test]
+fn row_means_on_large_rosters_do_not_panic_and_are_cheap() {
+    for (roster, per) in [(10usize, 400u64), (40, 12)] {
+        let ids: Vec<String> = (0..roster).map(|i| format!("st{i}")).collect();
+        let mut g = Lcg(roster as u64 * 7919);
+        let mut recs = vec![];
+        for a in &ids {
+            for b in &ids {
+                let count = per / 2 + g.below(per);
+                for _ in 0..count {
+                    let res = match g.below(9) {
+                        0..=3 => A_WINS,
+                        4..=6 => B_WINS,
+                        7 => DRAW,
+                        _ => CAPPED,
+                    };
+                    let o = if g.below(2) == 0 { Orientation::Normal } else { Orientation::Swapped };
+                    recs.push(r(a, b, res, o));
+                }
+            }
+        }
+        let m = WinMatrix::of(&recs);
+        let t = std::time::Instant::now();
+        let means = m.row_means();
+        let elapsed = t.elapsed();
+        eprintln!("roster {roster}: {} records, row_means() in {elapsed:?}", recs.len());
+        assert!(elapsed < std::time::Duration::from_secs(2), "row_means took {elapsed:?}");
+        assert_eq!(means.len(), roster);
+        if roster == 10 {
+            let mut checked = 0;
+            for (i, (_, rm)) in means.iter().enumerate() {
+                let fracs: Vec<(u128, u128)> = (0..roster)
+                    .filter(|&j| j != i)
+                    .filter_map(|j| m.cell(i, j))
+                    .filter(|c| c.n_decided > 0)
+                    .map(|c| (c.half_wins as u128, 2 * c.n_decided as u128))
+                    .collect();
+                // Nine cells of ~11-bit denominators: past u128 unreduced, but the
+                // oracle reduces after every step; skip only if it cannot fit.
+                let want = std::panic::catch_unwind(|| exact_mean(&fracs).map(|(p, q)| nearest_f64(p, q)));
+                if let Ok(want) = want {
+                    assert_eq!(rm.mean, want, "row {i}");
+                    checked += 1;
+                }
+            }
+            eprintln!("roster 10: {checked} of {roster} rows checked against the u128 oracle");
+            assert!(checked > 0);
+        }
+    }
+}
