@@ -60,6 +60,27 @@ against itself is ~50% across seeds** (else spawn/turn bias — a blocker, it co
 every other number); re-running the whole batch yields an identical report (determinism
 via `state_hash`).
 
+## B3.5 — Tempo first (resequenced 2026-09-18)
+
+**Inserted ahead of B3's remaining ACs, by decision.** B3 AC1 (matrix) and AC2 (pentagon)
+are built and critic-PASSED, but they were measured on a batch whose **decided-match median
+is ~1:16 against the brief's 5–8 min target**. A pentagon computed on opening-length games
+is a statement about openings, so F-025's broken `bulwark > ravager` link — and every row
+mean — is provisional until the arc is right.
+
+- [ ] **Tune only RON** (`units.ron` HQ HP / costs / `mvp_combat` scaling, `resources.ron`
+      economy, `strategies.ron` tempo — **never Rust**) to bring the decided-match median
+      into 5–8 min with few timeouts. Ledger the levers tried, the one kept, and the
+      before/after length distribution.
+- [ ] **Re-run the batch and re-check the pentagon at the new length.** Report whether the
+      F-025 broken link persists or was a short-game artifact.
+
+Because content is data, a RON change moves every pinned per-tick `state_hash` golden. With
+**no Rust touched**, any golden that moves is content-driven by construction — that is the
+argument that licenses recomputing them, and it must be demonstrated, not asserted.
+
+Then B3's remaining ACs are computed on valid-length matches.
+
 ## B3 — Metrics, report, kill-criteria gate
 
 - [x] **Win-rate matrix** `W[i][j] = P(s_i beats s_j)`; row means = overall strength;
@@ -73,7 +94,15 @@ via `state_hash`).
 - [ ] Match-length distribution (median, % hitting the cap) vs the 5–8 min target.
 - [ ] **Kill-criteria PASS/FAIL** (from DESIGN_BRIEF): no strategy/unit win-rate >65%
       regardless of counter; mirrors within tolerance of 50%; matches terminate in target.
+      **The mirror ~50% assertion lives here** (BALANCE_PLAN lists it under B2's probes, but
+      B2 only made the sampling side-balanced; nothing asserts the rate). Size the seed count
+      from a stated power calculation — enough to detect a few-percent seat bias, not to
+      rubber-stamp one.
 - [ ] Emit a stdout table + a machine-readable `balance_report.ron` (gitignored artifact).
+- [ ] **Harden `batch::production_totals`** (B3 is its consumer): derive the column schema
+      from the union of record keys, or refuse an unlabelled record — today it takes its
+      header from `records.first()` and silently drops every later row's production if that
+      row is unlabelled.
 
 Critic probes: an injected imbalance (a deliberately broken multiplier fixture) makes the
 gate FAIL; a strictly-dominant or strictly-losing strategy is surfaced by name; an
