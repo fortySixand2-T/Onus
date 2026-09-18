@@ -36,6 +36,7 @@ use std::process::ExitCode;
 use onus::batch::{self, BatchSettings, MatchRecord, MatchResult, Tally};
 use onus::headless::{self, Orientation, SIM_HZ};
 use onus::metrics::WinMatrix;
+use onus::pentagon::PentagonReport;
 
 fn usage() -> &'static str {
     "usage: balance [--seeds K] [--seed-base N] [--tick-cap T] [--minutes M] [--only a,b,c] [--help]\n\
@@ -175,6 +176,27 @@ fn print_matrix(m: &WinMatrix) {
     }
     if m.defined_cells() == 0 {
         println!("WARNING: no cell of the matrix is defined — nothing was decided.");
+    }
+}
+
+/// The pentagon assertion (B3): for each predicted counter in the content's
+/// `nemesis` cycle, did the strategy massing the predator actually beat the
+/// strategy massing the prey? The cycle is derived from `units.ron`, never
+/// from Rust, so editing the data moves this table with it.
+///
+/// Malformed content is printed, not fatal: the batch's other numbers are
+/// still worth reading.
+fn print_pentagon(content: &onus::sim::content::Content, m: &WinMatrix) {
+    println!("pentagon     predicted counter vs its prey, from units.ron nemesis links");
+    match PentagonReport::of(content, m) {
+        Ok(report) => {
+            println!("{report}");
+            let gaps = report.missing_strategies();
+            if !gaps.is_empty() {
+                println!("  (no mass strategy for {gaps:?} — those links are unmeasured)");
+            }
+        }
+        Err(e) => println!("  no cycle to assert: {e}"),
     }
 }
 
@@ -336,7 +358,9 @@ fn main() -> ExitCode {
             println!("  {id:<10} {n}{share}");
         }
     }
-    print_matrix(&WinMatrix::of(&records));
+    let matrix = WinMatrix::of(&records);
+    print_matrix(&matrix);
+    print_pentagon(&content, &matrix);
     if t.total > 0 && t.timeouts == t.total {
         println!(
             "WARNING: every match hit the cap. This batch measures nothing about \

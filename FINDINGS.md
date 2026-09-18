@@ -1550,3 +1550,47 @@ synth_triad 78.5%, mass_sentinel 68.8%, synth_steel_flesh 68.1%, mass_ravager
 47.9%, mass_arclight 47.9%, mvp 41.0%, mass_ripper 36.1%, rush 21.5%,
 mass_bulwark 0.0% (loses every decided match to every opponent, rush included).
 Recorded as an observation for B3's later checkboxes and B4; nothing was tuned.
+
+## F-025 — The pentagon is derived from `units.ron`, and one link is broken (B3 AC2)
+
+**The cycle is content, not Rust.** `onus::pentagon::nemesis_cycle` walks each
+unit's `nemesis` link and returns the closed cycle, starting at the first
+nemesis-bearing unit in RON order (today `bulwark`). Nothing in the crate
+states `Sentinel > Ripper > Arclight > Bulwark > Ravager > Sentinel`; the only
+copy of that sentence outside DESIGN_BRIEF is in `tests/b3_pentagon.rs`, where
+the library cannot read it. A pentagon hardcoded in Rust would keep passing
+after someone edited the RON — the one failure mode that would make this whole
+assertion worthless. The same rule applies to the unit → strategy mapping:
+`mass_strategy` finds the strategy whose **army build order** names one unit
+and nothing else, never the strategy whose *name* contains the unit's, so a
+`mass_bulwark` that quietly built rippers would not be mistaken for the probe.
+
+A malformed roster is reported, not panicked on: an open chain, a self-nemesis,
+an unknown prey, a lasso, and a cycle that closes while leaving other
+nemesis-bearing units out are five distinct `CycleError`s.
+
+**Four verdicts, not a bool.** `Holds` is *strictly* above 0.5 (a dead-even
+matchup is not a counter); `Fails` is a defined rate at or below 0.5;
+`Undefined` is no decided match (an all-timeout link is undefined, never 0.5 —
+F-024's rule, carried through); `NoStrategy` is a gap in the probe set, which
+is a fact about the instrument, not a reading about the game.
+
+**The measurement** (release, the five mass probes, `--seeds 4`, 100 matches,
+16 decided per link, 0 timeouts). Four of five predicted counters hold:
+
+| link | rate | verdict |
+|------|-----:|---------|
+| bulwark > ravager  |   0.0% | **FAILS** |
+| ravager > sentinel |  93.8% | holds |
+| sentinel > ripper  | 100.0% | holds |
+| ripper > arclight  |  75.0% | holds |
+| arclight > bulwark | 100.0% | holds |
+
+`mass_bulwark` does not win a single decided match against `mass_ravager` — nor
+against anyone else (row mean 0.0%, matching the full-roster reading in F-024).
+The Bulwark is not merely failing its counter; it is the weakest unit in the
+game, and its +30% nemesis bonus vs the Ravager is nowhere near enough to
+overcome that. That is the sim doing its job. **Nothing was tuned here**: this
+AC reports, it does not gate and it does not fix. The candidate levers (Bulwark
+cost 110 vs Ravager 90, its 2 Speed, the `nemesis_bonus.damage_mult`) are B4's,
+in RON only.

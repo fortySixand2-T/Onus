@@ -367,3 +367,8 @@
 - [2026-09-16] Modified: FINDINGS.md — F-024: exact row means, why column-order float sums and the u128 fallback were rejected, and the fallback's reachability bound
 - [2026-09-16] Modified: tests/critic_b3_ac1.rs — re-review probes for the exact row mean: offline-exact fixtures past u128 (incl. near-midpoint and near-float), u128 long-division differential, limb-boundary denominators, exact 0/1/half, large-roster panic and cost check
 - [2026-09-17] Modified: BALANCE_PLAN.md — B3 win-rate matrix criterion ticked after critic PASS
+- [2026-09-17] Created: src/pentagon.rs — B3 AC2: the pentagon assertion — cycle derived from units.ron nemesis links, unit→strategy by build order, per-link hold/fail/undefined/no-probe verdicts
+- [2026-09-17] Created: tests/b3_pentagon.rs — L2 tests: cycle follows the data, malformed cycles reported, strict >0.5 holds, direction, strategy gaps, and the real five-probe batch
+- [2026-09-17] Modified: src/lib.rs — register the `pentagon` module
+- [2026-09-17] Modified: src/bin/balance.rs — print the pentagon report under the win-rate matrix
+- [2026-09-17] Modified: FINDINGS.md — F-025: the pentagon is derived from content; the Bulwark > Ravager link fails at 0.0%

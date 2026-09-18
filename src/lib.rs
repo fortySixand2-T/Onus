@@ -26,6 +26,7 @@ pub mod headless;
 pub mod input;
 pub mod metrics;
 pub mod net;
+pub mod pentagon;
 pub mod replay_io;
 pub mod setup;
 pub mod sim;
