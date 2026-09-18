@@ -374,3 +374,4 @@
 - [2026-09-17] Modified: FINDINGS.md — F-025: the pentagon is derived from content; the Bulwark > Ravager link fails at 0.0%
 - [2026-09-17] Created: tests/critic_b3_ac2.rs — B3 AC2 critic probes: arbitrary derived cycle, unit-reorder invariance, predator direction and of_records agreement, exact-half/hair-above-half/decided-draw verdicts, all-undefined and all-NoStrategy never balanced, distinct malformed-cycle errors, build-order mapping (counts, mixed, empty, duplicate, out-of-cycle), and a crippled probe played for real
 - [2026-09-17] Modified: CHANGELOG.md — logged the B3 AC2 critic probe file
+- [2026-09-18] Modified: BALANCE_PLAN.md — B3 pentagon assertion criterion ticked after critic PASS

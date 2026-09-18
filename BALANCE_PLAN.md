@@ -64,7 +64,7 @@ via `state_hash`).
 
 - [x] **Win-rate matrix** `W[i][j] = P(s_i beats s_j)`; row means = overall strength;
       mirror diagonal ≈ 0.5.
-- [ ] **The pentagon assertion** — the core test. The five mass-unit strategies should
+- [x] **The pentagon assertion** — the core test. The five mass-unit strategies should
       reproduce the designed cycle:
       `Sentinel > Ripper > Arclight > Bulwark > Ravager > Sentinel`.
       Report, for each predicted counter, whether it actually wins its matchup (>50%).
