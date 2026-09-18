@@ -366,3 +366,4 @@
 - [2026-09-16] Modified: tests/b3_matrix.rs — row means are exact and order-free: many-cell exact 1/2, a 161-bit-denominator case that must round to the nearest float, and every ordering of a small table
 - [2026-09-16] Modified: FINDINGS.md — F-024: exact row means, why column-order float sums and the u128 fallback were rejected, and the fallback's reachability bound
 - [2026-09-16] Modified: tests/critic_b3_ac1.rs — re-review probes for the exact row mean: offline-exact fixtures past u128 (incl. near-midpoint and near-float), u128 long-division differential, limb-boundary denominators, exact 0/1/half, large-roster panic and cost check
+- [2026-09-17] Modified: BALANCE_PLAN.md — B3 win-rate matrix criterion ticked after critic PASS

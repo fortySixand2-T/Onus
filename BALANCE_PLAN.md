@@ -62,7 +62,7 @@ via `state_hash`).
 
 ## B3 — Metrics, report, kill-criteria gate
 
-- [ ] **Win-rate matrix** `W[i][j] = P(s_i beats s_j)`; row means = overall strength;
+- [x] **Win-rate matrix** `W[i][j] = P(s_i beats s_j)`; row means = overall strength;
       mirror diagonal ≈ 0.5.
 - [ ] **The pentagon assertion** — the core test. The five mass-unit strategies should
       reproduce the designed cycle:
