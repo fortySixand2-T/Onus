@@ -78,9 +78,20 @@ mean — is provisional until the arc is right.
       Rust constant. **Ship it at `queue_depth: 1`**, which must reproduce today's behaviour
       bit-for-bit — every pinned `state_hash` golden unchanged — so the capability lands
       provably neutral and the balance change that follows is separable from it.
+- [ ] **Parallel production** (prerequisite, decided 2026-09-19). Measured: `queue_depth` buys
+      back only the idle gap between a pop and the next decision — 7 units at depth 1, 8 at
+      depth 3, 8 at depth 8 over 6 000 ticks (F-027) — because `economy::production` advances
+      only the queue *head*, so one barracks builds one unit at a time whatever the queue
+      holds. Army size is therefore capped by **barracks count**, and load-time validation
+      refuses a strategy that opens the same building twice (B1 AC1). Allow repeated openings,
+      each with its own `at_tick`/`offset`, and have the commander place all of them and train
+      across every barracks that can produce the unit. **Ship the data unchanged** (one opening
+      per building, as today), so the capability lands behaviour-neutral and every pinned
+      `state_hash` golden is untouched — the tuning that follows is then separable from it.
 - [ ] **Tune only RON** (`units.ron` HQ HP / costs / `mvp_combat` scaling, `resources.ron`
       economy, `strategies.ron` tempo — **never Rust**) to bring the decided-match median
-      into 5–8 min with few timeouts — now with `queue_depth` among the levers. Ledger the
+      into 5–8 min with few timeouts — now with `queue_depth` and barracks count among the
+      levers (the mass probes must all take the same count, or they stop being comparable). Ledger the
       levers tried, the one kept, and the before/after length distribution.
 - [ ] **Re-run the batch and re-check the pentagon at the new length.** Report whether the
       F-025 broken link persists or was a short-game artifact.
