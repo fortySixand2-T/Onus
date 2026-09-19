@@ -396,3 +396,5 @@
 - [2026-09-19] Modified: tests/b1_strategies.rs — retired the "same barracks twice" refusal case, which B3.5 AC0b makes legal
 - [2026-09-19] Modified: tests/critic_b1.rs — retired the "same building opened twice" refusal case, which B3.5 AC0b makes legal
 - [2026-09-19] Modified: FINDINGS.md — F-028 records why barracks count is the throughput lever, the neutrality proof and the measured 9 / 27 / 9 unit counts
+- [2026-09-19] Created: tests/critic_b35_ac0b.rs — critic probes for B3.5 AC0b: every non-duplicate refusal re-derived independently, N openings place exactly N, unaffordable placements consume no randomness, shallowest-queue targeting is geometry-independent, shipped matchups bit-identical to the parent commit, and the 9 / 27 / 9 throughput table re-measured
+- [2026-09-19] Modified: CHANGELOG.md — logged the B3.5 AC0b critic probe file
