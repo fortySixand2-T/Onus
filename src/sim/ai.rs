@@ -443,20 +443,45 @@ fn think(
     // ---- 3. tech: every barracks the script opens, in RON order ------------
     // Each opening goes up once, on the first decision at or after its own tick
     // that the commander can pay for — and a strategy may open several, which
-    // is how its army spans domains. With a one-entry list this is exactly the
-    // M4c behaviour, RNG included: one draw, taken only when the placement
-    // actually happens.
-    let mut my_barracks: Vec<(usize, &BuildingRow)> = Vec::new();
+    // is how its army spans domains.
+    //
+    // The list is **counted, not searched** (B3.5 AC0b): a building named N
+    // times is N placements, so the k-th opening of a building is satisfied
+    // only once the commander owns more than k of it (including any placed
+    // earlier in *this* decision, which the world does not show yet). With one
+    // opening per building this is exactly "do I have one?", so the shipped
+    // data behaves as it did in M4c, RNG included: one draw, taken only when
+    // the placement actually happens — a placement it cannot afford consumes
+    // no randomness.
+    //
+    // Per opened def: (def, how many the commander has, how many openings of it
+    // this loop has already walked). A `Vec` keyed by def, never a map.
+    let mut tech: Vec<(usize, usize, usize)> = Vec::new();
     for opening in &script.barracks {
         let Some(def) = content.building_index(&opening.building) else {
             continue;
         };
-        if let Some(mine) = buildings.iter().find(|b| b.faction == me && b.def == def) {
-            my_barracks.push((def, mine));
-            continue;
+        let slot = match tech.iter().position(|(d, _, _)| *d == def) {
+            Some(i) => i,
+            None => {
+                let have = buildings
+                    .iter()
+                    .filter(|b| b.faction == me && b.def == def)
+                    .count();
+                tech.push((def, have, 0));
+                tech.len() - 1
+            }
+        };
+        let (_, have, walked) = tech[slot];
+        tech[slot].2 = walked + 1;
+        if have > walked {
+            continue; // this opening is already standing
         }
         let cost = content.buildings[def].alloy_cost;
         if tick >= opening.at_tick && budget >= cost {
+            // It is standing as far as the *next* openings are concerned, even
+            // though `apply_commands` has not spawned it yet.
+            tech[slot].1 = have + 1;
             budget -= cost;
             // The only thing chance decides: which way the barracks goes.
             let angle = c.rng.range_f32(0.0, std::f32::consts::TAU);
@@ -478,26 +503,37 @@ fn think(
     }
 
     // ---- 4. army: the repeating build order --------------------------------
-    // The next unit of the cursor is trained at whichever of *its own* barracks
+    // The next unit of the cursor is trained at one of *its own* barracks that
     // produces it (the loader has already refused a strategy asking for a unit
-    // none of them can make). If that barracks is not up yet, or is full, the
-    // cursor waits for it rather than skipping ahead — the build order is an
+    // none of them can make). If no such barracks is up yet, or they are all
+    // full, the cursor waits rather than skipping ahead — the build order is an
     // order.
     //
+    // **Which** one (B3.5 AC0b): every barracks the commander owns whose def is
+    // one its script opens and which can produce the unit is a candidate, and
+    // it picks the one with the **shallowest queue, ties broken by ascending
+    // `Entity::to_bits()`** — so several barracks fill evenly and no query or
+    // archetype order can reach the choice (`buildings` is already sorted by
+    // entity bits, so `min_by_key` on the queue length alone is that rule).
+    //
     // "Full" is `script.queue_depth`, read off *this commander's own* strategy
-    // (B3.5): the cap on units-in-production is content, not a Rust constant,
-    // and two sides in one match may run different depths. Still **one order
-    // per decision** — the queue is topped up by one, so a depth of 3 fills
-    // over three decisions and the per-decision `budget` still commits at most
-    // one unit's Alloy.
+    // (B3.5): the cap on units-in-production **at one barracks** is content, not
+    // a Rust constant, and two sides in one match may run different depths.
+    // Still **one order per decision** — one line is topped up by one, so the
+    // per-decision `budget` commits at most one unit's Alloy.
     if let Some(unit) = script
         .army_at(c.army_cursor)
         .and_then(|id| content.unit_index(id))
     {
-        if let Some((_, b)) = my_barracks
+        let target = buildings
             .iter()
-            .find(|(def, _)| content.produces(*def, unit))
-        {
+            .filter(|b| {
+                b.faction == me
+                    && tech.iter().any(|(def, _, _)| *def == b.def)
+                    && content.produces(b.def, unit)
+            })
+            .min_by_key(|b| b.queued);
+        if let Some(b) = target {
             if (b.queued as u32) < script.queue_depth {
                 let cost = content.units[unit].mvp_alloy_cost;
                 if budget >= cost {

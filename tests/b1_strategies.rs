@@ -374,13 +374,6 @@ fn unrunnable_strategies_are_refused_at_load() {
             one(ok(&[("hq", 300, 130.0)], &[("worker", 1)])),
         ),
         (
-            "the same barracks twice",
-            one(ok(
-                &[("foundry", 300, 130.0), ("foundry", 600, 160.0)],
-                &[("sentinel", 1)],
-            )),
-        ),
-        (
             "a zero offset",
             one(ok(&[("foundry", 300, 0.0)], &[("sentinel", 1)])),
         ),

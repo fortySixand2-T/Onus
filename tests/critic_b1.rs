@@ -121,14 +121,6 @@ fn every_broken_non_default_strategy_is_refused_by_name() {
             ),
         ),
         (
-            "the same building opened twice",
-            edited(
-                "barracks: [ (building: \"foundry\", at_tick: 300, offset: 130.0) ]",
-                "barracks: [ (building: \"foundry\", at_tick: 300, offset: 130.0), \
-                 (building: \"foundry\", at_tick: 900, offset: 200.0) ]",
-            ),
-        ),
-        (
             "army counts overflow u32",
             edited(
                 "army: [ (unit: \"sentinel\", count: 2) ]",

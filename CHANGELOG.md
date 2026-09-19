@@ -390,3 +390,9 @@
 - [2026-09-19] Modified: tests/b35_queue_depth.rs — the horizon test prints the unit counts, so the tuning run can read the size of the effect
 - [2026-09-19] Modified: BALANCE_PLAN.md — B3.5 production-depth-as-data criterion ticked after critic PASS
 - [2026-09-19] Modified: BALANCE_PLAN.md — B3.5 gains a second prerequisite: parallel production via repeated barracks openings, shipped data-neutral
+- [2026-09-19] Created: tests/b35_parallel.rs — L2 tests for B3.5 AC0b: neutrality of repeated-opening support, N openings place N buildings, 1 vs 3 barracks throughput, count vs depth, one order per decision, affordability, determinism and spawn-order independence, validation
+- [2026-09-19] Modified: src/sim/content.rs — repeated barracks openings are legal (each entry is a placement); every other strategy refusal unchanged
+- [2026-09-19] Modified: src/sim/ai.rs — the tech step counts openings instead of searching, and the army step trains at the shallowest-queue barracks among all that can produce the unit
+- [2026-09-19] Modified: tests/b1_strategies.rs — retired the "same barracks twice" refusal case, which B3.5 AC0b makes legal
+- [2026-09-19] Modified: tests/critic_b1.rs — retired the "same building opened twice" refusal case, which B3.5 AC0b makes legal
+- [2026-09-19] Modified: FINDINGS.md — F-028 records why barracks count is the throughput lever, the neutrality proof and the measured 9 / 27 / 9 unit counts

@@ -1649,3 +1649,68 @@ Before the change the same fixture gave 7 and 7. **Depth alone will therefore no
 band**; it is the lever that stops *longer train times* from simply shrinking
 the army, which is the trap F-026 walked into. The tuning run should expect to
 move `queue_depth` and train times together, and it now can.
+
+## F-028 — Barracks count is the throughput lever (B3.5 AC0b)
+
+**What moved.** Two Rust rules, no content. (1) `Content::validate` no longer
+refuses a strategy whose `barracks` list names one building twice: an opening is
+a *placement*, so N entries mean N buildings, each with its own `at_tick` and
+`offset` (two identical entries are legal — the seeded RNG picks each one's
+direction, so they do not land on top of each other, and no geometry rule was
+added). (2) `sim::ai::think` counts instead of searching. The tech step walks the
+openings in RON order keeping, per def, `(owned, walked)`; the k-th opening of a
+def is already standing iff `owned > walked`, otherwise it is placed when
+`tick >= at_tick` and the per-decision budget covers it — and *only then* is an
+RNG draw taken, so a placement the commander cannot afford still consumes no
+randomness (the B1 AC1 probe). The army step considers **every** barracks the
+commander owns whose def its script opens and which can produce the wanted unit,
+and picks the one with the **shallowest queue, ties broken by ascending
+`Entity::to_bits()`** — the snapshot is already sorted by entity bits, so a
+`min_by_key` on queue length *is* that rule and no query or archetype order can
+reach the choice. Still **one army order per decision**.
+`economy::production` was not touched.
+
+**Why count and not depth.** F-027 measured `queue_depth` at 7 / 8 / 8 units over
+6 000 ticks for depths 1 / 3 / 8: a queue's *head* is the only item that
+advances, so a barracks is one production line whatever it holds, and depth buys
+back only the idle gap between a pop and the next decision. Barracks count
+multiplies the lines. Measured here, same script, same unit, mirrored geography,
+ample Alloy, neither side attacking, over a **7 200-tick (2-minute)** horizon:
+
+| lever | units finished |
+| --- | --- |
+| 1 barracks, `queue_depth: 1` | **9** |
+| 3 barracks, `queue_depth: 1` | **27** |
+| 1 barracks, `queue_depth: 3` | **9** |
+
+Three lines is three times the army; three-deep on one line is the same army.
+That is the whole finding: **the tuning run's throughput lever is the number of
+openings, and `queue_depth` is a second-order smoother on top of it.** Note for
+that run: `b1_probe_set::every_combat_unit_is_massed_by_exactly_one_probe`
+asserts each mass probe opens exactly **one** barracks, and the probes must all
+take the same count or they stop being comparable — so widening them is a
+single, uniform edit to `strategies.ron` plus that one number.
+
+**Shipped neutral, and proved so.** `strategies.ron` is unchanged — every
+strategy still opens each building once — and with one opening per def the
+counted tech step reduces to "do I have one?" and the shallowest-queue pick
+reduces to the single candidate the old `find` returned. **No pinned per-tick
+`state_hash` golden anywhere in the suite was edited or recomputed.** Three
+readings: `b1_matchup`'s three pre-AC2 default-matchup goldens (seeds 4 / 11 /
+23) still hold and are re-asserted through this AC's own harness; and two named
+single-opening fixture matchups, whose 30-sample per-tick hash folds and journal
+digests were captured from the **pre-change binary** in this run, replay
+byte-identically (`0xff87018409ace43e` / `0x4e1604bd46e099f6`,
+`0xc0a77e736876e285` / `0x565da2a66530936a` — the same numbers F-027's fixtures
+produced, the geometry being identical).
+
+**Two closed-milestone assertions were retired**, both of which pinned the rule
+this AC deletes: the `"the same barracks twice"` case of
+`b1_strategies::unrunnable_strategies_are_refused_at_load` and the
+`"the same building opened twice"` case of
+`critic_b1::every_broken_non_default_strategy_is_refused_by_name`. Every other
+refusal in both lists stands, and `b35_parallel` re-asserts them (unknown
+building, the victory building as a barracks, an army unit no opened barracks
+can produce — repeats and all, no barracks at all, a zero offset on the repeat,
+`queue_depth: 0`) plus the new positive: a strategy opening one building three
+times now loads.

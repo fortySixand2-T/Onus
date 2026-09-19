@@ -140,7 +140,10 @@ pub struct StrategyDef {
     pub think_interval_ticks: u32,
     /// Workers it keeps mining before spending on anything else.
     pub worker_target: u32,
-    /// The tech openings, in the order it wants them.
+    /// The tech openings, in the order it wants them. A building **may repeat**
+    /// (B3.5): each entry is one placement with its own `at_tick`/`offset`, and
+    /// the commander trains across all of them — barracks count is how a
+    /// strategy buys parallel production.
     pub barracks: Vec<BarracksOpening>,
     /// The repeating army build order.
     pub army: Vec<ArmyItem>,
@@ -863,9 +866,16 @@ impl Content {
             }
 
             // The tech openings. A strategy with none could never train the
-            // army it declares (every unit must come from one of them), and a
-            // building opened twice is a second placement the commander would
-            // never make — content stating something it cannot mean.
+            // army it declares (every unit must come from one of them).
+            //
+            // A building **may** appear more than once (B3.5 AC0b): each entry
+            // is one placement, with its own `at_tick` and `offset`, and the
+            // commander trains across all of them. Barracks count is the
+            // throughput lever (`economy::production` advances only a queue's
+            // head, so one barracks is one unit at a time whatever the depth,
+            // F-027), so repeated openings are exactly how a strategy buys
+            // parallel production. Two identical entries are legal too — the
+            // seeded RNG picks each placement's direction.
             if s.barracks.is_empty() {
                 return bad(format!("strategy `{who}` opens no barracks"));
             }
@@ -890,13 +900,9 @@ impl Content {
                         opening.building
                     ));
                 }
-                if opened.contains(&def) {
-                    return bad(format!(
-                        "strategy `{who}` opens `{}` twice",
-                        opening.building
-                    ));
+                if !opened.contains(&def) {
+                    opened.push(def);
                 }
-                opened.push(def);
             }
 
             if s.army.is_empty() {
