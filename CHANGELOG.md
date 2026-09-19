@@ -384,3 +384,5 @@
 - [2026-09-18] Modified: tests/b1_matchup.rs, tests/b1_strategies.rs, tests/critic_b1.rs, tests/critic_b1_ac2.rs — fixture strategy RON gains `queue_depth: 1` (mechanical; no assertion changed)
 - [2026-09-18] Modified: FINDINGS.md — F-027: the throughput cap was content all along; depth 1 is provably neutral; what depth does and does not buy the tuning run
 - [2026-09-18] Modified: CHANGELOG.md — logged the B3.5 AC0 files
+- [2026-09-19] Created: tests/critic_b35_ac0.rs — Critic probes for B3.5 AC0: neutrality at depth 1 against pre-change goldens, depth semantics, per-strategy depth, affordability, validation, determinism
+- [2026-09-19] Modified: CHANGELOG.md — Logged the B3.5 AC0 critic probe file
