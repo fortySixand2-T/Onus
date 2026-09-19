@@ -68,7 +68,7 @@ is ~1:16 against the brief's 5–8 min target**. A pentagon computed on opening-
 is a statement about openings, so F-025's broken `bulwark > ravager` link — and every row
 mean — is provisional until the arc is right.
 
-- [ ] **Production depth becomes data** (prerequisite, decided 2026-09-18). RON-only tuning
+- [x] **Production depth becomes data** (prerequisite, decided 2026-09-18). RON-only tuning
       cannot reach the band: the commander trains one unit at a time per barracks
       (`if b.queued == 0`, `src/sim/ai.rs`) and duplicate barracks are refused at load, so a
       mass probe's throughput is exactly one unit per `mvp_train_ticks`. Scaling train times

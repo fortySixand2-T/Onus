@@ -388,3 +388,4 @@
 - [2026-09-19] Modified: CHANGELOG.md — Logged the B3.5 AC0 critic probe file
 - [2026-09-19] Modified: FINDINGS.md — F-027 records the measured depth-1 vs depth-3 production over the 7200-tick horizon (7 vs 9 units; 7 vs 7 before the change)
 - [2026-09-19] Modified: tests/b35_queue_depth.rs — the horizon test prints the unit counts, so the tuning run can read the size of the effect
+- [2026-09-19] Modified: BALANCE_PLAN.md — B3.5 production-depth-as-data criterion ticked after critic PASS
