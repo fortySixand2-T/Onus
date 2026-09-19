@@ -1642,7 +1642,10 @@ rather than sitting in the stockpile). The size of that gap is set by
 `think_interval_ticks` against `mvp_train_ticks`: at the shipped cadence (30
 ticks vs a 720-tick Ripper) the gap is ~4% of the cycle; at a slow cadence (300
 ticks) it is up to ~29%, which is the regime `b35_queue_depth`'s horizon test
-measures. **Depth alone will therefore not lengthen a match into the 5–8 minute
+measures — and reads: over a **7 200-tick (2-minute)** horizon, same script,
+same unit, mirrored geography, neither side attacking, the depth-1 side
+finished **7** units and the depth-3 side **9** (+29%, the gap almost exactly).
+Before the change the same fixture gave 7 and 7. **Depth alone will therefore not lengthen a match into the 5–8 minute
 band**; it is the lever that stops *longer train times* from simply shrinking
 the army, which is the trap F-026 walked into. The tuning run should expect to
 move `queue_depth` and train times together, and it now can.

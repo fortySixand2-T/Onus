@@ -519,6 +519,9 @@ fn a_deeper_queue_finishes_more_units_over_a_fixed_horizon() {
 
     let shallow = combat_units(&mut app, Faction::A);
     let deep = combat_units(&mut app, Faction::B);
+    // Printed, not only asserted: the tuning run wants the size of the effect,
+    // not just its sign (`cargo test -- --nocapture`).
+    println!("b3.5 horizon {HORIZON} ticks: depth 1 -> {shallow} units, depth 3 -> {deep} units");
     assert!(
         deep > shallow,
         "over {HORIZON} ticks the depth-3 side finished {deep} units and the \
