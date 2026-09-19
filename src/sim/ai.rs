@@ -480,9 +480,16 @@ fn think(
     // ---- 4. army: the repeating build order --------------------------------
     // The next unit of the cursor is trained at whichever of *its own* barracks
     // produces it (the loader has already refused a strategy asking for a unit
-    // none of them can make). If that barracks is not up yet, or is busy, the
+    // none of them can make). If that barracks is not up yet, or is full, the
     // cursor waits for it rather than skipping ahead — the build order is an
     // order.
+    //
+    // "Full" is `script.queue_depth`, read off *this commander's own* strategy
+    // (B3.5): the cap on units-in-production is content, not a Rust constant,
+    // and two sides in one match may run different depths. Still **one order
+    // per decision** — the queue is topped up by one, so a depth of 3 fills
+    // over three decisions and the per-decision `budget` still commits at most
+    // one unit's Alloy.
     if let Some(unit) = script
         .army_at(c.army_cursor)
         .and_then(|id| content.unit_index(id))
@@ -491,7 +498,7 @@ fn think(
             .iter()
             .find(|(def, _)| content.produces(*def, unit))
         {
-            if b.queued == 0 {
+            if (b.queued as u32) < script.queue_depth {
                 let cost = content.units[unit].mvp_alloy_cost;
                 if budget >= cost {
                     budget -= cost;
@@ -588,6 +595,27 @@ mod tests {
                 item.unit
             );
         }
+    }
+
+    /// B3.5: the production cap the army step obeys comes off *the commander's
+    /// own* strategy, never the content's default. With a set where one entry
+    /// is deeper than the default, a commander named onto it must report that
+    /// depth — which is what makes two sides at different depths possible.
+    #[test]
+    fn a_commander_reads_the_queue_depth_of_its_own_strategy() {
+        let mut c = content();
+        let deep = c.strategies.len() - 1;
+        let id = c.strategies[deep].id.clone();
+        c.strategies[deep].queue_depth = 4;
+        let cmd = AiCommander::with_strategy(&c, Faction::A, 1, &id).expect("a named strategy");
+        assert_eq!(cmd.strategy(&c).queue_depth, 4);
+        // ...while the default is untouched at the shipped depth.
+        assert_eq!(c.ai.queue_depth, 1);
+        assert_eq!(
+            AiCommander::new(Faction::B, 1).strategy(&c).queue_depth,
+            1,
+            "an unnamed commander did not fall back to the default's depth"
+        );
     }
 
     #[test]

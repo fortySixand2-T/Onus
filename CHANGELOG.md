@@ -377,3 +377,10 @@
 - [2026-09-18] Modified: BALANCE_PLAN.md — B3 pentagon assertion criterion ticked after critic PASS
 - [2026-09-18] Modified: BALANCE_PLAN.md — inserted B3.5 (tempo first) ahead of B3's remaining ACs; moved the mirror ~50% assertion into B3's kill-criteria gate with a power-calculation requirement; added a production_totals hardening criterion
 - [2026-09-18] Modified: BALANCE_PLAN.md — B3.5 gains a prerequisite: production depth becomes data (queue_depth), shipped neutral at 1, after RON-only tuning was measured to lengthen matches only by shrinking armies
+- [2026-09-18] Created: tests/b35_queue_depth.rs — B3.5 AC0 L2 suite: depth-1 neutrality against pre-change state-hash/journal goldens, depth-N fill (one per decision), per-side depth, throughput over a stated horizon, affordability gating, determinism
+- [2026-09-18] Modified: src/sim/content.rs — `StrategyDef::queue_depth` (required, validated >= 1, fingerprinted) plus L1 tests for the shipped depth, a refused 0 and a missing field
+- [2026-09-18] Modified: src/sim/ai.rs — the army step's production cap reads the commander's own strategy's `queue_depth` instead of the constant `queued == 0`; L1 test that the depth is per-strategy
+- [2026-09-18] Modified: assets/data/strategies.ron — `queue_depth: 1` on all ten strategies (neutral) and a schema note for the field
+- [2026-09-18] Modified: tests/b1_matchup.rs, tests/b1_strategies.rs, tests/critic_b1.rs, tests/critic_b1_ac2.rs — fixture strategy RON gains `queue_depth: 1` (mechanical; no assertion changed)
+- [2026-09-18] Modified: FINDINGS.md — F-027: the throughput cap was content all along; depth 1 is provably neutral; what depth does and does not buy the tuning run
+- [2026-09-18] Modified: CHANGELOG.md — logged the B3.5 AC0 files

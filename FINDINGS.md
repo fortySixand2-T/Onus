@@ -1594,3 +1594,55 @@ overcome that. That is the sim doing its job. **Nothing was tuned here**: this
 AC reports, it does not gate and it does not fix. The candidate levers (Bulwark
 cost 110 vs Ravager 90, its 2 Speed, the `nemesis_bonus.damage_mult`) are B4's,
 in RON only.
+
+## F-027 — The throughput cap was content all along (B3.5 AC0)
+
+**What moved.** `StrategyDef` gains a required `queue_depth`, and the army step
+in `sim::ai::think` now reads `(b.queued as u32) < script.queue_depth` where it
+read `b.queued == 0`. The depth comes off **the commander's own strategy** (the
+script it was named with, B1 AC2), never `content.ai`, so two sides in one match
+may run different depths. Still **one order per decision**: the commander tops
+its queue up by one, so a depth of 3 fills over three decisions and the
+per-decision `budget` still commits at most one unit's Alloy. The field is
+required (no `#[serde(default)]`, like `mvp_attack_ticks`) and `validate`
+refuses `0` by name — depth 0 is "never train", content the sim cannot run.
+
+**Shipped neutral, and proved so.** All ten strategies ship `queue_depth: 1`.
+At depth 1 the new condition *is* the old one (`queued < 1` ⇔ `queued == 0`),
+and no pinned per-tick `state_hash` golden anywhere in the suite was edited or
+recomputed. Three independent neutrality readings:
+
+- `b1_matchup`'s three pre-AC2 default-matchup goldens (seeds 4 / 11 / 23) still
+  hold, and `b35_queue_depth` re-asserts the same three numbers through its own
+  harness;
+- two *named* depth-1 fixture matchups were captured from the **pre-change
+  binary** — 30 per-tick `state_hash` samples folded into one number, plus the
+  `AiJournal` digest — and replay byte-identically after the change
+  (`0xff87018409ace43e` / `0x4e1604bd46e099f6`, `0xc0a77e736876e285` /
+  `0x565da2a66530936a`);
+- `critic_b1_ac2`'s cross-process pin recomputed the same 25 hashes before and
+  after the change (its stored pin was a stale artifact of the abandoned tempo
+  attempt and was deleted, not edited).
+
+The one hash that *does* move is `Content::fingerprint` — deliberately: a
+content **schema** change is a content change, and a log recorded under a
+strategies file with no `queue_depth` must not replay against one that has it.
+`ContentFingerprint` is not a per-tick state hash and nothing pins its value;
+every consumer computes it from the content in hand, so nothing broke. The
+standing guard `critic_m5::the_fingerprint_reads_every_field_of_every_content_struct`
+reads `StrategyDef`'s fields off the source, so the new field had to be hashed
+to keep it green — it was, next to `attack_spread`.
+
+**What depth does and does not buy the tuning run.** `economy::production` ticks
+only the **head** of a queue: a barracks builds one unit at a time whatever the
+depth. So `queue_depth` is not parallel production and does not multiply
+throughput — it buys back the ticks a barracks stands **idle** between a unit
+popping and its commander's next decision (and lets income be committed ahead
+rather than sitting in the stockpile). The size of that gap is set by
+`think_interval_ticks` against `mvp_train_ticks`: at the shipped cadence (30
+ticks vs a 720-tick Ripper) the gap is ~4% of the cycle; at a slow cadence (300
+ticks) it is up to ~29%, which is the regime `b35_queue_depth`'s horizon test
+measures. **Depth alone will therefore not lengthen a match into the 5–8 minute
+band**; it is the lever that stops *longer train times* from simply shrinking
+the army, which is the trap F-026 walked into. The tuning run should expect to
+move `queue_depth` and train times together, and it now can.

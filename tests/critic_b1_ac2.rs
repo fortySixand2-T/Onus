@@ -60,7 +60,7 @@ fn render(p: &Plan) -> String {
         .map(|(u, n)| format!("            (unit: \"{u}\", count: {n}),"))
         .collect();
     format!(
-        "        (\n            id: \"{}\",\n            think_interval_ticks: {},\n            worker_target: {},\n            barracks: [\n{}\n            ],\n            army: [\n{}\n            ],\n            attack_at_army: {},\n            attack_interval_ticks: 600,\n            attack_spread: 60.0,\n        ),",
+        "        (\n            id: \"{}\",\n            think_interval_ticks: {},\n            worker_target: {},\n            barracks: [\n{}\n            ],\n            army: [\n{}\n            ],\n            attack_at_army: {},\n            attack_interval_ticks: 600,\n            attack_spread: 60.0,\n            queue_depth: 1,\n        ),",
         p.id,
         p.think,
         p.workers,

@@ -150,6 +150,20 @@ pub struct StrategyDef {
     pub attack_interval_ticks: u32,
     /// Radius of the seeded scatter around the enemy HQ each wave aims at.
     pub attack_spread: f32,
+    /// How many army units this strategy allows in production at one barracks
+    /// at once (B3.5). The cap the commander tops its queue up to — **one item
+    /// per decision**, so a depth of 3 fills over three decisions.
+    ///
+    /// This used to be the Rust constant `if b.queued == 0` in `sim::ai`, which
+    /// pinned every strategy's throughput at one unit per `mvp_train_ticks`
+    /// whatever its script said; as content it is a tuning lever like any
+    /// other. `1` reproduces the old behaviour exactly (`queued < 1` *is*
+    /// `queued == 0`).
+    ///
+    /// Deliberately **not** `#[serde(default)]`: a missing depth must be a load
+    /// error, not a silent `0` — which would mean "never train", content the
+    /// sim cannot run. `Content::validate` refuses `0` for the same reason.
+    pub queue_depth: u32,
 }
 
 impl StrategyDef {
@@ -542,6 +556,7 @@ impl Content {
                 attack_at_army: 0,
                 attack_interval_ticks: 0,
                 attack_spread: 0.0,
+                queue_depth: 0,
             },
             resources: resources_file.resources,
             mvp_active: resources_file.mvp_active,
@@ -834,6 +849,13 @@ impl Content {
             if s.attack_at_army == 0 {
                 return bad(format!("strategy `{who}` attack_at_army must be positive"));
             }
+            // Depth 0 is "never put a unit in production": a script that
+            // declares an army and can never build one. Content the sim cannot
+            // run is refused at load, by name, not discovered as a commander
+            // that quietly sits still.
+            if s.queue_depth == 0 {
+                return bad(format!("strategy `{who}` queue_depth must be positive"));
+            }
             if !(s.attack_spread.is_finite() && s.attack_spread >= 0.0) {
                 return bad(format!(
                     "strategy `{who}` attack_spread must be finite and non-negative"
@@ -1014,6 +1036,7 @@ impl Content {
                 .u32(s.attack_at_army)
                 .u32(s.attack_interval_ticks)
                 .f32(s.attack_spread)
+                .u32(s.queue_depth)
                 .u64(s.barracks.len() as u64);
             for o in &s.barracks {
                 h.str(&o.building).u32(o.at_tick).f32(o.offset);
@@ -1166,6 +1189,58 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// B3.5: the cap on units-in-production is content, and it ships neutral.
+    /// Depth 1 is the constant the army step used to hold (`queued == 0`), so
+    /// the whole shipped set must be at 1 — anything else is a balance change
+    /// riding along with the capability.
+    #[test]
+    fn every_shipped_strategy_ships_queue_depth_one() {
+        let c = content();
+        for s in &c.strategies {
+            assert_eq!(
+                s.queue_depth, 1,
+                "strategy `{}` ships at depth {} — B3.5 AC0 lands neutral",
+                s.id, s.queue_depth
+            );
+        }
+        assert_eq!(c.ai.queue_depth, 1, "the resolved default is not at depth 1");
+    }
+
+    /// Depth 0 means "never put a unit in production" — a script with an army
+    /// it can never build. Refused at load, by name.
+    #[test]
+    fn a_queue_depth_of_zero_is_refused_and_names_the_strategy() {
+        let mut c = content();
+        let who = c.strategies[1].id.clone();
+        c.strategies[1].queue_depth = 0;
+        let err = c.validate().expect_err("depth 0 is content the sim cannot run");
+        let msg = format!("{err:?}");
+        assert!(msg.contains(&who), "the error does not name the strategy: {msg}");
+        assert!(msg.contains("queue_depth"), "the error does not name the field: {msg}");
+    }
+
+    /// ...and a *missing* depth is a load error, not a silent default: the
+    /// field carries no `#[serde(default)]`, exactly like `mvp_attack_ticks`.
+    #[test]
+    fn a_missing_queue_depth_is_a_load_error_not_a_default() {
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data");
+        let out = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target/content_missing_queue_depth");
+        std::fs::create_dir_all(&out).expect("scratch dir");
+        for file in ["units.ron", "resources.ron"] {
+            std::fs::copy(dir.join(file), out.join(file)).expect("copy");
+        }
+        let text = std::fs::read_to_string(dir.join("strategies.ron")).expect("strategies");
+        let stripped = text.replacen("            queue_depth: 1,\n", "", 1);
+        assert_ne!(stripped, text, "the shipped set has no depth to strip");
+        std::fs::write(out.join("strategies.ron"), stripped).expect("write");
+        let err = Content::load_from_dir(&out).expect_err("a strategy with no depth must not load");
+        assert!(
+            format!("{err:?}").contains("queue_depth"),
+            "the parse error does not name the missing field: {err:?}"
+        );
     }
 
     #[test]

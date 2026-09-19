@@ -28,6 +28,16 @@
 //   attack_at_army        — combat units it wants before the first wave
 //   attack_interval_ticks — ticks between waves
 //   attack_spread         — seeded scatter around the enemy HQ per wave
+//   queue_depth           — how many army units this strategy allows in
+//                           production at one barracks at once. Must be >= 1
+//                           (0 would mean "never train"). The commander tops
+//                           its queue up by **one per decision**, so a depth of
+//                           3 fills over three decisions. Production itself is
+//                           still sequential — a barracks builds the head of
+//                           its queue — so depth buys the idle ticks between a
+//                           unit popping and the next decision, not parallel
+//                           production. `1` is the behaviour every match before
+//                           B3.5 played, when this cap was a Rust constant.
 //
 // THE PROBE SET (B1 AC3) — what these entries are *for*. B3 measures the
 // counter pentagon with them, so the set is an instrument, not a roster of
@@ -74,6 +84,7 @@
             attack_at_army: 3,
             attack_interval_ticks: 600,
             attack_spread: 60.0,
+            queue_depth: 1,
         ),
 
         // ---- the five mass-unit probes -------------------------------------
@@ -94,6 +105,7 @@
             attack_at_army: 3,
             attack_interval_ticks: 600,
             attack_spread: 60.0,
+            queue_depth: 1,
         ),
         // Machine / skirmish. Fast, mid-range, nemesis Ripper.
         (
@@ -109,6 +121,7 @@
             attack_at_army: 3,
             attack_interval_ticks: 600,
             attack_spread: 60.0,
+            queue_depth: 1,
         ),
         // Flesh / swarm. The cheapest body in the game, nemesis Arclight.
         (
@@ -124,6 +137,7 @@
             attack_at_army: 3,
             attack_interval_ticks: 600,
             attack_spread: 60.0,
+            queue_depth: 1,
         ),
         // Flesh / bruiser. Heavy hitter, nemesis Sentinel.
         (
@@ -139,6 +153,7 @@
             attack_at_army: 3,
             attack_interval_ticks: 600,
             attack_spread: 60.0,
+            queue_depth: 1,
         ),
         // Energy / artillery. Glass cannon at 120 range, nemesis Bulwark. Pays
         // 200 for its Aether Spire where the other four pay 150 — a designed
@@ -156,6 +171,7 @@
             attack_at_army: 3,
             attack_interval_ticks: 600,
             attack_spread: 60.0,
+            queue_depth: 1,
         ),
 
         // ---- the synthesis builds ------------------------------------------
@@ -178,6 +194,7 @@
             attack_at_army: 4,
             attack_interval_ticks: 600,
             attack_spread: 70.0,
+            queue_depth: 1,
         ),
         // All three domains: a Ripper screen, a Sentinel, an Arclight behind.
         // The widest opening in the set — 500 Alloy of tech before a shot is
@@ -199,6 +216,7 @@
             attack_at_army: 4,
             attack_interval_ticks: 600,
             attack_spread: 70.0,
+            queue_depth: 1,
         ),
 
         // ---- the two poles --------------------------------------------------
@@ -219,6 +237,7 @@
             attack_at_army: 1,
             attack_interval_ticks: 120,
             attack_spread: 40.0,
+            queue_depth: 1,
         ),
         // The opposite pole: twelve workers, late tech, and nothing leaves home
         // until a real force exists.
@@ -238,6 +257,7 @@
             attack_at_army: 8,
             attack_interval_ticks: 900,
             attack_spread: 80.0,
+            queue_depth: 1,
         ),
     ],
 )
