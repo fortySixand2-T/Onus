@@ -78,7 +78,7 @@ mean — is provisional until the arc is right.
       Rust constant. **Ship it at `queue_depth: 1`**, which must reproduce today's behaviour
       bit-for-bit — every pinned `state_hash` golden unchanged — so the capability lands
       provably neutral and the balance change that follows is separable from it.
-- [ ] **Parallel production** (prerequisite, decided 2026-09-19). Measured: `queue_depth` buys
+- [x] **Parallel production** (prerequisite, decided 2026-09-19). Measured: `queue_depth` buys
       back only the idle gap between a pop and the next decision — 7 units at depth 1, 8 at
       depth 3, 8 at depth 8 over 6 000 ticks (F-027) — because `economy::production` advances
       only the queue *head*, so one barracks builds one unit at a time whatever the queue

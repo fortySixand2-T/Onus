@@ -21,10 +21,17 @@
 //                                        direction)
 //                           A strategy may open several — that is how an army
 //                           spans domains (Foundry + Gene-Vats + Aether Spire).
-//                           No building may be opened twice.
+//                           The same building may be opened **more than once**
+//                           (B3.5): each entry is its own barracks with its own
+//                           at_tick/offset, and every barracks is a production
+//                           line of its own, so barracks count is what sets army
+//                           throughput (F-028). Repeats are what the balance sim
+//                           tunes tempo with; the five mass probes must all carry
+//                           the same count or they stop being comparable (F-018).
 //   army                  — the repeating build order; **every unit must be
-//                           producible by one of the barracks opened above**,
-//                           and each entry is trained at that barracks.
+//                           producible by one of the barracks opened above**.
+//                           Each order goes to the eligible barracks with the
+//                           shallowest queue (ties by entity id).
 //   attack_at_army        — combat units it wants before the first wave
 //   attack_interval_ticks — ticks between waves
 //   attack_spread         — seeded scatter around the enemy HQ per wave

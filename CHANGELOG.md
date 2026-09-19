@@ -398,3 +398,5 @@
 - [2026-09-19] Modified: FINDINGS.md — F-028 records why barracks count is the throughput lever, the neutrality proof and the measured 9 / 27 / 9 unit counts
 - [2026-09-19] Created: tests/critic_b35_ac0b.rs — critic probes for B3.5 AC0b: every non-duplicate refusal re-derived independently, N openings place exactly N, unaffordable placements consume no randomness, shallowest-queue targeting is geometry-independent, shipped matchups bit-identical to the parent commit, and the 9 / 27 / 9 throughput table re-measured
 - [2026-09-19] Modified: CHANGELOG.md — logged the B3.5 AC0b critic probe file
+- [2026-09-19] Modified: assets/data/strategies.ron — schema note corrected: a building may now be opened more than once, and each opening is its own production line
+- [2026-09-19] Modified: BALANCE_PLAN.md — B3.5 parallel-production criterion ticked after critic PASS
