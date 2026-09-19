@@ -376,3 +376,4 @@
 - [2026-09-17] Modified: CHANGELOG.md — logged the B3 AC2 critic probe file
 - [2026-09-18] Modified: BALANCE_PLAN.md — B3 pentagon assertion criterion ticked after critic PASS
 - [2026-09-18] Modified: BALANCE_PLAN.md — inserted B3.5 (tempo first) ahead of B3's remaining ACs; moved the mirror ~50% assertion into B3's kill-criteria gate with a power-calculation requirement; added a production_totals hardening criterion
+- [2026-09-18] Modified: BALANCE_PLAN.md — B3.5 gains a prerequisite: production depth becomes data (queue_depth), shipped neutral at 1, after RON-only tuning was measured to lengthen matches only by shrinking armies

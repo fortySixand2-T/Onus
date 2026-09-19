@@ -68,10 +68,20 @@ is ~1:16 against the brief's 5–8 min target**. A pentagon computed on opening-
 is a statement about openings, so F-025's broken `bulwark > ravager` link — and every row
 mean — is provisional until the arc is right.
 
+- [ ] **Production depth becomes data** (prerequisite, decided 2026-09-18). RON-only tuning
+      cannot reach the band: the commander trains one unit at a time per barracks
+      (`if b.queued == 0`, `src/sim/ai.rs`) and duplicate barracks are refused at load, so a
+      mass probe's throughput is exactly one unit per `mvp_train_ticks`. Scaling train times
+      therefore lengthens the clock by *shrinking the army* — measured: median 5:28 but 12%
+      timeouts and pentagon cells decided 6 of 16 (F-026, branch `b3.5-tempo-attempt`).
+      Add `queue_depth` to `StrategyDef` so the cap on units-in-production is content, not a
+      Rust constant. **Ship it at `queue_depth: 1`**, which must reproduce today's behaviour
+      bit-for-bit — every pinned `state_hash` golden unchanged — so the capability lands
+      provably neutral and the balance change that follows is separable from it.
 - [ ] **Tune only RON** (`units.ron` HQ HP / costs / `mvp_combat` scaling, `resources.ron`
       economy, `strategies.ron` tempo — **never Rust**) to bring the decided-match median
-      into 5–8 min with few timeouts. Ledger the levers tried, the one kept, and the
-      before/after length distribution.
+      into 5–8 min with few timeouts — now with `queue_depth` among the levers. Ledger the
+      levers tried, the one kept, and the before/after length distribution.
 - [ ] **Re-run the batch and re-check the pentagon at the new length.** Report whether the
       F-025 broken link persists or was a short-game artifact.
 
