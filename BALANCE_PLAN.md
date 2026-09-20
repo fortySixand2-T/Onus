@@ -88,6 +88,22 @@ mean — is provisional until the arc is right.
       across every barracks that can produce the unit. **Ship the data unchanged** (one opening
       per building, as today), so the capability lands behaviour-neutral and every pinned
       `state_hash` golden is untouched — the tuning that follows is then separable from it.
+- [ ] **Separate the cap from the target band** (decided 2026-09-20). The 8-min cap and the
+      5–8 min band are the same number, so any realistic spread has its tail *censored*: at the
+      shipped cap the tuned candidate read 10.8% timeouts and left `bulwark > ravager`
+      **undefined** (0 decided), while the same content at a 20-min cap read median 6:32,
+      max 10:45 and **0 timeouts** (F-029). A cap is an anti-stalemate backstop, not a
+      statement of design intent. Raise `DEFAULT_MATCH_SECS` (`src/headless.rs`) to **15 min**
+      — the one Rust line the RON-only rule bends for, and it is harness config, not content —
+      and report **"% of decided matches inside the 5–8 min band"** as the design metric, with
+      the timeout rate kept separately as the stalemate signal.
+- [ ] **Fix the armour grind in RON.** The clipped class is heavy armour: a Bulwark mitigates
+      `armor 9 × mitigation_per_armor 2 = 18` against its own `offense 4 × damage_per_offense 5
+      = 20`, i.e. **2 damage a hit into a 180 HP pool** — ~90 hits. Bulwark mirrors and
+      Bulwark-vs-Ravager are therefore grinds no sane cap resolves, which is why the pentagon
+      lost a measurable link. Retune the armour/damage relation (`mitigation_per_armor`,
+      `damage_per_offense`, or the Bulwark's `armor`) so heavy matchups decide on their own.
+      **Not** to make the pentagon pass — to make it *measurable*.
 - [ ] **Tune only RON** (`units.ron` HQ HP / costs / `mvp_combat` scaling, `resources.ron`
       economy, `strategies.ron` tempo — **never Rust**) to bring the decided-match median
       into 5–8 min with few timeouts — now with `queue_depth` and barracks count among the

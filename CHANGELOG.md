@@ -405,3 +405,4 @@
 - [2026-09-19] Created: tests/b35_tempo.rs — pins the arc: decided-match median of a named 18-match batch inside the 5-8 minute band, and a stated minimum of combat units per long match
 - [2026-09-19] Modified: tests/b1_probe_set.rs — MASS_PROBE_BARRACKS replaces the hard-coded single-barracks probe count; knob identity now compares every opening's tick and offset, and domain span is counted by distinct building
 - [2026-09-19] Modified: FINDINGS.md — F-029 records the tempo levers (including every reject), the before/after distributions, the density reading, the golden-recompute proof, and the cap/pentagon blocker that stops the checkbox
+- [2026-09-20] Modified: BALANCE_PLAN.md — B3.5: separate the tick cap (raised to 15 min, a backstop) from the 5-8 min design band, and fix the armour grind that makes heavy matchups unresolvable
