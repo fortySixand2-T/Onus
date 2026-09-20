@@ -400,3 +400,8 @@
 - [2026-09-19] Modified: CHANGELOG.md — logged the B3.5 AC0b critic probe file
 - [2026-09-19] Modified: assets/data/strategies.ron — schema note corrected: a building may now be opened more than once, and each opening is its own production line
 - [2026-09-19] Modified: BALANCE_PLAN.md — B3.5 parallel-production criterion ticked after critic PASS
+- [2026-09-19] Modified: assets/data/units.ron — B3.5 tempo tuning: worker load 10 -> 2 Alloy (the economy clock), with the reasoning in the schema note
+- [2026-09-19] Modified: assets/data/strategies.ron — B3.5 tempo tuning: the five mass probes on 3 production lines each at attack_at_army 20 / interval 300, synth and turtle widened to 4 lines with larger commitments; mvp and rush deliberately untouched
+- [2026-09-19] Created: tests/b35_tempo.rs — pins the arc: decided-match median of a named 18-match batch inside the 5-8 minute band, and a stated minimum of combat units per long match
+- [2026-09-19] Modified: tests/b1_probe_set.rs — MASS_PROBE_BARRACKS replaces the hard-coded single-barracks probe count; knob identity now compares every opening's tick and offset, and domain span is counted by distinct building
+- [2026-09-19] Modified: FINDINGS.md — F-029 records the tempo levers (including every reject), the before/after distributions, the density reading, the golden-recompute proof, and the cap/pentagon blocker that stops the checkbox

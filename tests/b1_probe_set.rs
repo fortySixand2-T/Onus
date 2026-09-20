@@ -38,6 +38,12 @@ use onus::sim::{
 
 // ---- harness ----------------------------------------------------------------
 
+/// How many production lines each `mass_*` probe opens. One before B3.5; three
+/// since the tempo tuning (F-029), which spends barracks count to keep armies
+/// big while the clock got longer. The five must all carry the same number or
+/// they stop being comparable (F-018), so it is written once, here.
+const MASS_PROBE_BARRACKS: usize = 3;
+
 fn content() -> Content {
     Content::load_from_dir(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data"))
         .expect("assets/data/*.ron parse into sim structs")
@@ -234,15 +240,26 @@ fn every_combat_unit_is_massed_by_exactly_one_probe() {
             "`{unit}` is massed by {for_unit:?}, not by exactly one probe"
         );
     }
-    // And each probe commits to a real combat unit out of a single barracks.
+    // And each probe commits to a real combat unit out of its own production
+    // lines — `MASS_PROBE_BARRACKS` openings of the *one* building that makes
+    // its unit (B3.5 raised this from 1: barracks count is what sets army
+    // throughput, F-028, and the tempo tuning spends it, F-029).
     for (id, unit) in &probes {
         assert!(roster.contains(unit), "`{id}` masses non-combatant `{unit}`");
         let s = c.strategy(id).unwrap();
         assert_eq!(
             s.barracks.len(),
-            1,
+            MASS_PROBE_BARRACKS,
             "`{id}` hard-commits to one unit but opens {} barracks",
             s.barracks.len()
+        );
+        let mut buildings: Vec<&str> = s.barracks.iter().map(|b| b.building.as_str()).collect();
+        buildings.dedup();
+        assert_eq!(
+            buildings.len(),
+            1,
+            "`{id}` masses one unit but opens {buildings:?} — its openings must all \
+             be the one barracks that makes `{unit}`"
         );
     }
 }
@@ -301,16 +318,21 @@ fn the_mass_probes_are_knob_identical() {
             s.attack_spread, first.attack_spread,
             "{who}: attack_spread differs"
         );
-        // One opening each, at the same tick and the same distance from home.
+        // The same openings, in the same order, each at the same tick and the
+        // same distance from home. Every one of them, not just the first: a
+        // probe with a fourth Foundry, or with its second one opening 600
+        // ticks late, would out-produce the others and B3 would read the
+        // schedule instead of the unit (F-018).
         assert_eq!(s.barracks.len(), first.barracks.len(), "{who}: barracks count differs");
         assert_eq!(
-            s.barracks[0].at_tick, first.barracks[0].at_tick,
-            "{who}: the opening tick differs"
+            s.barracks.len(),
+            MASS_PROBE_BARRACKS,
+            "{who}: a mass probe opens {MASS_PROBE_BARRACKS} production lines"
         );
-        assert_eq!(
-            s.barracks[0].offset, first.barracks[0].offset,
-            "{who}: the barracks offset differs"
-        );
+        for (k, (b, f)) in s.barracks.iter().zip(&first.barracks).enumerate() {
+            assert_eq!(b.at_tick, f.at_tick, "{who}: opening {k}'s tick differs");
+            assert_eq!(b.offset, f.offset, "{who}: opening {k}'s offset differs");
+        }
         // One army entry each, of the same size: only the unit id differs.
         assert_eq!(s.army.len(), 1, "{who}: a mass probe has one army entry");
         assert_eq!(s.army[0].count, first.army[0].count, "{who}: the army count differs");
@@ -348,12 +370,22 @@ fn the_synthesis_builds_span_domains() {
         "the set needs at least two synthesis builds, found {}",
         synth.len()
     );
+    // Counted by *distinct* building, not by opening: since B3.5 a strategy may
+    // open the same barracks more than once, so "spans two domains" and "spans
+    // all of them" are statements about which buildings it has, and four
+    // Foundries must not read as four domains.
+    let domains = |s: &StrategyDef| {
+        let mut b: Vec<&str> = s.barracks.iter().map(|o| o.building.as_str()).collect();
+        b.sort_unstable();
+        b.dedup();
+        b.len()
+    };
     assert!(
-        synth.iter().any(|s| s.barracks.len() >= 2),
+        synth.iter().any(|s| domains(s) >= 2),
         "no synthesis build crosses two barracks"
     );
     assert!(
-        synth.iter().any(|s| s.barracks.len() == placeable),
+        synth.iter().any(|s| domains(s) == placeable),
         "no synthesis build spans all {placeable} barracks"
     );
     // Every barracks a synthesis build opens is one its army actually uses;

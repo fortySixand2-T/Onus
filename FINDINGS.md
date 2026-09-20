@@ -1714,3 +1714,252 @@ building, the victory building as a barracks, an army unit no opened barracks
 can produce — repeats and all, no barracks at all, a zero offset on the repeat,
 `queue_depth: 0`) plus the new positive: a strategy opening one building three
 times now loads.
+
+## F-029 — The arc is tunable in RON, and the 8-minute cap is the wall (B3.5 AC1)
+
+**What this entry is.** The tuning checkbox: move the decided-match median from
+~1:16 into DESIGN_BRIEF's 5-8 minute band **in RON only**, with the army *bigger*
+rather than smaller (the trap F-026 fell into). Every number below was measured
+on the box in release with `src/bin/balance`, at the shipped 28 800-tick
+(8:00) cap unless the row says otherwise; no Rust was touched anywhere in this
+run. **The result is a candidate, not a pass:** the tuning reaches the band,
+and it breaks a designed property of the instrument while doing it. Both halves
+are the finding.
+
+### Before
+
+Shipped content, whole roster (10 strategies x 10 x 2 seeds x 2 orientations =
+400 matches), decided-only:
+
+| min | p25 | median | p75 | p90 | max | timeouts | combat units built / match |
+|---|---|---|---|---|---|---|---|
+| 0:28 | 1:05 | **1:16** | 1:46 | 2:04 | 4:45 | 0 / 400 | 10.6 |
+
+The five mass probes alone (5 x 5 x 2 seeds x 2 orientations = 100): min 0:50,
+p25 1:05, median **1:19**, p75 1:31, max 2:24, 0 timeouts, 7.7 combat units per
+match. A pentagon computed on that is a statement about openings.
+
+### The levers, in the order they were tried
+
+Each row is a batch of the five mass probes, 2 seeds, both orientations (100
+matches), at the shipped cap. Changes are cumulative down the table except
+where a row says "reverted"; "units" is combat units built per match, both
+sides.
+
+| # | change | median | p25 | p75 | timeouts | units | verdict |
+|---|---|---|---|---|---|---|---|
+| base | shipped | 1:19 | 1:05 | 1:31 | 0 | 7.7 | — |
+| L1 | mass probes 1 -> 3 barracks (F-028's lever) | 1:03 | 0:51 | 1:07 | 1 | 10.2 | kept (density; it *shortens* the clock) |
+| L2 | + `building_hp_per_defense` 40 -> 160 | 1:27 | 1:13 | 1:34 | 2 | 22.1 | **reject**: +24s for a 4x HQ, and the tail grows |
+| L3 | HQ HP reverted; `attack_at_army` 3 -> 10 | 1:29 | 1:09 | 1:54 | 0 | 20.3 | kept |
+| L4 | + `mvp_carry_capacity` 10 -> 4 (income x0.4) | 2:18 | 1:35 | 2:51 | 0 | 18.2 | kept |
+| L5 | `attack_at_army` 16 | 3:15 | 2:12 | 3:58 | 0 | 29.3 | kept |
+| L6 | `attack_at_army` 24 | 4:34 | 3:02 | 5:27 | 5 | 43.2 | kept, then re-cut (L9) |
+| L7 | + `hp_per_defense` 20 -> 14 | 4:34 | 3:02 | 5:27 | 1 | 42.8 | **reject**: body identical, effect inside noise |
+| L8 | + `mvp_carry_capacity` 4 -> 3 | 5:53 | 3:34 | 7:02 | 8 | 41.1 | kept |
+| L9 | `attack_at_army` 20 | 5:01 | 3:05 | 6:04 | 7 | 35.5 | kept |
+| L10 | + `mitigation_per_armor` 2 -> 1 | 5:01 | 3:05 | 6:04 | 4 | 34.8 | **reject** (see M1) |
+| L11 | `attack_at_army` 24, mitigation 1 | 5:53 | 3:34 | 7:02 | 8 | 41.1 | — |
+| L12 | + `hp_per_defense` 14 -> 10 | 5:53 | 3:34 | 7:02 | 8 | 41.1 | **reject**: 3 of 100 matches changed at all |
+| L13 | combat scaling all reverted, `attack_at_army` 22 | 5:28 | 3:19 | 6:32 | 11 | 38.6 | — |
+| L14 | + `attack_interval_ticks` 600 -> 300 | 5:28 | 3:19 | 6:32 | 8 | 38.0 | kept |
+| C1 | `attack_at_army` 20, 4 seeds (200 matches) | 5:02 | 3:06 | 6:04 | 11 (5.5%) | 35.1 | kept |
+| C3 | + `building_hp_per_defense` 40 -> 120 | 5:04 | 3:07 | 6:07 | 11 (11%) | 35.5 | **reject**: floor unmoved, tail fattened |
+| M1 | final content + `mitigation_per_armor` 1 | 6:32 | 4:23 | 7:47 | 16 (16%) | — | **reject**: does not unstick the grind |
+
+**What the table says.** Three knobs move the clock and one of them is not a
+clock at all:
+
+- **Barracks count** (F-028) buys *army*, not time — it makes matches shorter
+  and much denser. It is what keeps the tuning out of F-026's trap: every later
+  row lengthens the game with the army growing, not shrinking.
+- **`mvp_carry_capacity`** is the economy clock. Income is loads/second times
+  the load, an army is a fixed number of Alloy, so this sets how many minutes a
+  force takes to assemble. 10 -> 4 -> 3 -> 2 is most of the length here.
+- **`attack_at_army`** is the commitment threshold: it decides how much of that
+  income is on the field when the decisive fight happens. It moved the median
+  from 1:29 to 5:53 by itself and raised density with it.
+- **`mvp_combat` scaling is nearly inert at batch level.** `hp_per_defense`
+  20 -> 14 -> 10 and `mitigation_per_armor` 2 -> 1 changed 3, 13 and 0 matches of
+  100 respectively; the quantiles did not move at all. Match length here is set
+  by how long an army takes to *assemble*, not by how long it takes to die.
+  Every combat-scaling change was therefore reverted, which also keeps the
+  pentagon's own dials out of a tempo tuning.
+- **HQ HP is not a lengthener either.** Quadrupling it (L2) bought 24 seconds
+  when armies were small, and tripling it at the tuned length (C3) moved the
+  median by 2 seconds while doubling the timeout rate: a 20-unit army chews any
+  HQ in seconds, so the knob only adds to matches that are already long.
+
+### What was kept
+
+`assets/data/units.ron`
+- `mvp_carry_capacity` **10 -> 2** (a 5x slower economy; the one number).
+
+`assets/data/strategies.ron`
+- the five `mass_*` probes: **3 openings each** of their own barracks
+  (at_tick 300/600/900, offset 130/165/200), `attack_at_army` **3 -> 20**,
+  `attack_interval_ticks` **600 -> 300**. Knob-identical, all five, F-018.
+- `synth_steel_flesh`: 4 lines (2 Foundry + 2 Gene-Vats), `attack_at_army` 16,
+  interval 300. `synth_triad`: 4 lines across all three domains,
+  `attack_at_army` 16, interval 300. `turtle`: 4 lines, `attack_at_army` 28,
+  interval 600 — still the latest, largest commitment in the set.
+- `rush` unchanged: it is the pole, and its identity is the tick-0 opening and
+  the one-body attack.
+- **`mvp` unchanged, deliberately.** B1 pins the default strategy field for
+  field as the faithful promotion of M4c's `mvp_ai`
+  (`b1_strategies::the_default_strategy_is_the_old_mvp_ai_number_for_number`,
+  and `m4c_ai` reads it as "the default AI" with one barracks). Retuning it
+  would change what those assertions *mean*, not just their values, so it was
+  reverted and left alone. The consequence is real and is a question for the
+  next checkbox: the shipped default now plays the slow economy on the old fast
+  tempo.
+
+### After
+
+Whole roster, 2 seeds, both orientations, 400 matches, shipped 28 800 cap,
+decided-only:
+
+| min | p25 | median | p75 | p90 | max | timeouts | combat units / match |
+|---|---|---|---|---|---|---|---|
+| 0:28 | 4:23 | **5:17** | 6:05 | 6:59 | 7:51 | 43 / 400 (10.8%) | 32.7 |
+
+(357 decided of 400. The 0:28 floor is the `rush` mirror — two all-ins meeting
+at the door — and is the same floor the shipped content had.)
+
+An intermediate reading worth keeping, because it is the price of leaving `mvp`
+untuned: with `mvp` on three Foundries and `attack_at_army: 12`, the same batch
+read decided median 5:08, p25 4:24, p75 6:03, **29 / 400 (7.25%) timeouts** and
+33 units per match. Reverting `mvp` to its pinned numbers cost 3.5 points of
+timeout rate and left the default strategy with two cells it cannot decide at
+all (row mean over 7 cells, not 9). The default AI is now the one script in the
+roster that commits three units into a five-minute economy.
+
+Density: **units built** 32.7 per match over the 400-match batch (before: 10.6), and on
+a 16-match probe of named matchups, **33.6 units built and 9.9 casualties** per
+match. The casualty number carries a caveat and it is the honest half of this
+entry: it ranges from 0 to 47. `synth_triad` vs `synth_steel_flesh` trades 47
+bodies over eight minutes and `mass_sentinel` vs `mass_ripper` trades 21, but
+`mass_arclight` vs `mass_sentinel` builds 37 units and loses **2**, and the
+`turtle` mirror builds 60 and loses 7. So the army is unambiguously bigger than
+before (F-026's failure mode is not present) but a good part of the added time
+is two armies *assembling*, not two armies trading. Making the fight itself the
+long part is a stat question (engagement ranges, damage-to-HP), which is B4's.
+
+### The cap binds, and that is the blocker
+
+The band's top and the runner's cap are the same eight minutes, so a
+distribution centred in the band loses its upper tail to the cap. Measured on
+the kept content, **the five mass probes on a raised 20-minute cap** (2 seeds,
+100 matches; a diagnostic run, never a shipped setting):
+
+| min | p25 | median | p75 | p90 | max | timeouts |
+|---|---|---|---|---|---|---|
+| 4:22 | 4:23 | **6:32** | 7:47 | 8:33 | 10:45 | 0 / 100 |
+
+Every one of those hundred matches decides — by 10:45 at the latest. So the
+probe set's true arc is 6:32, comfortably inside the band, and **16 of its 100
+matches exceed the 8-minute cap**: at the shipped cap they are recorded as
+timeouts, not as stalemates. The clipped 16 are one class: `mass_bulwark`
+mirrors, `mass_bulwark` vs `mass_ravager` both ways, and `mass_ravager`
+mirrors — the heavy-armour grind, where `armor * mitigation_per_armor` eats
+most of a hit (Bulwark on Bulwark is 20 damage against 18 mitigation).
+
+Two designed properties fail because of it, and neither can be edited without
+changing what it means:
+
+- `critic_b1_ac3::every_mass_versus_mass_cell_resolves_in_both_orientations`
+  ("a cell that times out is a hole in the pentagon, and a matrix of holes
+  cannot support the assertion B3 exists to make"): the Bulwark mirror does not
+  resolve inside its 20 000-tick horizon, and does not resolve inside the
+  28 800-tick match cap either. Raising the horizon past the cap would keep the
+  test green while the hole stays in B3's matrix.
+- `b3_pentagon::the_real_batch_reports_what_the_sim_actually_does`: at the new
+  length the reading is **2 of 5 links holding**, with `bulwark > ravager`
+  **undefined** (0 decided, 8 timeouts) and `ravager > sentinel` and
+  `sentinel > ripper` newly failing. F-025's one broken link was not a
+  short-game artifact; at the long length the instrument reads worse, and one
+  link cannot be read at all.
+
+Attempts to unstick the grind inside this checkbox's remit all failed: armour
+mitigation halved (M1) leaves 16 timeouts; unit HP cut by 30% and by 50%
+changed almost no match. **The grind is a unit-stat problem (B4's pass), not a
+tempo one** — which is exactly what F-025 said about the Bulwark before the
+clock was touched.
+
+### The suite: what moved, and why the gate is **not** green
+
+`cargo test --release --no-fail-fast` on the tuned content: **811 passed, 25
+failed** across 17 test binaries (`b35_tempo`'s two new tests are among the
+passes). The failures fall into three piles, and the third is why this entry
+stops rather than finishing:
+
+1. **Pinned per-tick `state_hash` goldens — content-driven, recomputable, and
+   deliberately not recomputed here.** Every one of them moved, because a RON
+   change moves every hash by construction (no Rust was touched: `git diff` on
+   `src/` and `benches/` is empty). **The proof was run**: with the
+   pre-change `assets/data` restored under the *post-change* binary (identical
+   Rust — `git diff f6a2aeb -- src benches` is empty), `b1_matchup`,
+   `b2_headless`, `b2_orientation`, `b35_parallel` and `b35_queue_depth` —
+   51 tests, every golden-bearing one in the suite's B-series — pass at their
+   **old** pinned values, unedited. Old data, old numbers; new data, new
+   numbers; nothing in between. The three distinct
+   fixtures behind them, old -> new, read straight off the failures:
+
+   | fixture (who pins it) | old | new |
+   |---|---|---|
+   | pre-AC2 default matchup, seed 4 (`b1_matchup`, `b1_strategies`, `b35_queue_depth`, `b35_parallel`) | `0xa71f_64ca_d502_03e9` | `0xbb69_254d_5833_7869` |
+   | pre-B2 bench fixture, tick 300 (`b2_headless`, `b2_orientation`) | `0xa5b4_138c_f475_fd00` | `0xb832_456b_5a74_b590` |
+   | `solo_ripper` vs `solo_bulwark` / `depth_ripper` vs `depth_bulwark`, seed 4 (`b35_parallel`, `b35_queue_depth`) | `0xff87_0184_09ac_e43e` | `0xfec2_0c1e_d0c2_f806` |
+
+   The rest — seeds 11 and 23 of the default matchup, the other bench ticks and
+   the fold, the journal digests, and the cross-process pins under
+   `critic_b1_ac2` / `critic_b2_ac4` / `critic_b35_ac0` / `critic_b35_ac0b` —
+   were left un-recomputed on purpose: re-pinning thirty goldens to a
+   candidate that pile 3 may force to be re-scaled means recomputing thirty
+   numbers twice, and buries the blocker in a large mechanical diff.
+
+2. **Fixture and budget values that legitimately change, meaning intact.**
+   `b1_probe_set::every_strategy_eventually_attacks` and
+   `critic_b1_ac3::every_strategy_commits_before_the_match_can_stop_it` give a
+   strategy 12 000 ticks (3:20) to commit, and a probe that masses twenty units
+   on the new economy commits at about 15 700; `critic_b1::a_placement_the_
+   commander_cannot_afford_consumes_no_randomness` builds a poor commander whose
+   budget no longer buys a barracks; `m4a_economy`, `critic_m4a` and
+   `critic_m4b` anchor on the old worker load (`the probe's anchor text still
+   exists`, `probe assumes a multi-Alloy load`, `the worker never picked up a
+   load` — the probe expects 10 Alloy and gets 2); and
+   `critic_p2::no_configuration_of_the_writer_changes_a_single_tick_of_the_sim`
+   reports `the fixture never decided`, its match horizon predating a
+   five-minute arc. Each of those is a number to re-measure
+   against the new content, and each keeps its meaning (a commitment budget
+   under the 28 800 cap is still "before the match can stop it").
+   `b1_probe_set`'s own probe-count assertion was already updated in this diff:
+   `MASS_PROBE_BARRACKS = 3` replaces a hard-coded 1, and the knob-identity test
+   now compares **every** opening's tick and offset rather than only the first.
+
+3. **Two assertions that cannot be re-valued without changing what they
+   say** — the blocker:
+   - `critic_b1_ac3::every_mass_versus_mass_cell_resolves_in_both_orientations`
+     (see above): the Bulwark grind does not resolve inside the match cap, so
+     raising the test's horizon past 28 800 would make the test pass while the
+     hole stays in B3's matrix.
+   - `b1_strategies::the_default_strategy_is_the_old_mvp_ai_number_for_number`
+     would have had to change if `mvp` were tuned. It was not tuned, so this one
+     passes — at the cost recorded above (10.8% timeouts instead of 7.25%, and
+     a default strategy with two undecidable cells).
+
+**Not run, therefore not claimed:** release-profile tests, `cargo clippy
+--all-targets -- -D warnings` in either profile, and `cargo bench --no-run`.
+The debug suite is red by construction while piles 1 and 3 stand.
+
+### Verdict
+
+The AC's number is reachable in RON: median **5:17** over the whole roster,
+10.8% timeouts, with 33 units built and ~10 casualties a match — an arc in the band with
+real armies in it, which is what F-026 could not do. But it is reached by
+letting the slowest matchup class run past the runner's cap, which takes the
+pentagon from "one broken link" to "two links broken and one unreadable".
+Whether to ship it, re-scale it down (the whole roster at median 4:24 keeps
+timeouts at 3.25% but leaves the band), or fix the Bulwark's stats first (B4)
+is a decision above this checkbox. **Stopped here rather than editing the
+assertions that say so.**

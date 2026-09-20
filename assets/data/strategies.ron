@@ -51,10 +51,12 @@
 // personalities:
 //
 //   * The five `mass_*` entries hard-commit to one unit each and are
-//     **knob-identical**: same think interval, worker target, opening tick,
-//     offset, attack threshold, wave interval and spread. Only the barracks
-//     they open and the unit they mass differ. If those knobs ever diverge,
-//     B3's pentagon assertion measures the knobs instead of the units and the
+//     **knob-identical**: same think interval, worker target, opening count,
+//     opening ticks, offsets, attack threshold, wave interval and spread. Only
+//     the barracks they open and the unit they mass differ. Each opens its one
+//     barracks **three times** — three production lines — which is what keeps
+//     armies big now that the clock is long (F-028, F-029). If those knobs ever
+//     diverge, B3's pentagon assertion measures the knobs instead of the units and the
 //     whole instrument is void (F-018). The one asymmetry that stays is a real
 //     one from the design: an Aether Spire costs 200 Alloy where a Foundry or
 //     Gene-Vats costs 150.
@@ -72,11 +74,31 @@
 // Everything here is priced in the Alloy-only MVP economy (300 starting Alloy;
 // Foundry 150, Gene-Vats 150, Aether Spire 200; worker 10, ripper 40,
 // sentinel 70, arclight 80, ravager 90, bulwark 110).
+//
+// TEMPO (B3.5, F-029) — these scripts carry the match-length tuning. The arc
+// the brief asks for (5-8 minutes of real fighting) is bought with two knobs
+// here and one in `units.ron`: every strategy opens **several production
+// lines** instead of one (`mvp` excepted — see its note), and commits with a
+// **much larger force** (the mass probes at 20 units rather than 3), while a
+// worker's load shrank from 10
+// Alloy to 2 so the army takes minutes to assemble. Barracks count is what
+// stops the longer clock from meaning a smaller army — the trap the first
+// attempt at this tuning fell into (F-026). The poles keep their identity:
+// `rush` still opens on tick 0 and attacks with one body, `turtle` still
+// masses the largest force in the set before it moves.
 (
     default: "mvp",
     strategies: [
         // The MVP opener, number for number as `units.ron`'s `mvp_ai` block had
         // it: one Foundry, fast Sentinel pressure behind an armoured Bulwark.
+        // **Left untuned by B3.5's tempo pass on purpose** (F-029): B1 pins
+        // this entry field for field as the faithful promotion of `mvp_ai`
+        // (`b1_strategies::the_default_strategy_is_the_old_mvp_ai_number_for_number`,
+        // and M4c's own tests read it as "the default AI"), so retuning it
+        // would change what those assertions mean, not just their values. It
+        // therefore plays the new, slower economy on its old tempo — a short
+        // opener in a long-game roster, which is a question for the next
+        // checkbox, not something to settle by quietly editing a pin.
         (
             id: "mvp",
             think_interval_ticks: 30,
@@ -105,12 +127,14 @@
             worker_target: 6,
             barracks: [
                 (building: "foundry", at_tick: 300, offset: 130.0),
+                (building: "foundry", at_tick: 600, offset: 165.0),
+                (building: "foundry", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "bulwark", count: 1),
             ],
-            attack_at_army: 3,
-            attack_interval_ticks: 600,
+            attack_at_army: 20,
+            attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
         ),
@@ -121,12 +145,14 @@
             worker_target: 6,
             barracks: [
                 (building: "foundry", at_tick: 300, offset: 130.0),
+                (building: "foundry", at_tick: 600, offset: 165.0),
+                (building: "foundry", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "sentinel", count: 1),
             ],
-            attack_at_army: 3,
-            attack_interval_ticks: 600,
+            attack_at_army: 20,
+            attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
         ),
@@ -137,12 +163,14 @@
             worker_target: 6,
             barracks: [
                 (building: "gene_vats", at_tick: 300, offset: 130.0),
+                (building: "gene_vats", at_tick: 600, offset: 165.0),
+                (building: "gene_vats", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "ripper", count: 1),
             ],
-            attack_at_army: 3,
-            attack_interval_ticks: 600,
+            attack_at_army: 20,
+            attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
         ),
@@ -153,12 +181,14 @@
             worker_target: 6,
             barracks: [
                 (building: "gene_vats", at_tick: 300, offset: 130.0),
+                (building: "gene_vats", at_tick: 600, offset: 165.0),
+                (building: "gene_vats", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "ravager", count: 1),
             ],
-            attack_at_army: 3,
-            attack_interval_ticks: 600,
+            attack_at_army: 20,
+            attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
         ),
@@ -171,12 +201,14 @@
             worker_target: 6,
             barracks: [
                 (building: "aether_spire", at_tick: 300, offset: 130.0),
+                (building: "aether_spire", at_tick: 600, offset: 165.0),
+                (building: "aether_spire", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "arclight", count: 1),
             ],
-            attack_at_army: 3,
-            attack_interval_ticks: 600,
+            attack_at_army: 20,
+            attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
         ),
@@ -184,27 +216,30 @@
         // ---- the synthesis builds ------------------------------------------
 
         // Two domains: Machine + Flesh. Cheap Flesh bodies screening a Machine
-        // core — the army a single barracks could never field.
+        // core — the army a single barracks could never field. Two Foundries
+        // and two Gene-Vats: four lines across two domains.
         (
             id: "synth_steel_flesh",
             think_interval_ticks: 30,
             worker_target: 8,
             barracks: [
-                (building: "foundry",   at_tick: 300, offset: 130.0),
-                (building: "gene_vats", at_tick: 900, offset: 160.0),
+                (building: "foundry",   at_tick: 300,  offset: 130.0),
+                (building: "gene_vats", at_tick: 900,  offset: 160.0),
+                (building: "foundry",   at_tick: 1200, offset: 195.0),
+                (building: "gene_vats", at_tick: 1500, offset: 225.0),
             ],
             army: [
                 (unit: "sentinel", count: 1),
                 (unit: "ripper",   count: 2),
                 (unit: "bulwark",  count: 1),
             ],
-            attack_at_army: 4,
-            attack_interval_ticks: 600,
+            attack_at_army: 16,
+            attack_interval_ticks: 300,
             attack_spread: 70.0,
             queue_depth: 1,
         ),
         // All three domains: a Ripper screen, a Sentinel, an Arclight behind.
-        // The widest opening in the set — 500 Alloy of tech before a shot is
+        // The widest opening in the set — 650 Alloy of tech before a shot is
         // fired — so it also probes whether spreading tech is affordable at all.
         (
             id: "synth_triad",
@@ -214,14 +249,15 @@
                 (building: "foundry",      at_tick: 300,  offset: 130.0),
                 (building: "gene_vats",    at_tick: 900,  offset: 160.0),
                 (building: "aether_spire", at_tick: 1500, offset: 190.0),
+                (building: "gene_vats",    at_tick: 1800, offset: 225.0),
             ],
             army: [
                 (unit: "sentinel", count: 1),
                 (unit: "ripper",   count: 1),
                 (unit: "arclight", count: 1),
             ],
-            attack_at_army: 4,
-            attack_interval_ticks: 600,
+            attack_at_army: 16,
+            attack_interval_ticks: 300,
             attack_spread: 70.0,
             queue_depth: 1,
         ),
@@ -246,8 +282,8 @@
             attack_spread: 40.0,
             queue_depth: 1,
         ),
-        // The opposite pole: twelve workers, late tech, and nothing leaves home
-        // until a real force exists.
+        // The opposite pole: twelve workers, late tech on four lines, and
+        // nothing leaves home until the biggest force in the set exists.
         (
             id: "turtle",
             think_interval_ticks: 30,
@@ -255,14 +291,16 @@
             barracks: [
                 (building: "foundry",   at_tick: 600,  offset: 110.0),
                 (building: "gene_vats", at_tick: 1200, offset: 140.0),
+                (building: "foundry",   at_tick: 1800, offset: 175.0),
+                (building: "gene_vats", at_tick: 2400, offset: 210.0),
             ],
             army: [
                 (unit: "sentinel", count: 1),
                 (unit: "ripper",   count: 2),
                 (unit: "bulwark",  count: 1),
             ],
-            attack_at_army: 8,
-            attack_interval_ticks: 900,
+            attack_at_army: 28,
+            attack_interval_ticks: 600,
             attack_spread: 80.0,
             queue_depth: 1,
         ),
