@@ -1963,3 +1963,127 @@ Whether to ship it, re-scale it down (the whole roster at median 4:24 keeps
 timeouts at 3.25% but leaves the band), or fix the Bulwark's stats first (B4)
 is a decision above this checkbox. **Stopped here rather than editing the
 assertions that say so.**
+
+## F-030 — The matches were never fights; the cap was censoring them (B3.5, after the cap decision)
+
+**What changed since F-029.** Two things were authorised: the match cap moves
+from 8 to **15 minutes** (`DEFAULT_MATCH_SECS`, the single Rust line the
+RON-only rule bends for — `git diff main -- src` shows that constant and its
+comment and nothing else), and the armour/damage relation may be retuned in RON
+so heavy matchups decide on their own. The design metric becomes **the share of
+decided matches inside the 5-8 minute band**, with the timeout rate kept beside
+it as the stalemate signal.
+
+Raising the cap alone did what it was predicted to do: F-029's content, replayed
+at 15 minutes, decides **every** match — 100 of 100 probe matches, median 6:32,
+max 10:45, and the pentagon's `bulwark > ravager` cell comes back from
+*undefined* to a measured 0.0%. The 8-minute cap had been censoring, not
+catching.
+
+### The diagnostic that redirected the whole tuning
+
+Before touching armour, one heavy matchup was instrumented tick by tick
+(`mass_bulwark` mirror, seed 0, sampled every 3 600 ticks):
+
+```
+t=0      units [3, 3]    HQ [400, 400]   casualties A 0 B 0
+t=3600   units [7, 7]    HQ [400, 400]   casualties A 0 B 0
+...
+t=36000  units [25, 25]  HQ [400, 400]   casualties A 0 B 0
+t=38551  decided
+```
+
+**Ten minutes, two full armies, zero casualties, both HQs untouched.** The
+armour arithmetic was never the binding constraint: the armies were not
+fighting at all. F-029's tuning had bought its length with
+`attack_at_army: 20` against a five-times-slower economy, so a match was
+*"time to assemble twenty units"* — unit cost divided by income — and the first
+wave to arrive ended the game. That also explains F-029's other readings: the
+cheapest unit dominated the matrix (`mass_ripper` row mean 95.8%), and armour
+changes moved nothing. The A/B proves it: `mitigation_per_armor` 2 -> 1 on that
+content changed the batch's max from **10:45 to 10:44** and left production
+identical to the unit. You cannot tune a fight that is not happening.
+
+### The re-tune: commit early, make the base hard
+
+The arc has to come from armies *meeting repeatedly*, not from a single
+assembled doomstack, so the two knobs moved the other way:
+
+- **commitment thresholds down** — the five probes from `attack_at_army: 20` to
+  **10** (knob-identical, all five), `synth_*` 16 -> 9, `turtle` 28 -> 15;
+- **base durability up** — `building_hp_per_defense` 40 -> **420**, so an HQ is
+  4 200 HP and survives waves: the loser of a fight gets to rebuild and fight
+  again instead of losing the match to the first wave that arrives.
+
+Measured, five mass probes, 2 seeds, 100 matches, 15-minute cap:
+
+| run | change | median | in 5-8 band | timeouts | pentagon |
+|---|---|---|---|---|---|
+| (F-029 content at 15 min) | — | 6:32 | 48% | 0 | 2/5, all cells decided |
+| C1b | `attack_at_army` 8, HQ 1 200 | 3:26 | 18% | 0 | 4/5 |
+| C2 | HQ 2 400 | 4:13 | 35% | 0 | 5/5 |
+| C3b | HQ 3 600 | 5:37 | 42% | 0 | 5/5 |
+| C4 | HQ 3 000, `attack_at_army` 10 | 4:48 | 35% | 0 | 4/5 |
+| P1 | + `mvp_gather_ticks` 90 -> 120 | 6:06 | 27% | 0 | **reject**: a slower economy stretches the expensive armies most and *widens* the spread |
+| **Na** | **HQ 4 200, `attack_at_army` 10 (kept)** | **6:36** | **36%** | **0** | 4/5, every cell decided |
+
+Whole roster (10 strategies, 2 seeds, both orientations, 400 matches):
+
+| run | median | p25 | p75 | p90 | in 5-8 band | timeouts |
+|---|---|---|---|---|---|---|
+| FULL1 (`attack_at_army` 8, HQ 3 600) | 4:29 | 3:44 | 6:03 | 8:28 | 30.5% | 6/400 (1.5%) |
+| FULL2 (HQ 4 200) | 4:36 | 3:50 | 6:19 | 8:55 | 30.5% | 7/400 (1.75%) |
+| **FULL3 (kept)** | **5:05** | 4:14 | 7:10 | 9:57 | **31.5%** | **9/400 (2.25%)** |
+
+**Density, and this is the point:** 37.1 combat units built and **30.4
+casualties** per match over an 18-match probe of named matchups, against
+F-029's 33.6 built and **9.9** lost. Three times the trading for the same army
+size. The same `mass_bulwark` mirror that spent ten minutes with zero
+casualties now decides at 6:33 with 16 bodies lost, and `mass_bulwark` vs
+`mass_ravager` at 6:46 with 20.
+
+### The armour lever: measured, and *not* taken
+
+Re-run in the new regime, where fights actually happen,
+`mitigation_per_armor` 2 -> 1 does exactly what the arithmetic predicts — it
+hits armour and leaves the swarm alone (mean length per pentagon cell):
+
+| cell | mitigation 2 | mitigation 1 | change |
+|---|---|---|---|
+| arclight / bulwark | 11:39 | 9:33 | **-18%** |
+| bulwark / sentinel | 7:43 | 6:05 | **-21%** |
+| bulwark / ripper | 6:35 | 5:07 | **-22%** |
+| bulwark / ravager | 7:47 | 7:19 | -6% |
+| ripper mirror | 2:29 | 2:27 | -1% |
+| sentinel mirror | 3:40 | 3:37 | -1% |
+
+So the lever works and does not distort the light end. **It was still not
+kept**, on the length criterion the checkbox is judged by: with the thresholds
+and base durability re-cut, the heavy class already decides on its own — every
+cell decided, 0 timeouts, slowest cell 11:39 inside a 15-minute cap, and the
+Bulwark mirror trades 16 bodies — while taking the armour change costs band
+share (36% -> 30% on the probes; 31% at HQ 4 800, tried as compensation). The
+decision is the band, not the pentagon: for the record, mitigation 1 *also*
+moved the pentagon from 4/5 to 3/5, and that played no part in keeping 2. **One
+number reverses this** (`mvp_combat.mitigation_per_armor`) if a later pass
+would rather have shorter heavy fights than a wider band.
+
+### The pentagon at the new length, every cell decided (observation)
+
+Whole roster, 400 matches, 8 decided per link, **0 timeouts in any pentagon
+cell**:
+
+| link | rate | sample |
+|---|---|---|
+| bulwark > ravager | 87.5% | 8 decided, 0 timeouts — **holds** |
+| ravager > sentinel | 62.5% | 8 decided, 0 timeouts — holds |
+| sentinel > ripper | 50.0% | 8 decided, 0 timeouts — **FAILS** (exactly even is not a counter, F-025) |
+| ripper > arclight | 100.0% | 8 decided, 0 timeouts — holds |
+| arclight > bulwark | 100.0% | 8 decided, 0 timeouts — holds |
+
+Four of five, and the failing one is *measurable* — which is the whole point of
+the exercise. Row means run from `rush` 4.2% to `turtle` 88.9%; both are outside
+B3's 65% kill-criterion and are B4's business, not this checkbox's. Note how
+much the reading moves with tempo (F-029's content read 2/5 with one cell
+undefined; C2/C3b read 5/5): **a pentagon is a statement about a tempo**, and it
+should be re-read whenever the arc changes.

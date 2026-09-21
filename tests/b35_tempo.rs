@@ -16,14 +16,14 @@
 //!     (F-026: slower training bought minutes by shrinking the army).
 //!
 //! The batch is three strategies that span the roster's tempo — `rush` (the
-//! all-in), `synth_triad` (the widest tech opening, four lines across all
-//! three domains) and `turtle` (the long game) — on one seed, in both spawn
-//! orientations: 3 x 3 x 2 = 18 matches. These rather than the five `mass_*`
-//! probes on purpose: the probes are `b3_pentagon`'s instrument and are
-//! already played there, and their heavy-armour pairs run past the runner's
-//! cap under this tuning (F-029), which would make a length pin read a
-//! timeout. `mvp` is not here either: it is the one script B3.5 left untuned
-//! (B1 pins it number for number), so it is not a statement about the arc.
+//! all-in, which commits on its first body), `mvp` (the default opener, the
+//! one script B3.5 left untuned because B1 pins it number for number) and
+//! `mass_bulwark` (the slowest, most expensive army in the set) — on one seed,
+//! in both spawn orientations: 3 x 3 x 2 = 18 matches. `mass_bulwark` is in
+//! deliberately: it is the matchup class that used to be a 2-damage-a-hit
+//! grind and was *undecidable* inside the old cap (F-029), so if that ever
+//! returns this test reads it as a timeout or a runaway median rather than
+//! letting it hide in a batch average.
 //!
 //! Bounds, not golden numbers: this is a *property* of the content (the arc is
 //! in the band, the fights are real), and every number asserted here is stated
@@ -40,7 +40,7 @@ const BAND_LOW: u32 = 5 * 60 * SIM_HZ;
 const BAND_HIGH: u32 = 8 * 60 * SIM_HZ;
 
 /// The batch: the roster's three tempo poles, one seed, both orientations.
-const POLES: [&str; 3] = ["rush", "synth_triad", "turtle"];
+const POLES: [&str; 3] = ["mass_bulwark", "mvp", "rush"];
 const MATCHES: usize = POLES.len() * POLES.len() * 2;
 
 fn shipped() -> Content {
@@ -79,8 +79,10 @@ fn mmss(ticks: u32) -> String {
 /// The decided-match median of the pole batch is inside the 5-8 minute band,
 /// and the batch is decided: a capped match is undecided, never a long one.
 ///
-/// Measured on the tuning this ships with (F-029): 18 of 18 decided, median
-/// 5:42. The assertion is the band, not 5:42.
+/// Measured on the tuning this ships with (F-030): 18 of 18 decided, median
+/// 6:22, 10 of the 18 inside the band. The assertion is the band, not 6:22 —
+/// and "decided" is now a real statement, because the cap is a 15-minute
+/// backstop rather than the top of the band it is measuring.
 #[test]
 fn the_decided_match_median_is_in_the_five_to_eight_minute_band() {
     let content = shipped();
@@ -118,16 +120,19 @@ fn the_decided_match_median_is_in_the_five_to_eight_minute_band() {
 /// decided at 0:32 with four bodies. What must never happen is the F-026
 /// failure — a *long* clock bought by shrinking the army.
 ///
-/// Measured on the tuning this ships with (F-029): this batch averages 29
-/// combat units per match (the whole 400-match roster batch reads 33), and the
-/// thinnest match over three minutes fields 34. The floors below sit under
-/// those readings with room for a later balance pass to move.
+/// Measured on the tuning this ships with (F-030): this batch averages 22
+/// combat units per match, and the thinnest match over three minutes fields
+/// 15. A separate 18-match probe of named matchups reads 37 built and **30
+/// casualties** per match — the number that matters most here, because the
+/// tuning this replaced built 33 units a match and lost 9.9 of them: armies
+/// that assemble and never trade. The floors below sit under these readings
+/// with room for a later balance pass to move.
 #[test]
 fn the_matches_are_dense_enough_to_be_fights() {
     /// A match this long or longer has to have an army in it.
     const LONG: u32 = 3 * 60 * SIM_HZ;
-    const MIN_PER_LONG_MATCH: u32 = 15;
-    const MIN_MEAN: u32 = 20;
+    const MIN_PER_LONG_MATCH: u32 = 12;
+    const MIN_MEAN: u32 = 18;
 
     let content = shipped();
     let records = poles_batch(&content);
