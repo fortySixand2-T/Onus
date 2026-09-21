@@ -119,7 +119,7 @@
         damage_per_offense: 5,     // Offense -> damage per hit
         mitigation_per_armor: 2,   // Armor  -> flat mitigation per hit
         speed_per_point: 36.0,     // Speed  -> world units per second
-        building_hp_per_defense: 40,   // buildings' Defense -> HP pool (a base
+        building_hp_per_defense: 420,   // buildings' Defense -> HP pool (a base
                                        // outlasts a soldier without leaving the
                                        // 1-10 design scale)
         max_stat: 10,              // the design scale is 1-10; stats above this

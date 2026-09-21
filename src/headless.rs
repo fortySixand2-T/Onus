@@ -150,11 +150,21 @@ pub struct MatchSettings {
     pub orientation: Orientation,
 }
 
-/// The budget for one match: **eight minutes of play**, the top of the 5-8 min
-/// target arc in DESIGN_BRIEF. Written as a duration times the sim's own rate
-/// rather than as `28_800`, so the number explains itself and follows
-/// [`SIM_HZ`] if the rate ever moves.
-pub const DEFAULT_MATCH_SECS: u32 = 8 * 60;
+/// The budget for one match: **fifteen minutes of play** — an anti-stalemate
+/// *backstop*, deliberately well above DESIGN_BRIEF's 5-8 minute target arc.
+/// Written as a duration times the sim's own rate rather than as `54_000`, so
+/// the number explains itself and follows [`SIM_HZ`] if the rate ever moves.
+///
+/// It was eight minutes until B3.5 (F-029, F-030), which is to say it was the
+/// *top of the target band*, and that is exactly what made it useless as a
+/// measurement: any distribution centred in the band has its upper tail sitting
+/// on the cap, so ordinary long matches were recorded as non-results. The
+/// tuned content read 10.8% timeouts at eight minutes and **zero** at twenty,
+/// deciding every match by 10:45 — the cap was censoring, not catching. A cap
+/// says "stop watching", never "this is how long a match should be"; the design
+/// number is the share of decided matches *inside* the band, and the timeout
+/// rate beside it is the stalemate signal.
+pub const DEFAULT_MATCH_SECS: u32 = 15 * 60;
 /// [`DEFAULT_MATCH_SECS`] in sim ticks.
 pub const DEFAULT_TICK_CAP: u32 = DEFAULT_MATCH_SECS * SIM_HZ;
 
