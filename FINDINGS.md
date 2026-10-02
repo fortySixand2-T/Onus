@@ -2387,3 +2387,20 @@ Two notes for whoever re-pins it, both from this entry:
   rewritten, it should either raise its seed count or assert the verdict with its
   interval, so a 50/50-looking cell is reported as *undetermined* rather than as
   a broken design.
+
+### Reproducing the numbers
+
+Every row above is `src/bin/balance` in release and nothing else; the batches are
+named by their flags, so each is one command. `balance` already prints median,
+p25, p75 and max (`Tally::length_quantile`), the timeout count, production totals
+and the pentagon table; **band share and p90 are not printed**, and were computed
+from the per-match progress lines `balance` writes to stderr
+(`[n/total] a vs b seed s [orient] -> result in T ticks (m:ss)`) with a throwaway
+script, using `length_quantile`'s own quantile definition so the two agree — the
+cross-check is that the parsed median reproduces the printed one on every batch,
+and that row A1 reproduces F-030's 30%. A batch split into shards on seed bases
+10/11/12 is three such commands; `seed_at` mixes the base, so the shards are
+different seed sets rather than overlapping ones. If band share becomes a
+standing report rather than a one-off reading, it belongs in `Tally` where it can
+be tested — which is a B3 checkbox ("match-length distribution vs the 5-8 minute
+target"), not this entry's.
