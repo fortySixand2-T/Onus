@@ -407,3 +407,4 @@
 - [2026-09-19] Modified: FINDINGS.md — F-029 records the tempo levers (including every reject), the before/after distributions, the density reading, the golden-recompute proof, and the cap/pentagon blocker that stops the checkbox
 - [2026-09-20] Modified: BALANCE_PLAN.md — B3.5: separate the tick cap (raised to 15 min, a backstop) from the 5-8 min design band, and fix the armour grind that makes heavy matchups unresolvable
 - [2026-10-01] Modified: FINDINGS.md — F-031 opened: the mitigation-1 armour question re-searched over the commitment threshold, with the first six rows of the walk
+- [2026-10-01] Modified: FINDINGS.md — F-031: the mitigation-2 counterfactual walk, showing the commitment threshold (not the armour) carries most of the band-share gain

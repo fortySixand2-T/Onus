@@ -2124,5 +2124,30 @@ across the batch (workers included), the F-026 density guard.
 | A4 | 1 | 16 | 5:30 | 3:46 | 7:06 | 10:30 | 12:59 | **50%** | 0 | 3932 |
 | A5 | 1 | 18 | 6:05 | 4:06 | 7:17 | 8:33 | 14:38 | **51%** | 0 | 4014 |
 
+| A6 | 1 | 20 | 6:43 | 4:29 | 7:59 | 8:43 | 11:05 | 43% | 0 | 4207 |
+| A7 | 1 | 22 | 7:21 | 4:50 | 8:41 | 9:32 | 12:02 | 28% | 0 | 4487 |
+
 A1 reproduces F-030's reverted reading exactly (30%), which is the check that
-this is the same measurement. (Rows continue below.)
+this is the same measurement. The walk has an interior optimum at
+`attack_at_army` **16-18**: band share 30 -> 42 -> 30 -> 50 -> 51 -> 43 -> 28,
+and the tail tightens with it (matches over 8:00: 26 at A=10, **13** at A=18).
+So the premise holds — mitigation 1 plus a higher commitment threshold clears
+the kept content's 36%.
+
+### The counterfactual: the same walk at mitigation 2
+
+A one-sided walk cannot tell the armour change from the threshold change, so the
+*identical* sweep was run with `mitigation_per_armor` left at 2:
+
+| row | mit | `attack_at_army` | median | p25 | p75 | p90 | max | **band** | timeouts | units |
+|---|---|---|---|---|---|---|---|---|---|---|
+| B1 | 2 | 16 | 6:15 | 3:48 | 7:41 | 11:09 | 14:21 | 44% | 1 | 4316 |
+| B2 | 2 | 18 | 6:09 | 4:08 | 7:53 | 10:13 | 13:21 | 46% | 1 | 4201 |
+| B3 | 2 | 20 | 6:45 | 4:30 | 8:01 | 8:59 | 13:44 | 36% | 0 | 4345 |
+| B4 | 2 | 22 | 7:23 | 4:51 | 8:43 | 9:33 | 12:12 | 28% | 0 | 4526 |
+
+**Most of the gain was the threshold, not the armour.** Mitigation 2 peaks in
+the same place (46% at A=18) and for the same reason. The armour change is worth
+about **5 points of band share** on top of that (51% vs 46%, 50% vs 44%) — which
+at 100 matches is roughly one standard error of the difference and therefore not
+yet a result. Hence the decisive run below.
