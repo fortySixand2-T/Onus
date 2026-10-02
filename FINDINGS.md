@@ -2524,3 +2524,66 @@ different seed sets rather than overlapping ones. If band share becomes a
 standing report rather than a one-off reading, it belongs in `Tally` where it can
 be tested — which is a B3 checkbox ("match-length distribution vs the 5-8 minute
 target"), not this entry's.
+
+## F-032 — The goldens moved because the data moved, and here is the proof (B3.5 closure, item 4)
+
+**What this entry is.** BALANCE_PLAN's B3.5 box ends with a licence and a
+condition: "Because content is data, a RON change moves every pinned per-tick
+`state_hash` golden. With **no Rust touched**, any golden that moves is
+content-driven by construction — that is the argument that licenses recomputing
+them, and **it must be demonstrated, not asserted**." F-029 ran that
+demonstration for five B-series binaries at an earlier content state and
+deliberately left ~30 goldens un-recomputed. This entry redoes the proof for the
+*final* B3.5 content, over the **whole** suite rather than the B-series, and then
+recomputes.
+
+### The precondition: the Rust really is identical
+
+`git diff main -- src benches` at `d8f95cd` is exactly two hunks of one file:
+`src/headless.rs`'s `DEFAULT_MATCH_SECS` (8 min -> 15 min), its derived
+`DEFAULT_TICK_CAP`, and the comment explaining why (the cap decision, F-029).
+Nothing in `src/sim/`, nothing in `benches/`. A hash is a function of sim state,
+so the only thing on this branch that *can* move one is `assets/data`.
+
+`DEFAULT_MATCH_SECS` itself cannot move a per-tick hash: it is a stopping
+condition on the batch runner, not an input to any sim system, and every golden
+here is pinned at a tick (300, 600, ...) or a fold over ticks far below either
+cap. The suite demonstrates this too — see below: the goldens pass *unchanged*
+with the new cap compiled in and the old data loaded.
+
+### The proof, run both ways and in both profiles
+
+`Content` is loaded at runtime from `CARGO_MANIFEST_DIR/assets/data`
+(`headless::content`), so the swap is a file copy, not a rebuild — which is also
+the only reason this proof is cheap. (`touch`ed after every copy regardless: an
+`rsync -a`-restored file can look older than the last build and silently not be
+rebuilt. It has produced a false green in this project before.)
+
+| run | binary | `assets/data` | result |
+|---|---|---|---|
+| P1 | post-change (debug) | **`main`'s** | **839 passed, 5 failed** |
+| P2 | post-change (release) | **`main`'s** | **839 passed, 5 failed** — the same five |
+| N1 | post-change (debug) | post-change | see the re-pin table below |
+| N2 | post-change (release) | post-change | identical to N1 |
+
+**Not one golden is among P1/P2's failures.** All five are assertions this branch
+*wrote about the new content*, and each fails holding the old value in its hand:
+
+| test | file | says |
+|---|---|---|
+| `every_combat_unit_is_massed_by_exactly_one_probe` | `b1_probe_set` | `mass_bulwark` opens 1 barracks, wanted 3 |
+| `the_mass_probes_are_knob_identical` | `b1_probe_set` | a mass probe opens 1 production line, wanted 3 |
+| `the_five_mass_probes_are_knob_identical_at_attack_at_army_ten` | `critic_b35_armour` | `attack_at_army` is 3, wanted 10 |
+| `the_decided_match_median_is_in_the_five_to_eight_minute_band` | `b35_tempo` | median **1:16**, outside the band |
+| `the_matches_are_dense_enough_to_be_fights` | `b35_tempo` | **6** combat units a match, under 18 |
+
+So: **old data, old numbers; new data, new numbers; nothing in between.** Every
+golden-bearing suite in the tree — not only F-029's five — passes at its old,
+unedited pin under the new binary: `b1_matchup`, `b1_strategies`, `b2_headless`,
+`b2_orientation`, `b2_production`, `b35_parallel`, `b35_queue_depth`,
+`critic_b1_ac2`, `critic_b2_ac1`, `critic_b2_ac4`, `critic_b35_ac0`,
+`critic_b35_ac0b`, `critic_m4b`, `critic_m4c`, `critic_m5`, `critic_m6`,
+`m5_replay`, `m6_cross_process`, `m6_lockstep`, `p2_log_writer`. And so does
+every *budget* the next section re-measures, and `b3_pentagon`'s F-025 pin: under
+`main`'s data the pentagon still reads `bulwark > ravager` at 0.0%. That is the
+whole licence, and it is now a measurement rather than an argument.
