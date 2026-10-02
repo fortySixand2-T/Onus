@@ -412,3 +412,4 @@
 - [2026-10-01] Modified: FINDINGS.md — F-031: the kept content re-measured at 400 matches (band 38%, 2.00% timeouts, pentagon 5/5) and the sample-size correction to F-030's sentinel > ripper reading
 - [2026-10-01] Modified: FINDINGS.md — F-031: the 2x2 at 400 matches per cell — the armour change is worth +2 +/- 2.5 points of band share, i.e. nothing, and buys tail instead
 - [2026-10-01] Modified: FINDINGS.md — F-031: the isolated armour A/B at the kept threshold, 400 matches — mitigation 1 loses 9.5 points of band share (2.8 SE)
+- [2026-10-01] Modified: FINDINGS.md — F-031 closed: mitigation_per_armor stays at 2 (reverted with numbers), and the pentagon re-read at 25 seeds (1 250 matches) holds 5 of 5 links with every CI excluding 50%

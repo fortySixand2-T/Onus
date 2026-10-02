@@ -2283,3 +2283,86 @@ it (`attack_at_army: 10`):
 mitigation 1 pushes 41 more matches *below* 5:00 while removing only one from the
 cap. It compresses the distribution downward past the band's floor. F-030 read
 the same effect at a quarter of the sample and called it correctly.
+
+### The pentagon, sized properly: 25 seeds, 1 250 matches, 5 of 5 links
+
+**Why 25 seeds.** A pentagon cell collects 4 decided matches per seed (two spawn
+orientations x the two orderings `WinMatrix` pools into one cell), so the link
+sample size *is* a seed count. 25 seeds puts **~100 decided matches per link**,
+whose 95% Wilson half-width is about 10 points: enough to call a link that is
+really 65% (80% power needs n≈85 for a 15-point deviation from 50%) and enough to
+refuse one that is really even. 8 matches — F-030's sample — has a half-width of
+28 and can refuse nothing. Sharper than ~±10 gets expensive fast: ±5 needs ~400
+matches per link, i.e. 100 seeds and about 4 CPU-hours per reading.
+
+Kept content, `balance --seeds 25 --minutes 15 --only <the five probes>` (as
+three shards on seed bases 10/11/12), **1 250 matches**:
+
+| link | rate | n decided | timeouts | 95% Wilson CI | verdict |
+|---|---|---|---|---|---|
+| sentinel > ripper | **71.7%** | 99 | 1 | [62.2, 79.6] | **holds** |
+| ripper > arclight | 93.0% | 100 | 0 | [86.3, 96.6] | holds |
+| arclight > bulwark | 100.0% | 88 | 12 | [95.8, 100.0] | holds |
+| bulwark > ravager | 85.7% | 98 | 2 | [77.4, 91.3] | holds |
+| ravager > sentinel | **62.9%** | 97 | 3 | [53.0, 71.8] | **holds** |
+
+**Five of five, every CI excluding 50%.** The designed counter-pentagon is intact
+in the shipped content, and both links F-030 and F-025 reported broken were
+sampling noise: `sentinel > ripper` is 71.7%, not 50.0%, and `ravager > sentinel`
+— which at n=32 straddled 50% — resolves to 62.9%. This is the first reading of
+the pentagon in this project taken at a sample size that can support the word
+"fails".
+
+Length on the same 1 250 matches (the kept content's most reliable arc reading
+to date): min 2:27, p25 4:29, **median 6:23**, p75 8:02, p90 11:13, max 14:54,
+**band 34.7%** (420/1212), **38 timeouts (3.04%)**, 45.5 units built per match.
+
+That timeout rate is the other correction to F-030, which reported 0 on 100
+matches: at 1 250 matches **3% of probe matches still reach the 15-minute cap**,
+and they are concentrated in one class — `arclight` vs the armoured units:
+`mass_arclight` vs `mass_bulwark` **12 of 100**, vs `mass_ravager` 12 of 100, vs
+`mass_sentinel` 8 of 100, everything else 0-3. Every cell is still *readable*
+(88 decided in the worst), so the matrix is not holed, but the heavy grind is not
+gone — it is rarer. **That residue is the live item, and it is a unit-stat
+question**: the Arclight is `offense 9 / defense 2 / armor 2`, a glass cannon that
+cannot finish an armoured line before the armoured line's mitigation eats its
+damage, so the two sides rebuild forever. It is B4's, exactly as F-025 and F-029
+both concluded.
+
+### Verdict: REVERTED. F-030's call was right, and this is now a closed question.
+
+`mvp_combat.mitigation_per_armor` stays at **2**. Nothing in `assets/data/` is
+changed by this entry — the revert is the absence of a diff, and
+`git diff main -- src benches` still shows `DEFAULT_MATCH_SECS` and its comment
+and nothing else.
+
+The three things the completed search establishes, none of which was available
+from F-030's single row:
+
+1. **At the shipped threshold the armour change is a measured loss**: 28.5% band
+   against 38.0%, on 400 matches a side, ~2.8 SE. It pushes matches *below* the
+   band's floor (191 under 5:00 against 150) far faster than it pulls them off
+   the cap (7 timeouts against 8).
+2. **Where band share is higher, the threshold earned it, not the armour.**
+   `attack_at_army` has an interior optimum at 16-18 worth ~9 points of band
+   share (38% -> 47-48%), and at that optimum mitigation 1 vs 2 reads -0.9 at
+   A=16 and +4.8 at A=18: **+2 ± 2.5 points pooled, i.e. nothing.** Taking the
+   armour change to "unlock" the threshold is a misreading of which knob moved.
+3. **And the threshold's 9 points are not for sale anyway**: the pentagon
+   degrades monotonically along it — 5/5 at A=10, 3/5 at 16, 2/5 at 18 and above,
+   *identically at both mitigation settings* — because at 18 bodies a side the
+   cheap swarm runs away with the matrix (every `x vs mass_ripper` cell decides
+   at ~4:08 and `sentinel > ripper` inverts to 0.0%). A batch that cannot read
+   the counter-pentagon is the instrument B3 exists to build, broken.
+
+So the band-share ceiling of this knob set is real and the content sits near it:
+~35-38% of decided probe matches inside 5-8 minutes, with ~39% *below* 5:00
+because the Ripper and Sentinel mirrors decide in 2:29 and 3:38 and no commitment
+threshold lengthens them. **Lifting the floor is a unit-stat problem, not a
+tempo one** — the same conclusion the armour grind reaches from the other end,
+and the same destination: B4.
+
+What F-030 left as an invitation — "one number reverses this" — is withdrawn.
+One number does not reverse it: at the shipped threshold mitigation 1 is 9.5
+points worse, and at any threshold where it is not worse, it is not better
+either.
