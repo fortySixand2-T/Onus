@@ -2366,3 +2366,24 @@ What F-030 left as an invitation — "one number reverses this" — is withdrawn
 One number does not reverse it: at the shipped threshold mitigation 1 is 9.5
 points worse, and at any threshold where it is not worse, it is not better
 either.
+
+### One consequence for the suite, flagged not fixed
+
+`b3_pentagon::the_real_batch_reports_what_the_sim_actually_does` fails on this
+branch's content (`cargo test --release --test b3_pentagon`: 17 passed, 1
+failed — `left: Holds, right: Fails` at `tests/b3_pentagon.rs:477`). It pins
+F-025's reading: `holding() == 4` with `bulwark > ravager` **at exactly 0.0%**.
+Under the B3.5 content that link is 85.7% over 98 decided matches, so the pin is
+a content-driven value change, due for re-measurement with the rest of them.
+
+Two notes for whoever re-pins it, both from this entry:
+
+- the new value is **5 of 5 links holding**, and it is 5/5 at 1 250 matches, not
+  just at the test's 100;
+- the test takes its verdict from **2 seeds — 8 decided matches per link — and
+  that sample cannot support the word `Fails`** (95% half-width 28 points). It is
+  the same under-powered reading that put a wrong `FAILS` in F-030 and (on the
+  evidence of the 71.7% / 62.9% links above) a wrong one in F-025. If the pin is
+  rewritten, it should either raise its seed count or assert the verdict with its
+  interval, so a 50/50-looking cell is reported as *undetermined* rather than as
+  a broken design.
