@@ -2107,10 +2107,21 @@ probes, both spawn orientations, 15-minute cap:
 `attack_at_army` moves on all five probes together (knob identity, F-018) and on
 the `synth_*` / `turtle` scripts in proportion to F-030's ratios (`synth` = 0.9x,
 `turtle` = 1.5x, integer-truncated); `mvp` and `rush` are untouched throughout.
-Quantiles are `Tally::length_quantile`'s definition (`ceil(q*n)`, decided
-matches only) so every number here is comparable with F-029's and F-030's;
-"band" is the share of **decided** matches in 5:00-8:00; p90 is computed the
-same way from the same per-match log. "units" is every unit both sides built
+Quantiles are `Tally::length_quantile`'s definition (`ceil(q*n)`) over **every
+match in the batch, capped matches included** — `Tally::of` in `src/batch.rs`
+pushes `r.ticks` for every record, so a timeout contributes its full 15:00 to the
+length distribution. (The critic pinned this as
+`the_printed_length_quantiles_include_capped_matches`; an earlier draft of this
+entry wrongly described the basis as "decided matches only".) The two bases
+coincide only on a zero-timeout batch, and diverge measurably once there are
+timeouts — on the shipped content at 400 matches with 11 timeouts, decided-only
+median/p90/max is **6:21 / 10:57 / 14:48** against the printed **6:26 / 11:35 /
+15:00**; at 1 250 matches with 41 timeouts, decided-only median **5:37** against
+printed **6:10**. **Consequence to carry forward: every tail statistic quoted
+below (p90, max, "identical tails") includes capped matches**, so a content with
+more timeouts is flattered in the median and penalised in the tail by the same
+censoring. "band" is the share of **decided** matches in 5:00-8:00 (that one *is*
+decided-only); p90 is computed from the same per-match log on the printed basis. "units" is every unit both sides built
 across the batch (workers included), the F-026 density guard.
 
 ### The walk, 2 seeds (100 matches per row)
@@ -2234,7 +2245,11 @@ Two corrections to F-030 fall straight out of this, both from sample size:
   over-8:00 count (63 vs 93).
 
 So the honest ledger of the candidate is **+9.4 points of band share, identical
-timeouts, identical tails, and three of five designed counters inverted.**
+timeouts, identical tails, and three of five designed counters inverted.** (The
+"identical tails" reading is on the printed quantile basis, which **includes the
+capped matches at their full 15:00** — see Method. With equal timeout counts on
+both sides, 8 and 8, the comparison is still apples-to-apples; it would not be
+against a content with a different timeout rate.)
 
 ### The pentagon's sample size, and F-030's `sentinel > ripper`
 
@@ -2460,9 +2475,17 @@ p25, p75 and max (`Tally::length_quantile`), the timeout count, production total
 and the pentagon table; **band share and p90 are not printed**, and were computed
 from the per-match progress lines `balance` writes to stderr
 (`[n/total] a vs b seed s [orient] -> result in T ticks (m:ss)`) with a throwaway
-script, using `length_quantile`'s own quantile definition so the two agree — the
-cross-check is that the parsed median reproduces the printed one on every batch,
-and that row A1 reproduces F-030's 30%. A batch split into shards on seed bases
+script, using `length_quantile`'s own quantile definition (`ceil(q*n)`) and its
+own basis (all matches, timeouts included — see Method).
+
+**One cross-check claimed here is withdrawn.** An earlier draft said "the parsed
+median reproduces the printed one on every batch". That check is only valid on a
+batch with **zero timeouts**, which is why it "worked" on the 100-match walk rows
+and could not have worked on the 400- and 1 250-match batches: those have 8-41
+capped matches, and on a decided-only basis their medians differ from the printed
+ones by 5s to 33s (6:21 vs 6:26 at 400; 5:37 vs 6:10 at 1 250). Treat it as
+withdrawn for every batch with a timeout in it. The surviving reproduction check
+is that **row A1 reproduces F-030's 30%** band share. A batch split into shards on seed bases
 10/11/12 is three such commands; `seed_at` mixes the base, so the shards are
 different seed sets rather than overlapping ones. If band share becomes a
 standing report rather than a one-off reading, it belongs in `Tally` where it can
