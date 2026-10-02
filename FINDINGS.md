@@ -2266,3 +2266,20 @@ sampling. What *does* survive the larger sample is the mechanism F-030 named:
 mitigation 1 consistently cuts the timeout rate (5 vs 8 at A=16, 8 vs 15 at
 A=18) and shaves the top of the distribution, because it shortens exactly the
 heavy matchups that were running into the cap. It buys **tail**, not band.
+
+### The isolated A/B, at the kept threshold and 400 matches: mitigation 1 loses
+
+F-030 ran this comparison on 100 matches (36% -> 30%) and reverted on it. At four
+times the sample, with the threshold left exactly where the shipped content has
+it (`attack_at_army: 10`):
+
+| content | median | p25 | p75 | p90 | max | **band** | timeouts | under 5:00 | units/match | pentagon |
+|---|---|---|---|---|---|---|---|---|---|---|
+| mit **2**, A=10 (shipped) | 6:25 | 4:30 | 7:45 | 10:06 | 14:43 | **38.0%** | 8 (2.00%) | 150 | 44.4 | **5/5** |
+| mit **1**, A=10 | 5:06 | 4:23 | 7:16 | 9:54 | 14:22 | **28.5%** | 7 (1.75%) | 191 | 41.4 | 3/5 |
+
+**-9.5 points of band share** (SE of the difference ~3.4, so ~2.8 SE: this one
+*is* a result, not noise), and the mechanism is visible in the last two columns —
+mitigation 1 pushes 41 more matches *below* 5:00 while removing only one from the
+cap. It compresses the distribution downward past the band's floor. F-030 read
+the same effect at a quarter of the sample and called it correctly.
