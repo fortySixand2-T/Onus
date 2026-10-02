@@ -2087,3 +2087,42 @@ B3's 65% kill-criterion and are B4's business, not this checkbox's. Note how
 much the reading moves with tempo (F-029's content read 2/5 with one cell
 undefined; C2/C3b read 5/5): **a pentagon is a statement about a tempo**, and it
 should be re-read whenever the arc changes.
+
+## F-031 — The armour question, closed: mitigation 1 earns its band share once the commitment threshold is re-walked (B3.5)
+
+**What this entry is.** F-030 measured `mvp_combat.mitigation_per_armor` 2 -> 1,
+found that it shortens heavy fights 18-22% and leaves the light end alone, and
+then **reverted it** because at the kept commitment threshold
+(`attack_at_army: 10`) it cost band share — 36% -> 30% on the five mass probes.
+That revert rested on an incomplete search: shortening the long tail *narrows*
+the distribution, and a narrower distribution with a low median can be
+re-centred by lengthening, which `attack_at_army` does. This entry completes the
+search over that knob, **at both mitigation settings** (a one-sided walk would
+only prove that `attack_at_army` matters), and settles whether F-030's revert
+was right.
+
+**Method.** Every row is `src/bin/balance` in release on the box, five mass
+probes, both spawn orientations, 15-minute cap:
+`balance --seeds K --minutes 15 --only mass_bulwark,mass_sentinel,mass_ripper,mass_ravager,mass_arclight`.
+`attack_at_army` moves on all five probes together (knob identity, F-018) and on
+the `synth_*` / `turtle` scripts in proportion to F-030's ratios (`synth` = 0.9x,
+`turtle` = 1.5x, integer-truncated); `mvp` and `rush` are untouched throughout.
+Quantiles are `Tally::length_quantile`'s definition (`ceil(q*n)`, decided
+matches only) so every number here is comparable with F-029's and F-030's;
+"band" is the share of **decided** matches in 5:00-8:00; p90 is computed the
+same way from the same per-match log. "units" is every unit both sides built
+across the batch (workers included), the F-026 density guard.
+
+### The walk, 2 seeds (100 matches per row)
+
+| row | mit | `attack_at_army` | median | p25 | p75 | p90 | max | **band** | timeouts | units |
+|---|---|---|---|---|---|---|---|---|---|---|
+| base (F-030 kept) | 2 | 10 | 6:36 | 4:42 | 8:57 | 10:39 | 14:42 | **36%** | 0 | 4261 |
+| A1 | 1 | 10 | 5:44 | 4:27 | 8:00 | 9:56 | 14:08 | 30% | 0 | 4261 |
+| A2 | 1 | 12 | 5:30 | 4:15 | 8:12 | 9:41 | 12:01 | 42% | 1 | 4092 |
+| A3 | 1 | 14 | 6:14 | 3:27 | 9:11 | 9:54 | 14:26 | 30% | 0 | 4261 |
+| A4 | 1 | 16 | 5:30 | 3:46 | 7:06 | 10:30 | 12:59 | **50%** | 0 | 3932 |
+| A5 | 1 | 18 | 6:05 | 4:06 | 7:17 | 8:33 | 14:38 | **51%** | 0 | 4014 |
+
+A1 reproduces F-030's reverted reading exactly (30%), which is the check that
+this is the same measurement. (Rows continue below.)
