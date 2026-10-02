@@ -2251,3 +2251,18 @@ to even:
 sampling artefact of reading a 50/50-looking cell off eight matches; the real
 coin-flip in the cycle is `ravager > sentinel`, and at n=32 it cannot be called
 either way. That is the number that needs the seeds, so the run below raises it.
+
+### The armour change's own effect, at 400 matches per cell of the 2x2
+
+| `attack_at_army` | mit 1 band | mit 2 band | mit 1 - mit 2 | mit 1 timeouts | mit 2 timeouts | mit 1 p90 | mit 2 p90 | mit 1 units/match | mit 2 units/match |
+|---|---|---|---|---|---|---|---|---|---|
+| 16 | 47.1% | **48.0%** | **-0.9** | 5 (1.25%) | 8 (2.00%) | 10:33 | 11:08 | 40.4 | 43.5 |
+| 18 | **47.4%** | 42.6% | **+4.8** | 8 (2.00%) | 15 (3.75%) | 10:03 | 10:19 | 42.3 | 44.3 |
+
+Pooled over the two thresholds the armour change is worth **+2 points of band
+share with a standard error of about 2.5** — it is not distinguishable from
+nothing. The n=100 rows that made it look like +5 were one standard error of
+sampling. What *does* survive the larger sample is the mechanism F-030 named:
+mitigation 1 consistently cuts the timeout rate (5 vs 8 at A=16, 8 vs 15 at
+A=18) and shaves the top of the distribution, because it shortens exactly the
+heavy matchups that were running into the cap. It buys **tail**, not band.
