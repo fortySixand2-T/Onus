@@ -2151,3 +2151,57 @@ the same place (46% at A=18) and for the same reason. The armour change is worth
 about **5 points of band share** on top of that (51% vs 46%, 50% vs 44%) — which
 at 100 matches is roughly one standard error of the difference and therefore not
 yet a result. Hence the decisive run below.
+
+### The decisive run: 400 matches per setting, at the walk's optimum
+
+`attack_at_army: 18`, five probes, 8 seeds x both orientations (3 shards on
+seed bases 0/1/2, `seed_at` mixes the base so the three are different seed
+sets), 400 matches per setting:
+
+| mit | median | p25 | p75 | p90 | max | **band** | timeouts | over 8:00 | under 5:00 |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 6:05 | 4:07 | 7:51 | **10:03** | 14:49 | **47.4%** (186/392) | **8 (2.00%)** | 63 | 143 |
+| 2 | 6:09 | 4:10 | 7:55 | 10:19 | 14:53 | 42.6% (164/385) | 15 (3.75%) | 82 | 139 |
+
+Mitigation 1 wins every column it should: +4.8 points of band share, half the
+timeout rate, 63 over-length matches instead of 82. The band-share gap is ~1.3
+standard errors of the difference (SE ≈ 3.6 points at n≈390), so on band share
+alone the armour change is a *consistent small positive* rather than a proven
+one — it reads +5 at A=16 (50 vs 44), +5 at A=18 on 100 matches (51 vs 46) and
++4.8 at A=18 on 400. The timeout halving is the sharper signal, and it is the
+mechanism F-030 already measured: mitigation 1 shortens exactly the matches that
+were running long.
+
+### And here is what the walk costs: the pentagon degrades monotonically with the threshold
+
+The same batches, read as pentagon links (predator > prey, pooled over both
+orderings and orientations — `WinMatrix`'s own definition):
+
+| `attack_at_army` | 10 (F-030 kept) | 12 | 14 | 16 | 18 | 20 | 22 |
+|---|---|---|---|---|---|---|---|
+| links holding, mit 2 | **4/5** | — | — | 3/5 | 2/5 | 2/5 | 2/5 |
+| links holding, mit 1 | 3/5 | 3/5 | 3/5 | 2/5 | 2/5 | 2/5 | 2/5 |
+
+At `attack_at_army: 18`, on 400 matches per setting, the reading is the same
+collapse at both mitigation settings — and it is not a sampling artefact:
+
+| link | mit 1, n=400 | mit 2, n=400 |
+|---|---|---|
+| sentinel > ripper | **0.0%** (n=32, CI [0.0, 10.7]) | **0.0%** (n=32, CI [0.0, 10.7]) |
+| ripper > arclight | 100.0% (n=32) | 100.0% (n=32) |
+| arclight > bulwark | 100.0% (n=30, 2 timeouts) | 100.0% (n=30, 2 timeouts) |
+| bulwark > ravager | **13.8%** (n=29, 3 timeouts) | **16.0%** (n=25, 7 timeouts) |
+| ravager > sentinel | **0.0%** (n=30, 2 timeouts) | 26.7% (n=30, 2 timeouts) |
+
+Every cell is still *readable* (no cell is undefined), but three of five designed
+counters are now decisively inverted with the CI excluding 50%, against the kept
+content's 4 of 5. The cause is the threshold, not the armour: both columns read
+the same. Raising `attack_at_army` makes a match "assemble eighteen bodies and
+commit", and at that size the cheap fast swarm (Ripper, every `x vs ripper` cell
+decides at ~4:08) runs away with the matrix — F-030's own diagnosis of F-029's
+content, reappearing one knob later.
+
+**So the two things the band metric wants from this knob are opposed:** band
+share peaks (47%) exactly where the counter-pentagon stops being readable as a
+cycle, and the pentagon reads best (4/5) at the threshold with the lowest band
+share (36%).

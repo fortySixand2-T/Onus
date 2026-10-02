@@ -408,3 +408,4 @@
 - [2026-09-20] Modified: BALANCE_PLAN.md — B3.5: separate the tick cap (raised to 15 min, a backstop) from the 5-8 min design band, and fix the armour grind that makes heavy matchups unresolvable
 - [2026-10-01] Modified: FINDINGS.md — F-031 opened: the mitigation-1 armour question re-searched over the commitment threshold, with the first six rows of the walk
 - [2026-10-01] Modified: FINDINGS.md — F-031: the mitigation-2 counterfactual walk, showing the commitment threshold (not the armour) carries most of the band-share gain
+- [2026-10-01] Modified: FINDINGS.md — F-031: the decisive 400-match mitigation 1 vs 2 comparison at the walk's optimum, and the pentagon's monotone degradation along the commitment threshold
