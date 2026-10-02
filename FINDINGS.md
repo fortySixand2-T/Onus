@@ -2428,15 +2428,29 @@ a content-driven value change, due for re-measurement with the rest of them.
 
 Two notes for whoever re-pins it, both from this entry:
 
-- the new value is **5 of 5 links holding**, and it is 5/5 at 1 250 matches, not
-  just at the test's 100;
+- **the new value is 4 of 5 links holding, with a different failing link than
+  F-025's.** On the test's own batch (`BatchSettings::default()`, seed base 0,
+  `.with_seeds(2)`, 100 matches) the shipped content reads `bulwark > ravager`
+  **87.5%** — so F-025's failing link now holds — while `sentinel > ripper` lands
+  on **exactly 50.0% of 8 decided matches**, which `Verdict` reports as `Fails`.
+  `holding()` is therefore still **4**, which is why the failure lands at
+  `tests/b3_pentagon.rs:477` (the `bulwark > ravager` verdict) and *not* at line
+  474's `assert_eq!(report.holding(), 4)` — that assert passes, and the reported
+  failure line is itself the proof that `holding() == 4` on this content. The
+  walk table above reads 4/5 for this content too. **Do not re-pin this as 5/5**;
+  the 1 250-match reading is 4 holding + 1 undetermined, not 5 holding, and the
+  2-seed batch is a different (and under-powered) reading again;
 - the test takes its verdict from **2 seeds — 8 decided matches per link — and
   that sample cannot support the word `Fails`** (95% half-width 28 points). It is
   the same under-powered reading that put a wrong `FAILS` in F-030 and (on the
-  evidence of the 71.7% / 62.9% links above) a wrong one in F-025. If the pin is
-  rewritten, it should either raise its seed count or assert the verdict with its
-  interval, so a 50/50-looking cell is reported as *undetermined* rather than as
-  a broken design.
+  evidence of the reproducing 64-72% `sentinel > ripper` and 82-86%
+  `bulwark > ravager` links above) a wrong one in F-025. **This is the
+  recommendation that matters:** if the pin is rewritten, it should either raise
+  its seed count or assert the verdict with its interval, so a 50/50-looking cell
+  is reported as *undetermined* rather than as a broken design. On the shipped
+  content that is exactly the cell the test currently trips over —
+  `sentinel > ripper` at 50.0% of 8 — and the link's larger-sample reading
+  (64-72%) says the 8-match `Fails` is an artefact, not a design failure.
 
 ### Reproducing the numbers
 
