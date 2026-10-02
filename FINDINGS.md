@@ -2180,6 +2180,14 @@ orderings and orientations — `WinMatrix`'s own definition):
 | `attack_at_army` | 10 (F-030 kept) | 12 | 14 | 16 | 18 | 20 | 22 |
 |---|---|---|---|---|---|---|---|
 | links holding, mit 2 | **4/5** | — | — | 3/5 | 2/5 | 2/5 | 2/5 |
+
+A caution on this table that the rest of this entry earns: every cell but A=18 is
+an **n=8-per-link** reading — the exact sample size this entry declares unable to
+support a verdict — and `holding()` is a bare `rate > 0.5` count with no interval
+(the critic pinned this: `a_holds_verdict_says_nothing_about_the_interval`). Only
+A=18 is at 400 matches. The A=10 cell also disagrees with the 400-match and
+1 250-match re-reads below (4/5 here; 4 holding + 1 undetermined there). So read
+the *direction* — the threshold costs links — and not the individual counts.
 | links holding, mit 1 | 3/5 | 3/5 | 3/5 | 2/5 | 2/5 | 2/5 | 2/5 |
 
 At `attack_at_army: 18`, on 400 matches per setting, the reading is the same
@@ -2195,7 +2203,7 @@ collapse at both mitigation settings — and it is not a sampling artefact:
 
 Every cell is still *readable* (no cell is undefined), but three of five designed
 counters are now decisively inverted with the CI excluding 50%, against the kept
-content's 4 of 5. The cause is the threshold, not the armour: both columns read
+content's four confirmed links (plus one undetermined). The cause is the threshold, not the armour: both columns read
 the same. Raising `attack_at_army` makes a match "assemble eighteen bodies and
 commit", and at that size the cheap fast swarm (Ripper, every `x vs ripper` cell
 decides at ~4:08) runs away with the matrix — F-030's own diagnosis of F-029's
@@ -2203,8 +2211,8 @@ content, reappearing one knob later.
 
 **So the two things the band metric wants from this knob are opposed:** band
 share peaks (47%) exactly where the counter-pentagon stops being readable as a
-cycle, and the pentagon reads best (4/5) at the threshold with the lowest band
-share (36%).
+cycle, and the pentagon reads best (4 links confirmed) at the threshold with the
+lowest band share (36%).
 
 ### The baseline, re-measured at 400 matches — and it was never 36%
 
@@ -2213,7 +2221,7 @@ sample as the candidates:
 
 | content | median | p25 | p75 | p90 | max | **band** | timeouts | over 8:00 | under 5:00 | pentagon |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **kept (mit 2, A=10)** | 6:25 | 4:30 | 7:45 | 10:06 | 14:43 | **38.0%** (149/392) | 8 (2.00%) | 93 | 150 | **5/5** |
+| **kept (mit 2, A=10)** | 6:25 | 4:30 | 7:45 | 10:06 | 14:43 | **38.0%** (149/392) | 8 (2.00%) | 93 | 150 | **4 + 1?** |
 | mit 1, A=18 | 6:05 | 4:07 | 7:51 | 10:03 | 14:49 | 47.4% (186/392) | 8 (2.00%) | 63 | 143 | 2/5 |
 
 Two corrections to F-030 fall straight out of this, both from sample size:
@@ -2247,10 +2255,12 @@ to even:
 | bulwark > ravager | 90.6% | 32 | [75.8, 96.8] | holds |
 | ravager > sentinel | 53.1% | 32 | [36.4, 69.1] | **undetermined** — the CI straddles 50% |
 
-**The kept content reads 5 of 5, not 4 of 5.** F-030's one failing link was a
-sampling artefact of reading a 50/50-looking cell off eight matches; the real
-coin-flip in the cycle is `ravager > sentinel`, and at n=32 it cannot be called
-either way. That is the number that needs the seeds, so the run below raises it.
+**The kept content reads 4 holding + 1 undetermined, not 4 broken-one.** F-030's
+one failing link was a sampling artefact of reading a 50/50-looking cell off
+eight matches; the real coin-flip in the cycle is `ravager > sentinel`, and at
+n=32 it cannot be called either way. That is the number that needs the seeds, so
+the run below raises it — **and at 430 pooled matches it is still undetermined
+(54.9%, CI [50.2, 59.5]), so this reading is the one that survived.**
 
 ### The armour change's own effect, at 400 matches per cell of the 2x2
 
@@ -2275,7 +2285,7 @@ it (`attack_at_army: 10`):
 
 | content | median | p25 | p75 | p90 | max | **band** | timeouts | under 5:00 | units/match | pentagon |
 |---|---|---|---|---|---|---|---|---|---|---|
-| mit **2**, A=10 (shipped) | 6:25 | 4:30 | 7:45 | 10:06 | 14:43 | **38.0%** | 8 (2.00%) | 150 | 44.4 | **5/5** |
+| mit **2**, A=10 (shipped) | 6:25 | 4:30 | 7:45 | 10:06 | 14:43 | **38.0%** | 8 (2.00%) | 150 | 44.4 | **4 + 1?** |
 | mit **1**, A=10 | 5:06 | 4:23 | 7:16 | 9:54 | 14:22 | **28.5%** | 7 (1.75%) | 191 | 41.4 | 3/5 |
 
 **-9.5 points of band share** (SE of the difference ~3.4, so ~2.8 SE: this one
@@ -2284,7 +2294,7 @@ mitigation 1 pushes 41 more matches *below* 5:00 while removing only one from th
 cap. It compresses the distribution downward past the band's floor. F-030 read
 the same effect at a quarter of the sample and called it correctly.
 
-### The pentagon, sized properly: 25 seeds, 1 250 matches, 5 of 5 links
+### The pentagon, sized properly: 25 seeds, 1 250 matches, 4 holding + 1 undetermined
 
 **Why 25 seeds.** A pentagon cell collects 4 decided matches per seed (two spawn
 orientations x the two orderings `WinMatrix` pools into one cell), so the link
@@ -2304,14 +2314,52 @@ three shards on seed bases 10/11/12), **1 250 matches**:
 | ripper > arclight | 93.0% | 100 | 0 | [86.3, 96.6] | holds |
 | arclight > bulwark | 100.0% | 88 | 12 | [95.8, 100.0] | holds |
 | bulwark > ravager | 85.7% | 98 | 2 | [77.4, 91.3] | holds |
-| ravager > sentinel | **62.9%** | 97 | 3 | [53.0, 71.8] | **holds** |
+| ravager > sentinel | 62.9% *(this sample)* | 97 | 3 | [53.0, 71.8] | **UNDETERMINED — does not reproduce, see below** |
 
-**Five of five, every CI excluding 50%.** The designed counter-pentagon is intact
-in the shipped content, and both links F-030 and F-025 reported broken were
-sampling noise: `sentinel > ripper` is 71.7%, not 50.0%, and `ravager > sentinel`
-— which at n=32 straddled 50% — resolves to 62.9%. This is the first reading of
-the pentagon in this project taken at a sample size that can support the word
-"fails".
+**Four of five hold; `ravager > sentinel` is undetermined.** The four links in the
+table above reproduce across independent seed bases and can be stated as results:
+
+| link | this reading | independent re-read | verdict |
+|---|---|---|---|
+| bulwark > ravager | 85.7% | 82.5% | holds |
+| sentinel > ripper | 71.7% | 64.0% | holds |
+| ripper > arclight | 93.0% | 93.0% | holds |
+| arclight > bulwark | 100.0% | 96.5% | holds (and see the censoring note below) |
+
+**`ravager > sentinel` does not.** Read on five different seed bases it gives
+62.5% (n=8), 70.0% (n=30), **62.9% (n=97 — the row above, seed bases 10/11/12)**,
+**46.5% (n=99, base 500)** and **52.6% (n=196, base 900; Wilson [45.6, 59.4], and
+[43.9, 61.1] once the seed clustering is accounted for — design effect 1.51)**.
+**Pooled: 236/430 = 54.9%, 95% CI [50.2, 59.5]** — a band that straddles 50 and
+is consistent with a coin flip. One sample reading 62.9% with a CI that excludes
+50% is what sampling variation looks like at n≈100; it is not a result.
+
+So the earlier draft of this entry was wrong on three counts, and they are
+withdrawn here:
+
+- **withdrawn:** "five of five, every CI excluding 50%". The shipped content reads
+  **4 holding + 1 undetermined**;
+- **withdrawn:** "the designed counter-pentagon is intact in the shipped content".
+  Four of its five links are confirmed; the fifth is unmeasured either way, so
+  the *cycle* is not established — a cycle needs all five;
+- **withdrawn:** "both links F-030 and F-025 reported broken were sampling
+  noise". Only **`sentinel > ripper`** was (it reproduces at 71.7% / 64.0%).
+  Nothing here shows `ravager > sentinel` is fine; it shows nobody knows.
+
+**This entry's own 8-seed section had it right** and the 25-seed section
+overturned it on a single sample. That section said, of n=32: "the real coin-flip
+in the cycle is `ravager > sentinel`, and at n=32 it cannot be called either
+way." That was the correct reading, and moving to n=97 did not earn the right to
+replace it — **it is the same sampling error F-031 exists to correct in F-030**,
+committed one sample size later by this entry. Lesson, bluntly: a CI that
+excludes 50% on *one* seed base is a hypothesis, not a finding; reproduce on a
+disjoint seed base before writing "holds".
+
+**What settling it would cost.** ±5 points on a link needs **~400 decided matches
+per link** — and that is the optimistic count, because the four matches a seed
+contributes to a cell are correlated (same map, same seeded RNG stream): the
+measured design effect on this link is **1.51**, so a seed's 4 matches are worth
+roughly 2.6 independent trials. Budget ~150 seeds, not 100, for a ±5 reading.
 
 Length on the same 1 250 matches (the kept content's most reliable arc reading
 to date): min 2:27, p25 4:29, **median 6:23**, p75 8:02, p90 11:13, max 14:54,
@@ -2349,7 +2397,9 @@ from F-030's single row:
    A=16 and +4.8 at A=18: **+2 ± 2.5 points pooled, i.e. nothing.** Taking the
    armour change to "unlock" the threshold is a misreading of which knob moved.
 3. **And the threshold's 9 points are not for sale anyway**: the pentagon
-   degrades monotonically along it — 5/5 at A=10, 3/5 at 16, 2/5 at 18 and above,
+    degrades monotonically along it — 4/5 at A=10, 3/5 at 16, 2/5 at 18 and above
+    (and see the caution on that table: only A=18 is at 400 matches; the rest are
+    n=8-per-link, so the *monotonicity* is weaker evidence than the endpoints),
    *identically at both mitigation settings* — because at 18 bodies a side the
    cheap swarm runs away with the matrix (every `x vs mass_ripper` cell decides
    at ~4:08 and `sentinel > ripper` inverts to 0.0%). A batch that cannot read
