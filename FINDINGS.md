@@ -2128,15 +2128,23 @@ across the batch (workers included), the F-026 density guard.
 
 | row | mit | `attack_at_army` | median | p25 | p75 | p90 | max | **band** | timeouts | units |
 |---|---|---|---|---|---|---|---|---|---|---|
-| base (F-030 kept) | 2 | 10 | 6:36 | 4:42 | 8:57 | 10:39 | 14:42 | **36%** | 0 | 4261 |
+| base (F-030 kept) | 2 | 10 | 6:36 | 4:42 | 8:57 | 10:39 | 14:42 | **36%** | 0 | 4621 |
 | A1 | 1 | 10 | 5:44 | 4:27 | 8:00 | 9:56 | 14:08 | 30% | 0 | 4261 |
 | A2 | 1 | 12 | 5:30 | 4:15 | 8:12 | 9:41 | 12:01 | 42% | 1 | 4092 |
-| A3 | 1 | 14 | 6:14 | 3:27 | 9:11 | 9:54 | 14:26 | 30% | 0 | 4261 |
+| A3 | 1 | 14 | 6:14 | 3:27 | 9:11 | 9:54 | 14:26 | 30% | 0 | 4261 *(suspect — see note)* |
 | A4 | 1 | 16 | 5:30 | 3:46 | 7:06 | 10:30 | 12:59 | **50%** | 0 | 3932 |
 | A5 | 1 | 18 | 6:05 | 4:06 | 7:17 | 8:33 | 14:38 | **51%** | 0 | 4014 |
 
 | A6 | 1 | 20 | 6:43 | 4:29 | 7:59 | 8:43 | 11:05 | 43% | 0 | 4207 |
 | A7 | 1 | 22 | 7:21 | 4:50 | 8:41 | 9:32 | 12:02 | 28% | 0 | 4487 |
+
+**Correction to the `units` column.** The base row's `units` is **4621**, not the
+4261 an earlier draft recorded: 4261 is row A1's value, and it had been copied
+into the base row (and, identically, into A3, which is why that cell is flagged
+suspect above and should be re-read before it is used). `units` is F-026's
+army-density guard, so a wrong number there is a wrong guard — the base row's
+density is *higher* than A1's, not equal to it, which strengthens rather than
+weakens the reading below.
 
 A1 reproduces F-030's reverted reading exactly (30%), which is the check that
 this is the same measurement. The walk has an interior optimum at
@@ -2148,7 +2156,11 @@ the kept content's 36%.
 ### The counterfactual: the same walk at mitigation 2
 
 A one-sided walk cannot tell the armour change from the threshold change, so the
-*identical* sweep was run with `mitigation_per_armor` left at 2:
+sweep was re-run with `mitigation_per_armor` left at 2 — **over the top of the
+range only.** An earlier draft called it "the *identical* sweep"; it was not.
+A=12 and A=14 were never run at mitigation 2, and the pooled "+2 ± 2.5 points"
+below uses **only A=16 and A=18**. The conclusion holds on those two thresholds;
+the method sentence claiming a matched full sweep does not.
 
 | row | mit | `attack_at_army` | median | p25 | p75 | p90 | max | **band** | timeouts | units |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -2327,7 +2339,7 @@ three shards on seed bases 10/11/12), **1 250 matches**:
 |---|---|---|---|---|---|
 | sentinel > ripper | **71.7%** | 99 | 1 | [62.2, 79.6] | **holds** |
 | ripper > arclight | 93.0% | 100 | 0 | [86.3, 96.6] | holds |
-| arclight > bulwark | 100.0% | 88 | 12 | [95.8, 100.0] | holds |
+| arclight > bulwark | 100.0% | 88 | 12 | [95.8, 100.0] | holds (survives worst-case censoring — see below) |
 | bulwark > ravager | 85.7% | 98 | 2 | [77.4, 91.3] | holds |
 | ravager > sentinel | 62.9% *(this sample)* | 97 | 3 | [53.0, 71.8] | **UNDETERMINED — does not reproduce, see below** |
 
@@ -2376,17 +2388,31 @@ contributes to a cell are correlated (same map, same seeded RNG stream): the
 measured design effect on this link is **1.51**, so a seed's 4 matches are worth
 roughly 2.6 independent trials. Budget ~150 seeds, not 100, for a ±5 reading.
 
+**A 100.0% cell with 12% censoring needs one more line to be readable at all**,
+and here it is: charge **all 12** capped matches to the predator as losses and
+`arclight > bulwark` is still **88/100 = 88.0%, CI [80.2, 93.0]** — a hold under
+the worst case the censoring allows. (The critic pinned this as
+`the_censored_arclight_bulwark_cell_holds_even_if_every_timeout_is_a_loss`.)
+Without that line a one-sided interval on a 100.0% cell says nothing about what
+the 12 missing matches could have done.
+
 Length on the same 1 250 matches (the kept content's most reliable arc reading
 to date): min 2:27, p25 4:29, **median 6:23**, p75 8:02, p90 11:13, max 14:54,
 **band 34.7%** (420/1212), **38 timeouts (3.04%)**, 45.5 units built per match.
+(Independent re-reads of band share on this content are **36.5% (n=389)** and
+**31.4% (n=1 209)**, so see the range correction in the verdict below.)
 
 That timeout rate is the other correction to F-030, which reported 0 on 100
-matches: at 1 250 matches **3% of probe matches still reach the 15-minute cap**,
-and they are concentrated in one class — `arclight` vs the armoured units:
-`mass_arclight` vs `mass_bulwark` **12 of 100**, vs `mass_ravager` 12 of 100, vs
-`mass_sentinel` 8 of 100, everything else 0-3. Every cell is still *readable*
-(88 decided in the worst), so the matrix is not holed, but the heavy grind is not
-gone — it is rarer. **That residue is the live item, and it is a unit-stat
+matches, and it is **worse than this entry first recorded**: at 1 250 matches
+**41 timeouts, 3.28%**, concentrated harder than reported — `mass_arclight` vs
+`mass_ravager` **18 of 100** and vs `mass_bulwark` **14 of 100**, vs
+`mass_sentinel` 5 of 100, `bulwark`-`ravager` 3 of 100, `ravager`-`sentinel`
+1 of 100, every other cell 0. The *class* and the diagnosis below (glass-cannon
+Arclight against armour) reproduce; the **magnitude is 14-18% of a cell, not
+12%**. Every cell is still *readable* (82 decided in the worst), so the matrix is
+not holed, but the heavy grind is not gone — it is rarer. **State this as the
+AC's unmet remainder:** the 5-8 minute arc is not clean while one sixth of a cell
+cannot finish, and it is deferred to B4 with the stat question below. **That residue is the live item, and it is a unit-stat
 question**: the Arclight is `offense 9 / defense 2 / armor 2`, a glass cannon that
 cannot finish an armoured line before the armoured line's mitigation eats its
 damage, so the two sides rebuild forever. It is B4's, exactly as F-025 and F-029
@@ -2421,7 +2447,10 @@ from F-030's single row:
    the counter-pentagon is the instrument B3 exists to build, broken.
 
 So the band-share ceiling of this knob set is real and the content sits near it:
-~35-38% of decided probe matches inside 5-8 minutes, with ~39% *below* 5:00
+~31-38% of decided probe matches inside 5-8 minutes (readings: 31.4% at n=1 209,
+34.7% at n=1 212, 36.5% at n=389, 38.0% at n=392 — an earlier draft's "best
+reading ~34.7-38%" quoted only the optimistic half of that spread), with ~39%
+*below* 5:00
 because the Ripper and Sentinel mirrors decide in 2:29 and 3:38 and no commitment
 threshold lengthens them. **Lifting the floor is a unit-stat problem, not a
 tempo one** — the same conclusion the armour grind reaches from the other end,
