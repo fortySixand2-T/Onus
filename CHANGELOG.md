@@ -416,3 +416,4 @@
 - [2026-10-01] Modified: FINDINGS.md — F-031: flagged b3_pentagon's F-025 pin (4/5 with bulwark > ravager at 0.0%) as a content-driven value change, with the power argument against its 8-match verdict
 - [2026-10-01] Modified: FINDINGS.md — F-031: how to reproduce every row (balance invocations) and where band share / p90 came from
 - [2026-10-01] Created: tests/critic_b35_armour.rs — critic probes for B3.5/F-031: shipped mitigation_per_armor is 2, the five mass probes stay knob-identical at attack_at_army 10, mvp untouched, a pentagon link pools 4 matches per seed (2 per mirror), Tally quantiles include capped matches, and the censored arclight > bulwark cell holds under worst-case censoring
+- [2026-10-02] Modified: tests/critic_b35_armour.rs — added a_holds_verdict_says_nothing_about_the_interval: the pentagon's `holds` is `rate > 0.5`, so the measured 52.6% ravager > sentinel link (n=196) is a hold whose 95% interval straddles 50%

@@ -252,3 +252,53 @@ fn wilson(k: u32, n: u32) -> (f64, f64) {
     let half = z * (p * (1.0 - p) / n + z * z / (4.0 * n * n)).sqrt() / d;
     ((centre - half).max(0.0), (centre + half).min(1.0))
 }
+
+// ---- "holds" is a point verdict, not a confidence statement -------------------
+
+/// `Verdict::Holds` is `rate > 0.5` and nothing more. F-031 reads its table's
+/// `holds` column as "the CI excludes 50%"; the machinery does not do that, and
+/// a link sitting just above a coin flip is reported as a hold at any sample
+/// size. Pinned so the next re-pin of `b3_pentagon` cannot confuse the two.
+#[test]
+fn a_holds_verdict_says_nothing_about_the_interval() {
+    let mut records = Vec::new();
+    // 103 of 196 for the predator — the `ravager > sentinel` reading measured
+    // on 50 seeds (`balance --seeds 50 --seed-base 900 --minutes 15 --only
+    // mass_ravager,mass_sentinel`): 52.6%.
+    for k in 0..196u64 {
+        let predator_wins = k < 103;
+        records.push(record(
+            "mass_ravager",
+            "mass_sentinel",
+            k,
+            Orientation::Normal,
+            if predator_wins {
+                MatchResult::Decided(Faction::A)
+            } else {
+                MatchResult::Decided(Faction::B)
+            },
+        ));
+    }
+    let content = shipped();
+    let report = onus::pentagon::PentagonReport::of_records(&content, &records)
+        .expect("the shipped cycle is closed");
+    let link = report
+        .links()
+        .iter()
+        .find(|l| l.predator == "ravager")
+        .expect("the cycle has a ravager link");
+    assert_eq!(link.prey, "sentinel");
+    assert_eq!(
+        link.verdict,
+        onus::pentagon::Verdict::Holds,
+        "52.6% is a hold by the >0.5 rule"
+    );
+
+    let (lo, hi) = wilson(103, 196);
+    assert!(
+        lo < 0.5 && hi > 0.5,
+        "...while its 95% interval [{:.1}, {:.1}] straddles 50%: a hold is not a result",
+        100.0 * lo,
+        100.0 * hi
+    );
+}
