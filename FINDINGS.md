@@ -2205,3 +2205,49 @@ content, reappearing one knob later.
 share peaks (47%) exactly where the counter-pentagon stops being readable as a
 cycle, and the pentagon reads best (4/5) at the threshold with the lowest band
 share (36%).
+
+### The baseline, re-measured at 400 matches — and it was never 36%
+
+F-030's 36% was a 100-match reading. The kept content on the same 400-match
+sample as the candidates:
+
+| content | median | p25 | p75 | p90 | max | **band** | timeouts | over 8:00 | under 5:00 | pentagon |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **kept (mit 2, A=10)** | 6:25 | 4:30 | 7:45 | 10:06 | 14:43 | **38.0%** (149/392) | 8 (2.00%) | 93 | 150 | **5/5** |
+| mit 1, A=18 | 6:05 | 4:07 | 7:51 | 10:03 | 14:49 | 47.4% (186/392) | 8 (2.00%) | 63 | 143 | 2/5 |
+
+Two corrections to F-030 fall straight out of this, both from sample size:
+
+- the kept content's band share is **38%**, not 36%, and its timeout rate is
+  **2.00%, not 0** — the 100-match probe batch simply had no capped match in it;
+- the **spread is the same**. p90 10:06 vs 10:03, max 14:43 vs 14:49. Mitigation
+  1 does narrow the distribution, but the threshold that pays for its band share
+  widens it back by exactly as much. The candidate's only real spread win is the
+  over-8:00 count (63 vs 93).
+
+So the honest ledger of the candidate is **+9.4 points of band share, identical
+timeouts, identical tails, and three of five designed counters inverted.**
+
+### The pentagon's sample size, and F-030's `sentinel > ripper`
+
+F-030 recorded `sentinel > ripper` as **FAILS at exactly 50.0% over 8 decided
+matches**. 8 matches cannot tell 50% from 65%: the 95% Wilson interval on 4/8 is
+**[21.5, 78.5]**, which contains every rate anyone would care about. A pentagon
+cell accumulates 4 decided matches per seed (2 orientations x the two orderings
+`WinMatrix` pools), so the sample size is a seed count, and the seed count was 2.
+
+At **8 seeds (n = 32 per link)** on the kept content the link is not even close
+to even:
+
+| link | rate | n | 95% Wilson CI | verdict |
+|---|---|---|---|---|
+| sentinel > ripper | **68.8%** | 32 | [51.4, 82.0] | **holds** (CI excludes 50%) |
+| ripper > arclight | 96.9% | 32 | [84.3, 99.4] | holds |
+| arclight > bulwark | 100.0% | 30 (+2 to) | [88.6, 100.0] | holds |
+| bulwark > ravager | 90.6% | 32 | [75.8, 96.8] | holds |
+| ravager > sentinel | 53.1% | 32 | [36.4, 69.1] | **undetermined** — the CI straddles 50% |
+
+**The kept content reads 5 of 5, not 4 of 5.** F-030's one failing link was a
+sampling artefact of reading a 50/50-looking cell off eight matches; the real
+coin-flip in the cycle is `ravager > sentinel`, and at n=32 it cannot be called
+either way. That is the number that needs the seeds, so the run below raises it.
