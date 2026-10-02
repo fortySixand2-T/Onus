@@ -2330,7 +2330,11 @@ whose 95% Wilson half-width is about 10 points: enough to call a link that is
 really 65% (80% power needs n≈85 for a 15-point deviation from 50%) and enough to
 refuse one that is really even. 8 matches — F-030's sample — has a half-width of
 28 and can refuse nothing. Sharper than ~±10 gets expensive fast: ±5 needs ~400
-matches per link, i.e. 100 seeds and about 4 CPU-hours per reading.
+matches per link, i.e. 100 seeds and about 4 CPU-hours per reading — **and that
+seed count is optimistic: see the clustering correction below, which puts it
+nearer 150.** Note also what ~±10 buys and what it does not: it can confirm a
+link that is really 65%, but on a link that is really ~55% it returns
+*undetermined*, which is exactly what happened to `ravager > sentinel`.
 
 Kept content, `balance --seeds 25 --minutes 15 --only <the five probes>` (as
 three shards on seed bases 10/11/12), **1 250 matches**:
