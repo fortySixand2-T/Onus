@@ -79,7 +79,7 @@
 // the brief asks for (5-8 minutes of real fighting) is bought with two knobs
 // here and one in `units.ron`: every strategy opens **several production
 // lines** instead of one (`mvp` excepted — see its note), and commits with a
-// **much larger force** (the mass probes at 20 units rather than 3), while a
+// **much larger force** (the mass probes at 10 units rather than 3), while a
 // worker's load shrank from 10
 // Alloy to 2 so the army takes minutes to assemble. Barracks count is what
 // stops the longer clock from meaning a smaller army — the trap the first
