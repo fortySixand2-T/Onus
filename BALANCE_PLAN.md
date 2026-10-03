@@ -125,7 +125,10 @@ mean — is provisional until the arc is right.
       **Result** (F-029 → F-030 → F-031): median **1:16 → 6:21–6:36**, inside the band on every
       independent sample, at **2–3% timeouts**, with density up from 10.6 to ~44 units built a
       match — so F-026's trap (a longer clock bought by a smaller army) is absent. Levers kept:
-      `mvp_carry_capacity` 10 → 2, three barracks per mass probe, `attack_at_army` 3 → 10,
+      `mvp_carry_capacity` 10 → 2, three barracks per mass probe (**scripted, not realised** —
+      F-035: under this economy no probe affords a third opening and only `mass_ripper` a
+      second, at tick ~9 330; the scripts now list only what is placed, so the Ripper readings
+      are of a two-line army and the other probes' of one barracks), `attack_at_army` 3 → 10,
       `building_hp_per_defense` 40 → 420. Rejected with numbers: HQ HP as a lengthener,
       `hp_per_defense` 20/14/10, `mitigation_per_armor` 1, `mvp_gather_ticks` 120. `mvp` is
       deliberately untuned (its pinning test would change meaning); the cost is recorded.
@@ -187,6 +190,15 @@ all-timeout run is flagged, not reported as balanced.
       criteria; re-run; iterate.
 - [ ] Ledger F-016+: the failing matchup(s), the change made, before/after win rates,
       final kill-criteria status.
+- [ ] **Multi-barracks as a real capability (open, from F-035).** The AI places an opening
+      only when the stockpile covers its cost, and its army step spends the stockpile on
+      anything cheaper first, so under B3.5's economy openings past the first rarely go up
+      (only `mass_ripper`'s second does). Add opening reservation — the army step holds back
+      the Alloy of a due opening — so scripted production lines are built. It changes every
+      multi-opening strategy and moves goldens, so it lands with its own proof. Then make the
+      five mass probes' opening lists identical again (empty
+      `b1_probe_set::MASS_PROBE_OPENING_EXCEPTIONS` and drop the per-probe exceptions in
+      `critic_b1_ac3` / `critic_b35_armour`).
 
 ## B5 — The human fun gate (not automatable — and required)
 

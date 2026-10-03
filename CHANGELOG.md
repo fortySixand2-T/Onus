@@ -456,3 +456,6 @@
 - [2026-10-03] Modified: tests/b1_probe_set.rs — MASS_PROBE_BARRACKS back to 1 with mass_ripper's named F-035 exception; gating placement test plays unopposed for the full match cap
 - [2026-10-03] Modified: tests/critic_b1_ac3.rs — mass-probe struct identity compares every field with openings cut to the shared first one (F-035)
 - [2026-10-03] Modified: tests/critic_b35_armour.rs — mass-probe line count may differ only for mass_ripper (F-035)
+- [2026-10-03] Modified: assets/data/strategies.ron — F-036: turtle attack_at_army 15 -> 26 so it commits last again (19 320 vs mass_bulwark 18 750)
+- [2026-10-03] Modified: FINDINGS.md — F-035 closed (scripts match reality; mass_ripper's real second Gene-Vats; 32/100 vs 0/98 comparison; golden proof); F-036 turtle threshold table
+- [2026-10-03] Modified: BALANCE_PLAN.md — B3.5 three-barracks lever marked scripted-not-realised (F-035); B4 open item for multi-barracks / opening reservation

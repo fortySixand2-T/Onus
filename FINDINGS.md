@@ -2736,9 +2736,11 @@ fixtures used n = 4 (interval ±35 points) and were scaled x10 so each test's
 original intent survives the new rule; and a new test pins the difference head
 on — the same 75% rate reads `Undetermined` at n = 4 and `Holds` at n = 40.
 
-## F-035 — The extra openings never go up: B3.5's economy starves the tech step (B3.5 closure, open)
+## F-035 — The extra openings never go up: B3.5's economy starves the tech step (B3.5 closure, closed)
 
-**Status: open, red on purpose, needs a content or AI decision.** Gating test:
+**Status: closed — option 3, "scripts match reality"; see *Resolution* at the
+end of this entry, which also corrects the solo measurement below (it missed
+`mass_ripper`'s second Gene-Vats).** Gating test:
 `b1_probe_set::every_strategy_places_its_barracks_and_builds_its_own_order`,
 which F-033 moved to the match cap and which is still red there. Raising the
 horizon cannot fix it, and the assertion was not weakened.
@@ -2792,3 +2794,127 @@ a design call):
 3. Spec: accept one realised barracks, drop the duplicate openings from the
    mass probes and set `MASS_PROBE_BARRACKS` back to 1. This changes the
    F-030 rationale.
+
+### Resolution (closed): the scripts list what the sim places
+
+**Decision (the user's): option 3.** Every opening that never goes up is removed
+from `strategies.ron`, so each script lists exactly the placements the sim
+makes, in the order it makes them. Multi-barracks as a capability (the army step
+reserving the Alloy of a due opening) is deferred to B4.
+
+**Correction to the table above: `mass_ripper` does place a second barracks.**
+The solo fixture ends the match the moment the probe levels the inert enemy HQ —
+`mass_ripper` at tick 9 013 — and the sim stops thinking once a match is
+decided, so "measured to 54 000 ticks" above really meant "to the end of the solo
+match". In head-to-head play the Ripper's second Gene-Vats goes up at **tick
+9 330**, on every seed and orientation measured. The Ripper costs 40 Alloy, the
+cheapest body in the game, so it is the one probe whose income outruns its
+spending and whose stockpile climbs to 150. No probe ever placed a third
+opening. This was found by the proof obligation, not by inspection: the first
+trim also cut the Ripper's second Gene-Vats, and
+`b3_pentagon::the_real_batch_reports_what_the_sim_actually_does`'s pinned
+`sentinel > ripper` moved 0.50 -> 0.75. That trim was not committed.
+
+**What the B3.5 measurements were taken on, therefore:** the Ripper readings
+(F-029 to F-034, every cell with `mass_ripper` in it) were taken on a
+**two-line** Ripper army from tick 9 330 onward; the other four mass probes on
+**one** barracks. Neither changes under this closure: the scripts now describe
+exactly those armies, so the measurements stand as readings of the shipped
+content.
+
+**The comparison (release, same binary, old `strategies.ron` vs the first trim
+that cut every probe to one opening).** Each match played under both data sets,
+diffed on length, winner and the full placement list of both sides:
+
+| roster | seeds | matches | differ | of which winner flips |
+|---|---|---|---|---|
+| the five `mass_*` probes (the `b3_pentagon` batch: `seed_at(0, k)`, k = 0, 1, both orientations) | 2 | 100 | **32** — every non-mirror match with `mass_ripper` in it; the other 68 are identical | 7 |
+| `mvp`, `mass_bulwark`, `mass_arclight`, `synth_steel_flesh`, `synth_triad`, `rush`, `turtle` (all ordered pairings, both orientations) | 1 (`seed_at(0, 0)`) | 98 | **0** | 0 |
+
+The Ripper mirror does not differ because it is decided before tick 9 330. In
+the second row the trimmed `turtle` and `synth_steel_flesh` openings, the dropped
+second and third openings of `mass_bulwark` and `mass_arclight`, and the
+`synth_triad` reorder change nothing.
+
+**What shipped (`c68a4c9`):**
+
+| strategy | openings before | openings after | note |
+|---|---|---|---|
+| `mass_bulwark`, `mass_sentinel`, `mass_ravager`, `mass_arclight` | 3 | 1 | |
+| `mass_ripper` | 3 | **2** | the second Gene-Vats (at_tick 600, offset 165) is real; the third is not |
+| `synth_steel_flesh` | 4 | 2 | Foundry, Gene-Vats |
+| `synth_triad` | 4 | 4 | **reordered** to placement order: the second Gene-Vats (150, placed ~5 190) before the Aether Spire (200, placed ~7 740). Each entry keeps its own at_tick and offset, so the k-th placement of a building gets the same offset as before |
+| `turtle` | 4 | 3 | Foundry, Gene-Vats, Foundry |
+| `mvp`, `rush` | 1 | 1 | unchanged |
+
+**The golden-unchanged proof.** `cargo test --release --no-fail-fast` on the
+box with the shipped trim and no Rust change: **847 passed, 1 failed**. The one
+failure is `critic_b1_ac3::the_rush_is_the_earliest_and_the_turtle_the_latest_of_the_whole_set`,
+which F-036 handles and which reads no golden. Every per-tick `state_hash`
+golden, every journal pin and the `b3_pentagon` rate pins pass at their old
+values; the gating test is green.
+
+**Test changes, none of them loosening:**
+- F-018's knob identity (`b1_probe_set::the_mass_probes_are_knob_identical`,
+  `critic_b1_ac3::the_mass_probes_are_identical_in_every_field_of_the_struct`,
+  `critic_b35_armour::the_five_mass_probes_are_knob_identical_at_attack_at_army_ten`):
+  the opening **count** may differ, and only for `mass_ripper`, named
+  (`b1_probe_set::MASS_PROBE_OPENING_EXCEPTIONS`). Every opening the probes
+  share is still compared tick for tick and offset for offset, and every other
+  field is still asserted identical; the struct-wide `Debug` comparison cuts
+  each probe to its shared first opening and compares everything else. Each
+  site says B4's opening reservation should make the five identical again.
+- `MASS_PROBE_BARRACKS` is 1 again.
+- The gating test plays **unopposed** (no enemy HQ, so the match cannot end)
+  and asserts the match is still running after `DEFAULT_TICK_CAP` ticks.
+  Against the inert HQ every strategy ended its match long before the cap
+  (`mass_ripper` at 9 013), so "by the match cap" was never what it tested, and
+  the Ripper's real second opening could not appear in it.
+
+## F-036 — The turtle was no longer the late pole; `attack_at_army` 15 -> 26 (B3.5 closure)
+
+**Gating test:** `critic_b1_ac3::the_rush_is_the_earliest_and_the_turtle_the_latest_of_the_whole_set`
+(B1's design intent: the rush commits earliest, the turtle latest). Red since
+B3.5's tempo pass: the mass probes' `attack_at_army` went 3 -> 10 (F-030), and at
+B3.5's income the turtle's 15 no longer kept it behind them.
+
+**Measured first-attack ticks** (solo, release, 54 000-tick budget). They are
+identical on seeds 1, 2, 3, 4, 5, 7, 11 and 23 (the seed only turns the
+placement direction) and identical before and after F-035's trim:
+
+| strategy | first attack (tick) |
+|---|---|
+| rush | 750 |
+| mvp | 4 440 |
+| mass_ripper | 7 830 |
+| synth_steel_flesh | 10 830 |
+| mass_sentinel | 11 460 |
+| **turtle @ 15** | **13 470** |
+| mass_arclight | 14 130 |
+| synth_triad | 14 670 |
+| mass_ravager | 15 060 |
+| mass_bulwark | 18 750 — the slowest non-turtle |
+
+**The turtle's commit tick against its threshold** (seeds 4 and 7, identical):
+
+| `attack_at_army` | first attack (tick) | force | margin over 18 750 |
+|---|---|---|---|
+| 16 | 14 760 | 16 | short |
+| 18 | 14 910 | 18 | short |
+| 20 | 16 950 | 21 | short |
+| 22 | 17 130 | 22 | short by 1 620 |
+| 24 | 19 140 | 25 | +390 ticks (6.5 s) |
+| **26** | **19 320** | 26 | **+570 ticks (9.5 s)** |
+
+23 and 25 were not measured. The guess of ~22 was not enough; 24 clears by only
+390 ticks, so **26** is the value shipped (the user's choice). One RON number;
+no Rust change.
+
+**Goldens: none moved, so none were recomputed.** `cargo test --release
+--no-fail-fast` with `attack_at_army: 26`: **848 passed, 0 failed**. The gating
+test is green, and every per-tick `state_hash` golden, journal pin and
+`b3_pentagon` pin passes at its existing value: no pinned fixture plays the
+turtle past its first wave. The F-032 licence was therefore not needed. Its
+precondition holds anyway: no Rust changed, and the same binary with
+`attack_at_army: 15` passes the same goldens (F-035's 847 / 1 run, whose one
+failure is this test).
