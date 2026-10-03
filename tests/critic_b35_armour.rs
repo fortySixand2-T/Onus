@@ -74,7 +74,14 @@ fn the_five_mass_probes_are_knob_identical_at_attack_at_army_ten() {
         assert_eq!(s.attack_interval_ticks, first.attack_interval_ticks, "{id}");
         assert_eq!(s.attack_spread, first.attack_spread, "{id}");
         assert_eq!(s.queue_depth, first.queue_depth, "{id}");
-        assert_eq!(s.barracks.len(), first.barracks.len(), "{id}: line count");
+        // Line count is the one knob allowed to differ, and only for F-035's
+        // named exception: `mass_ripper` really places a second Gene-Vats (the
+        // 40-Alloy Ripper is the only probe whose income outruns its spending),
+        // and its script says so. Every other probe opens exactly as many as
+        // the first, and every opening two probes share is still compared.
+        // B4's opening reservation should make the five identical again.
+        let want = if *id == "mass_ripper" { 2 } else { first.barracks.len() };
+        assert_eq!(s.barracks.len(), want, "{id}: line count");
         for (b, b0) in s.barracks.iter().zip(&first.barracks) {
             assert_eq!(b.at_tick, b0.at_tick, "{id}: opening tick");
             assert_eq!(b.offset, b0.offset, "{id}: opening offset");

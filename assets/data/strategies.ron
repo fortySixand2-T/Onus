@@ -25,9 +25,17 @@
 //                           (B3.5): each entry is its own barracks with its own
 //                           at_tick/offset, and every barracks is a production
 //                           line of its own, so barracks count is what sets army
-//                           throughput (F-028). Repeats are what the balance sim
-//                           tunes tempo with; the five mass probes must all carry
-//                           the same count or they stop being comparable (F-018).
+//                           throughput (F-028). The five mass probes must all
+//                           carry the same count or they stop being comparable
+//                           (F-018).
+//                           **List only what the commander really places**
+//                           (F-035): the tech step places an opening only when
+//                           the stockpile covers its cost, and the army step
+//                           spends the stockpile first on anything cheaper, so
+//                           under B3.5's economy an opening behind the first
+//                           few never goes up. Every list below is exactly the
+//                           placements the sim makes, in the order it makes
+//                           them. Opening reservation is B4's to add.
 //   army                  — the repeating build order; **every unit must be
 //                           producible by one of the barracks opened above**.
 //                           Each order goes to the eligible barracks with the
@@ -53,9 +61,13 @@
 //   * The five `mass_*` entries hard-commit to one unit each and are
 //     **knob-identical**: same think interval, worker target, opening count,
 //     opening ticks, offsets, attack threshold, wave interval and spread. Only
-//     the barracks they open and the unit they mass differ. Each opens its one
-//     barracks **three times** — three production lines — which is what keeps
-//     armies big now that the clock is long (F-028, F-029). If those knobs ever
+//     the barracks they open and the unit they mass differ — with one measured
+//     exception. B3.5 scripted three openings each (F-029, F-030), but under
+//     its economy only `mass_ripper` (the cheapest unit, 40 Alloy) ever
+//     affords a second, at tick ~9 330; no probe ever affords a third (F-035).
+//     So the scripts say what the sim does: one barracks for four probes, two
+//     for `mass_ripper`, and that opening count is the only knob allowed to
+//     differ until B4's opening reservation makes it uniform. If those knobs ever
 //     diverge, B3's pentagon assertion measures the knobs instead of the units and the
 //     whole instrument is void (F-018). The one asymmetry that stays is a real
 //     one from the design: an Aether Spire costs 200 Alloy where a Foundry or
@@ -77,13 +89,14 @@
 //
 // TEMPO (B3.5, F-029) — these scripts carry the match-length tuning. The arc
 // the brief asks for (5-8 minutes of real fighting) is bought with two knobs
-// here and one in `units.ron`: every strategy opens **several production
-// lines** instead of one (`mvp` excepted — see its note), and commits with a
-// **much larger force** (the mass probes at 10 units rather than 3), while a
-// worker's load shrank from 10
-// Alloy to 2 so the army takes minutes to assemble. Barracks count is what
-// stops the longer clock from meaning a smaller army — the trap the first
-// attempt at this tuning fell into (F-026). The poles keep their identity:
+// here and one in `units.ron`: B3.5 scripted **several production lines**
+// per strategy, and commits with a **much larger force** (the mass probes at
+// 10 units rather than 3), while a worker's load shrank from 10
+// Alloy to 2 so the army takes minutes to assemble. The extra lines turned
+// out mostly never to be built at that income (F-035) and were removed, so
+// what actually carries the tempo is the threshold and the economy; B3.5's
+// measurements were all taken on the armies the scripts now describe. The
+// poles keep their identity:
 // `rush` still opens on tick 0 and attacks with one body, `turtle` still
 // masses the largest force in the set before it moves.
 (
@@ -127,8 +140,6 @@
             worker_target: 6,
             barracks: [
                 (building: "foundry", at_tick: 300, offset: 130.0),
-                (building: "foundry", at_tick: 600, offset: 165.0),
-                (building: "foundry", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "bulwark", count: 1),
@@ -145,8 +156,6 @@
             worker_target: 6,
             barracks: [
                 (building: "foundry", at_tick: 300, offset: 130.0),
-                (building: "foundry", at_tick: 600, offset: 165.0),
-                (building: "foundry", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "sentinel", count: 1),
@@ -163,8 +172,14 @@
             worker_target: 6,
             barracks: [
                 (building: "gene_vats", at_tick: 300, offset: 130.0),
+                // The one second opening any mass probe really places: the
+                // Ripper is the cheapest body, so this is the only probe whose
+                // income outruns its spending, and its stockpile reaches 150
+                // at tick ~9 330 in every head-to-head long enough (F-035).
+                // It makes this probe's opening list the one knob the five do
+                // not share; B4's opening reservation should make them
+                // identical again.
                 (building: "gene_vats", at_tick: 600, offset: 165.0),
-                (building: "gene_vats", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "ripper", count: 1),
@@ -181,8 +196,6 @@
             worker_target: 6,
             barracks: [
                 (building: "gene_vats", at_tick: 300, offset: 130.0),
-                (building: "gene_vats", at_tick: 600, offset: 165.0),
-                (building: "gene_vats", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "ravager", count: 1),
@@ -201,8 +214,6 @@
             worker_target: 6,
             barracks: [
                 (building: "aether_spire", at_tick: 300, offset: 130.0),
-                (building: "aether_spire", at_tick: 600, offset: 165.0),
-                (building: "aether_spire", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "arclight", count: 1),
@@ -216,8 +227,9 @@
         // ---- the synthesis builds ------------------------------------------
 
         // Two domains: Machine + Flesh. Cheap Flesh bodies screening a Machine
-        // core — the army a single barracks could never field. Two Foundries
-        // and two Gene-Vats: four lines across two domains.
+        // core — the army a single barracks could never field. One Foundry and
+        // one Gene-Vats: B3.5 scripted a second of each, which never went up
+        // (F-035).
         (
             id: "synth_steel_flesh",
             think_interval_ticks: 30,
@@ -225,8 +237,6 @@
             barracks: [
                 (building: "foundry",   at_tick: 300,  offset: 130.0),
                 (building: "gene_vats", at_tick: 900,  offset: 160.0),
-                (building: "foundry",   at_tick: 1200, offset: 195.0),
-                (building: "gene_vats", at_tick: 1500, offset: 225.0),
             ],
             army: [
                 (unit: "sentinel", count: 1),
@@ -241,6 +251,10 @@
         // All three domains: a Ripper screen, a Sentinel, an Arclight behind.
         // The widest opening in the set — 650 Alloy of tech before a shot is
         // fired — so it also probes whether spreading tech is affordable at all.
+        // The only multi-opening script whose every opening goes up (F-035).
+        // Listed in the order the sim places them: the second Gene-Vats
+        // (150) is affordable at tick ~5 190, the Aether Spire (200) not until
+        // ~7 740, so the Gene-Vats goes up first despite its later at_tick.
         (
             id: "synth_triad",
             think_interval_ticks: 30,
@@ -248,8 +262,8 @@
             barracks: [
                 (building: "foundry",      at_tick: 300,  offset: 130.0),
                 (building: "gene_vats",    at_tick: 900,  offset: 160.0),
-                (building: "aether_spire", at_tick: 1500, offset: 190.0),
                 (building: "gene_vats",    at_tick: 1800, offset: 225.0),
+                (building: "aether_spire", at_tick: 1500, offset: 190.0),
             ],
             army: [
                 (unit: "sentinel", count: 1),
@@ -282,7 +296,8 @@
             attack_spread: 40.0,
             queue_depth: 1,
         ),
-        // The opposite pole: twelve workers, late tech on four lines, and
+        // The opposite pole: twelve workers, late tech on three lines (a fourth
+        // was scripted in B3.5 and never went up, F-035), and
         // nothing leaves home until the biggest force in the set exists.
         (
             id: "turtle",
@@ -292,7 +307,6 @@
                 (building: "foundry",   at_tick: 600,  offset: 110.0),
                 (building: "gene_vats", at_tick: 1200, offset: 140.0),
                 (building: "foundry",   at_tick: 1800, offset: 175.0),
-                (building: "gene_vats", at_tick: 2400, offset: 210.0),
             ],
             army: [
                 (unit: "sentinel", count: 1),

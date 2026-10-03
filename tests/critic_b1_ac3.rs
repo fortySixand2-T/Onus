@@ -224,14 +224,28 @@ fn the_mass_probes_are_identical_in_every_field_of_the_struct() {
             // The masking below replaces one building name and one unit name, so
             // it is only sound if the probe opens exactly one *kind* of barracks
             // and masses exactly one unit. B3.5 gave each mass probe three
-            // openings of the same building (F-030), which the masking handles —
-            // but three openings of two different buildings it would not.
+            // openings of the same building (F-030; trimmed to what the sim
+            // places, F-035), which the masking handles — but openings of two
+            // different buildings it would not.
             assert!(
                 s.barracks.iter().all(|b| b.building == s.barracks[0].building),
                 "`{id}` opens more than one kind of barracks, so this probe's \
                  masking cannot normalise it"
             );
             assert_eq!(s.army.len(), 1, "`{id}` is not a single-entry build order");
+            // F-035's one exception: `mass_ripper` really places a second
+            // Gene-Vats (its 40-Alloy Ripper is the only probe whose income
+            // outruns its spending) and its script says so, so the *count* of
+            // openings is the one thing the five may not share. Only that is
+            // masked: the struct is compared with every probe cut to its
+            // **first** opening — the opening all five place — and every other
+            // field, that opening's tick and offset included, still has to
+            // match. Which probes may carry extra openings, and how many, is
+            // pinned by name in `b1_probe_set::MASS_PROBE_OPENING_EXCEPTIONS`.
+            // B4's opening reservation should make the five identical again,
+            // and then this cut should go.
+            let mut s: StrategyDef = s.clone();
+            s.barracks.truncate(1);
             let text = format!("{s:?}")
                 .replace(&format!("\"{}\"", s.id), "\"<ID>\"")
                 .replace(&format!("\"{}\"", s.barracks[0].building), "\"<BARRACKS>\"")

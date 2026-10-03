@@ -452,3 +452,7 @@
 - [2026-10-03] Modified: tests/critic_b1_ac3.rs, FINDINGS.md — mass-vs-mass resolution horizon is the match cap; F-033 row
 - [2026-10-03] Modified: tests/b1_probe_set.rs, FINDINGS.md — barracks-placement horizon is the match cap (still red); F-033 row; F-035 records the opening starvation
 - [2026-10-03] Modified: FINDINGS.md — F-035 wording on the peak-stockpile measurement
+- [2026-10-03] Modified: assets/data/strategies.ron — F-035: scripts list only the openings the sim places (mass probes 1 barracks, mass_ripper 2; synth_steel_flesh 2; turtle 3; synth_triad reordered to placement order)
+- [2026-10-03] Modified: tests/b1_probe_set.rs — MASS_PROBE_BARRACKS back to 1 with mass_ripper's named F-035 exception; gating placement test plays unopposed for the full match cap
+- [2026-10-03] Modified: tests/critic_b1_ac3.rs — mass-probe struct identity compares every field with openings cut to the shared first one (F-035)
+- [2026-10-03] Modified: tests/critic_b35_armour.rs — mass-probe line count may differ only for mass_ripper (F-035)

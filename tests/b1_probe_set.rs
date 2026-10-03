@@ -33,16 +33,41 @@ use onus::sim::content::{Content, StrategyDef};
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use onus::sim::spatial::Faction;
 use onus::sim::{
-    AiAction, AiCommanders, AiJournal, CommandQueue, Position, RateReport, ResourceNode,
+    AiAction, AiCommanders, AiJournal, CommandQueue, MatchState, Position, RateReport,
+    ResourceNode,
 };
 
 // ---- harness ----------------------------------------------------------------
 
-/// How many production lines each `mass_*` probe opens. One before B3.5; three
-/// since the tempo tuning (F-029), which spends barracks count to keep armies
-/// big while the clock got longer. The five must all carry the same number or
-/// they stop being comparable (F-018), so it is written once, here.
-const MASS_PROBE_BARRACKS: usize = 3;
+/// How many production lines a `mass_*` probe opens. One before B3.5; the
+/// tempo tuning scripted three (F-029), but under its economy no probe ever
+/// affords a third and only `mass_ripper` a second (F-035), so the scripts were
+/// trimmed to the barracks the sim really places. The five must carry the same
+/// number or they stop being comparable (F-018), so it is written once, here —
+/// with the one measured exception spelled out by name in
+/// [`MASS_PROBE_OPENING_EXCEPTIONS`], not tolerated generically.
+const MASS_PROBE_BARRACKS: usize = 1;
+
+/// **The one knob the five mass probes do not share (F-035).** `mass_ripper`'s
+/// Ripper costs 40 Alloy, the cheapest body in the game, so it is the only probe
+/// whose income outruns its spending: its stockpile reaches a second Gene-Vats'
+/// 150 at tick ~9 330 in every head-to-head that lasts that long, and B3.5's
+/// Ripper readings were taken on that two-line army. Its script says so. Only
+/// the *count* of openings may differ: every opening the probes share must
+/// still match tick for tick and offset for offset, and every other knob is
+/// asserted identical. B4's opening reservation (the army step holding Alloy
+/// back for a due opening) should make the five identical again — at which
+/// point this list must go empty.
+const MASS_PROBE_OPENING_EXCEPTIONS: &[(&str, usize)] = &[("mass_ripper", 2)];
+
+/// The opening count `id` must carry: [`MASS_PROBE_BARRACKS`] unless F-035's
+/// named exception says otherwise.
+fn mass_probe_openings(id: &str) -> usize {
+    MASS_PROBE_OPENING_EXCEPTIONS
+        .iter()
+        .find(|(p, _)| *p == id)
+        .map_or(MASS_PROBE_BARRACKS, |(_, n)| *n)
+}
 
 fn content() -> Content {
     Content::load_from_dir(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data"))
@@ -67,6 +92,20 @@ fn tick(app: &mut App, n: u32) {
 /// and build order and not the outcome of a fight — an opponent that killed the
 /// probe's HQ would stop it thinking and look exactly like a stalled script.
 fn solo(id: &str, seed: u64) -> App {
+    solo_against(id, seed, true)
+}
+
+/// [`solo`] with **no opposing HQ at all**: nothing for the probe to destroy, so
+/// the match never becomes decidable and the script plays for as many ticks as
+/// it is stepped. [`solo`]'s inert base ends the match the moment the probe
+/// levels it — `mass_ripper` does so at tick 9 013, before its second opening
+/// goes up at ~9 330 in every real match (F-035) — so a test that means "by the
+/// match cap" cannot use it. Its own base, workers and node are untouched.
+fn solo_unopposed(id: &str, seed: u64) -> App {
+    solo_against(id, seed, false)
+}
+
+fn solo_against(id: &str, seed: u64, enemy_hq: bool) -> App {
     let c = content();
     let commanders = AiCommanders::matchup(&c, seed, &[(Faction::A, id)])
         .unwrap_or_else(|e| panic!("the shipped set must name `{id}`: {e}"));
@@ -89,12 +128,14 @@ fn solo(id: &str, seed: u64) -> App {
             .resource::<Content>()
             .building_index("hq")
             .unwrap();
-        app.world_mut().spawn((
-            Position(base),
-            Building { def },
-            faction,
-            ProductionQueue::default(),
-        ));
+        if faction == Faction::A || enemy_hq {
+            app.world_mut().spawn((
+                Position(base),
+                Building { def },
+                faction,
+                ProductionQueue::default(),
+            ));
+        }
         app.world_mut().spawn((
             Position(base + Vec2::new(0.0, 250.0)),
             ResourceNode { amount: 100_000 },
@@ -241,15 +282,15 @@ fn every_combat_unit_is_massed_by_exactly_one_probe() {
         );
     }
     // And each probe commits to a real combat unit out of its own production
-    // lines — `MASS_PROBE_BARRACKS` openings of the *one* building that makes
-    // its unit (B3.5 raised this from 1: barracks count is what sets army
-    // throughput, F-028, and the tempo tuning spends it, F-029).
+    // lines — `mass_probe_openings(id)` openings of the *one* building that
+    // makes its unit (B3.5 scripted three, F-029; only `mass_ripper`'s second
+    // ever goes up, so the scripts are back to one, two for it, F-035).
     for (id, unit) in &probes {
         assert!(roster.contains(unit), "`{id}` masses non-combatant `{unit}`");
         let s = c.strategy(id).unwrap();
         assert_eq!(
             s.barracks.len(),
-            MASS_PROBE_BARRACKS,
+            mass_probe_openings(id),
             "`{id}` hard-commits to one unit but opens {} barracks",
             s.barracks.len()
         );
@@ -323,11 +364,22 @@ fn the_mass_probes_are_knob_identical() {
         // probe with a fourth Foundry, or with its second one opening 600
         // ticks late, would out-produce the others and B3 would read the
         // schedule instead of the unit (F-018).
-        assert_eq!(s.barracks.len(), first.barracks.len(), "{who}: barracks count differs");
+        //
+        // The count is pinned per probe, not compared between them, because of
+        // F-035's one named exception (`mass_ripper` really places two); see
+        // [`MASS_PROBE_OPENING_EXCEPTIONS`]. Every opening two probes share is
+        // still compared below.
         assert_eq!(
             s.barracks.len(),
-            MASS_PROBE_BARRACKS,
-            "{who}: a mass probe opens {MASS_PROBE_BARRACKS} production lines"
+            mass_probe_openings(&s.id),
+            "{who}: `{}` opens the wrong number of production lines",
+            s.id
+        );
+        assert_eq!(
+            first.barracks.len(),
+            mass_probe_openings(&first.id),
+            "{who}: `{}` opens the wrong number of production lines",
+            first.id
         );
         for (k, (b, f)) in s.barracks.iter().zip(&first.barracks).enumerate() {
             assert_eq!(b.at_tick, f.at_tick, "{who}: opening {k}'s tick differs");
@@ -417,11 +469,17 @@ fn the_synthesis_builds_span_domains() {
 /// ticks predated B3.5's slower economy (F-033). `MIN_TRAINED` keeps its old
 /// meaning, a floor against "one token unit", not a rate.
 ///
-/// **Red since B3.5 (F-035), left red on purpose:** the `mass_*` probes place
-/// one barracks of three, `synth_steel_flesh` two of four and `turtle` three of
-/// four before their solo match is over. That is not a horizon — no budget
-/// fixes it — and the assertion is not weakened; it waits on a content or AI
-/// decision.
+/// Played **unopposed** ([`solo_unopposed`]): with an inert enemy HQ the probe
+/// levels it and the match ends long before the cap (`mass_ripper` at tick
+/// 9 013), so "by the cap" was never what was tested. Unopposed, every
+/// strategy really gets the whole budget.
+///
+/// Red through B3.5's closure (F-035): the `mass_*` probes placed one barracks
+/// of three (`mass_ripper` two, in real matches), `synth_steel_flesh` two of
+/// four and `turtle` three of four, and `synth_triad` placed all four but not
+/// in script order. No budget fixed it and the assertion was not weakened; the
+/// scripts were made to list exactly what the sim places, in the order it
+/// places it.
 #[test]
 fn every_strategy_places_its_barracks_and_builds_its_own_order() {
     const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
@@ -430,8 +488,12 @@ fn every_strategy_places_its_barracks_and_builds_its_own_order() {
     let ids: Vec<String> = content().strategies.iter().map(|s| s.id.clone()).collect();
     assert!(ids.len() >= 9, "the probe set is short: {ids:?}");
     for id in &ids {
-        let mut app = solo(id, 4);
+        let mut app = solo_unopposed(id, 4);
         tick(&mut app, BUDGET);
+        assert!(
+            !app.world().resource::<MatchState>().is_over(),
+            "`{id}`: the unopposed match ended, so it did not play the whole budget"
+        );
         let c = content();
         let s = c.strategy(id).unwrap();
 
