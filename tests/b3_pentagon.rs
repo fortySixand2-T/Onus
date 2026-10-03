@@ -509,21 +509,62 @@ fn the_real_batch_reports_what_the_sim_actually_does() {
         );
     }
 
-    // The measurement as of B3 (F-025): four of five links hold, and the
-    // Bulwark > Ravager link loses outright. Asserted, not hidden — B4 tunes
-    // RON until it holds, and this test is what tells it that it did.
-    assert_eq!(report.holding(), 4, "four predicted counters win their matchup");
-    let broken = link(&report, "bulwark");
-    assert_eq!(broken.prey, "ravager");
-    assert_eq!(broken.verdict, Verdict::Fails);
-    assert_eq!(
-        broken.rate,
-        Some(0.0),
-        "mass_bulwark does not win a single decided match against mass_ravager"
-    );
-    for l in report.links() {
-        if l.predator != "bulwark" {
-            assert_eq!(l.verdict, Verdict::Holds, "{} > {}", l.predator, l.prey);
+    // The measurement as of B3.5, and what eight matches can honestly say about
+    // it. F-025's reading — four links holding and `bulwark > ravager` losing
+    // outright at 0.0% — is gone: the armour re-tune (F-031) turned that link
+    // into the pentagon's strongest resolved hold but a run this small cannot
+    // resolve all five. Eight decided matches put ~±28 points of 95% interval
+    // around every rate, so a link only reads `Holds` or `Fails` here when it is
+    // lopsided enough to clear 50% with that interval; otherwise it reads
+    // `Undetermined`, which is a statement about the sample, not the design.
+    // F-031's 100-match run is the design verdict; this test pins what *this*
+    // batch does, link by link, so a behavioural regression still shows.
+    //
+    // Three hold, two are undetermined, and **nothing fails** — the first time
+    // in the project's history the pentagon has no link read as broken.
+    assert_eq!(report.failing(), 0, "no link reads as broken design:\n{report}");
+    assert_eq!(report.holding(), 3, "three links resolve as holds:\n{report}");
+    assert_eq!(report.undetermined(), 2, "two links the sample cannot call:\n{report}");
+    assert_eq!(report.undefined(), 0, "every link has decided matches");
+
+    // Link by link: the rate, and whether eight matches can resolve it.
+    #[rustfmt::skip]
+    let expected: &[(&str, f64, Verdict)] = &[
+        ("bulwark",  0.875, Verdict::Holds),         // > ravager  — was 0.0% at B3
+        ("ravager",  0.625, Verdict::Undetermined),  // > sentinel — F-031's coin flip
+        ("sentinel", 0.500, Verdict::Undetermined),  // > ripper
+        ("ripper",   1.000, Verdict::Holds),         // > arclight
+        ("arclight", 1.000, Verdict::Holds),         // > bulwark
+    ];
+    for (predator, rate, verdict) in expected {
+        let l = link(&report, predator);
+        assert_eq!(
+            l.rate,
+            Some(*rate),
+            "{} > {}: the win rate moved\n{report}",
+            l.predator,
+            l.prey
+        );
+        assert_eq!(l.verdict, *verdict, "{} > {}\n{report}", l.predator, l.prey);
+        // ...and the verdict really is the interval's doing: an undetermined
+        // link is one whose interval straddles a half, a resolved one is not.
+        let (lo, hi) = l.interval.expect("a decided link has an interval");
+        match verdict {
+            Verdict::Undetermined => assert!(
+                lo <= 0.5 && hi >= 0.5,
+                "{} > {}: called undetermined on an interval [{lo:.3}, {hi:.3}] that does \
+                 not straddle a half",
+                l.predator,
+                l.prey
+            ),
+            Verdict::Holds => assert!(
+                lo > 0.5,
+                "{} > {}: called a hold on an interval [{lo:.3}, {hi:.3}] that reaches \
+                 below a half",
+                l.predator,
+                l.prey
+            ),
+            v => panic!("unexpected expectation {v:?}"),
         }
     }
 }

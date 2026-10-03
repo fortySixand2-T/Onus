@@ -445,3 +445,5 @@
 - [2026-10-02] Modified: tests/critic_p2.rs — raised the determinism fixture to 12 000 ticks (seed 7 now decides at 9 498)
 - [2026-10-02] Modified: tests/critic_m4b.rs — second carried-load anchor read from content too
 - [2026-10-02] Modified: FINDINGS.md — F-032 old-to-new re-pin table; F-033 (six horizons re-derived, five content anchors)
+- [2026-10-02] Modified: tests/b3_pentagon.rs — re-pinned the real-batch reading interval-aware (3 hold, 2 undetermined, 0 fail) with per-link rates and interval checks
+- [2026-10-02] Modified: FINDINGS.md — F-034, the third pentagon verdict and the shipped reading at eight matches a link

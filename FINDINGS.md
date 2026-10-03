@@ -2677,3 +2677,55 @@ two carried-load assertions), the building HP scale (`critic_m4c`, 40 → 420) a
 the time one Ripper needs to level an HQ (`m4c_ai`, three loops that pinned
 3 000 ticks against a pool that grew ten-fold — now a `kill_budget(content,
 attacker, building)` derived from HP, damage, mitigation and attack period).
+
+## F-034 — A coin flip is not a broken counter: the pentagon needed a third verdict (B3.5 closure)
+
+`PentagonReport` had two readings for a link with data: `rate > 0.5` was `Holds`,
+anything else `Fails`. `b3_pentagon::the_real_batch_reports_what_the_sim_actually
+_does` reads **eight** decided matches per link (5 x 5 probes x 2 seeds x 2
+orientations, of which 8 land on each pentagon link). Eight matches put roughly
+**±28 points** of two-sided 95% interval around a rate. So that test was
+reporting, as *broken design*, links whose data cannot distinguish 45% from 55%
+— and F-031 had just measured one of them (`ravager > sentinel`, pooled 54.9%,
+CI [50.2, 59.5] over 430 matches) as a genuine coin flip.
+
+The fix is a third verdict, not a bigger batch:
+
+| verdict | means |
+|---|---|
+| `Holds` | the whole interval is above a half — the counter resolves |
+| `Fails` | the whole interval is below a half — the counter is backwards |
+| `Undetermined` | the interval straddles a half — **the sample cannot call it** |
+| `Undefined` | no decided matches (every match timed out) — unchanged |
+| `NoStrategy` | the unit has no mass probe — unchanged |
+
+`Undetermined` and `Undefined` are deliberately distinct: "we measured and it is
+too close to call" is not "we have no measurement". The interval is Wilson's
+score interval at z = 1.959963985, on `Cell::n_decided` (timeouts are not
+sample, per F-024), and `Cell::wilson_interval` is pinned in `src/metrics.rs`
+against the eight intervals F-031 quotes.
+
+What this changed in the reading of the shipped pentagon at eight matches a link:
+
+| link | decided | rate | 95% interval | verdict |
+|---|---|---|---|---|
+| arclight > bulwark | 8 | 100.0% | [67.6, 100.0] | holds |
+| ripper > arclight | 8 | 100.0% | [67.6, 100.0] | holds |
+| bulwark > ravager | 8 | 87.5% | [52.9, 97.8] | holds |
+| ravager > sentinel | 8 | 62.5% | [30.6, 86.3] | undetermined |
+| sentinel > ripper | 8 | 50.0% | [21.5, 78.5] | undetermined |
+
+**Three hold, two are undetermined, and nothing fails** — the first reading in
+the project's history with no link called broken. F-025's `bulwark > ravager` at
+0.0% is now the pentagon's strongest resolved hold at this sample size; the two
+undetermined cells are exactly the two F-031's 430-match run calls close
+(`ravager > sentinel` 54.9%, `sentinel > ripper` in the same band). The old test
+would have re-pinned them as 5/5 holding, which would have been a *stronger*
+claim than the data supports in the same breath as deleting a true one.
+
+Blast radius, handled deliberately rather than by loosening: `critic_b3_ac2`'s
+`exactly_half_fails_and_a_hair_above_half_holds` pinned the old rule by name and
+is now `every_way_of_being_even_reads_undetermined_not_failed`; several synthetic
+fixtures used n = 4 (interval ±35 points) and were scaled x10 so each test's
+original intent survives the new rule; and a new test pins the difference head
+on — the same 75% rate reads `Undetermined` at n = 4 and `Holds` at n = 40.
