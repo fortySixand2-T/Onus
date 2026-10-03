@@ -253,14 +253,16 @@ fn wilson(k: u32, n: u32) -> (f64, f64) {
     ((centre - half).max(0.0), (centre + half).min(1.0))
 }
 
-// ---- "holds" is a point verdict, not a confidence statement -------------------
+// ---- "holds" is a confidence statement, and a coin flip is not one -----------
 
-/// `Verdict::Holds` is `rate > 0.5` and nothing more. F-031 reads its table's
-/// `holds` column as "the CI excludes 50%"; the machinery does not do that, and
-/// a link sitting just above a coin flip is reported as a hold at any sample
-/// size. Pinned so the next re-pin of `b3_pentagon` cannot confuse the two.
+/// The fix for what this probe originally pinned as a defect. F-031 reads its
+/// table's `holds` column as "the CI excludes 50%"; `Verdict` used to be a bare
+/// `rate > 0.5`, so a link sitting just above a coin flip was reported as a
+/// hold at any sample size. It now reads its 95% interval, and this is the
+/// measured reading that proves it: 52.6% over 196 matches is **undetermined**,
+/// which is neither a counter nor a broken one.
 #[test]
-fn a_holds_verdict_says_nothing_about_the_interval() {
+fn a_coin_flip_link_is_undetermined_not_a_hold() {
     let mut records = Vec::new();
     // 103 of 196 for the predator — the `ravager > sentinel` reading measured
     // on 50 seeds (`balance --seeds 50 --seed-base 900 --minutes 15 --only
@@ -288,17 +290,28 @@ fn a_holds_verdict_says_nothing_about_the_interval() {
         .find(|l| l.predator == "ravager")
         .expect("the cycle has a ravager link");
     assert_eq!(link.prey, "sentinel");
+    assert!(link.rate.expect("decided") > 0.5, "the point estimate is above half");
     assert_eq!(
         link.verdict,
-        onus::pentagon::Verdict::Holds,
-        "52.6% is a hold by the >0.5 rule"
+        onus::pentagon::Verdict::Undetermined,
+        "52.6% over 196 matches is not a hold"
     );
+    assert_eq!(report.holding(), 0, "and it is not counted as one");
+    assert_eq!(report.failing(), 0, "nor as a broken design");
+    assert_eq!(report.undetermined(), 1);
 
+    // This file computes Wilson itself (above); the library computes it too.
+    // Two independent implementations, same interval, and it straddles 50%.
     let (lo, hi) = wilson(103, 196);
     assert!(
         lo < 0.5 && hi > 0.5,
-        "...while its 95% interval [{:.1}, {:.1}] straddles 50%: a hold is not a result",
+        "its 95% interval [{:.1}, {:.1}] straddles 50%",
         100.0 * lo,
         100.0 * hi
+    );
+    let (got_lo, got_hi) = link.interval.expect("a decided link carries its interval");
+    assert!(
+        (got_lo - lo).abs() < 1e-9 && (got_hi - hi).abs() < 1e-9,
+        "library [{got_lo:.6}, {got_hi:.6}] vs this file's [{lo:.6}, {hi:.6}]"
     );
 }

@@ -39,6 +39,10 @@ use crate::sim::spatial::Faction;
 const WIN: u32 = 2;
 /// A mutual loss: half a win to each side.
 const HALF: u32 = 1;
+/// The two-sided 95% normal quantile, for [`Cell::wilson_interval`]. 95% is the
+/// confidence every interval quoted in FINDINGS (F-031) is quoted at; keeping
+/// one constant keeps the code and the ledger talking about the same width.
+const WILSON_Z: f64 = 1.959_963_985_3;
 
 /// One cell of a [`WinMatrix`]: the row strategy's record against the column
 /// strategy.
@@ -67,6 +71,33 @@ impl Cell {
     /// unknown, never 0.5. Tell them apart with [`Cell::played`].
     pub fn rate(&self) -> Option<f64> {
         (self.n_decided > 0).then(|| self.half_wins as f64 / (WIN * self.n_decided) as f64)
+    }
+
+    /// The **95% Wilson score interval** around [`Cell::rate`], or `None` if
+    /// nothing was decided.
+    ///
+    /// Why an interval at all, and why this one: a rate read off a handful of
+    /// matches is a number with a width, and B3's pentagon was reading 8-match
+    /// cells as statements about the design (F-031 — `sentinel > ripper` was
+    /// recorded as a broken link at 4 of 8, and reproduces at 64-72% once the
+    /// sample is 100). The Wilson score interval is the standard choice for a
+    /// proportion at small `n` and near 0 or 1, where the normal approximation
+    /// is worst and where these cells actually live; it never leaves `[0, 1]`
+    /// and it is defined at 0/n and n/n, which a Wald interval is not.
+    ///
+    /// Pure arithmetic on `(half_wins, n_decided)` — no sampling, no clock, so
+    /// two runs of the same batch get the same interval to the bit. The
+    /// matches behind a cell are **not** independent (a seed contributes four
+    /// correlated matches; F-031 measured a design effect of 1.51), so this is
+    /// an optimistic width, not a conservative one.
+    pub fn wilson_interval(&self) -> Option<(f64, f64)> {
+        let p = self.rate()?;
+        let n = self.n_decided as f64;
+        let z2 = WILSON_Z * WILSON_Z;
+        let denom = 1.0 + z2 / n;
+        let centre = (p + z2 / (2.0 * n)) / denom;
+        let half = (WILSON_Z / denom) * (p * (1.0 - p) / n + z2 / (4.0 * n * n)).sqrt();
+        Some(((centre - half).max(0.0), (centre + half).min(1.0)))
     }
 
     /// The row side's wins as a number of matches (a mutual loss is 0.5).
@@ -447,6 +478,79 @@ mod tests {
         b.mul_small(1 << 32);
         b.add(&Big::from(v as u64));
         b
+    }
+
+    /// A cell with `wins` of `n` decided, and nothing else.
+    fn decided(wins: u32, n: u32) -> Cell {
+        Cell {
+            half_wins: wins * WIN,
+            n_decided: n,
+            n_timeout: 0,
+        }
+    }
+
+    /// Every interval FINDINGS F-031 publishes, recomputed here to one decimal
+    /// place. If this drifts, either the code is wrong or the ledger is — and
+    /// the whole point of the pentagon's interval is that the two agree.
+    #[test]
+    fn the_wilson_interval_reproduces_every_one_f031_quotes() {
+        let cases: [(u32, u32, f64, f64); 8] = [
+            // F-030's `sentinel > ripper`: 4 of 8 "FAILS" — half-width 28.
+            (4, 8, 21.5, 78.5),
+            // The 8-seed table: holds / undetermined, and the two 100% cells.
+            (22, 32, 51.4, 82.0),
+            (17, 32, 36.4, 69.1),
+            (31, 32, 84.3, 99.4),
+            (30, 30, 88.6, 100.0),
+            (29, 32, 75.8, 96.8),
+            // The 25-seed `sentinel > ripper`, and the pooled coin flip.
+            (71, 99, 62.2, 79.6),
+            (236, 430, 50.2, 59.5),
+        ];
+        for (wins, n, lo, hi) in cases {
+            let (got_lo, got_hi) = decided(wins, n).wilson_interval().expect("decided");
+            assert_eq!(
+                ((1000.0 * got_lo).round() / 10.0, (1000.0 * got_hi).round() / 10.0),
+                (lo, hi),
+                "{wins}/{n}"
+            );
+        }
+    }
+
+    /// An interval needs a decided match to exist, a mutual loss counts as half
+    /// a win in it, and it never leaves `[0, 1]` however extreme the cell.
+    #[test]
+    fn an_interval_exists_exactly_when_a_rate_does_and_stays_in_range() {
+        let nothing = Cell::default();
+        assert_eq!(nothing.rate(), None);
+        assert_eq!(nothing.wilson_interval(), None);
+        let all_timeout = Cell {
+            half_wins: 0,
+            n_decided: 0,
+            n_timeout: 9,
+        };
+        assert_eq!(all_timeout.wilson_interval(), None, "undecided is not 50/50");
+
+        // Eight decided draws: the rate is exactly 0.5 and the interval is the
+        // same one 4-of-8 wins gets — a dead-even cell, not a readable one.
+        let draws = Cell {
+            half_wins: 8 * HALF,
+            n_decided: 8,
+            n_timeout: 0,
+        };
+        assert_eq!(draws.rate(), Some(0.5));
+        assert_eq!(draws.wilson_interval(), decided(4, 8).wilson_interval());
+
+        for (wins, n) in [(0, 1), (1, 1), (0, 300), (300, 300)] {
+            let (lo, hi) = decided(wins, n).wilson_interval().expect("decided");
+            assert!((0.0..=1.0).contains(&lo) && (0.0..=1.0).contains(&hi), "{wins}/{n}");
+            assert!(lo <= hi);
+        }
+        // The interval contains its own point estimate, and narrows with n.
+        let (lo8, hi8) = decided(6, 8).wilson_interval().expect("decided");
+        let (lo80, hi80) = decided(60, 80).wilson_interval().expect("decided");
+        assert!(lo8 < 0.75 && 0.75 < hi8);
+        assert!(hi80 - lo80 < hi8 - lo8, "80 matches is narrower than 8");
     }
 
     /// Expected values are Python `float(Fraction(n, d))` — correctly rounded.
