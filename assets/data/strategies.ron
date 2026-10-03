@@ -313,7 +313,11 @@
                 (unit: "ripper",   count: 2),
                 (unit: "bulwark",  count: 1),
             ],
-            attack_at_army: 15,
+            // 26, not 15 (F-036): at 15 it committed at tick 13 470, before
+            // four other strategies (mass_bulwark last at 18 750), so it was
+            // not the late pole any more. 26 commits at 19 320, the smallest
+            // value measured with a margin (24 clears by only 390 ticks).
+            attack_at_army: 26,
             attack_interval_ticks: 600,
             attack_spread: 80.0,
             queue_depth: 1,
