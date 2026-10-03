@@ -456,9 +456,18 @@ fn a_head_to_head_pair_replays_tick_for_tick_on_the_same_seed() {
 /// inside the horizon, in both orientations. A cell that times out is a hole in
 /// the pentagon, and a matrix of holes cannot support the assertion B3 exists
 /// to make.
+///
+/// The horizon is the shipped match cap: "times out" means "reaches the cap",
+/// so a cell decided anywhere inside it is not a hole. The old hand-picked
+/// 20 000 ticks read B3.5's slower `mass_bulwark` mirror (decided near tick
+/// 23 500 on seed 7) as a hole (F-033).
+///
+/// This is **one seed**. F-031 measures 14-18% of `mass_arclight` versus
+/// armoured matches reaching the cap across seeds, so a green here is a sample,
+/// not a proof that no hole exists.
 #[test]
 fn every_mass_versus_mass_cell_resolves_in_both_orientations() {
-    const BUDGET: u32 = 20_000;
+    const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
     let c = content();
     let mass = mass_ids(&c);
     for a in &mass {

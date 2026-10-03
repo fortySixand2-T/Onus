@@ -2652,6 +2652,7 @@ rule applied to each: **keep what the assertion means, re-derive the number.**
 | `critic_b1_ac3::each_mass_probe_fields_an_army_of_its_own_unit` | 12 000 | `DEFAULT_TICK_CAP` | same, for the same measured 18 750 |
 | `critic_b1::a_placement_the_commander_cannot_afford_consumes_no_randomness` | 3 000 | 12 000 | measured: the poor commander (20 starting Alloy) first affords its opening at tick 3 450; the rich one places at 300 |
 | `critic_p2::no_configuration_of_the_writer_changes_a_single_tick_of_the_sim` | 4 800 | 12 000 | measured: seed 7 is decided at tick 9 498, and the probe's own vacuity check requires being past the decision |
+| `critic_b1_ac3::every_mass_versus_mass_cell_resolves_in_both_orientations` | 20 000 | `DEFAULT_TICK_CAP` | the test defines a hole as a cell that *times out*, and timeout means the match cap. Measured: the `mass_bulwark` mirror on seed 7 now decides near tick 23 500, past the old horizon; all 25 cells resolve inside the cap on seed 7 (release). One seed only: F-031 measures 14-18% of `mass_arclight` vs armoured matches reaching the cap across seeds, so this green is a sample, not a proof that no hole exists |
 
 Measured commitment ticks on the shipped set, solo, seed 4 (first attack / tick
 the match ended):
