@@ -2718,8 +2718,12 @@ What this changed in the reading of the shipped pentagon at eight matches a link
 **Three hold, two are undetermined, and nothing fails** — the first reading in
 the project's history with no link called broken. F-025's `bulwark > ravager` at
 0.0% is now the pentagon's strongest resolved hold at this sample size; the two
-undetermined cells are exactly the two F-031's 430-match run calls close
-(`ravager > sentinel` 54.9%, `sentinel > ripper` in the same band). The old test
+undetermined cells are undetermined for two different reasons. `ravager >
+sentinel` is genuinely close: F-031's 430-match run puts it at 54.9%, CI [50.2,
+59.5]. `sentinel > ripper` is **not** close: F-031 and the critic reproduced it
+at 64.0% and 71.7% on ~100 matches each. It reads undetermined here only because
+n = 8 cannot call anything short of a near-sweep (a 6/8 still has a lower bound
+under 50%), not because the link is in doubt. The old test
 would have re-pinned them as 5/5 holding, which would have been a *stronger*
 claim than the data supports in the same breath as deleting a true one.
 

@@ -447,3 +447,4 @@
 - [2026-10-02] Modified: FINDINGS.md — F-032 old-to-new re-pin table; F-033 (six horizons re-derived, five content anchors)
 - [2026-10-02] Modified: tests/b3_pentagon.rs — re-pinned the real-batch reading interval-aware (3 hold, 2 undetermined, 0 fail) with per-link rates and interval checks
 - [2026-10-02] Modified: FINDINGS.md — F-034, the third pentagon verdict and the shipped reading at eight matches a link
+- [2026-10-03] Modified: FINDINGS.md — F-034: corrected why sentinel > ripper reads undetermined at n=8 (sample size, not closeness)
