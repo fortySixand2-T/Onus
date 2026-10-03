@@ -2765,8 +2765,11 @@ is cheaper than the opening. Once the first barracks is up, the army step
 spends the stockpile whenever it reaches the next unit's price and the line is
 free. At B3.5's worker load (2) the income never lets the stockpile climb from
 a unit's price to 150-200 between two army spends, so the second and third
-openings are never affordable. The peak stockpile before the match ends is the
-starting 296-302, before the first placement.
+openings are never affordable. This follows from the outcome itself: tech runs
+first, so any decision past an opening's `at_tick` with the stockpile at its
+cost would have placed it. The measured peak stockpile (296-302) is the
+starting stockpile; the probe did not record the post-placement peak
+separately.
 
 Consequences:
 - F-030's "three production lines" for the mass probes **do not happen** in
