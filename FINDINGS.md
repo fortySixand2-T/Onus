@@ -2587,3 +2587,93 @@ unedited pin under the new binary: `b1_matchup`, `b1_strategies`, `b2_headless`,
 every *budget* the next section re-measures, and `b3_pentagon`'s F-025 pin: under
 `main`'s data the pentagon still reads `bulwark > ravager` at 0.0%. That is the
 whole licence, and it is now a measurement rather than an argument.
+
+### The re-pin, old → new
+
+Forty-two numbers across nine suites. Recomputed on the box under B3.5's content
+(`units.ron` md5 `6c28883759fc7eee792deefcdad223f8`), identical in debug and
+release, which is its own determinism check.
+
+**The default matchup at 3 000 ticks** — pinned independently in four files
+(`b1_matchup`, `b35_parallel`, `b35_queue_depth`, `critic_b2_ac4` for the state,
+`b1_strategies` for seeds 4 and 11):
+
+| seed | state, old → new | journal, old → new |
+|---|---|---|
+| 4 | `0xa71f64cad50203e9` → `0xbd74941fb3cae489` | `0xe78eebdc5c2ca733` → `0x55675b7844c3d493` |
+| 11 | `0x5b398ee4785423dc` → `0x87008a7d696dd45c` | `0x00b7f8d8713fe467` → `0xb27b6a664addcfd7` |
+| 23 | `0xf4b57d1c3c3f2af7` → `0x0fe52558759f6817` | `0x46821006f2fae62a` → `0xb86b2ad6d1ed0efa` |
+
+**The bench fixture** (`b2_headless`, two of the ticks re-asserted in
+`b2_orientation`):
+
+| tick | old → new |
+|---|---|
+| 1 | `0x9a74d7adacad19be` → `0x5addc3afc88c09ee` |
+| 10 | `0x624e8c15e1922eb5` → `0xe6cf18953a100975` |
+| 60 | `0x3f80afb2a96f1736` → `0xf3869a1a5ddc98c6` |
+| 120 | `0x545c43c242aa59f0` → `0x8bfd07059b1453a0` |
+| 300 | `0xa5b4138cf475fd00` → `0x13edd185edb004f0` |
+| 600 | `0x1007e832729309b0` → `0x2b3039ab98739900` |
+| fold of all 600 | `0x606003707bc19408` → `0x496070b2de2d41f8` |
+
+**The neutrality pairs** — the same two matches under two names, pinned in
+`b35_parallel` (`solo_*`) and `b35_queue_depth` (`depth_*`); both files carried
+identical numbers before and carry identical numbers after, which is itself a
+check that the two capabilities really are the same fixture:
+
+| matchup | trace, old → new | journal, old → new |
+|---|---|---|
+| ripper vs bulwark, seed 4 | `0xff87018409ace43e` → `0xbc761268e37bdfa6` | `0x4e1604bd46e099f6` → `0x501ed9cfa3548f9b` |
+| bulwark vs ripper, seed 11 | `0xc0a77e736876e285` → `0x9b7ab550477efe7b` | `0x565da2a66530936a` → `0x8bc810501741a3b9` |
+
+**`critic_b35_ac0`'s nine depth-1 rows** (trace over 4 000 ticks, end state,
+journal) and **`critic_b35_ac0b`'s eight shipped-matchup pairs** (120-sample
+trace over 7 200 ticks, journal) moved in all 27 + 16 values; the new tables are
+in the test files, each with the licence recorded at the site.
+
+**The cross-process pin** (`critic_b1_ac2`) is not a literal in a file but a
+`target/critic_b1_ac2/pins/*.txt` written by the first process to run the
+fixture. Its panic message says to delete it to re-pin, and that is what was
+done — the pin re-forms from the new data on the next run, and the assertion
+(two processes must agree) is untouched.
+
+## F-033 — Six horizons were numbers, not budgets (B3.5 closure, item 5)
+
+B3.5's slower economy (worker load 10 → 2) stretched everything in time, and six
+assertions were holding a horizon that used to be generous and no longer is. The
+rule applied to each: **keep what the assertion means, re-derive the number.**
+
+| assertion | old | new | why that number |
+|---|---|---|---|
+| `b1_probe_set::every_strategy_eventually_attacks` | 12 000 | `DEFAULT_TICK_CAP` (54 000) | "eventually" *means* "inside the match it will be played in". Measured latest committer: `mass_bulwark` at tick 18 750 |
+| `b1_probe_set::the_rush_commits_early_and_the_turtle_masses_first` | 12 000 | `DEFAULT_TICK_CAP` | the turtle's first wave is now at 13 470, past the old horizon |
+| `critic_b1_ac3::every_strategy_commits_before_the_match_can_stop_it` | 12 000 | `DEFAULT_TICK_CAP` | the assertion is literally about the match cap; derived from it, not from a number that happens to pass |
+| `critic_b1_ac3::each_mass_probe_fields_an_army_of_its_own_unit` | 12 000 | `DEFAULT_TICK_CAP` | same, for the same measured 18 750 |
+| `critic_b1::a_placement_the_commander_cannot_afford_consumes_no_randomness` | 3 000 | 12 000 | measured: the poor commander (20 starting Alloy) first affords its opening at tick 3 450; the rich one places at 300 |
+| `critic_p2::no_configuration_of_the_writer_changes_a_single_tick_of_the_sim` | 4 800 | 12 000 | measured: seed 7 is decided at tick 9 498, and the probe's own vacuity check requires being past the decision |
+
+Measured commitment ticks on the shipped set, solo, seed 4 (first attack / tick
+the match ended):
+
+| probe | first attack | over at |
+|---|---|---|
+| rush | 750 | 4 129 |
+| mvp | 4 440 | 8 418 |
+| mass_ripper | 7 830 | 9 013 |
+| synth_steel_flesh | 10 830 | 12 251 |
+| mass_sentinel | 11 460 | 13 099 |
+| turtle | 13 470 | 14 531 |
+| mass_arclight | 14 130 | 16 022 |
+| synth_triad | 14 670 | 16 127 |
+| mass_ravager | 15 060 | 17 079 |
+| mass_bulwark | 18 750 | 23 319 |
+
+Five more fixtures were anchored to *content values* rather than horizons, and
+are now read from the content instead of pinned, so the next re-tune cannot turn
+a probe into a silent no-op: the worker's carry capacity (`m4a_economy`'s loader
+mutation anchor, `critic_m4a`'s "room for less than one load", `critic_m4b`'s
+two carried-load assertions), the building HP scale (`critic_m4c`, 40 → 420) and
+the time one Ripper needs to level an HQ (`m4c_ai`, three loops that pinned
+3 000 ticks against a pool that grew ten-fold — now a `kill_budget(content,
+attacker, building)` derived from HP, damage, mitigation and attack period).

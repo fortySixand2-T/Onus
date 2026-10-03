@@ -444,3 +444,4 @@
 - [2026-10-02] Modified: tests/critic_b1.rs — raised the rich/poor placement horizon to 12 000 ticks (the poor commander first affords its opening at 3 450)
 - [2026-10-02] Modified: tests/critic_p2.rs — raised the determinism fixture to 12 000 ticks (seed 7 now decides at 9 498)
 - [2026-10-02] Modified: tests/critic_m4b.rs — second carried-load anchor read from content too
+- [2026-10-02] Modified: FINDINGS.md — F-032 old-to-new re-pin table; F-033 (six horizons re-derived, five content anchors)
