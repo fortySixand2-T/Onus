@@ -38,6 +38,23 @@ fn content() -> Content {
 
 /// A headless app running the shipped sim chain on `Update`, so one
 /// `step()` == exactly one 60 Hz sim tick.
+/// How long one Ripper needs to level a building, derived from the content
+/// instead of pinned: the building's HP pool divided by the damage one hit
+/// lands after mitigation, times the attack period, plus a walk-in margin and
+/// a factor of two of slack. B3.5 raised `building_hp_per_defense` from 40 to
+/// 420, which multiplied this by ten; a pinned horizon would have turned these
+/// probes into "the match never ended" instead of measuring the end condition.
+fn kill_budget(c: &Content, attacker: &str, building: &str) -> u32 {
+    let u = c.unit(attacker).expect("a shipped attacker");
+    let b = c.building(building).expect("a shipped building");
+    let pool = b.mvp_defense * c.combat.building_hp_per_defense;
+    let per_hit = (u.offense * c.combat.damage_per_offense)
+        .saturating_sub(b.mvp_armor * c.combat.mitigation_per_armor)
+        .max(1);
+    let hits = pool.div_ceil(per_hit);
+    2 * hits * u.mvp_attack_ticks + 600
+}
+
 fn sim_app_with_alloy(alloy: u32) -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
@@ -883,7 +900,7 @@ fn destroying_the_enemy_hq_ends_the_match() {
     spawn_building(&mut app, "hq", Faction::A, Vec2::new(3_000.0, 0.0));
     spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(30.0, 0.0));
     let mut decided = None;
-    for t in 0..3_000u32 {
+    for t in 0..kill_budget(&content(), "ripper", "hq") {
         step(&mut app);
         let hq_alive = app.world().get_entity(enemy_hq).is_ok();
         match outcome(&app) {
@@ -919,7 +936,7 @@ fn nothing_runs_after_the_match_is_decided() {
         }
         .issued_by(Faction::A),
     );
-    for _ in 0..3_000 {
+    for _ in 0..kill_budget(&content(), "ripper", "hq") {
         step(&mut app);
         if outcome(&app).is_some() {
             break;
@@ -990,7 +1007,7 @@ fn losing_both_hqs_on_one_tick_is_a_draw_in_either_order() {
         }
         spawn_unit(&mut app, "ripper", Faction::B, p0 + Vec2::new(30.0, 0.0));
         spawn_unit(&mut app, "ripper", Faction::A, p1 + Vec2::new(30.0, 0.0));
-        for _ in 0..3_000 {
+        for _ in 0..kill_budget(&content(), "ripper", "hq") {
             step(&mut app);
             if outcome(&app).is_some() {
                 break;

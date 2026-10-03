@@ -739,9 +739,12 @@ mod pass2 {
     fn two_same_tick_deposits_split_the_last_room_without_loss() {
         let c = content();
         let cap = c.unit("worker").unwrap().mvp_carry_capacity;
-        assert!(cap >= 4, "probe assumes a multi-Alloy load");
+        assert!(cap >= 2, "probe assumes a load of more than one Alloy");
         let idx = c.unit_index("worker").unwrap();
-        let room = 5u32;
+        // Room for *less than one load* — the whole point of the probe — so it
+        // is derived from the load, not pinned to a number that happened to be
+        // under the old capacity of 10 (B3.5 moved it to 2).
+        let room = cap - 1;
         let mut app = shipped_app(c, u32::MAX - room);
         spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
         let node = spawn_deposit(&mut app, Vec2::new(400.0, 0.0), 0);

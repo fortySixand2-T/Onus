@@ -425,3 +425,8 @@
 - [2026-10-02] Modified: FINDINGS.md — F-031: cross-pointer on the "why 25 seeds" power argument — the ±5 budget is nearer 150 seeds once clustering is counted, and ~±10 returns *undetermined* on a genuinely ~55% link
 - [2026-10-02] Modified: BALANCE_PLAN.md — ticked the four B3.5 checkboxes; rewrote the armour box as a measured negative (the grind was a misdiagnosis) and recorded the band/pentagon results with their unmet remainders
 - [2026-10-02] Modified: FINDINGS.md — F-032 opened: the item-4 proof that every pinned state_hash golden moved because `assets/data` moved and nothing else. `main`'s RON under the post-change binary passes 839 tests in both profiles, failing only the five assertions this branch wrote about the new content; no golden, budget or pentagon pin is among them
+- [2026-10-02] Modified: tests/m4a_economy.rs — read the worker's carry/gather anchors off the shipped content so the loader probe cannot rot (B3.5 moved the load 10 -> 2)
+- [2026-10-02] Modified: tests/critic_m4a.rs — derive "room for less than one load" from the content's carry capacity instead of a pinned 5
+- [2026-10-02] Modified: tests/critic_m4b.rs — compare the carried load against the content's capacity, not a hardcoded 10
+- [2026-10-02] Modified: tests/critic_m4c.rs — anchor the building-HP-scale mutation on the shipped value (40 -> 420)
+- [2026-10-02] Modified: tests/m4c_ai.rs — derive the HQ-kill horizon from content (kill_budget) instead of a pinned 3 000 ticks

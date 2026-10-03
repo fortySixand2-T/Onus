@@ -656,8 +656,14 @@ fn load_mutated(from: &str, to: &str) -> Result<Content, String> {
 /// silently accept it.
 #[test]
 fn a_building_hp_scale_the_sim_cannot_represent_is_an_error() {
-    let err = load_mutated("building_hp_per_defense: 40", "building_hp_per_defense: 4294967295")
-        .expect_err("an unrepresentable building HP scale loaded");
+    // The anchor is the shipped value, read from the content (B3.5 raised it
+    // from 40 to 420), so the fixture cannot rot into a silent no-op.
+    let scale = content().combat.building_hp_per_defense;
+    let err = load_mutated(
+        &format!("building_hp_per_defense: {scale}"),
+        "building_hp_per_defense: 4294967295",
+    )
+    .expect_err("an unrepresentable building HP scale loaded");
     assert!(
         err.contains("building HP") || err.contains("overflow"),
         "unexpected rejection: {err}"
