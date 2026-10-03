@@ -1161,13 +1161,3 @@ fn build_app_touches_the_world_in_the_order_the_sim_was_pinned_against() {
     let plugins = body.find("add_plugins(DefaultPlugins)").expect("plugins");
     assert!(seam > plugins, "the config load moved back above the subscriber");
 }
-
-#[test]
-fn zz_measure_decision_tick() {
-    let (t, _) = play(7, 54_000, None);
-    println!(
-        "ZZMEAS2 critic_p2 seed 7 outcome {:?} commands {}",
-        t.outcome.map(|o| o.tick),
-        t.log.commands.len()
-    );
-}

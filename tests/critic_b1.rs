@@ -547,23 +547,3 @@ fn the_fingerprint_moves_for_any_edit_anywhere_in_the_set() {
          valid against changed content: {blind:#?}"
     );
 }
-
-#[test]
-fn zz_measure_poor_placement() {
-    let strategies = set("mvp", &[MVP]);
-    for (tag, alloy) in [("rich", "3000"), ("poor", "20")] {
-        let c = content_with(
-            &format!("zz-{tag}"),
-            &[("resources.ron", "starting_alloy: 300", &format!("starting_alloy: {alloy}"))],
-            &strategies,
-        );
-        let app = run(c, 5, 30_000);
-        for f in [Faction::A, Faction::B] {
-            let at = journal(&app, f).into_iter().find_map(|(t, a)| match a {
-                AiAction::PlaceBarracks { .. } => Some(t),
-                _ => None,
-            });
-            println!("ZZMEAS2 {tag} {f:?} first_place_at {at:?}");
-        }
-    }
-}

@@ -519,22 +519,3 @@ fn the_namespace_collision_still_collides_after_the_strategies_rename() {
     );
     let _ = std::fs::remove_dir_all(&dir);
 }
-
-#[test]
-fn zz_measure_commit_ticks() {
-    let c = content();
-    for id in strategy_ids(&c) {
-        let mut app = solo(&id, 4);
-        let mut over_at: Option<u32> = None;
-        for t in 0..54_000u32 {
-            step(&mut app);
-            if over_at.is_none() && app.world().resource::<MatchState>().is_over() {
-                over_at = Some(t);
-            }
-        }
-        println!(
-            "ZZMEAS2 ac3 {id}: first_attack {:?} over_at {over_at:?}",
-            first_attack(&app, Faction::A)
-        );
-    }
-}

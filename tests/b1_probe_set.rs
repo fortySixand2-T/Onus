@@ -527,26 +527,3 @@ fn the_rush_commits_early_and_the_turtle_masses_first() {
         "the turtle keeps no more workers than the MVP default"
     );
 }
-
-#[test]
-fn zz_measure_budgets() {
-    let ids: Vec<String> = content().strategies.iter().map(|s| s.id.clone()).collect();
-    for id in &ids {
-        let mut app = solo(id, 4);
-        tick(&mut app, 54_000);
-        let c = content();
-        let s = c.strategy(id).unwrap();
-        let want_b = s.barracks.len();
-        let last_b = trace(&app)
-            .into_iter()
-            .filter(|(_, a)| matches!(a, AiAction::PlaceBarracks { .. }))
-            .map(|(t, _)| t)
-            .nth(want_b - 1);
-        let fa = first_attack(&app);
-        let n_trained = trained(&app).len();
-        println!(
-            "ZZMEAS {id}: barracks {}/{want_b} last_at {last_b:?} first_attack {fa:?} trained {n_trained}",
-            trace(&app).iter().filter(|(_, a)| matches!(a, AiAction::PlaceBarracks { .. })).count()
-        );
-    }
-}
