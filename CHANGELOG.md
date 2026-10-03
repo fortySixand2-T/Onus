@@ -450,3 +450,4 @@
 - [2026-10-03] Modified: FINDINGS.md — F-034: corrected why sentinel > ripper reads undetermined at n=8 (sample size, not closeness)
 - [2026-10-03] Modified: tests/b1_probe_set.rs, tests/critic_b1.rs, tests/critic_b1_ac3.rs, tests/critic_p2.rs — removed four zz_ measurement tests that leaked into 62190b3
 - [2026-10-03] Modified: tests/critic_b1_ac3.rs, FINDINGS.md — mass-vs-mass resolution horizon is the match cap; F-033 row
+- [2026-10-03] Modified: tests/b1_probe_set.rs, FINDINGS.md — barracks-placement horizon is the match cap (still red); F-033 row; F-035 records the opening starvation

@@ -411,9 +411,20 @@ fn the_synthesis_builds_span_domains() {
 /// the content, never enumerated by hand — plays a solo match to a tick budget
 /// and must: place all of its barracks, train units of its own army, and
 /// produce exactly the prefix of its own repeating build order.
+///
+/// The budget is the shipped match cap: an opening that has not gone up by the
+/// cap goes up in no match that will ever be played. The old hand-picked 6 000
+/// ticks predated B3.5's slower economy (F-033). `MIN_TRAINED` keeps its old
+/// meaning, a floor against "one token unit", not a rate.
+///
+/// **Red since B3.5 (F-035), left red on purpose:** the `mass_*` probes place
+/// one barracks of three, `synth_steel_flesh` two of four and `turtle` three of
+/// four before their solo match is over. That is not a horizon — no budget
+/// fixes it — and the assertion is not weakened; it waits on a content or AI
+/// decision.
 #[test]
 fn every_strategy_places_its_barracks_and_builds_its_own_order() {
-    const BUDGET: u32 = 6_000;
+    const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
     const MIN_TRAINED: usize = 2;
 
     let ids: Vec<String> = content().strategies.iter().map(|s| s.id.clone()).collect();

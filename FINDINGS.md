@@ -2652,6 +2652,7 @@ rule applied to each: **keep what the assertion means, re-derive the number.**
 | `critic_b1_ac3::each_mass_probe_fields_an_army_of_its_own_unit` | 12 000 | `DEFAULT_TICK_CAP` | same, for the same measured 18 750 |
 | `critic_b1::a_placement_the_commander_cannot_afford_consumes_no_randomness` | 3 000 | 12 000 | measured: the poor commander (20 starting Alloy) first affords its opening at tick 3 450; the rich one places at 300 |
 | `critic_p2::no_configuration_of_the_writer_changes_a_single_tick_of_the_sim` | 4 800 | 12 000 | measured: seed 7 is decided at tick 9 498, and the probe's own vacuity check requires being past the decision |
+| `b1_probe_set::every_strategy_places_its_barracks_and_builds_its_own_order` | 6 000 | `DEFAULT_TICK_CAP` | an opening not up by the cap goes up in no match that will be played. `MIN_TRAINED = 2` kept: a floor against a token unit, not a rate. **Still red at the cap** (`mass_bulwark` places 1 of 3 foundries): not a horizon problem, see F-035 |
 | `critic_b1_ac3::every_mass_versus_mass_cell_resolves_in_both_orientations` | 20 000 | `DEFAULT_TICK_CAP` | the test defines a hole as a cell that *times out*, and timeout means the match cap. Measured: the `mass_bulwark` mirror on seed 7 now decides near tick 23 500, past the old horizon; all 25 cells resolve inside the cap on seed 7 (release). One seed only: F-031 measures 14-18% of `mass_arclight` vs armoured matches reaching the cap across seeds, so this green is a sample, not a proof that no hole exists |
 
 Measured commitment ticks on the shipped set, solo, seed 4 (first attack / tick
@@ -2734,3 +2735,57 @@ is now `every_way_of_being_even_reads_undetermined_not_failed`; several syntheti
 fixtures used n = 4 (interval ±35 points) and were scaled x10 so each test's
 original intent survives the new rule; and a new test pins the difference head
 on — the same 75% rate reads `Undetermined` at n = 4 and `Holds` at n = 40.
+
+## F-035 — The extra openings never go up: B3.5's economy starves the tech step (B3.5 closure, open)
+
+**Status: open, red on purpose, needs a content or AI decision.** Gating test:
+`b1_probe_set::every_strategy_places_its_barracks_and_builds_its_own_order`,
+which F-033 moved to the match cap and which is still red there. Raising the
+horizon cannot fix it, and the assertion was not weakened.
+
+Measured solo, seed 4, release, 54 000 ticks (the match is over well before
+the cap, and nothing is placed after it):
+
+| probe | openings placed | over at | trained | opening cost | unit cost(s) |
+|---|---|---|---|---|---|
+| mvp | 1/1 | 8 418 | 6 | 150 | 70, 110 |
+| rush | 1/1 | 4 129 | 6 | 150 | 40 |
+| synth_triad | 4/4 (last at 7 740) | 16 127 | 12 | 150, 150, 200, 150 | 70, 40, 80 |
+| turtle | **3/4** | 14 531 | 18 | 150 x4 | 70, 40, 110 |
+| synth_steel_flesh | **2/4** | 12 251 | 12 | 150 x4 | 70, 40, 110 |
+| mass_ripper | **1/3** | 9 013 | 12 | 150 x3 | 40 |
+| mass_sentinel | **1/3** | 13 099 | 12 | 150 x3 | 70 |
+| mass_arclight | **1/3** | 16 022 | 12 | 200 x3 | 80 |
+| mass_ravager | **1/3** | 17 079 | 12 | 150 x3 | 90 |
+| mass_bulwark | **1/3** | 23 319 | 13 | 150 x3 | 110 |
+
+Mechanism, from `src/sim/ai.rs`: each decision runs tech before army, and an
+opening is placed only when `budget >= cost`. Every unit in these build orders
+is cheaper than the opening. Once the first barracks is up, the army step
+spends the stockpile whenever it reaches the next unit's price and the line is
+free. At B3.5's worker load (2) the income never lets the stockpile climb from
+a unit's price to 150-200 between two army spends, so the second and third
+openings are never affordable. The peak stockpile before the match ends is the
+starting 296-302, before the first placement.
+
+Consequences:
+- F-030's "three production lines" for the mass probes **do not happen** in
+  the shipped content. Every mass probe plays on one barracks.
+  `MASS_PROBE_BARRACKS = 3` and the knob-identity tests still pass, because
+  they read the scripts and not the realised openings.
+- The probes are still mutually comparable (F-018): all five realise the same
+  one opening.
+- The B3.5 pentagon reading (F-034) was taken on these realised one-barracks
+  armies, so it is a reading of what the sim does, not of what the scripts
+  intend.
+
+Options, none taken (content is final for this closure, and the AI priority is
+a design call):
+1. Content: make the openings affordable, for example with cheaper extra
+   barracks, later `at_tick`s paired with a reserve, or a different income.
+2. AI: have the army step reserve the next due opening's cost (`tick >=
+   at_tick` and not yet standing) before it trains. This changes every
+   strategy with more than one opening and moves goldens.
+3. Spec: accept one realised barracks, drop the duplicate openings from the
+   mass probes and set `MASS_PROBE_BARRACKS` back to 1. This changes the
+   F-030 rationale.
