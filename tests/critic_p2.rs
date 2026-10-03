@@ -191,7 +191,11 @@ fn no_configuration_of_the_writer_changes_a_single_tick_of_the_sim() {
     // Past the decision, so the enabled writers actually reach the filesystem
     // during the run being compared — a writer that never acted would prove
     // nothing about a writer that did.
-    const TICKS: u32 = 4_800;
+    // Past the decision, re-measured on B3.5's content: seed 7 is decided at
+    // tick 9 498 (it was inside 4 800 before the economy slowed). The horizon
+    // has to clear the decision or the vacuity check below is the thing that
+    // fails, and nothing is proved about a writer that wrote (F-033).
+    const TICKS: u32 = 12_000;
     let a = Scratch::new("determinism-a");
     let b = Scratch::new("determinism-b");
 
@@ -1156,4 +1160,14 @@ fn build_app_touches_the_world_in_the_order_the_sim_was_pinned_against() {
     let seam = body.find("load_config_or_report(").expect("the seam is called");
     let plugins = body.find("add_plugins(DefaultPlugins)").expect("plugins");
     assert!(seam > plugins, "the config load moved back above the subscriber");
+}
+
+#[test]
+fn zz_measure_decision_tick() {
+    let (t, _) = play(7, 54_000, None);
+    println!(
+        "ZZMEAS2 critic_p2 seed 7 outcome {:?} commands {}",
+        t.outcome.map(|o| o.tick),
+        t.log.commands.len()
+    );
 }

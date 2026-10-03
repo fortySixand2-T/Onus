@@ -439,3 +439,8 @@
 - [2026-10-02] Modified: tests/critic_b2_ac4.rs — re-pinned the independent state-hash goldens (3 seeds)
 - [2026-10-02] Modified: tests/critic_b35_ac0.rs — re-pinned all nine depth-1 (trace, end, journal) rows
 - [2026-10-02] Modified: tests/critic_b35_ac0b.rs — re-pinned the eight shipped-matchup (hash, journal) pairs
+- [2026-10-02] Modified: tests/b1_probe_set.rs — re-derived the two commitment horizons from the shipped match cap (DEFAULT_TICK_CAP) instead of a hand-picked 12 000 ticks
+- [2026-10-02] Modified: tests/critic_b1_ac3.rs — same re-derivation for three horizons, and the mass-probe masking precondition now allows repeated openings of one building
+- [2026-10-02] Modified: tests/critic_b1.rs — raised the rich/poor placement horizon to 12 000 ticks (the poor commander first affords its opening at 3 450)
+- [2026-10-02] Modified: tests/critic_p2.rs — raised the determinism fixture to 12 000 ticks (seed 7 now decides at 9 498)
+- [2026-10-02] Modified: tests/critic_m4b.rs — second carried-load anchor read from content too

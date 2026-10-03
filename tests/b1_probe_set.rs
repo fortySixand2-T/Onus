@@ -454,12 +454,18 @@ fn every_strategy_places_its_barracks_and_builds_its_own_order() {
     }
 }
 
-/// Every strategy commits: inside a generous budget each one sends at least one
-/// wave. A probe that masses forever and never attacks would make every B3
-/// matchup involving it a timeout.
+/// Every strategy commits: **inside the match it will be played in** each one
+/// sends at least one wave. A probe that masses forever and never attacks would
+/// make every B3 matchup involving it a timeout.
+///
+/// The budget is the shipped match cap, not a number chosen to pass: a probe
+/// that only commits after the cap has committed in no match that will ever be
+/// played. B3.5's slower economy moved the latest committer (`mass_bulwark`)
+/// from inside 12 000 ticks to tick 18 750, which the old hand-picked horizon
+/// read as "never attacks" (F-033).
 #[test]
 fn every_strategy_eventually_attacks() {
-    const BUDGET: u32 = 12_000;
+    const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
     let ids: Vec<String> = content().strategies.iter().map(|s| s.id.clone()).collect();
     for id in &ids {
         let mut app = solo(id, 4);
@@ -484,7 +490,9 @@ fn every_strategy_eventually_attacks() {
 /// probe with two names.
 #[test]
 fn the_rush_commits_early_and_the_turtle_masses_first() {
-    const BUDGET: u32 = 12_000;
+    // The match cap, for the same reason as above: the turtle now first
+    // commits at tick 13 470, past the old 12 000-tick horizon.
+    const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
     let mut rush = solo("rush", 4);
     tick(&mut rush, BUDGET);
     let mut turtle = solo("turtle", 4);
@@ -518,4 +526,27 @@ fn the_rush_commits_early_and_the_turtle_masses_first() {
         c.strategy("turtle").unwrap().worker_target > c.ai.worker_target,
         "the turtle keeps no more workers than the MVP default"
     );
+}
+
+#[test]
+fn zz_measure_budgets() {
+    let ids: Vec<String> = content().strategies.iter().map(|s| s.id.clone()).collect();
+    for id in &ids {
+        let mut app = solo(id, 4);
+        tick(&mut app, 54_000);
+        let c = content();
+        let s = c.strategy(id).unwrap();
+        let want_b = s.barracks.len();
+        let last_b = trace(&app)
+            .into_iter()
+            .filter(|(_, a)| matches!(a, AiAction::PlaceBarracks { .. }))
+            .map(|(t, _)| t)
+            .nth(want_b - 1);
+        let fa = first_attack(&app);
+        let n_trained = trained(&app).len();
+        println!(
+            "ZZMEAS {id}: barracks {}/{want_b} last_at {last_b:?} first_attack {fa:?} trained {n_trained}",
+            trace(&app).iter().filter(|(_, a)| matches!(a, AiAction::PlaceBarracks { .. })).count()
+        );
+    }
 }

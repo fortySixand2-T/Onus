@@ -343,8 +343,13 @@ fn a_placement_the_commander_cannot_afford_consumes_no_randomness() {
         &[("resources.ron", "starting_alloy: 300", "starting_alloy: 20")],
         &strategies,
     );
-    let rich = run(rich, 5, 3_000);
-    let poor = run(poor, 5, 3_000);
+    // Long enough for the *poor* commander to get there: at B3.5's income it
+    // first affords its opening at tick 3 450 (the rich one places at 300), so a
+    // 3 000-tick horizon read "the poor commander never placed a barracks" —
+    // which is not what this probe is about (F-033).
+    const BUDGET: u32 = 12_000;
+    let rich = run(rich, 5, BUDGET);
+    let poor = run(poor, 5, BUDGET);
     for f in [Faction::A, Faction::B] {
         let r = first_place_dir(&rich, f).expect("the rich commander never placed a barracks");
         let p = first_place_dir(&poor, f).expect("the poor commander never placed a barracks");
@@ -541,4 +546,24 @@ fn the_fingerprint_moves_for_any_edit_anywhere_in_the_set() {
         "`Content::fingerprint` cannot see these edits, so a stale log replays as \
          valid against changed content: {blind:#?}"
     );
+}
+
+#[test]
+fn zz_measure_poor_placement() {
+    let strategies = set("mvp", &[MVP]);
+    for (tag, alloy) in [("rich", "3000"), ("poor", "20")] {
+        let c = content_with(
+            &format!("zz-{tag}"),
+            &[("resources.ron", "starting_alloy: 300", &format!("starting_alloy: {alloy}"))],
+            &strategies,
+        );
+        let app = run(c, 5, 30_000);
+        for f in [Faction::A, Faction::B] {
+            let at = journal(&app, f).into_iter().find_map(|(t, a)| match a {
+                AiAction::PlaceBarracks { .. } => Some(t),
+                _ => None,
+            });
+            println!("ZZMEAS2 {tag} {f:?} first_place_at {at:?}");
+        }
+    }
 }

@@ -1577,7 +1577,7 @@ fn a_carrying_worker_is_never_stripped_by_the_clearing_pass() {
         let banked = app.world().resource::<Stockpiles>().alloy(Faction::A);
         assert_eq!(
             carried(&app, w) + banked,
-            10,
+            cap,
             "tick {t}: the load was destroyed by re-tasking"
         );
         assert!(

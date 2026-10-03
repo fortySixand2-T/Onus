@@ -221,7 +221,16 @@ fn the_mass_probes_are_identical_in_every_field_of_the_struct() {
         .into_iter()
         .map(|id| {
             let s: &StrategyDef = c.strategy(&id).unwrap();
-            assert_eq!(s.barracks.len(), 1, "`{id}` is not a single-barracks probe");
+            // The masking below replaces one building name and one unit name, so
+            // it is only sound if the probe opens exactly one *kind* of barracks
+            // and masses exactly one unit. B3.5 gave each mass probe three
+            // openings of the same building (F-030), which the masking handles —
+            // but three openings of two different buildings it would not.
+            assert!(
+                s.barracks.iter().all(|b| b.building == s.barracks[0].building),
+                "`{id}` opens more than one kind of barracks, so this probe's \
+                 masking cannot normalise it"
+            );
             assert_eq!(s.army.len(), 1, "`{id}` is not a single-entry build order");
             let text = format!("{s:?}")
                 .replace(&format!("\"{}\"", s.id), "\"<ID>\"")
@@ -254,7 +263,7 @@ fn each_mass_probe_fields_an_army_of_its_own_unit() {
         let want_n = c.strategy(&id).unwrap().attack_at_army as usize;
         let mut app = solo(&id, 4);
         let mut committed = None;
-        for t in 0..12_000u32 {
+        for t in 0..onus::headless::DEFAULT_TICK_CAP {
             step(&mut app);
             if committed.is_none() && first_attack(&app, Faction::A).is_some() {
                 committed = Some(t);
@@ -283,7 +292,10 @@ fn each_mass_probe_fields_an_army_of_its_own_unit() {
 /// stopped at victory would be a claim about nothing.
 #[test]
 fn every_strategy_commits_before_the_match_can_stop_it() {
-    const BUDGET: u32 = 12_000;
+    // Re-derived from the shipped match cap rather than hand-picked: "while the
+    // match is still running" *means* the cap. B3.5's slower economy moved the
+    // latest committer to tick 18 750, past the old 12 000 (F-033).
+    const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
     let c = content();
     for id in strategy_ids(&c) {
         let want = c.strategy(&id).unwrap().attack_at_army;
@@ -361,7 +373,9 @@ fn the_realised_composition_is_the_build_orders_own_ratio() {
 /// other strategy, not only against each other.
 #[test]
 fn the_rush_is_the_earliest_and_the_turtle_the_latest_of_the_whole_set() {
-    const BUDGET: u32 = 12_000;
+    // The match cap, so every probe gets the whole match to commit in; the old
+    // 12 000 ticks no longer reaches the turtle's first wave (tick 13 470).
+    const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
     let c = content();
     let mut commits: Vec<(String, u32, u32)> = Vec::new();
     for id in strategy_ids(&c) {
@@ -504,4 +518,23 @@ fn the_namespace_collision_still_collides_after_the_strategies_rename() {
         "no strategy opens the collided building — the rename is untested weight"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn zz_measure_commit_ticks() {
+    let c = content();
+    for id in strategy_ids(&c) {
+        let mut app = solo(&id, 4);
+        let mut over_at: Option<u32> = None;
+        for t in 0..54_000u32 {
+            step(&mut app);
+            if over_at.is_none() && app.world().resource::<MatchState>().is_over() {
+                over_at = Some(t);
+            }
+        }
+        println!(
+            "ZZMEAS2 ac3 {id}: first_attack {:?} over_at {over_at:?}",
+            first_attack(&app, Faction::A)
+        );
+    }
 }
