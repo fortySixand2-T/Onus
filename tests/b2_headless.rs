@@ -45,15 +45,20 @@ fn built(settings: &MatchSettings) -> App {
 /// Captured from `benches/replay_hash.rs`'s own `ai_vs_ai(4, true)` **before**
 /// it was lifted: (tick, state hash) at six points across 600 ticks, plus an
 /// FNV-style fold of all 600 so no tick in between can drift unseen.
+///
+/// **B3.5 re-pin (F-032):** recomputed on B3.5's content. The tempo re-tune
+/// moves every per-tick `state_hash`; F-032 shows the move is content-driven —
+/// the pre-tune `assets/data`, replayed under this identical binary, passes at
+/// the old numbers. The fixture is still frozen; only the data under it moved.
 const BENCH_FIXTURE_HASHES: [(usize, u64); 6] = [
-    (1, 0x9a74_d7ad_acad_19be),
-    (10, 0x624e_8c15_e192_2eb5),
-    (60, 0x3f80_afb2_a96f_1736),
-    (120, 0x545c_43c2_42aa_59f0),
-    (300, 0xa5b4_138c_f475_fd00),
-    (600, 0x1007_e832_7293_09b0),
+    (1, 0x5add_c3af_c88c_09ee),
+    (10, 0xe6cf_1895_3a10_0975),
+    (60, 0xf386_9a1a_5ddc_98c6),
+    (120, 0x8bfd_0705_9b14_53a0),
+    (300, 0x13ed_d185_edb0_04f0),
+    (600, 0x2b30_39ab_9873_9900),
 ];
-const BENCH_FIXTURE_FOLD: u64 = 0x6060_0370_7bc1_9408;
+const BENCH_FIXTURE_FOLD: u64 = 0x4960_70b2_de2d_41f8;
 
 fn fold(hashes: &[u64]) -> u64 {
     hashes.iter().fold(0xcbf2_9ce4_8422_2325u64, |a, h| {

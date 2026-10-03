@@ -1004,16 +1004,19 @@ fn critic_shipped_matchups_are_bit_identical() {
         println!("SHIPPED[{i}] hash={h:#018x} journal={j:#018x}");
     }
     // Captured by running this exact probe in a tree checked out at the parent
-    // commit (92626b2), before AC0b.
+    // commit (92626b2), before AC0b — and re-pinned at B3.5 (F-032), when the
+    // content re-tune moved every per-tick `state_hash`. F-032 demonstrates the
+    // move is content-driven: the pre-tune `assets/data` under this identical
+    // binary passes at the pre-B3.5 numbers.
     let expected: [(u64, u64); 8] = [
-        (0xef869327adbe74b5, 0x9243d8edc74826f4),
-        (0x7bb7608428110aec, 0xf82a90dd8acaefe8),
-        (0x3b6d51e75917a155, 0x2e350fa157097717),
-        (0x10fb25b9e0e86daa, 0xa6b352885e8518a3),
-        (0x1c9d31423bbb8bb6, 0x0152ef02d7e91316),
-        (0xd6c2c46624305ccb, 0xb4a60f8460bfa61f),
-        (0xa455588815d740fe, 0xfee2934f9e587dfc),
-        (0xc46f6ff17b4f8df5, 0x9c1d16e0b1feae75),
+        (0x47c76bb871e46efb, 0xbd416bd4be86da11),
+        (0x79c341576e931fc4, 0x2a25c84bba78866a),
+        (0xba80ea4ba6cacdea, 0x74973f97c60a686b),
+        (0xe94d2708dca81c49, 0x4666a3b3563b8890),
+        (0xb7d0e39bdfb0757c, 0x926206a7e2150e39),
+        (0x283fcec8bb5ebf41, 0xc7328be1b0e09085),
+        (0x1bc7d81e51c54e99, 0x90d87cb290ad3f58),
+        (0x478a4be3e491483e, 0xc9f9d38ba031b30b),
     ];
     assert_eq!(
         got.to_vec(),

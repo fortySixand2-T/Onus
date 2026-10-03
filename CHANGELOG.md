@@ -430,3 +430,12 @@
 - [2026-10-02] Modified: tests/critic_m4b.rs — compare the carried load against the content's capacity, not a hardcoded 10
 - [2026-10-02] Modified: tests/critic_m4c.rs — anchor the building-HP-scale mutation on the shipped value (40 -> 420)
 - [2026-10-02] Modified: tests/m4c_ai.rs — derive the HQ-kill horizon from content (kill_budget) instead of a pinned 3 000 ticks
+- [2026-10-02] Modified: tests/b1_matchup.rs — re-pinned the default-matchup state/journal goldens (3 seeds) on B3.5 content, with the F-032 licence recorded at the site
+- [2026-10-02] Modified: tests/b1_strategies.rs — re-pinned the one-barracks-default replay goldens (seeds 4, 11)
+- [2026-10-02] Modified: tests/b2_headless.rs — re-pinned BENCH_FIXTURE_HASHES (6 ticks) and BENCH_FIXTURE_FOLD
+- [2026-10-02] Modified: tests/b2_orientation.rs — re-pinned the two bench-fixture ticks it re-asserts
+- [2026-10-02] Modified: tests/b35_parallel.rs — re-pinned the shipped-default and single-opening neutrality goldens
+- [2026-10-02] Modified: tests/b35_queue_depth.rs — re-pinned the shipped-default and depth-1 neutrality goldens
+- [2026-10-02] Modified: tests/critic_b2_ac4.rs — re-pinned the independent state-hash goldens (3 seeds)
+- [2026-10-02] Modified: tests/critic_b35_ac0.rs — re-pinned all nine depth-1 (trace, end, journal) rows
+- [2026-10-02] Modified: tests/critic_b35_ac0b.rs — re-pinned the eight shipped-matchup (hash, journal) pairs

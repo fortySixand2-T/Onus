@@ -470,12 +470,20 @@ fn the_same_strategy_pair_and_seed_replays_bit_identically() {
 /// stopped hashing raw entity bits (see its docs): adding the sim's `Produced`
 /// resource shifts every entity id by one without changing any decision, and a
 /// golden that moves for that is measuring the allocator, not the AI.
+///
+/// **B3.5 re-pin (F-032):** these numbers were recomputed on B3.5's content.
+/// Because content is data, the tempo re-tune (F-029/F-030) moves every pinned
+/// per-tick `state_hash`; F-032 demonstrates — by replaying the pre-tune
+/// `assets/data` under this identical binary and watching every golden below
+/// pass at its old value — that the move is content-driven and nothing else.
+/// What the assertion means is unchanged: this match is frozen, and any Rust
+/// change that moves it is a regression.
 #[test]
 fn the_default_matchup_is_byte_for_byte_what_it_was_before_ac2() {
     for (seed, state_golden, journal_golden) in [
-        (4u64, 0xa71f_64ca_d502_03e9u64, 0xe78e_ebdc_5c2c_a733u64),
-        (11, 0x5b39_8ee4_7854_23dc, 0x00b7_f8d8_713f_e467),
-        (23, 0xf4b5_7d1c_3c3f_2af7, 0x4682_1006_f2fa_e62a),
+        (4u64, 0xbd74_941f_b3ca_e489u64, 0x5567_5b78_44c3_d493u64),
+        (11, 0x8700_8a7d_696d_d45c, 0xb27b_6a66_4add_cfd7),
+        (23, 0x0fe5_2558_759f_6817, 0xb86b_2ad6_d1ed_0efa),
     ] {
         // The implicit default, through the untouched constructor.
         let mut app = ai_vs_ai_with(content(), AiCommanders::new(seed, &[Faction::A, Faction::B]));
