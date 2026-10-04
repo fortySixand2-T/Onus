@@ -485,3 +485,4 @@
 - [2026-10-03] Created: tests/b3_report.rs — report round trip, contents, determinism, all-timeout flag, gitignore, bin --report end to end
 - [2026-10-03] Modified: FINDINGS.md — F-040 first full-roster report: turtle dominant (K1 FAIL), K3 PASS, K2 undetermined at 4 seeds
 - [2026-10-03] Modified: BALANCE_PLAN.md — ticked the B3 report box with its result
+- [2026-10-04] Created: tests/critic_b3_gate.rs — critic B3 probes: K3 median-only pass, K2 pooled-mirror masking, unnamed all-losing strategy, row-mean interval width, package-root report clobber, bin report determinism
