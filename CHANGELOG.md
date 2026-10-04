@@ -460,3 +460,7 @@
 - [2026-10-03] Modified: FINDINGS.md — F-035 closed (scripts match reality; mass_ripper's real second Gene-Vats; 32/100 vs 0/98 comparison; golden proof); F-036 turtle threshold table
 - [2026-10-03] Modified: BALANCE_PLAN.md — B3.5 three-barracks lever marked scripted-not-realised (F-035); B4 open item for multi-barracks / opening reservation
 - [2026-10-03] Created: tests/critic_b35_closure.rs — critic probes for the B3.5 closure: Wilson vs two independent oracles, exhaustive Verdict boundary sweep, trimmed-vs-restored openings differential (ignored by default; k=5 seeds, 1 000 pairs, zero differences), turtle-latest on unmeasured seeds
+- [2026-10-03] Modified: tests/b1_probe_set.rs, tests/critic_b1_ac3.rs — turtle commit-tick comments updated to 19 320 (F-036)
+- [2026-10-03] Modified: tests/b3_pentagon.rs — module doc states the pinned reading: 3 holding, 2 undetermined, none failing
+- [2026-10-03] Modified: tests/m4c_ai.rs — sim_app_with_alloy's doc comment reattached to its function
+- [2026-10-03] Modified: FINDINGS.md — F-033 table points to F-036 for the turtle's new commit tick

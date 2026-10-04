@@ -24,9 +24,9 @@
 //!   - **strategy mapping** is by build order, and a unit with no mass strategy
 //!     is a reported gap, not a panic;
 //!   - **the real batch** on the five mass probes reports what the sim actually
-//!     does — four links holding today, one failing. This test asserts the
-//!     machinery, and records the failing link as the measurement it is (F-025):
-//!     tuning it is B4's job.
+//!     does — three links holding today and two undetermined at 8 decided
+//!     matches a link (F-034); none fails. This test asserts the machinery, and
+//!     records the readings as the measurements they are: tuning is B4's job.
 //!
 //! Everything but the last test runs on synthetic records, so every expected
 //! value is exact.

@@ -388,7 +388,8 @@ fn the_realised_composition_is_the_build_orders_own_ratio() {
 #[test]
 fn the_rush_is_the_earliest_and_the_turtle_the_latest_of_the_whole_set() {
     // The match cap, so every probe gets the whole match to commit in; the old
-    // 12 000 ticks no longer reaches the turtle's first wave (tick 13 470).
+    // 12 000 ticks no longer reaches the turtle's first wave (tick 19 320 since
+    // F-036 raised its threshold to 26; 13 470 before).
     const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
     let c = content();
     let mut commits: Vec<(String, u32, u32)> = Vec::new();

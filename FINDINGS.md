@@ -2671,6 +2671,8 @@ the match ended):
 | mass_ravager | 15 060 | 17 079 |
 | mass_bulwark | 18 750 | 23 319 |
 
+*Superseded for the turtle by F-036: at `attack_at_army` 26 the turtle first attacks at 19 320, after mass_bulwark.*
+
 Five more fixtures were anchored to *content values* rather than horizons, and
 are now read from the content instead of pinned, so the next re-tune cannot turn
 a probe into a silent no-op: the worker's carry capacity (`m4a_economy`'s loader

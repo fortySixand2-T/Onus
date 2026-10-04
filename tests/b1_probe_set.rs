@@ -564,7 +564,8 @@ fn every_strategy_eventually_attacks() {
 #[test]
 fn the_rush_commits_early_and_the_turtle_masses_first() {
     // The match cap, for the same reason as above: the turtle now first
-    // commits at tick 13 470, past the old 12 000-tick horizon.
+    // commits at tick 19 320 (F-036; 13 470 before), past the old 12 000-tick
+    // horizon.
     const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
     let mut rush = solo("rush", 4);
     tick(&mut rush, BUDGET);

@@ -36,8 +36,6 @@ fn content() -> Content {
     Content::load_from_dir(&data_dir()).expect("assets/data/*.ron parse into sim structs")
 }
 
-/// A headless app running the shipped sim chain on `Update`, so one
-/// `step()` == exactly one 60 Hz sim tick.
 /// How long one Ripper needs to level a building, derived from the content
 /// instead of pinned: the building's HP pool divided by the damage one hit
 /// lands after mitigation, times the attack period, plus a walk-in margin and
@@ -55,6 +53,8 @@ fn kill_budget(c: &Content, attacker: &str, building: &str) -> u32 {
     2 * hits * u.mvp_attack_ticks + 600
 }
 
+/// A headless app running the shipped sim chain on `Update`, so one
+/// `step()` == exactly one 60 Hz sim tick.
 fn sim_app_with_alloy(alloy: u32) -> App {
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
