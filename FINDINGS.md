@@ -3367,7 +3367,7 @@ are the next rows to watch.
 Slot A is 61.3% [48.4, 72.7] and left base 48.8% [36.4, 61.3], at n 80 and
 n_eff 58 (mirror deff 1.38). Every per-mirror row has 8 matches. The interval is too wide to
 judge, which is the outcome F-038's power calculation predicted for a roster
-batch. F-039's mirror-only batch (n_eff 1 057) is the K2 reading of record:
+batch. F-039's mirror-only batch (n_eff 895 at deff 1.38) is the K2 reading of record:
 its pool PASSes but K2 is undetermined, because every mirror is open
 (corrected after the second B3 critic).
 

@@ -1,9 +1,9 @@
 //! L2 integration tests for **B3 AC3** — the kill-criteria gate.
 //!
 //! [`onus::gate::KillGate`] reads a batch against the three kill criteria
-//! (K1 no strategy wins more than 65% regardless of counter, K2 mirrors within
-//! tolerance of 50%, K3 the median match terminates in the 5–8 minute band
-//! with few timeouts) and returns
+//! (K1 no strategy wins more than 65% regardless of counter; K2 mirrors within
+//! tolerance of 50%, pooled and every mirror; K3 at least half of decided
+//! matches end in the 5–8 minute band, with at most 5% timeouts) and returns
 //! PASS / FAIL / undetermined for each, read off a clustered 95% Wilson
 //! interval — never off a point estimate. What is encoded here:
 //!
@@ -12,8 +12,9 @@
 //!     wrong side, and is undetermined otherwise — including with no data;
 //!   - **PASS is reachable** (a large, fair, in-band synthetic batch passes all
 //!     three) and **each criterion can FAIL on its own**;
-//!   - **seat bias** is caught by slot and by spawn base, a fair mirror set at
-//!     two seeds is undetermined, and a batch with no mirror cannot pass K2;
+//!   - **seat bias** is caught by slot and by spawn base, pooled and per
+//!     mirror; a fair mirror set at two seeds is undetermined, an open mirror
+//!     holds K2 undetermined, and a batch with no mirror cannot pass K2;
 //!   - **a dominant or strictly losing strategy is surfaced by name**;
 //!   - **an all-timeout run is flagged and fails**, never reads as balanced;
 //!   - **clustering widens the interval**: the same counts over fewer seeds are

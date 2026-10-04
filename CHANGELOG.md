@@ -523,3 +523,5 @@
 - [2026-10-04] Modified: tests/b3_gate.rs — an open mirror holds K2 undetermined until it resolves fair (replaces the pooled-PASS test)
 - [2026-10-04] Modified: FINDINGS.md — F-038 K2 rule rewritten (every reading gates), per-mirror power sizing; F-039/F-040 K2 corrected to undetermined
 - [2026-10-04] Modified: BALANCE_PLAN.md — K2 result line reads undetermined, per-mirror batch size stated
+- [2026-10-04] Modified: FINDINGS.md — F-040 K2 cites F-039's n_eff 895 at deff 1.38
+- [2026-10-04] Modified: tests/b3_gate.rs — module header states K3 as the band share plus timeouts and K2 as pooled plus every mirror
