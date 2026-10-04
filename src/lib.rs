@@ -22,6 +22,7 @@ use bevy::prelude::*;
 
 pub mod batch;
 pub mod client;
+pub mod gate;
 pub mod headless;
 pub mod input;
 pub mod metrics;

@@ -2959,3 +2959,196 @@ with no labelled record totals nothing (no roster to name).
 `an_unlabelled_first_record_no_longer_drops_the_batch` (red before: `left: []`)
 and `the_schema_is_the_union_of_every_records_unit_ids` (red before: `phantom`
 missing). No sim change, no RON change, no golden moved.
+
+## F-038 — The kill gate: thresholds, the clustered interval, and the seed-count power calculation (B3)
+
+**What is gated.** `gate::KillGate` reads a batch against DESIGN_BRIEF's kill
+criteria as BALANCE_PLAN states them for B3. DESIGN_BRIEF's own line is still
+an *example* placeholder (`<e.g., "if any unit wins >65% regardless of
+counter, the pentagon is broken">`), so the thresholds below are this
+finding's choice, stated once in `GateSpec::default()` and pinned by
+`b3_gate::the_default_thresholds_are_the_stated_ones`. They are harness
+configuration, not content.
+
+| criterion | reading(s) | bar |
+|---|---|---|
+| K1 strength | each strategy's row mean (mean over opponents, mirror excluded) | at most 65% |
+| K2 seat bias | pooled slot-A share of decided mirrors; pooled left-base share | 50% +/- 5 points, both |
+| K3 termination | share of all matches ending before 5:00; share ending after 8:00 **or timing out** | at most 50% each (the median match is in the band) |
+| | timeout rate (timeouts / all) | at most 5% |
+| | band share (in-band / decided) | at least 50%, **advisory** unless `gate_band_share` |
+
+**The interval decides, as for the pentagon (F-034).** Every reading carries a
+95% Wilson interval (the same `z` and expression as `Cell::wilson_interval`,
+now shared as `metrics::wilson_bounds`). PASS needs the whole interval on the
+right side of the bar, FAIL the whole interval on the wrong side, and anything
+else, including no data, is **undetermined**. A criterion passes only if every
+one of its readings passes. One FAIL fails it. The gate's status combines the
+three criteria the same way. An all-timeout run therefore FAILs K3 (100% "after
+8:00", 100% timeouts) and leaves K1/K2 undetermined, and it carries an
+`all_timeout` flag. It can never read as balanced.
+
+**Clustering.** One `(pair, seed)` cluster is up to 4 matches (2 slot orders x
+2 orientations; 2 for a mirror) on one map with one set of seeded streams.
+F-031 measured deff 1.51 at m = 4, so ICC rho = 0.51/3 = **0.17**
+(`gate::F031_ICC`). Each reading counts its own distinct clusters (unordered
+pair + seed; no map) and uses deff = 1 + (m - 1) rho at its mean cluster size
+m, then takes Wilson on n_eff = n / deff. That gives deff 1.17 for a pooled
+mirror reading and ~1.40 for K3 on a mixed batch. A row mean (K1) is a mean of
+k cells. Its interval is Wilson at the mean on n_eff = k^2 / sum(deff_i / n_i),
+the binomial sample with the variance of a mean of k cells at that rate. That
+is conservative (sum p_i(1-p_i) <= k p(1-p)), and for k = 1 it **is** the cell's
+interval: `a_row_mean_over_one_cell_has_that_cells_wilson_interval` checks
+this bit for bit at rho = 0.
+
+**Names, not just a status.** K1 lists the strategies whose row is resolved
+above 65% (`failing`), the ones whose every opponent cell is resolved above
+50% (`dominant`), and the ones resolved below 50% against every opponent
+(`losing`), all in matrix order. Each row also carries the unit it masses
+(`pentagon::mass_strategy`), so "unit win rate" reads off the probe row.
+
+**Why K2 is pooled, and per-mirror rows are only reported.** Per mirror, a
+full-roster seed gives 2 matches. Ten separate +/-5-point tests would each need
+the whole pooled sample below, and their multiplicity would turn noise into a
+FAIL. Seat bias is one mechanism (slot = turn order and stream, base =
+geography), so the gate tests it once, pooled, by slot and by base. Each
+mirror's slot-A reading is printed beside the gate, not folded into it.
+
+**Why K3 is the median and band share is advisory.** B3.5 tuned to and closed
+on "the decided-match median into 5–8 min with few timeouts"
+(BALANCE_PLAN B3.5). It recorded band share's ~31–38% ceiling on today's knobs
+as a B4 unit-stat question (F-031). A gate that silently raised the bar to
+"most matches in band" would FAIL the content on a criterion its own closure
+deferred. A gate that dropped band share would hide it. So K3 gates the
+median, with an interval, read as two proportions: the median is at or after
+5:00 iff at most half end before it, and at or before 8:00 iff at most half run
+past it. A timeout counts as running past, because it did not terminate in
+target. Band share is always read and printed with its own verdict, and
+`GateSpec { gate_band_share: true, .. }` makes it binding
+(`the_band_share_is_advisory_unless_gated`). B4 decides which bar is the
+design's.
+
+### The power calculation
+
+Seat bias is a proportion against 0.5. With alpha = 0.05 two-sided and power
+0.8 (z = 1.960, 0.842), detecting a true share of 0.5 + delta needs
+n_eff = ((1.960 x 0.5 + 0.842 x sqrt(p1(1 - p1))) / delta)^2 decided mirror
+matches. The decided count is n = n_eff x 1.17 (mirror deff). A full-roster
+seed (10 strategies) plays **20 mirror matches**: 10 mirrors x 2 orientations,
+i.e. 2 decided matches per mirror per seed, minus timeouts.
+
+| seat bias to detect | n_eff | decided mirrors | full-roster seeds | full-roster matches |
+|---|---|---|---|---|
+| 10 points | 194 | 227 | 12 | 2 400 |
+| 7 points | 398 | 466 | 24 | 4 800 |
+| **5 points** | **783** | **916** | **46** | **9 200** |
+| 3 points | 2 178 | 2 548 | 128 | 25 600 |
+| 2 points | 4 903 | 5 737 | 287 | 57 400 |
+
+**PASSing K2 is harder than detecting a bias.** Even when the true share is
+exactly 0.5, the whole 95% interval must fit inside +/-5 points. That needs
+half-width <= 5 with 80% probability, so n_eff >= ((1.960 + 1.282) x 0.5 /
+0.05)^2 = **1 051**. That is 1 230 decided mirrors, or **62 full-roster
+seeds** (12 400 matches).
+
+**Throughput, measured on the box** (release, `nice 19`, shared with the trading
+agents): the B3 pentagon batch played 100 matches serially in 332 s, i.e.
+**3.3 s a match**. That makes 62 full-roster seeds ~11.4 CPU-hours, and 128
+seeds (3 points) ~23.5. On a box that runs live trading, neither is a modest
+batch. **So the full-roster size is infeasible here, and the K2 question is
+sized separately.** K2 reads only mirrors, so a **mirror-only** batch spends
+every match on it. 62 seeds x 10 mirrors x 2 orientations = **1 240 matches**
+(~1.1 CPU-hours) gives the n that can PASS +/-5 points, and it detects a
+~4.3-point bias at 80% power. A 3-point bias stays out of reach (2 548 decided
+mirrors, ~2.3 CPU-hours). It is the next step if the 62-seed reading is close.
+K1 and K3 are read on roster batches. A row mean over k opponents at s seeds
+has n_eff ~ k x 4s / 1.51, so its half-width is about 0.98 / sqrt(n_eff). On
+the five probes (k = 4) that is ~+/-20 points at 2 seeds and ~+/-13 at 5. On
+the full roster (k = 9) it is ~+/-9 at 5 seeds. A row has to sit that far past
+65% to FAIL. F-039 states the size behind each reading.
+
+**Gating tests:** `tests/b3_gate.rs` covers 24 tests: the rules, the design
+effect, PASS reachable, each criterion failing alone, K2 by slot and by base,
+names, all-timeout, determinism under reordering, the injected imbalance and
+the shipped pin (F-039).
+
+## F-039 — What the kill gate says about the shipped content (B3)
+
+No RON changed for any of this. These are measurements, read on two batches,
+each sized for what it can decide.
+
+### 1. The B3 pentagon batch: five mass probes, 2 seeds (100 matches) — undetermined
+
+This is `b3_pentagon`'s real batch, pinned in
+`b3_gate::the_shipped_reading_on_the_pentagon_batch`.
+
+| criterion | reading | status |
+|---|---|---|
+| K1 `mass_bulwark` | 37.5% [20.4, 58.5] over 4 opponents, n 32, n_eff 21 | PASS |
+| K1 `mass_sentinel` | 65.6% [44.5, 82.0] | undetermined |
+| K1 `mass_ripper` | 68.8% [47.5, 84.3] | undetermined |
+| K1 `mass_ravager` | 46.9% [27.8, 66.9] | undetermined |
+| K1 `mass_arclight` | 31.3% [15.7, 52.5] | PASS |
+| K2 slot A | 65.0% [41.6, 82.9] of 20 decided mirrors | undetermined |
+| K2 left base | 45.0% [24.6, 67.2] | undetermined |
+| K3 ends before 5:00 | 34% [24.1, 45.5] of 100 | PASS |
+| K3 ends after 8:00 or times out | 30% [20.6, 41.4] | PASS |
+| K3 timeouts | 0 of 100, [0, 5.09] | undetermined |
+| K3 band share (advisory) | 36% [25.9, 47.6] of decided | FAIL vs 50% |
+| decided median | 6:36 | |
+
+**Gate: undetermined.** Nothing fails. On these probes the median match is
+resolved inside 5–8 minutes. Everything else is a statement about 100 matches:
+- The two strongest probes (Sentinel 65.6%, Ripper 68.8%) sit on the 65% bar
+  with ~+/-19 points of interval.
+- Zero timeouts in 100 cannot certify a rate below 5%, because the upper bound
+  is 5.09%.
+- The 13/20 slot-A reading is noise at n_eff 17.
+
+The advisory band share reproduces F-031's ~31–38% ceiling. That ceiling is
+B4's question, as F-038 says.
+
+### 2. A mirror-only seat-bias batch: every strategy, 62 seeds (1 240 matches) — K2 PASS
+
+K2 is the one criterion F-038's power calculation sizes, so this run spent
+every match on it:
+- Each of the 10 strategies plays its own mirror in both orientations on
+  `seed_at(0, k)` for k < 62, at the shipped 15-min cap.
+- It is a scratch harness, not committed: `run_match` in 3 threads, records
+  re-sorted into seed/roster/orientation order, then `KillGate::of`.
+- Wall time was 1 425 s, i.e. **3.45 CPU-s a match**, consistent with F-038's
+  3.3.
+
+| reading | value | 95% interval | n (decided) | clusters | n_eff | status |
+|---|---|---|---|---|---|---|
+| slot A share | **50.9%** | [47.8, 53.9] | 1 235 | 620 | 1 057 | **PASS** |
+| left-base share | **51.0%** | [48.0, 54.0] | 1 235 | 620 | 1 057 | **PASS** |
+
+**K2 PASSes at +/-5 points.** At this n the gate would have *detected* a seat
+bias of ~4.3 points with 80% power. A 3-point bias is not excluded (that needs
+~2 548 decided mirrors, F-038).
+
+The per-mirror rows (reported, not gated) are all undetermined at 124 matches
+each, with intervals ~+/-9 points. The extremes are:
+- `mvp` 41.1% [32.2, 50.6], which just touches 50%;
+- `rush` 58.1% [48.5, 67.0].
+
+With ten mirrors read at once, two at ~1.7–1.8 SE is what chance gives. Neither is
+evidence of a per-strategy seat edge, and neither changes the pooled reading.
+They are the rows to re-read first if a bigger seat batch is ever run.
+
+Five of the 1 240 matches timed out, all in the two synth mirrors (3 + 2). Four
+were mutual losses.
+
+**Do not read K3 off this batch.** Its median is 4:24 and 73% end before 5:00,
+because a mirror-only set over-weights the fast Ripper/Sentinel/rush mirrors.
+K3 belongs to a roster batch (section 1, and the full-roster report in F-040).
+
+### What this leaves open
+
+- **K1 on the full roster.** The probe batch cannot see the
+  `rush`/`turtle`/`mvp`/synth rows. F-040 reads it from the first
+  `balance_report.ron`.
+- **The timeout bar.** At ~2–3% timeouts (F-031), resolving "at most 5%" needs
+  roughly n_eff >= 150–300. That is a few hundred roster matches, which F-040's
+  batch provides.

@@ -471,3 +471,9 @@
 - [2026-10-03] Modified: src/metrics.rs — B3 match-length distribution (LengthBand, LengthDistribution, LengthSummary): decided-only vs all-match bases
 - [2026-10-03] Created: tests/b3_length.rs — B3 match-length distribution tests (band, both quantile bases, all-timeout, real batch)
 - [2026-10-03] Modified: BALANCE_PLAN.md — ticked the B3 match-length box with its result
+- [2026-10-03] Created: src/gate.rs — B3 kill-criteria gate (K1 strength, K2 seat bias, K3 termination) as PASS/FAIL/undetermined on clustered Wilson intervals
+- [2026-10-03] Modified: src/lib.rs — registered the gate module
+- [2026-10-03] Modified: src/metrics.rs — wilson_bounds shared by Cell::wilson_interval and the gate (same z, same expression)
+- [2026-10-03] Created: tests/b3_gate.rs — kill-gate tests: rules, design effect, each criterion failing, names, all-timeout, injected imbalance, shipped pin
+- [2026-10-03] Modified: FINDINGS.md — F-038 gate thresholds and seed-count power calculation; F-039 shipped-content reading
+- [2026-10-03] Modified: BALANCE_PLAN.md — ticked the B3 kill-criteria box with its result

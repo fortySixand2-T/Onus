@@ -170,12 +170,18 @@ Then B3's remaining ACs are computed on valid-length matches.
       **Result**: `metrics::LengthDistribution` — band counts, band share (in-band ÷ decided)
       and p0/10/25/50/75/90/100 over **decided** matches only; timeout rate (÷ all) and the
       same percentiles over **all** matches, timeouts at the cap, beside them (`tests/b3_length.rs`).
-- [ ] **Kill-criteria PASS/FAIL** (from DESIGN_BRIEF): no strategy/unit win-rate >65%
+- [x] **Kill-criteria PASS/FAIL** (from DESIGN_BRIEF): no strategy/unit win-rate >65%
       regardless of counter; mirrors within tolerance of 50%; matches terminate in target.
       **The mirror ~50% assertion lives here** (BALANCE_PLAN lists it under B2's probes, but
       B2 only made the sampling side-balanced; nothing asserts the rate). Size the seed count
       from a stated power calculation — enough to detect a few-percent seat bias, not to
       rubber-stamp one.
+      **Result** (F-038, F-039): `gate::KillGate`, status read off clustered Wilson intervals
+      (ICC 0.17). Detecting a 5-pt seat bias takes 916 decided mirrors and passing +/-5 takes
+      1 230: 62 full-roster seeds, infeasible on the box, so it ran as a mirror-only batch.
+      K2 **PASSes** at 62 seeds: slot A 50.9% [47.8, 53.9], left 51.0% [48.0, 54.0].
+      The 5-probe batch reads **undetermined**: nothing fails, the median is in band, and
+      band share is 36% (advisory).
 - [ ] Emit a stdout table + a machine-readable `balance_report.ron` (gitignored artifact).
 - [x] **Harden `batch::production_totals`** (B3 is its consumer): derive the column schema
       from the union of record keys, or refuse an unlabelled record — today it takes its

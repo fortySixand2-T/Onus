@@ -103,12 +103,7 @@ impl Cell {
     /// an optimistic width, not a conservative one.
     pub fn wilson_interval(&self) -> Option<(f64, f64)> {
         let p = self.rate()?;
-        let n = self.n_decided as f64;
-        let z2 = WILSON_Z * WILSON_Z;
-        let denom = 1.0 + z2 / n;
-        let centre = (p + z2 / (2.0 * n)) / denom;
-        let half = (WILSON_Z / denom) * (p * (1.0 - p) / n + z2 / (4.0 * n * n)).sqrt();
-        Some(((centre - half).max(0.0), (centre + half).min(1.0)))
+        Some(wilson_bounds(p, self.n_decided as f64))
     }
 
     /// The row side's wins as a number of matches (a mutual loss is 0.5).
@@ -130,6 +125,19 @@ impl Cell {
             None => self.n_timeout += 1,
         }
     }
+}
+
+/// The 95% Wilson score interval for a proportion `p` observed over `n`
+/// trials — [`Cell::wilson_interval`]'s arithmetic, exposed so the kill gate
+/// ([`crate::gate`]) reads its intervals with the same `z` and the same
+/// expression. `n` is real so an **effective** sample (`n / design effect`)
+/// can be passed. Clamped to `[0, 1]`. `n` must be positive.
+pub fn wilson_bounds(p: f64, n: f64) -> (f64, f64) {
+    let z2 = WILSON_Z * WILSON_Z;
+    let denom = 1.0 + z2 / n;
+    let centre = (p + z2 / (2.0 * n)) / denom;
+    let half = (WILSON_Z / denom) * (p * (1.0 - p) / n + z2 / (4.0 * n * n)).sqrt();
+    ((centre - half).max(0.0), (centre + half).min(1.0))
 }
 
 /// A strategy's overall strength: the mean of its **defined off-diagonal**
