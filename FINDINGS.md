@@ -2973,7 +2973,7 @@ configuration, not content.
 | criterion | reading(s) | bar |
 |---|---|---|
 | K1 strength | each strategy's row mean (mean over opponents, mirror excluded) | at most 65% |
-| K2 seat bias | pooled slot-A share of decided mirrors; pooled left-base share | 50% +/- 5 points, both |
+| K2 seat bias | pooled slot-A share of decided mirrors; pooled left-base share; the same two shares for each mirror | 50% +/- 5 points, every one |
 | K3 termination | band share (in-band / decided) | at least 50% |
 | | timeout rate (timeouts / all) | at most 5% |
 | | *reported, not gated:* share of all ending before 5:00; share ending after 8:00 or timing out; decided median | — |
@@ -3068,25 +3068,33 @@ gating it would add a criterion the plan does not have. The table tags the row
 `b3_gate::a_row_resolved_below_the_mirror_bar_is_named_losing_but_not_gated`,
 `b3_report::a_strictly_weak_strategy_is_tagged_in_the_table_and_named_in_the_report`.
 
-**K2: pooled for PASS, per mirror for FAIL.** *(Corrected after the B3
-critic; the first version only reported per-mirror rows, so two mirrors with
-opposite, fully resolved seat edges pooled to 50% and PASSed —
-`critic_b3_gate::probe_k2_does_not_pass_when_one_mirror_is_resolved_outside_tolerance`.)*
-K2 reads slot A and left base both pooled and per mirror:
-- **Any per-mirror reading resolved outside 50% +/- 5 FAILs K2.** Its whole
-  interval is outside tolerance, so the data says that mirror is seat-biased,
-  whatever the pool says.
-- **An undetermined per-mirror reading does not block PASS.** Per mirror, a
-  full-roster seed gives 2 matches. Requiring all ten mirrors to *PASS* +/-5
-  would need ten times F-038's pooled sample. The multiplicity argument cuts
-  the other way for FAIL: a FAIL needs the interval wholly beyond 5 points, so
-  for a truly fair mirror each FAIL is a > 1.96-SE excursion *past* a 5-point
-  margin. Ten such tests at any n give a family-wise false-FAIL rate below
-  10 x 2.5% and, at the sizes run here, far below it. Requiring PASS of every
-  mirror would instead make K2 unpassable at any feasible n.
-- **PASS** therefore means: both pooled readings inside tolerance and no
-  mirror resolved outside it (`b3_gate::an_undetermined_mirror_row_does_not_block_a_pooled_pass`,
-  `b3_gate::a_resolved_per_mirror_fail_fails_seat_bias_even_when_the_pool_is_fair`).
+**K2: every reading, pooled and per mirror, must PASS.** *(Corrected twice
+after the B3 critics. The first version gated only the pool, so two mirrors
+with opposite, fully resolved seat edges pooled to 50% and PASSed —
+`critic_b3_gate::probe_k2_does_not_pass_when_one_mirror_is_resolved_outside_tolerance`.
+The second let a resolved per-mirror FAIL fail K2 but let the pool alone decide
+PASS, ignoring a mirror that was merely open. That broke this module's own rule
+("a criterion PASSes only if every one of its readings does") and "too little
+data never reads PASS": a mirror won by slot A 6 of 6, or one reading 64.5%
+with an interval excluding 50%, sat under a K2 PASS —
+`critic_b3_gate2::k2_does_not_pass_a_mirror_known_from_six_matches_all_to_slot_a`,
+`critic_b3_gate2::k2_does_not_pass_while_a_mirror_reads_64_percent_left_with_an_interval_excluding_50`.
+The rule below is the user's decision.)* K2's readings are slot A and left
+base, pooled and for each mirror, and K2 is `Status::all` of them:
+- **FAIL** if the pool or any mirror resolves outside 50% +/- 5 (its whole
+  interval outside tolerance: the data says that seat is biased).
+- **PASS** only if the pool **and every mirror** resolve inside tolerance.
+- **Undetermined** otherwise, in particular whenever any mirror is open.
+
+Multiplicity still explains *why* an open mirror is common, and why it is not
+a FAIL: per mirror, a full-roster seed gives 2 matches, so ten mirrors are
+each read on a tenth of the pool. For a truly fair mirror a FAIL needs a
+> 1.96-SE excursion *past* a 5-point margin, so twenty such readings carry a
+family-wise false-FAIL rate below 20 x 2.5% and, at the sizes run here, far
+below it. What multiplicity no longer does is license a PASS: an open mirror
+holds K2 undetermined, and the price is the per-mirror batch sized below
+(`b3_gate::an_open_mirror_row_holds_k2_undetermined_until_it_resolves_fair`,
+`b3_gate::a_resolved_per_mirror_fail_fails_seat_bias_even_when_the_pool_is_fair`).
 
 **Why K3 is the band share.** *(Corrected after the B3 critic; the first
 version gated the median and made band share advisory, which was a moved
@@ -3142,9 +3150,27 @@ n_eff = 1 235 / 1.38 = 895). Two different numbers:
   That is the property that matters: a bias the batch cannot resolve does not
   pass.
 
-At 62 seeds the measured K2 still **PASSes**: slot A 50.9% [47.6, 54.1],
-left base 51.0% [47.7, 54.3], and no mirror is resolved outside tolerance
-(F-039 section 2).
+At 62 seeds the **pool** PASSes: slot A 50.9% [47.6, 54.1], left base 51.0%
+[47.7, 54.3], and no mirror is resolved outside tolerance. **K2 reads
+undetermined**, because every per-mirror reading is still open, the closest
+being `mass_arclight`'s left base at 64.9% [54.6, 74.0] (F-039 section 2).
+
+**What settling K2 per mirror costs** (same framework as the pooled PASS
+size, per reading, at deff 1.38 and 2 decided matches per mirror per seed;
+fair seats assumed):
+
+| target | n_eff per mirror | decided per mirror | mirror-only seeds | mirror-only matches | CPU-hours at 3.45 s |
+|---|---|---|---|---|---|
+| one mirror's reading PASSes +/-5 with 80% probability | 1 051 | 1 451 | 726 | 14 510 | ~14 |
+| all 20 readings PASS jointly with 80% probability (each at 98.9%) | 2 025 | 2 795 | 1 398 | 27 950 | ~27 |
+
+Settling K2 as PASS therefore takes a **~1 400-seed mirror-only batch,
+~28 000 matches**, roughly 23x the 62-seed batch. It was not run. A
+resolution the other way is far cheaper: if `mass_arclight`'s left base is
+truly ~65%, its lower bound clears 55% with 80% power at n_eff ~183, i.e.
+~252 decided or ~126 seeds of that one mirror (it has 62), about 130 more
+matches. That re-read is the cheap next step, and it would most likely turn
+K2 into a FAIL rather than a PASS.
 
 **Throughput, measured on the box** (release, `nice 19`, shared with the trading
 agents): the B3 pentagon batch played 100 matches serially in 332 s, i.e.
@@ -3153,9 +3179,10 @@ seeds (3 points) ~23.5. On a box that runs live trading, neither is a modest
 batch. **So the full-roster size is infeasible here, and the K2 question is
 sized separately.** K2 reads only mirrors, so a **mirror-only** batch spends
 every match on it. 62 seeds x 10 mirrors x 2 orientations = **1 240 matches**
-(~1.1 CPU-hours) was sized for the n that can PASS +/-5 points at deff 1.17. At
-the measured 1.38 that needs 73 seeds; 62 gave a PASS anyway, because the
-observed shares sit near 51% (above). It detects a ~4.7-point bias at 80% power
+(~1.1 CPU-hours) was sized for the n that can PASS the **pool** +/-5 points at
+deff 1.17. At the measured 1.38 that needs 73 seeds; 62 gave a pooled PASS
+anyway, because the observed shares sit near 51% (above). It cannot settle K2,
+which now needs every mirror resolved (above). It detects a ~4.7-point bias at 80% power
 (z-test). A 3-point bias stays out of reach (3 006 decided mirrors, ~2.9
 CPU-hours). It is the next step if the 62-seed reading is ever close.
 K1 and K3 are read on roster batches. A row mean over k opponents at s seeds
@@ -3208,7 +3235,7 @@ statement about 100 matches:
 The band share reproduces F-031's ~31–38% ceiling. K3 now gates on it, so
 the ceiling FAILs K3. Raising it is B4's job (F-038).
 
-### 2. A mirror-only seat-bias batch: every strategy, 62 seeds (1 240 matches) — K2 PASS
+### 2. A mirror-only seat-bias batch: every strategy, 62 seeds (1 240 matches) — K2 undetermined
 
 K2 is the one criterion F-038's power calculation sizes, so this run spent
 every match on it:
@@ -3226,15 +3253,19 @@ identical, match for match. The first version's numbers were slot A [47.8,
 
 | reading | value | 95% interval | n (decided) | deff | n_eff | status |
 |---|---|---|---|---|---|---|
-| slot A share | **50.9%** | [47.6, 54.1] | 1 235 | 1.38 | 895 | **PASS** |
-| left-base share | **51.0%** | [47.7, 54.3] | 1 235 | 1.38 | 895 | **PASS** |
+| slot A share (pool) | **50.9%** | [47.6, 54.1] | 1 235 | 1.38 | 895 | PASS |
+| left-base share (pool) | **51.0%** | [47.7, 54.3] | 1 235 | 1.38 | 895 | PASS |
 
-**K2 PASSes at +/-5 points**, and no mirror is resolved outside tolerance.
+**K2 reads undetermined.** *(Corrected after the second B3 critic: this read
+"K2 PASSes" while the pool alone decided PASS; F-038 now gates every
+per-mirror reading.)* The pool is inside +/-5 points and no mirror is resolved
+outside tolerance, but every per-mirror reading is open, so K2 cannot PASS.
+Settling it needs a ~1 400-seed mirror-only batch (F-038), not run.
 At this n, a z-test would detect a ~4.7-point seat bias with 80% power. The
 gate itself FAILs one with 80% power only at ~9.6 points (F-038). A 3-point
 bias is not excluded (that needs ~3 006 decided mirrors).
 
-The per-mirror readings, which now FAIL K2 if resolved, are all undetermined
+The per-mirror readings, each of which K2 now gates, are all undetermined
 at 121–124 matches each, with intervals ~+/-10 points:
 
 | mirror | slot A | left base |
@@ -3248,7 +3279,9 @@ at 121–124 matches each, with intervals ~+/-10 points:
 54.6%, 0.4 points inside the 55% edge. It agrees with the left-base share's
 by-strategy design effect of 2.17 (F-038), which hints at strategy-level
 geography. With twenty per-mirror readings, one at ~2.9 SE is unusual but not
-decisive. It is the first row to re-read in a bigger seat batch.
+decisive. It is the first row to re-read: ~64 more seeds of that one mirror
+would most likely resolve it, and resolving it outside tolerance FAILs K2
+(F-038).
 
 Five of the 1 240 matches timed out, all in the two synth mirrors (3 + 2). Four
 were mutual losses.
@@ -3265,6 +3298,9 @@ K3 belongs to a roster batch (section 1, and the full-roster report in F-040).
 - **The timeout bar.** At ~2–3% timeouts (F-031), resolving "at most 5%" needs
   roughly n_eff >= 150–300. That is a few hundred roster matches, which F-040's
   batch provides.
+- **K2 per mirror.** Every mirror is open at 62 seeds, so K2 is undetermined.
+  Settling it as PASS needs ~1 400 mirror-only seeds; `mass_arclight`'s left
+  base is the cheap re-read that could FAIL it first (F-038).
 
 ## F-040 — The first full-roster report: the turtle is dominant, the gate FAILs (B3)
 
@@ -3326,12 +3362,14 @@ the rush is B4's.
 straddle it. Resolving them needs roughly n_eff >= 400, about 16+ seeds. They
 are the next rows to watch.
 
-### K2 — seat (undetermined here; PASS on F-039's batch)
+### K2 — seat (undetermined here, and on F-039's batch)
 
 Slot A is 61.3% [48.4, 72.7] and left base 48.8% [36.4, 61.3], at n 80 and
 n_eff 58 (mirror deff 1.38). Every per-mirror row has 8 matches. The interval is too wide to
 judge, which is the outcome F-038's power calculation predicted for a roster
-batch. F-039's mirror-only batch (n_eff 1 057) is the K2 reading of record.
+batch. F-039's mirror-only batch (n_eff 1 057) is the K2 reading of record:
+its pool PASSes but K2 is undetermined, because every mirror is open
+(corrected after the second B3 critic).
 
 ### K3 — length (FAIL on band share)
 

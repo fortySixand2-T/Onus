@@ -342,7 +342,7 @@ impl fmt::Display for BalanceReport {
         }
         writeln!(
             f,
-            "    (a mirror resolved outside tolerance FAILs K2; an undetermined one does not block PASS)"
+            "    (any reading resolved outside tolerance FAILs K2; K2 PASSes only if the pool and every mirror do)"
         )?;
         let k3 = &g.termination;
         writeln!(

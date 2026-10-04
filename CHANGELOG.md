@@ -518,3 +518,8 @@
 - [2026-10-04] Modified: FINDINGS.md — F-040 re-read on the final gate: records identical, statuses unchanged, K1/K2 intervals restated (worst-case row variance, mirror deff 1.38)
 - [2026-10-04] Modified: BALANCE_PLAN.md — turtle interval restated on the final method
 - [2026-10-04] Created: tests/critic_b3_gate2.rs — B3 re-review critic probes (K2 per-mirror PASS masking, K3 band-share variants, losing variants, row-mean oracle/coverage, order invariance)
+- [2026-10-04] Modified: src/gate.rs — K2 is Status::all of the pooled and every per-mirror reading: PASS only if the pool and every mirror PASS
+- [2026-10-04] Modified: src/report.rs — K2 footer states the every-reading rule
+- [2026-10-04] Modified: tests/b3_gate.rs — an open mirror holds K2 undetermined until it resolves fair (replaces the pooled-PASS test)
+- [2026-10-04] Modified: FINDINGS.md — F-038 K2 rule rewritten (every reading gates), per-mirror power sizing; F-039/F-040 K2 corrected to undetermined
+- [2026-10-04] Modified: BALANCE_PLAN.md — K2 result line reads undetermined, per-mirror batch size stated

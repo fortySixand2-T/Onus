@@ -179,9 +179,12 @@ Then B3's remaining ACs are computed on valid-length matches.
       **Result** (F-038, F-039): `gate::KillGate`, status read off clustered Wilson intervals
       (ICC 0.17; mirrors at the measured seed-clustered deff 1.38). Detecting a 5-pt seat
       bias takes 1 080 decided mirrors and passing +/-5 takes 1 451: 73 full-roster seeds,
-      infeasible on the box, so it ran as a mirror-only batch. K2 (pooled, plus any
-      per-mirror FAIL) **PASSes** at 62 seeds: slot A 50.9% [47.6, 54.1], left 51.0%
-      [47.7, 54.3]; detectable ~4.7 pts (z-test), gate FAILs at ~9.6 pts.
+      infeasible on the box, so it ran as a mirror-only batch. K2 gates the pool and every
+      mirror (PASS only if all PASS; corrected after the second B3 critic). At 62 seeds the
+      pool PASSes (slot A 50.9% [47.6, 54.1], left 51.0% [47.7, 54.3]) but **K2 reads
+      undetermined**: every mirror is open, closest `mass_arclight` left base 64.9%
+      [54.6, 74.0]. Settling K2 as PASS needs ~1 400 mirror-only seeds (~28 000 matches),
+      not run. Detectable ~4.7 pts (z-test), gate FAILs at ~9.6 pts.
       K3 gates band share (in band / decided, at least 50%) and timeouts (at most 5%); the
       median is reported context (corrected after the B3 critic). The 5-probe batch reads
       **FAIL** on K3: band share 36% [25.9, 47.6].

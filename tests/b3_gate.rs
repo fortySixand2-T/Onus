@@ -343,8 +343,12 @@ fn a_batch_without_mirrors_cannot_pass_seat_bias() {
     assert_ne!(g.status, Status::Pass);
 }
 
+/// K2 PASSes only if the pool **and every mirror** resolve inside tolerance
+/// (user decision after the second B3 critic): an open mirror holds K2
+/// undetermined however fair the pool, because "too little data never reads
+/// PASS". Once that mirror is measured fair too, K2 PASSes.
 #[test]
-fn an_undetermined_mirror_row_does_not_block_a_pooled_pass() {
+fn an_open_mirror_row_holds_k2_undetermined_until_it_resolves_fair() {
     let mut recs = balanced(&["x", "y"], 600);
     // `y` gets 20 extra slot-A wins (620 of 1220, resolved fair); `z` is a
     // 20-match mirror that leans 14/6 on slot A (undetermined) with its base
@@ -367,7 +371,17 @@ fn an_undetermined_mirror_row_does_not_block_a_pooled_pass() {
     assert_eq!(g.seat.mirrors[2].slot_a.status, Status::Undetermined);
     assert_eq!(g.seat.mirrors[2].left_spawn.value, Some(0.5));
     assert_eq!(g.seat.slot_a.status, Status::Pass);
-    assert_eq!(g.seat.status, Status::Pass, "an open per-mirror row is multiplicity, not a FAIL");
+    assert_eq!(g.seat.left_spawn.status, Status::Pass);
+    assert_eq!(g.seat.status, Status::Undetermined, "an open mirror never lets K2 PASS");
+    assert_ne!(g.status, Status::Pass);
+
+    // Measure `z` fair over 600 more seeds: every mirror now resolves PASS.
+    for seed in 10..610 {
+        recs.extend(fair_mirror("z", seed));
+    }
+    let g = gate(&recs);
+    assert!(g.seat.mirrors.iter().all(|m| m.slot_a.status == Status::Pass && m.left_spawn.status == Status::Pass));
+    assert_eq!(g.seat.status, Status::Pass);
 }
 
 /// Two mirrors with opposite, fully resolved seat edges pool to exactly 50%.

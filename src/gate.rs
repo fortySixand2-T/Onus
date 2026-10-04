@@ -402,8 +402,9 @@ pub struct Strength {
     pub losing: Vec<String>,
 }
 
-/// One mirror's seat readings. A **resolved FAIL** here fails K2; an
-/// undetermined one does not block a pooled PASS (multiplicity, F-038).
+/// One mirror's seat readings. Each is one of K2's readings: a resolved
+/// FAIL here fails K2, and K2 PASSes only if every mirror resolves PASS too
+/// (F-038).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MirrorRow {
     pub strategy: String,
@@ -422,7 +423,8 @@ pub struct SeatBias {
     pub slot_a: Reading,
     /// The left-hand base's share of every decided mirror (geography).
     pub left_spawn: Reading,
-    /// Per mirror, in matrix order. A resolved FAIL in any of them fails K2.
+    /// Per mirror, in matrix order. Each is gated: a resolved FAIL fails K2,
+    /// and K2 PASSes only if every one resolves PASS.
     pub mirrors: Vec<MirrorRow>,
 }
 
@@ -610,16 +612,16 @@ fn seat_bias(records: &[MatchRecord], m: &WinMatrix, spec: &GateSpec) -> SeatBia
             })
         })
         .collect();
-    // The pooled readings decide PASS; a per-mirror reading can only FAIL
-    // the criterion, when its own interval lies wholly outside tolerance.
-    // An undetermined mirror is left open: ten mirrors at 2 matches a seed
-    // cannot each be resolved to +/-5 points (F-038).
-    let mirror_fail = per_mirror
-        .iter()
-        .any(|r| r.slot_a.status == Status::Fail || r.left_spawn.status == Status::Fail);
-    let pooled_status = Status::all([slot_a.status, left_spawn.status]);
+    // Every reading is K2's, pooled and per mirror: any FAIL fails it, and it
+    // PASSes only if the pool and every mirror resolve PASS. An open mirror
+    // holds K2 undetermined — too little data never reads PASS (F-038).
+    let status = Status::all(
+        [slot_a.status, left_spawn.status]
+            .into_iter()
+            .chain(per_mirror.iter().flat_map(|r| [r.slot_a.status, r.left_spawn.status])),
+    );
     SeatBias {
-        status: if mirror_fail { Status::Fail } else { pooled_status },
+        status,
         tolerance: spec.mirror_tolerance,
         slot_a,
         left_spawn,
