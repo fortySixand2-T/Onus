@@ -166,18 +166,42 @@ Then B3's remaining ACs are computed on valid-length matches.
       Report, for each predicted counter, whether it actually wins its matchup (>50%).
       A predicted counter that *loses* means the stats or the +30% nemesis magnitude are
       wrong — that's the sim doing its job.
-- [ ] Match-length distribution (median, % hitting the cap) vs the 5–8 min target.
-- [ ] **Kill-criteria PASS/FAIL** (from DESIGN_BRIEF): no strategy/unit win-rate >65%
+- [x] Match-length distribution (median, % hitting the cap) vs the 5–8 min target.
+      **Result**: `metrics::LengthDistribution` — band counts, band share (in-band ÷ decided)
+      and p0/10/25/50/75/90/100 over **decided** matches only; timeout rate (÷ all) and the
+      same percentiles over **all** matches, timeouts at the cap, beside them (`tests/b3_length.rs`).
+- [x] **Kill-criteria PASS/FAIL** (from DESIGN_BRIEF): no strategy/unit win-rate >65%
       regardless of counter; mirrors within tolerance of 50%; matches terminate in target.
       **The mirror ~50% assertion lives here** (BALANCE_PLAN lists it under B2's probes, but
       B2 only made the sampling side-balanced; nothing asserts the rate). Size the seed count
       from a stated power calculation — enough to detect a few-percent seat bias, not to
       rubber-stamp one.
-- [ ] Emit a stdout table + a machine-readable `balance_report.ron` (gitignored artifact).
-- [ ] **Harden `batch::production_totals`** (B3 is its consumer): derive the column schema
+      **Result** (F-038, F-039): `gate::KillGate`, status read off clustered Wilson intervals
+      (ICC 0.17; mirrors at the measured seed-clustered deff 1.38). Detecting a 5-pt seat
+      bias takes 1 080 decided mirrors and passing +/-5 takes 1 451: 73 full-roster seeds,
+      infeasible on the box, so it ran as a mirror-only batch. K2 gates the pool and every
+      mirror (PASS only if all PASS; corrected after the second B3 critic). At 62 seeds the
+      pool PASSes (slot A 50.9% [47.6, 54.1], left 51.0% [47.7, 54.3]) but **K2 reads
+      undetermined**: every mirror is open, closest `mass_arclight` left base 64.9%
+      [54.6, 74.0]. Settling K2 as PASS needs ~1 400 mirror-only seeds (~28 000 matches),
+      not run. Detectable ~4.7 pts (z-test), gate FAILs at ~9.6 pts.
+      K3 gates band share (in band / decided, at least 50%) and timeouts (at most 5%); the
+      median is reported context (corrected after the B3 critic). The 5-probe batch reads
+      **FAIL** on K3: band share 36% [25.9, 47.6].
+- [x] Emit a stdout table + a machine-readable `balance_report.ron` (gitignored artifact).
+      **Result** (F-040): `report::BalanceReport` holds the win matrix, the pentagon verdicts with
+      intervals, the length distribution and the kill gate. It round-trips through RON, and
+      `balance` prints it and, on request, writes it (`--report PATH`, opt-in). The first full-roster run (4 seeds,
+      800 matches) reads **FAIL**: `turtle` is dominant at 99.3% [94.9, 100.0], and K3 FAILs on
+      band share 43.8% [39.7, 48.0] (median 5:33, timeouts 1.8% PASS).
+      `rush` (6.2%) is named `losing`: row interval wholly below 35%, named, not gated (F-038).
+- [x] **Harden `batch::production_totals`** (B3 is its consumer): derive the column schema
       from the union of record keys, or refuse an unlabelled record — today it takes its
       header from `records.first()` and silently drops every later row's production if that
       row is unlabelled.
+      **Result** (F-037): union of the records' headers, first-appearance order, summed by
+      name; an unlabelled block cannot carry a count, so skipping it is lossless
+      (`tests/b3_totals.rs`).
 
 Critic probes: an injected imbalance (a deliberately broken multiplier fixture) makes the
 gate FAIL; a strictly-dominant or strictly-losing strategy is surfaced by name; an

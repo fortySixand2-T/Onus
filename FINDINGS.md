@@ -2920,3 +2920,523 @@ turtle past its first wave. The F-032 licence was therefore not needed. Its
 precondition holds anyway: no Rust changed, and the same binary with
 `attack_at_army: 15` passes the same goldens (F-035's 847 / 1 run, whose one
 failure is this test).
+
+## F-037 — Production totals: the schema is the union of the records' headers (B3)
+
+**Wall.** `batch::production_totals` took its column header from
+`records.first()` and read every later record through it (noted, not fixed, in
+F-024). Two silent losses followed. A first record carrying an **unlabelled**
+block (`ProductionCounts::default()` — what every synthetic record carries)
+gave an empty header, so the whole batch totalled *nothing*: measured on a
+played `rush` vs `mass_ripper` record behind an unlabelled one, the totals were
+`[]` instead of `worker 2, ripper 3, ...`. And any unit a later record named but
+the first did not was dropped from the table.
+
+**The two options, and the one taken.** The AC offered: derive the schema from
+the union of the record keys, or refuse an unlabelled record.
+**Union**, for three reasons:
+
+- **It is lossless.** `ProductionCounts`'s fields are private and its only
+  constructors are `of` and `zeroed` (both fully labelled) and `Default` (empty
+  header, empty counts). An unlabelled block therefore *cannot* carry a count, so
+  skipping it drops nothing — there is no information a refusal would protect.
+- **Refusing would turn a fact into an error.** Synthetic records are
+  unlabelled by design across the B2/B3 suites, and
+  `critic_b2_ac4::probe_an_unlabelled_row_contributes_zero_not_a_misaligned_column`
+  already pins that an unlabelled row contributes zero next to a played one; a
+  `Result` would weaken that pinned behaviour into a refusal.
+- **It also closes the second hole**, which a refusal would not: records from
+  different rosters are summed by name with every name kept.
+
+**Rule.** Columns appear in first-appearance order — record order, then that
+record's header order — by a linear scan, never a map, so the output is a
+function of the records alone. For a `run_batch` result every record has the
+same header, so the order is still content (RON) order. Summing goes through
+`by_unit`, i.e. by name, so two headers can never be added misaligned. A batch
+with no labelled record totals nothing (no roster to name).
+
+**Gating test:** `tests/b3_totals.rs` —
+`an_unlabelled_first_record_no_longer_drops_the_batch` (red before: `left: []`)
+and `the_schema_is_the_union_of_every_records_unit_ids` (red before: `phantom`
+missing). No sim change, no RON change, no golden moved.
+
+## F-038 — The kill gate: thresholds, the clustered interval, and the seed-count power calculation (B3)
+
+**What is gated.** `gate::KillGate` reads a batch against DESIGN_BRIEF's kill
+criteria as BALANCE_PLAN states them for B3. DESIGN_BRIEF's own line is still
+an *example* placeholder (`<e.g., "if any unit wins >65% regardless of
+counter, the pentagon is broken">`), so the thresholds below are this
+finding's choice, stated once in `GateSpec::default()` and pinned by
+`b3_gate::the_default_thresholds_are_the_stated_ones`. They are harness
+configuration, not content.
+
+| criterion | reading(s) | bar |
+|---|---|---|
+| K1 strength | each strategy's row mean (mean over opponents, mirror excluded) | at most 65% |
+| K2 seat bias | pooled slot-A share of decided mirrors; pooled left-base share; the same two shares for each mirror | 50% +/- 5 points, every one |
+| K3 termination | band share (in-band / decided) | at least 50% |
+| | timeout rate (timeouts / all) | at most 5% |
+| | *reported, not gated:* share of all ending before 5:00; share ending after 8:00 or timing out; decided median | — |
+
+**The interval decides, as for the pentagon (F-034).** Every reading carries a
+95% Wilson interval (the same `z` and expression as `Cell::wilson_interval`,
+now shared as `metrics::wilson_bounds`). PASS needs the whole interval on the
+right side of the bar, FAIL the whole interval on the wrong side, and anything
+else, including no data, is **undetermined**. A criterion passes only if every
+one of its readings passes. One FAIL fails it. The gate's status combines the
+three criteria the same way. An all-timeout run therefore FAILs K3 (100%
+timeouts; its band share is undetermined, nothing was decided) and leaves K1/K2 undetermined, and it carries an
+`all_timeout` flag. It can never read as balanced.
+
+**Clustering.** One `(pair, seed)` cluster is up to 4 matches (2 slot orders x
+2 orientations; 2 for a mirror) on one map with one set of seeded streams.
+F-031 measured deff 1.51 at m = 4, so ICC rho = 0.51/3 = **0.17**
+(`gate::F031_ICC`). Each reading counts its own distinct clusters (unordered
+pair + seed; no map) and uses deff = 1 + (m - 1) rho at its mean cluster size
+m, then takes Wilson on n_eff = n / deff. That gives ~1.40 for K3 on a mixed
+batch. **Mirror readings are the exception** *(corrected after the B3 critic)*:
+rho = 0.17 gives a 2-match mirror cluster deff 1.17, but measured on F-039's
+62-seed mirror-only batch (1 235 decided) the slot-A share has:
+- deff **1.381** with the **seed** as the cluster (robust cluster variance over
+  binomial variance, 62 clusters);
+- deff 1.344 with `(strategy, seed)` as the cluster (620 clusters), i.e. a
+  mirror ICC of ~0.34, twice F-031's;
+- deff 1.08 with the strategy as the cluster (10 clusters).
+
+The left-base share measures 0.93 by seed, 0.66 by `(strategy, seed)` and
+2.17 by strategy. The last is on only 10 clusters, so it is noise-dominated,
+and the per-mirror readings test strategy-level base effects directly.
+K2 uses the conservative seed-clustered value: every seat reading's deff is
+at least `gate::MIRROR_DEFF` = 1.38 (`GateSpec::mirror_design_effect`;
+`b3_gate::mirror_readings_use_the_measured_seed_clustered_design_effect`). A row mean (K1) is a mean of
+k cells, with variance sum(p_i(1-p_i) w_i) / k^2, where w_i = deff_i / n_i.
+
+*(Corrected after the B3 critic.)* The first version took Wilson at the mean
+on n_eff = k^2 / sum(w_i), i.e. variance p(1-p) sum(w_i) / k^2, and called it
+conservative. That holds for equal cells only. With unequal w_i, the true
+variance exceeds it when the near-50% cells are the small ones. For cells of
+10 at 50% and 1 000 at 100%, its
+interval was narrower than the normal interval on the true variance
+(`critic_b3_gate::probe_the_row_mean_interval_is_at_least_as_wide_as_the_true_one`).
+
+The fix uses V(mu), the **largest** variance of a mean of these k cells over
+all cell rates averaging mu. It is a concave maximisation, solved by KKT
+water-filling, p_i = clamp((1 - lambda / w_i) / 2, 0, 1) (`gate::max_mean_variance`).
+The interval is the hull of two parts:
+- **the normal interval mean +/- z sqrt(V(mean)).** It contains the normal
+  interval on the true variance, whatever the cell rates, because the true
+  rates average `mean`;
+- **the score interval {mu : |mean - mu| <= z sqrt(V(mu))}.** This is Wilson's
+  construction on the worst case. It keeps the interval defined at 0% and 100%.
+
+With equal cells, both parts are closed form: Wilson and the normal interval
+at n_eff. For k = 1 the row interval therefore contains the cell's Wilson
+interval rather than equalling it.
+
+Pinned by:
+- `b3_gate::the_row_mean_interval_contains_the_normal_interval_on_the_true_variance`
+  (seven cell configurations, sizes 2 to 1 000);
+- `b3_gate::a_row_mean_over_one_cell_contains_that_cells_wilson_and_normal_intervals`.
+
+The cost is width. Near 50% at small n the normal part is a little wider than
+Wilson's (about 2 points at n_eff ~20). A borderline row therefore reads
+undetermined a little more often, never PASS more often.
+
+**Names, not just a status.** K1 lists the strategies whose row is resolved
+above 65% (`failing`), the ones whose every opponent cell is resolved above
+50% (`dominant`), and the strictly weak ones (`losing`), all in matrix order.
+Each row also carries the unit it masses (`pentagon::mass_strategy`), so
+"unit win rate" reads off the probe row.
+
+**`losing` is the mirror image of K1's bar.** *(Corrected after the B3
+critic; the first version named a strategy `losing` only if every one of its
+cells was resolved below 50%, so a strategy that loses every matchup but splits
+one too few matches to resolve it went unnamed —
+`critic_b3_gate::probe_a_strategy_losing_every_matchup_is_named`, where `low`
+reads 12.5% with its interval topping out at 28.1%.)* A strategy is named `losing` when either:
+- its row interval lies wholly below `1 − max_strength` (35%), the same
+  interval read against the symmetric bar; or
+- every opponent cell is resolved below 50% (the old rule, kept).
+
+It is **named, not gated.** The spec's K1 is "no unit/strategy wins >65%
+regardless of counter": it bounds strength from above only, and asks for
+weak strategies to be *surfaced by name*, not to fail the gate. A strategy too
+weak to use is a balance problem B4 owns, but not a kill criterion as written;
+gating it would add a criterion the plan does not have. The table tags the row
+`LOSING` and prints `losing (named, not gated): ...`; the RON carries
+`strength.losing`. The bar moves with `max_strength`. Tests:
+`b3_gate::a_row_resolved_below_the_mirror_bar_is_named_losing_but_not_gated`,
+`b3_report::a_strictly_weak_strategy_is_tagged_in_the_table_and_named_in_the_report`.
+
+**K2: every reading, pooled and per mirror, must PASS.** *(Corrected twice
+after the B3 critics. The first version gated only the pool, so two mirrors
+with opposite, fully resolved seat edges pooled to 50% and PASSed —
+`critic_b3_gate::probe_k2_does_not_pass_when_one_mirror_is_resolved_outside_tolerance`.
+The second let a resolved per-mirror FAIL fail K2 but let the pool alone decide
+PASS, ignoring a mirror that was merely open. That broke this module's own rule
+("a criterion PASSes only if every one of its readings does") and "too little
+data never reads PASS": a mirror won by slot A 6 of 6, or one reading 64.5%
+with an interval excluding 50%, sat under a K2 PASS —
+`critic_b3_gate2::k2_does_not_pass_a_mirror_known_from_six_matches_all_to_slot_a`,
+`critic_b3_gate2::k2_does_not_pass_while_a_mirror_reads_64_percent_left_with_an_interval_excluding_50`.
+The rule below is the user's decision.)* K2's readings are slot A and left
+base, pooled and for each mirror, and K2 is `Status::all` of them:
+- **FAIL** if the pool or any mirror resolves outside 50% +/- 5 (its whole
+  interval outside tolerance: the data says that seat is biased).
+- **PASS** only if the pool **and every mirror** resolve inside tolerance.
+- **Undetermined** otherwise, in particular whenever any mirror is open.
+
+Multiplicity still explains *why* an open mirror is common, and why it is not
+a FAIL: per mirror, a full-roster seed gives 2 matches, so ten mirrors are
+each read on a tenth of the pool. For a truly fair mirror a FAIL needs a
+> 1.96-SE excursion *past* a 5-point margin, so twenty such readings carry a
+family-wise false-FAIL rate below 20 x 2.5% and, at the sizes run here, far
+below it. What multiplicity no longer does is license a PASS: an open mirror
+holds K2 undetermined, and the price is the per-mirror batch sized below
+(`b3_gate::an_open_mirror_row_holds_k2_undetermined_until_it_resolves_fair`,
+`b3_gate::a_resolved_per_mirror_fail_fails_seat_bias_even_when_the_pool_is_fair`).
+
+**Why K3 is the band share.** *(Corrected after the B3 critic; the first
+version gated the median and made band share advisory, which was a moved
+goalpost.)* "Matches terminate in target" is a statement about matches, not
+about the middle one. The critic's fixture splits 47% short / 6% in band / 47%
+long: its median sits in the gap and the median-only K3 read PASS with 94% of
+matches outside 5–8 min (`critic_b3_gate::probe_k3_does_not_pass_when_six_percent_of_matches_are_in_target`).
+Band share (in-band / decided) is the metric B3.5 itself defined as the design
+metric; the timeout rate is its stalemate signal. So K3 gates exactly those
+two: band share at least 50% with its clustered Wilson interval, and timeouts at
+most 5%. The decided median and the before/after shares are still read with
+intervals and printed as context, never folded into the status
+(`b3_gate::the_band_share_gates_k3_even_when_the_median_is_in_band`). On
+today's knobs band share is ~36–44% (F-031, F-040), so **shipped K3 reads
+FAIL**. That is the honest reading of a problem B3.5 deferred to B4, not a
+reason to lower the bar. There is no switch to make band share advisory.
+
+### The power calculation
+
+*(Corrected after the B3 critic: the first version used the mirror deff 1.17
+from F-031's ICC. It is redone here at the measured 1.38.)*
+
+Seat bias is a proportion against 0.5. With alpha = 0.05 two-sided and power
+0.8 (z = 1.960, 0.842), detecting a true share of 0.5 + delta needs
+n_eff = ((1.960 x 0.5 + 0.842 x sqrt(p1(1 - p1))) / delta)^2 decided mirror
+matches. The decided count is n = n_eff x **1.38** (measured mirror deff, above). A
+full-roster seed (10 strategies) plays **20 mirror matches**: 10 mirrors x 2
+orientations, i.e. 2 decided matches per mirror per seed, minus timeouts.
+
+| seat bias to detect | n_eff | decided mirrors | full-roster seeds | full-roster matches |
+|---|---|---|---|---|
+| 10 points | 194 | 268 | 14 | 2 800 |
+| 7 points | 398 | 550 | 28 | 5 600 |
+| **5 points** | **783** | **1 080** | **54** | **10 800** |
+| 3 points | 2 178 | 3 006 | 151 | 30 200 |
+| 2 points | 4 903 | 6 767 | 339 | 67 800 |
+
+**PASSing K2 is harder than detecting a bias.** Even when the true share is
+exactly 0.5, the whole 95% interval must fit inside +/-5 points. That needs
+half-width <= 5 with 80% probability, so n_eff >= ((1.960 + 1.282) x 0.5 /
+0.05)^2 = **1 051**. That is **1 451** decided mirrors, or **73 full-roster
+seeds** (14 600 matches).
+
+**What the 62-seed mirror batch buys** (F-039 section 2: 1 235 decided, so
+n_eff = 1 235 / 1.38 = 895). Two different numbers:
+- **The z-test detectable bias is ~4.7 points.** A two-sided test at alpha
+  0.05 rejects 50% with 80% power when the true share is 50% +/- 4.7.
+- **The gate itself FAILs with 80% power only at ~9.6 points.** K2 FAILs when
+  the whole Wilson interval lies outside 45–55%, i.e. at an observed share
+  >= 58.3% at this n_eff. The true share that reaches it 80% of the time is
+  59.6%, a 9.6-point bias (the critic's normal-approximation figure is ~9.3).
+  Between ~5 and ~9.6 points the gate reads **undetermined**, never PASS.
+  That is the property that matters: a bias the batch cannot resolve does not
+  pass.
+
+At 62 seeds the **pool** PASSes: slot A 50.9% [47.6, 54.1], left base 51.0%
+[47.7, 54.3], and no mirror is resolved outside tolerance. **K2 reads
+undetermined**, because every per-mirror reading is still open, the closest
+being `mass_arclight`'s left base at 64.9% [54.6, 74.0] (F-039 section 2).
+
+**What settling K2 per mirror costs** (same framework as the pooled PASS
+size, per reading, at deff 1.38 and 2 decided matches per mirror per seed;
+fair seats assumed):
+
+| target | n_eff per mirror | decided per mirror | mirror-only seeds | mirror-only matches | CPU-hours at 3.45 s |
+|---|---|---|---|---|---|
+| one mirror's reading PASSes +/-5 with 80% probability | 1 051 | 1 451 | 726 | 14 520 | ~14 |
+| all 20 readings PASS jointly with 80% probability (each at 98.9%) | 2 025 | 2 795 | 1 398 | 27 960 | ~27 |
+
+The joint row multiplies the 20 readings' probabilities as if independent.
+They are not (slot A and left base share matches), but within a mirror the two
+are uncorrelated when orientations are balanced, and for any correlation among
+roughly normal readings Šidák's inequality makes the product a lower bound on
+the joint probability, so the seed count errs high. Match counts are seeds × 20
+(10 mirrors × 2 orderings).
+
+Settling K2 as PASS therefore takes a **~1 400-seed mirror-only batch,
+~28 000 matches**, roughly 23x the 62-seed batch. It was not run. A
+resolution the other way is far cheaper: if `mass_arclight`'s left base is
+truly ~65%, its lower bound clears 55% with 80% power at n_eff ~183, i.e.
+~252 decided or ~126 seeds of that one mirror (it has 62), about 130 more
+matches. That re-read is the cheap next step, and it would most likely turn
+K2 into a FAIL rather than a PASS.
+
+**Throughput, measured on the box** (release, `nice 19`, shared with the trading
+agents): the B3 pentagon batch played 100 matches serially in 332 s, i.e.
+**3.3 s a match**. That makes 62 full-roster seeds ~11.4 CPU-hours, and 128
+seeds (3 points) ~23.5. On a box that runs live trading, neither is a modest
+batch. **So the full-roster size is infeasible here, and the K2 question is
+sized separately.** K2 reads only mirrors, so a **mirror-only** batch spends
+every match on it. 62 seeds x 10 mirrors x 2 orientations = **1 240 matches**
+(~1.1 CPU-hours) was sized for the n that can PASS the **pool** +/-5 points at
+deff 1.17. At the measured 1.38 that needs 73 seeds; 62 gave a pooled PASS
+anyway, because the observed shares sit near 51% (above). It cannot settle K2,
+which now needs every mirror resolved (above). It detects a ~4.7-point bias at 80% power
+(z-test). A 3-point bias stays out of reach (3 006 decided mirrors, ~2.9
+CPU-hours). It is the next step if the 62-seed reading is ever close.
+K1 and K3 are read on roster batches. A row mean over k opponents at s seeds
+has n_eff ~ k x 4s / 1.51, so its half-width is about 0.98 / sqrt(n_eff). On
+the five probes (k = 4) that is ~+/-20 points at 2 seeds and ~+/-13 at 5. On
+the full roster (k = 9) it is ~+/-9 at 5 seeds. A row has to sit that far past
+65% to FAIL. F-039 states the size behind each reading.
+
+**Gating tests:** `tests/b3_gate.rs` covers 24 tests: the rules, the design
+effect, PASS reachable, each criterion failing alone, K2 by slot and by base,
+names, all-timeout, determinism under reordering, the injected imbalance and
+the shipped pin (F-039).
+
+## F-039 — What the kill gate says about the shipped content (B3)
+
+No RON changed for any of this. These are measurements, read on two batches,
+each sized for what it can decide.
+
+### 1. The B3 pentagon batch: five mass probes, 2 seeds (100 matches) — undetermined
+
+This is `b3_pentagon`'s real batch, pinned in
+`b3_gate::the_shipped_reading_on_the_pentagon_batch`.
+
+| criterion | reading | status |
+|---|---|---|
+| K1 `mass_bulwark` | 37.5% [20.4, 58.5] over 4 opponents, n 32, n_eff 21 | PASS |
+| K1 `mass_sentinel` | 65.6% [44.5, 82.0] | undetermined |
+| K1 `mass_ripper` | 68.8% [47.5, 84.3] | undetermined |
+| K1 `mass_ravager` | 46.9% [27.8, 66.9] | undetermined |
+| K1 `mass_arclight` | 31.3% [15.7, 52.5] | PASS |
+| K2 slot A | 65.0% [41.6, 82.9] of 20 decided mirrors | undetermined |
+| K2 left base | 45.0% [24.6, 67.2] | undetermined |
+| K3 ends before 5:00 | 34% [24.1, 45.5] of 100 | PASS |
+| K3 ends after 8:00 or times out | 30% [20.6, 41.4] | PASS |
+| K3 timeouts | 0 of 100, [0, 5.09] | undetermined |
+| K3 band share | 36% [25.9, 47.6] of decided | **FAIL** vs 50% |
+| decided median | 6:36 | |
+
+**Gate: FAIL** *(corrected after the B3 critic: this read "undetermined" while
+K3 gated the median; the before/after rows above are now reported context)*.
+K3 fails on band share, resolved below 50%. Nothing else fails. On these probes
+the median match is inside 5–8 minutes, but most matches are not. The rest is a
+statement about 100 matches:
+- The two strongest probes (Sentinel 65.6%, Ripper 68.8%) sit on the 65% bar
+  with ~+/-19 points of interval.
+- Zero timeouts in 100 cannot certify a rate below 5%, because the upper bound
+  is 5.09%.
+- The 13/20 slot-A reading is noise at n_eff 17.
+
+The band share reproduces F-031's ~31–38% ceiling. K3 now gates on it, so
+the ceiling FAILs K3. Raising it is B4's job (F-038).
+
+### 2. A mirror-only seat-bias batch: every strategy, 62 seeds (1 240 matches) — K2 undetermined
+
+K2 is the one criterion F-038's power calculation sizes, so this run spent
+every match on it:
+- Each of the 10 strategies plays its own mirror in both orientations on
+  `seed_at(0, k)` for k < 62, at the shipped 15-min cap.
+- It is a scratch harness, not committed: `run_match` in 3 threads, records
+  re-sorted into seed/roster/orientation order, then `KillGate::of`.
+- Wall time was 1 425 s, i.e. **3.45 CPU-s a match**, consistent with F-038's
+  3.3.
+
+*(Re-read after the B3 critic with the corrected gate: deff 1.38 and
+per-mirror FAIL gating, F-038. The batch was replayed and its outcomes are
+identical, match for match. The first version's numbers were slot A [47.8,
+53.9] and left [48.0, 54.0] at n_eff 1 057.)*
+
+| reading | value | 95% interval | n (decided) | deff | n_eff | status |
+|---|---|---|---|---|---|---|
+| slot A share (pool) | **50.9%** | [47.6, 54.1] | 1 235 | 1.38 | 895 | PASS |
+| left-base share (pool) | **51.0%** | [47.7, 54.3] | 1 235 | 1.38 | 895 | PASS |
+
+**K2 reads undetermined.** *(Corrected after the second B3 critic: this read
+"K2 PASSes" while the pool alone decided PASS; F-038 now gates every
+per-mirror reading.)* The pool is inside +/-5 points and no mirror is resolved
+outside tolerance, but every per-mirror reading is open, so K2 cannot PASS.
+Settling it needs a ~1 400-seed mirror-only batch (F-038), not run.
+At this n, a z-test would detect a ~4.7-point seat bias with 80% power. The
+gate itself FAILs one with 80% power only at ~9.6 points (F-038). A 3-point
+bias is not excluded (that needs ~3 006 decided mirrors).
+
+The per-mirror readings, each of which K2 now gates, are all undetermined
+at 121–124 matches each, with intervals ~+/-10 points:
+
+| mirror | slot A | left base |
+|---|---|---|
+| `mvp` | 41.1% [31.5, 51.5] | 52.4% [42.2, 62.4] |
+| `rush` | 58.1% [47.7, 67.7] | 51.6% [41.4, 61.7] |
+| `mass_arclight` | 48.8% [38.7, 59.0] | **64.9% [54.6, 74.0]** |
+| others | 47.6–54.8% | 43.8–55.7% |
+
+**`mass_arclight`'s left base is the closest to a FAIL.** Its lower bound is
+54.6%, 0.4 points inside the 55% edge. It agrees with the left-base share's
+by-strategy design effect of 2.17 (F-038), which hints at strategy-level
+geography. With twenty per-mirror readings, one at ~2.9 SE is unusual but not
+decisive. It is the first row to re-read: ~64 more seeds of that one mirror
+would most likely resolve it, and resolving it outside tolerance FAILs K2
+(F-038).
+
+Five of the 1 240 matches timed out, all in the two synth mirrors (3 + 2). Four
+were mutual losses.
+
+**Do not read K3 off this batch.** Its median is 4:24 and 73% end before 5:00,
+because a mirror-only set over-weights the fast Ripper/Sentinel/rush mirrors.
+K3 belongs to a roster batch (section 1, and the full-roster report in F-040).
+
+### What this leaves open
+
+- **K1 on the full roster.** The probe batch cannot see the
+  `rush`/`turtle`/`mvp`/synth rows. F-040 reads it from the first
+  `balance_report.ron`.
+- **The timeout bar.** At ~2–3% timeouts (F-031), resolving "at most 5%" needs
+  roughly n_eff >= 150–300. That is a few hundred roster matches, which F-040's
+  batch provides.
+- **K2 per mirror.** Every mirror is open at 62 seeds, so K2 is undetermined.
+  Settling it as PASS needs ~1 400 mirror-only seeds; `mass_arclight`'s left
+  base is the cheap re-read that could FAIL it first (F-038).
+
+## F-040 — The first full-roster report: the turtle is dominant, the gate FAILs (B3)
+
+*Corrected after the B3 critic (K3 gates band share, F-038).*
+
+No RON changed. This is the reading F-039 promised. It is the report that
+`balance --seeds 4 --report balance_report.ron` writes:
+- same seeds (`seed_at(0, k)`, k < 4), same roster order, same orientation
+  order, shipped 15-min cap;
+- played by a scratch harness (not committed) that ran `run_match` in 3 threads
+  and re-sorted the records into the bin's seed/roster/orientation order before
+  `BalanceReport::of`;
+- 800 matches (10 x 10 ordered pairs x 2 orientations x 4 seeds) in 1 715 s
+  wall. That is ~6.4 CPU-s a match, against F-038's 3.3, because it shared the
+  box with a debug `cargo test` run.
+
+**Gate: FAIL.** K1 fails on one strategy, named by the gate: **`turtle`**.
+K3 fails on band share (43.8%, resolved below 50%).
+
+**Confirmed with the committed bin** (after the second B3 critic). On the
+committed tree, `balance --seeds 4 --report /tmp/onus_b3_final_report.ron`
+ran serially on the box (`nice 19`, shared with the trading agents and a
+debug/release `cargo test`): 800 matches in 49:10 wall (3.7 s a match),
+42 MB peak RSS, exit 0. Its tables match the scratch harness's line for line
+(the same win matrix, cell samples and pentagon), and so does its kill gate:
+- **FAIL**: K1 on `turtle` 99.3% [94.9, 100.0], DOMINANT;
+- K3 on band share 43.8% [39.7, 48.0] of 786 decided (timeouts 1.8%
+  [0.9, 3.2] PASS);
+- `rush` 6.2% [1.4, 13.0] named `losing (named, not gated)`;
+- K2 undetermined (pool n_eff 58; every mirror n 8).
+
+The bin plays the matches the harness did and gates them the same way.
+
+### K1 — strength (FAIL)
+
+*(Re-read after the B3 critic fixes, same seeds: the 800 records came back
+match-for-match identical, so the matrix, the K3 reading and every status are
+unchanged. The intervals below are the final method's — row means on the
+worst-case variance (F-038), mirrors at deff 1.38 — and are a little wider
+than first printed.)*
+
+| strategy | row mean | 95% interval (n_eff ~95) | status |
+|---|---|---|---|
+| `turtle` | **99.3%** | [94.9, 100.0] | **FAIL, DOMINANT** (beats all 9 opponents) |
+| `mass_sentinel` | 68.3% | [58.4, 77.7] | undetermined |
+| `mass_ripper` | 68.1% | [58.2, 77.4] | undetermined |
+| `synth_steel_flesh` | 54.1% | [43.9, 64.4] | PASS |
+| `synth_triad` | 54.1% | [44.1, 64.2] | PASS |
+| `mass_arclight` | 47.9% | [37.8, 58.1] | PASS |
+| `mass_ravager` | 45.0% | [34.8, 55.1] | PASS |
+| `mass_bulwark` | 30.5% | [21.2, 40.4] | PASS |
+| `mvp` | 26.4% | [17.5, 36.0] | PASS |
+| `rush` | 6.2% | [1.4, 13.0] | PASS, **LOSING** (named, not gated) |
+
+The turtle's off-diagonal cells are 93.8–100%. This is not new; the gate is
+the first thing to *fail* on it:
+- F-029/F-030 read turtle row means of 88.9–90.3% and called them "B4's
+  business".
+- F-036 raised its `attack_at_army` from 15 to 26 for B1's ordering test.
+  Its strength was not re-read then.
+
+No RON change was made: B3 only measures. Tuning the turtle is B4.
+
+`rush`, at 6.2%, is named **`losing`**: its row interval lies wholly below
+35%. *(Corrected after the B3 critic. This paragraph first said `rush` was
+"not strictly losing" because it takes 37.5% of `mass_bulwark` and 18.8% of
+`synth_triad`. Both are losses, so it loses every matchup; the old rule missed
+it only because those two cells were not resolved below 50% at 16 matches
+each.)* Naming does not gate (F-038): K1 bounds strength from above. Lifting
+the rush is B4's.
+
+`mass_sentinel` and `mass_ripper` sit just above 65%, with intervals that
+straddle it. Resolving them needs roughly n_eff >= 400, about 16+ seeds. They
+are the next rows to watch.
+
+### K2 — seat (undetermined here, and on F-039's batch)
+
+Slot A is 61.3% [48.4, 72.7] and left base 48.8% [36.4, 61.3], at n 80 and
+n_eff 58 (mirror deff 1.38). Every per-mirror row has 8 matches. The interval is too wide to
+judge, which is the outcome F-038's power calculation predicted for a roster
+batch. F-039's mirror-only batch (n_eff 895 at deff 1.38) is the K2 reading of record:
+its pool PASSes but K2 is undetermined, because every mirror is open
+(corrected after the second B3 critic).
+
+### K3 — length (FAIL on band share)
+
+| reading | value | 95% interval | status |
+|---|---|---|---|
+| band share | **43.8%** of 786 decided | [39.7, 48.0] | **FAIL** (at least 50%) |
+| timeouts | **1.8%** (14 of 800) | [0.9, 3.2] | **PASS** (at most 5%) |
+| decided median | 5:33 | | context: in band |
+| ends before 5:00 | 39.6% of all | [35.6, 43.8] | context, not gated |
+| ends after 8:00 or times out | 17.4% of all | [14.4, 20.8] | context, not gated |
+
+Decided quantiles are p10 2:54, p25 4:15, p50 5:33, p75 6:49 and p90 9:30. The
+all-match basis differs from these only in the tail (p90 9:56, p100 at the
+15:00 cap).
+
+The timeout bar that F-039 left open is now resolved: the upper bound of 3.2%
+is under 5%. The band share is above F-031's ~31–38% probe ceiling, but its
+whole interval is under 50%: fewer than half of decided matches land in 5–8
+minutes, so K3 FAILs. The shortfall is mostly short games (39.6% end before
+5:00). Lengthening them is B4's question (F-038).
+
+### Pentagon at 4 seeds
+
+| link | rate | 95% interval | sample | verdict |
+|---|---|---|---|---|
+| bulwark > ravager | 93.3% | [70.2, 98.8] | 15 decided, 1 timeout | holds |
+| ravager > sentinel | 43.8% | [23.1, 66.8] | | undetermined |
+| sentinel > ripper | 68.8% | [44.4, 85.8] | | undetermined |
+| ripper > arclight | 93.8% | | | holds |
+| arclight > bulwark | 100% | | | holds |
+
+That is 3 hold and 2 undetermined; none fails.
+
+### The report file is opt-in
+
+*(After the B3 critic.)* The first version wrote `balance_report.ron` to the
+working directory on every run. Four earlier tests run the bin without
+`--report`, so every `cargo test` replaced a real batch's report in the
+package root with a 1-tick toy one. Two fixes were possible:
+- **Have the tests pass temp paths.** That fixes the suite but not the hazard:
+  any quick hand run (`--tick-cap 1`) would still clobber the file. It would
+  also mean editing two critic-authored test files.
+- **Make the file opt-in** (`--report PATH`). The tables always print to
+  stdout, and the file is written only where asked. This is the one chosen.
+
+`balance_report.ron` stays the conventional, gitignored name
+(`report::DEFAULT_REPORT_PATH`), and `--report` without a value is still an
+error. Pinned by `b3_report::without_report_the_binary_prints_the_tables_and_writes_no_file`
+and `critic_b3_gate::probe_running_the_bin_as_the_suite_does_leaves_the_package_root_report_alone`.

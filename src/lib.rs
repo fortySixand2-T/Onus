@@ -22,12 +22,14 @@ use bevy::prelude::*;
 
 pub mod batch;
 pub mod client;
+pub mod gate;
 pub mod headless;
 pub mod input;
 pub mod metrics;
 pub mod net;
 pub mod pentagon;
 pub mod replay_io;
+pub mod report;
 pub mod setup;
 pub mod sim;
 pub mod ui;

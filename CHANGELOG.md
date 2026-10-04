@@ -464,3 +464,67 @@
 - [2026-10-03] Modified: tests/b3_pentagon.rs — module doc states the pinned reading: 3 holding, 2 undetermined, none failing
 - [2026-10-03] Modified: tests/m4c_ai.rs — sim_app_with_alloy's doc comment reattached to its function
 - [2026-10-03] Modified: FINDINGS.md — F-033 table points to F-036 for the turtle's new commit tick
+- [2026-10-03] Modified: src/batch.rs — production_totals derives its schema from the union of every record's unit ids (F-037); an unlabelled first record no longer drops the batch
+- [2026-10-03] Created: tests/b3_totals.rs — pins the production_totals silent-drop bug and the union schema
+- [2026-10-03] Modified: FINDINGS.md — F-037, production totals schema decision
+- [2026-10-03] Modified: BALANCE_PLAN.md — B3 production_totals box ticked with result
+- [2026-10-03] Modified: src/metrics.rs — B3 match-length distribution (LengthBand, LengthDistribution, LengthSummary): decided-only vs all-match bases
+- [2026-10-03] Created: tests/b3_length.rs — B3 match-length distribution tests (band, both quantile bases, all-timeout, real batch)
+- [2026-10-03] Modified: BALANCE_PLAN.md — ticked the B3 match-length box with its result
+- [2026-10-03] Created: src/gate.rs — B3 kill-criteria gate (K1 strength, K2 seat bias, K3 termination) as PASS/FAIL/undetermined on clustered Wilson intervals
+- [2026-10-03] Modified: src/lib.rs — registered the gate module
+- [2026-10-03] Modified: src/metrics.rs — wilson_bounds shared by Cell::wilson_interval and the gate (same z, same expression)
+- [2026-10-03] Created: tests/b3_gate.rs — kill-gate tests: rules, design effect, each criterion failing, names, all-timeout, injected imbalance, shipped pin
+- [2026-10-03] Modified: FINDINGS.md — F-038 gate thresholds and seed-count power calculation; F-039 shipped-content reading
+- [2026-10-03] Modified: BALANCE_PLAN.md — ticked the B3 kill-criteria box with its result
+- [2026-10-03] Created: src/report.rs — BalanceReport: win matrix, pentagon verdicts, length distribution, kill gate; RON round trip, atomic write, stdout table
+- [2026-10-03] Modified: src/bin/balance.rs — prints the length and kill-gate tables and writes balance_report.ron (--report PATH)
+- [2026-10-03] Modified: src/pentagon.rs — Verdict and Link derive Serialize/Deserialize for the report
+- [2026-10-03] Modified: src/lib.rs — registered the report module
+- [2026-10-03] Modified: .gitignore — ignore the /balance_report.ron artifact
+- [2026-10-03] Created: tests/b3_report.rs — report round trip, contents, determinism, all-timeout flag, gitignore, bin --report end to end
+- [2026-10-03] Modified: FINDINGS.md — F-040 first full-roster report: turtle dominant (K1 FAIL), K3 PASS, K2 undetermined at 4 seeds
+- [2026-10-03] Modified: BALANCE_PLAN.md — ticked the B3 report box with its result
+- [2026-10-04] Created: tests/critic_b3_gate.rs — critic B3 probes: K3 median-only pass, K2 pooled-mirror masking, unnamed all-losing strategy, row-mean interval width, package-root report clobber, bin report determinism
+- [2026-10-04] Modified: src/gate.rs — K3 gates band share (at least 50% of decided) and timeouts; median and before/after shares are reported context; gate_band_share removed
+- [2026-10-04] Modified: src/report.rs — K3 table leads with the gated band share and timeouts, before/after marked reported, not gated
+- [2026-10-04] Modified: tests/b3_gate.rs — K3 band-share gating test; shipped pin now reads K3 FAIL, gate FAIL
+- [2026-10-04] Modified: tests/b3_report.rs — K3 table needles
+- [2026-10-04] Modified: FINDINGS.md — F-038/F-039/F-040 corrected: K3 gates band share; shipped K3 FAIL
+- [2026-10-04] Modified: BALANCE_PLAN.md — B3 result lines corrected for K3
+- [2026-10-04] Modified: src/gate.rs — K2 reads slot A and left base per mirror too; a per-mirror reading resolved outside tolerance FAILs K2
+- [2026-10-04] Modified: src/report.rs — per-mirror rows print slot A and left base with their statuses
+- [2026-10-04] Modified: tests/b3_gate.rs — per-mirror FAIL gates K2 (by slot and by base); an undetermined mirror does not block PASS
+- [2026-10-04] Modified: FINDINGS.md — F-038 K2 rule corrected: pooled for PASS, per mirror for FAIL, with the multiplicity argument
+- [2026-10-04] Modified: src/bin/balance.rs — the report file is opt-in (--report PATH); without it nothing is written
+- [2026-10-04] Modified: src/report.rs — DEFAULT_REPORT_PATH documented as the conventional name, not a default write
+- [2026-10-04] Modified: tests/b3_report.rs — without --report the bin prints the tables and writes no file
+- [2026-10-04] Modified: FINDINGS.md — F-040: why the report file is opt-in
+- [2026-10-04] Modified: BALANCE_PLAN.md — report result line notes the opt-in write
+- [2026-10-04] Modified: src/gate.rs — mirror (K2) readings use at least the measured seed-clustered design effect 1.38 (MIRROR_DEFF, GateSpec::mirror_design_effect)
+- [2026-10-04] Modified: tests/b3_gate.rs — mirror design-effect test; default thresholds include 1.38
+- [2026-10-04] Modified: FINDINGS.md — F-038 power table redone at deff 1.38 (z-test 4.7 pts, gate FAIL 9.6 pts); F-039 K2 re-read: PASS [47.6, 54.1]
+- [2026-10-04] Modified: BALANCE_PLAN.md — K2 result line at deff 1.38
+- [2026-10-04] Modified: src/gate.rs — row-mean interval built on the worst-case variance of a mean of the cells (max_mean_variance): hull of its normal and score intervals, conservative for unequal cells
+- [2026-10-04] Modified: src/metrics.rs — WILSON_Z visible in the crate for the gate's intervals
+- [2026-10-04] Modified: tests/b3_gate.rs — row-mean interval contains the normal interval on the true variance; one-cell row contains the cell's Wilson and normal intervals
+- [2026-10-04] Modified: FINDINGS.md — F-038 row-mean claim corrected and the method stated
+- [2026-10-04] Modified: src/gate.rs — `losing` also names a row whose interval lies wholly below 1 − max_strength (35%); named, not gated
+- [2026-10-04] Modified: src/report.rs — K1 names line reads `losing (named, not gated)`
+- [2026-10-04] Modified: tests/b3_gate.rs — a row resolved below the mirror bar is named losing but does not gate
+- [2026-10-04] Modified: tests/b3_report.rs — a strictly weak strategy is tagged LOSING in the table and named in the report
+- [2026-10-04] Modified: FINDINGS.md — F-038 losing rule (symmetric bar, named not gated); F-040 rush correction (37.5% is a loss)
+- [2026-10-04] Modified: BALANCE_PLAN.md — rush named losing on the full-roster run
+- [2026-10-04] Modified: FINDINGS.md — F-040 re-read on the final gate: records identical, statuses unchanged, K1/K2 intervals restated (worst-case row variance, mirror deff 1.38)
+- [2026-10-04] Modified: BALANCE_PLAN.md — turtle interval restated on the final method
+- [2026-10-04] Created: tests/critic_b3_gate2.rs — B3 re-review critic probes (K2 per-mirror PASS masking, K3 band-share variants, losing variants, row-mean oracle/coverage, order invariance)
+- [2026-10-04] Modified: src/gate.rs — K2 is Status::all of the pooled and every per-mirror reading: PASS only if the pool and every mirror PASS
+- [2026-10-04] Modified: src/report.rs — K2 footer states the every-reading rule
+- [2026-10-04] Modified: tests/b3_gate.rs — an open mirror holds K2 undetermined until it resolves fair (replaces the pooled-PASS test)
+- [2026-10-04] Modified: FINDINGS.md — F-038 K2 rule rewritten (every reading gates), per-mirror power sizing; F-039/F-040 K2 corrected to undetermined
+- [2026-10-04] Modified: BALANCE_PLAN.md — K2 result line reads undetermined, per-mirror batch size stated
+- [2026-10-04] Modified: FINDINGS.md — F-040 K2 cites F-039's n_eff 895 at deff 1.38
+- [2026-10-04] Modified: tests/b3_gate.rs — module header states K3 as the band share plus timeouts and K2 as pooled plus every mirror
+- [2026-10-04] Modified: FINDINGS.md — F-040 reading confirmed with the committed balance bin (4 seeds, 800 matches)
+- [2026-10-04] Created: tests/critic_b3_gate3.rs — B3 third critic probes: K2 every-reading rule (open mirror, left-base FAIL behind an open mirror, zero/timeout-only mirrors, tolerance edges, interval oracle, printed K2 line)
+- [2026-10-04] Modified: FINDINGS.md — F-038 per-mirror sizing states its independence assumption (conservative by Šidák); match counts = seeds × 20
