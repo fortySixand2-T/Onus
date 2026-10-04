@@ -496,3 +496,8 @@
 - [2026-10-04] Modified: src/report.rs — per-mirror rows print slot A and left base with their statuses
 - [2026-10-04] Modified: tests/b3_gate.rs — per-mirror FAIL gates K2 (by slot and by base); an undetermined mirror does not block PASS
 - [2026-10-04] Modified: FINDINGS.md — F-038 K2 rule corrected: pooled for PASS, per mirror for FAIL, with the multiplicity argument
+- [2026-10-04] Modified: src/bin/balance.rs — the report file is opt-in (--report PATH); without it nothing is written
+- [2026-10-04] Modified: src/report.rs — DEFAULT_REPORT_PATH documented as the conventional name, not a default write
+- [2026-10-04] Modified: tests/b3_report.rs — without --report the bin prints the tables and writes no file
+- [2026-10-04] Modified: FINDINGS.md — F-040: why the report file is opt-in
+- [2026-10-04] Modified: BALANCE_PLAN.md — report result line notes the opt-in write

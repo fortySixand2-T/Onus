@@ -19,8 +19,9 @@
 //! - `--tick-cap T`   per-match tick budget (default 8 min at 60 Hz = 28_800)
 //! - `--minutes M`    the same budget expressed in minutes of play
 //! - `--only a,b,c`   restrict the roster; an unknown id is refused, not ignored
-//! - `--report PATH`  where to write the machine-readable report (default
-//!   `balance_report.ron`, gitignored)
+//! - `--report PATH`  also write the machine-readable report there (opt-in;
+//!   the conventional name is `balance_report.ron`, gitignored). Without it
+//!   nothing is written, so a toy run never overwrites a real batch's report.
 //! - `--help`         print this usage on stdout and exit successfully
 //!
 //! `--tick-cap` and `--minutes` set the same budget: **the last one on the
@@ -32,9 +33,9 @@
 //! the summary goes to stdout, followed by the win-rate matrix (B3,
 //! [`onus::metrics::WinMatrix`]), the pentagon, the match-length distribution
 //! and the kill-criteria gate ([`onus::report::BalanceReport`]'s tables). The
-//! same reading is written as RON to `--report PATH` (atomically); a report
-//! that cannot be written fails the run rather than leaving a stale file to be
-//! read as this batch's.
+//! same reading is written as RON to `--report PATH` (atomically, and only when
+//! asked); a report that cannot be written fails the run rather than leaving a
+//! stale file to be read as this batch's.
 
 use std::process::ExitCode;
 
@@ -42,7 +43,7 @@ use onus::batch::{self, BatchSettings, MatchRecord, MatchResult, Tally};
 use onus::headless::{self, Orientation, SIM_HZ};
 use onus::metrics::WinMatrix;
 use onus::pentagon::PentagonReport;
-use onus::report::{BalanceReport, DEFAULT_REPORT_PATH};
+use onus::report::BalanceReport;
 
 fn usage() -> &'static str {
     "usage: balance [--seeds K] [--seed-base N] [--tick-cap T] [--minutes M] [--only a,b,c] [--report PATH] [--help]\n\
@@ -51,7 +52,7 @@ fn usage() -> &'static str {
      N x N x K x 2 matches.\n\
      --tick-cap and --minutes set the same budget: the last one given wins.\n\
      out-of-range values are refused, never truncated.\n\
-     --report PATH writes the machine-readable report (default balance_report.ron)."
+     --report PATH also writes the machine-readable report (e.g. --report balance_report.ron; opt-in)."
 }
 
 /// What the command line asked for. `--help` is a *request*, not an error: it
@@ -64,7 +65,7 @@ enum Request {
 /// A batch to play and where its report goes.
 struct Run {
     settings: BatchSettings,
-    report: std::path::PathBuf,
+    report: Option<std::path::PathBuf>,
 }
 
 /// Parse argv into a [`Request`]. Every flag is refused rather than guessed: a
@@ -73,7 +74,7 @@ struct Run {
 /// `u32`.
 fn parse(args: &[String]) -> Result<Request, String> {
     let mut settings = BatchSettings::default();
-    let mut report = std::path::PathBuf::from(DEFAULT_REPORT_PATH);
+    let mut report = None;
     let mut i = 0;
     while i < args.len() {
         let flag = args[i].as_str();
@@ -116,7 +117,7 @@ fn parse(args: &[String]) -> Result<Request, String> {
             "--only" => {
                 settings.only = Some(value()?.split(',').map(|s| s.trim().to_string()).collect())
             }
-            "--report" => report = value()?.into(),
+            "--report" => report = Some(value()?.into()),
             "--help" | "-h" => return Ok(Request::Help),
             other => return Err(format!("unknown flag `{other}`\n{}", usage())),
         }
@@ -381,11 +382,15 @@ fn main() -> ExitCode {
     // written to disk — the table and the file cannot disagree.
     let report = BalanceReport::of(&content, &settings, &records);
     print!("{report}");
-    if let Err(e) = report.write(&report_path) {
-        eprintln!("report: could not write {}: {e}", report_path.display());
-        return ExitCode::FAILURE;
+    // Written only on request (`--report PATH`): a default path would let
+    // any toy run overwrite a real batch's report.
+    if let Some(report_path) = report_path {
+        if let Err(e) = report.write(&report_path) {
+            eprintln!("report: could not write {}: {e}", report_path.display());
+            return ExitCode::FAILURE;
+        }
+        println!("report       {}", report_path.display());
     }
-    println!("report       {}", report_path.display());
     if t.total > 0 && t.timeouts == t.total {
         println!(
             "WARNING: every match hit the cap. This batch measures nothing about \

@@ -29,8 +29,8 @@ use crate::sim::content::Content;
 /// Bumped whenever a field changes meaning or shape.
 pub const REPORT_SCHEMA: u32 = 1;
 
-/// Where the balance binary writes by default (relative to its working
-/// directory; gitignored).
+/// The conventional name for the report (`balance --report balance_report.ron`,
+/// gitignored). The binary writes a report only when given `--report PATH`.
 pub const DEFAULT_REPORT_PATH: &str = "balance_report.ron";
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

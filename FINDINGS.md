@@ -3176,7 +3176,7 @@ K3 belongs to a roster batch (section 1, and the full-roster report in F-040).
 *Corrected after the B3 critic (K3 gates band share, F-038).*
 
 No RON changed. This is the reading F-039 promised. It is the report that
-`balance --seeds 4` writes to `balance_report.ron`:
+`balance --seeds 4 --report balance_report.ron` writes:
 - same seeds (`seed_at(0, k)`, k < 4), same roster order, same orientation
   order, shipped 15-min cap;
 - played by a scratch harness (not committed) that ran `run_match` in 3 threads
@@ -3259,3 +3259,20 @@ minutes, so K3 FAILs. The shortfall is mostly short games (39.6% end before
 | arclight > bulwark | 100% | | | holds |
 
 That is 3 hold and 2 undetermined; none fails.
+
+### The report file is opt-in
+
+*(After the B3 critic.)* The first version wrote `balance_report.ron` to the
+working directory on every run. Four earlier tests run the bin without
+`--report`, so every `cargo test` replaced a real batch's report in the
+package root with a 1-tick toy one. Two fixes were possible:
+- **Have the tests pass temp paths.** That fixes the suite but not the hazard:
+  any quick hand run (`--tick-cap 1`) would still clobber the file. It would
+  also mean editing two critic-authored test files.
+- **Make the file opt-in** (`--report PATH`). The tables always print to
+  stdout, and the file is written only where asked. This is the one chosen.
+
+`balance_report.ron` stays the conventional, gitignored name
+(`report::DEFAULT_REPORT_PATH`), and `--report` without a value is still an
+error. Pinned by `b3_report::without_report_the_binary_prints_the_tables_and_writes_no_file`
+and `critic_b3_gate::probe_running_the_bin_as_the_suite_does_leaves_the_package_root_report_alone`.

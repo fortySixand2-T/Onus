@@ -240,3 +240,26 @@ fn an_unwritable_report_path_fails_the_run() {
     assert!(!out.status.success(), "a report that was not written must not exit 0");
     assert!(String::from_utf8_lossy(&out.stderr).contains("report"));
 }
+
+/// The report file is opt-in: without `--report` the bin prints its tables and
+/// writes nothing, so a toy run (the suite's `--tick-cap 1` invocations, or a
+/// quick probe by hand) can never overwrite a real batch's report (critic B3).
+#[test]
+fn without_report_the_binary_prints_the_tables_and_writes_no_file() {
+    let dir = std::env::temp_dir().join(format!("onus_b3_cwd_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_balance"))
+        .args(["--only", "rush", "--tick-cap", "1"])
+        .current_dir(&dir)
+        .output()
+        .expect("binary runs");
+    let written = dir.join(DEFAULT_REPORT_PATH).exists();
+    let leftovers = std::fs::read_dir(&dir).unwrap().count();
+    std::fs::remove_dir_all(&dir).unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(!written, "no --report, no file");
+    assert_eq!(leftovers, 0, "nothing at all written into the working directory");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("kill gate"), "the tables still print:\n{stdout}");
+    assert!(!stdout.contains("report       "), "no report line without a report:\n{stdout}");
+}
