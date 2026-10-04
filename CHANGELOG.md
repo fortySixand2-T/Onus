@@ -459,3 +459,4 @@
 - [2026-10-03] Modified: assets/data/strategies.ron — F-036: turtle attack_at_army 15 -> 26 so it commits last again (19 320 vs mass_bulwark 18 750)
 - [2026-10-03] Modified: FINDINGS.md — F-035 closed (scripts match reality; mass_ripper's real second Gene-Vats; 32/100 vs 0/98 comparison; golden proof); F-036 turtle threshold table
 - [2026-10-03] Modified: BALANCE_PLAN.md — B3.5 three-barracks lever marked scripted-not-realised (F-035); B4 open item for multi-barracks / opening reservation
+- [2026-10-03] Created: tests/critic_b35_closure.rs — critic probes for the B3.5 closure: Wilson vs two independent oracles, exhaustive Verdict boundary sweep, trimmed-vs-restored openings differential (ignored by default; k=5 seeds, 1 000 pairs, zero differences), turtle-latest on unmeasured seeds
