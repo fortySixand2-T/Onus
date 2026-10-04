@@ -14,16 +14,19 @@
 //!     each unit once as predator and once as prey, closed;
 //!   - **a malformed cycle is reported, not panicked on** — an open chain, a
 //!     self-nemesis, a cycle that leaves nemesis-bearing units out;
-//!   - **hold / fail / undefined are three states, not a bool** — 0.51 holds,
-//!     exactly 0.5 fails, 0.49 fails, no decided match is undefined;
+//!   - **hold / fail / undetermined / undefined are four states, not a bool**,
+//!     and the verdict is read off the rate's **95% interval**, not the rate:
+//!     65 of 100 holds, 35 of 100 fails, exactly 0.5 is undetermined, so is
+//!     75% of 4 decided matches (the same 75% holds over 40), and no decided
+//!     match at all is undefined. A coin flip is not a broken design (F-031);
 //!   - **direction** — a link's rate is the predator's win rate over the prey,
 //!     never the transpose;
 //!   - **strategy mapping** is by build order, and a unit with no mass strategy
 //!     is a reported gap, not a panic;
 //!   - **the real batch** on the five mass probes reports what the sim actually
-//!     does — four links holding today, one failing. This test asserts the
-//!     machinery, and records the failing link as the measurement it is (F-025):
-//!     tuning it is B4's job.
+//!     does — three links holding today and two undetermined at 8 decided
+//!     matches a link (F-034); none fails. This test asserts the machinery, and
+//!     records the readings as the measurements they are: tuning is B4's job.
 //!
 //! Everything but the last test runs on synthetic records, so every expected
 //! value is exact.
@@ -249,7 +252,7 @@ fn a_roster_with_no_nemesis_at_all_is_reported() {
     assert_eq!(err, CycleError::NoNemesis);
 }
 
-// ---- hold / fail / undefined -------------------------------------------------
+// ---- hold / fail / undetermined / undefined ----------------------------------
 
 /// Records for every shipped link at the given rate-defining (wins, losses,
 /// timeouts), using the mass strategies.
@@ -267,24 +270,28 @@ fn pentagon_records(per_link: &[(u32, u32, u32); 5]) -> Vec<MatchRecord> {
     out
 }
 
+/// The four readable states, on one batch: a link holds only when its whole
+/// interval clears half, fails only when the whole interval is under it, and
+/// otherwise says so.
 #[test]
-fn holds_only_strictly_above_half() {
+fn holds_only_when_the_whole_interval_clears_half() {
     let content = shipped();
-    // sentinel 51/100 (holds), ripper 50/100 (fails, exactly 0.5),
-    // arclight 49/100 (fails), bulwark all-timeout (undefined),
-    // ravager 100/100 (holds).
-    let records = pentagon_records(&[(51, 49, 0), (50, 50, 0), (49, 51, 0), (0, 0, 4), (7, 0, 0)]);
+    // sentinel 65/100 (holds), ripper 50/100 (undetermined, exactly 0.5),
+    // arclight 35/100 (fails), bulwark all-timeout (undefined),
+    // ravager 100/100 of 7 (holds — 7 of 7 is [64.6, 100]).
+    let records = pentagon_records(&[(65, 35, 0), (50, 50, 0), (35, 65, 0), (0, 0, 4), (7, 0, 0)]);
     let report =
         PentagonReport::of(&content, &WinMatrix::of(&records)).expect("the shipped cycle");
 
     assert_eq!(link(&report, "sentinel").verdict, Verdict::Holds);
-    assert_eq!(link(&report, "sentinel").rate, Some(0.51));
-    assert_eq!(link(&report, "ripper").verdict, Verdict::Fails);
+    assert_eq!(link(&report, "sentinel").rate, Some(0.65));
+    assert_eq!(link(&report, "ripper").verdict, Verdict::Undetermined);
     assert_eq!(link(&report, "ripper").rate, Some(0.5));
     assert_eq!(link(&report, "arclight").verdict, Verdict::Fails);
-    assert_eq!(link(&report, "arclight").rate, Some(0.49));
+    assert_eq!(link(&report, "arclight").rate, Some(0.35));
     assert_eq!(link(&report, "bulwark").verdict, Verdict::Undefined);
     assert_eq!(link(&report, "bulwark").rate, None, "never 0.5");
+    assert_eq!(link(&report, "bulwark").interval, None, "no rate, no interval");
     assert_eq!(link(&report, "bulwark").n_decided, 0);
     assert_eq!(link(&report, "bulwark").n_timeout, 4);
     assert_eq!(link(&report, "ravager").verdict, Verdict::Holds);
@@ -292,17 +299,49 @@ fn holds_only_strictly_above_half() {
     assert_eq!(link(&report, "ravager").n_decided, 7);
 
     assert_eq!(report.holding(), 2);
-    assert_eq!(report.failing(), 2);
+    assert_eq!(report.failing(), 1);
+    assert_eq!(report.undetermined(), 1);
     assert_eq!(report.undefined(), 1);
     assert_eq!(report.gaps(), 0);
     assert_eq!(report.links().len(), 5);
     assert!(!report.all_hold());
 }
 
+/// **The sample size is part of the verdict.** The same 75% that holds over 40
+/// decided matches is `Undetermined` over 4 — and `Undetermined` is neither a
+/// hold nor a failure. This is F-031's lesson in one assertion: a bare
+/// `rate > 0.5` recorded an 8-match coin flip as a broken design, twice
+/// (F-025's and F-030's `sentinel > ripper`, which reproduces at 64-72% once
+/// the sample is 100).
+#[test]
+fn the_same_rate_on_too_few_matches_is_undetermined_not_a_verdict() {
+    let content = shipped();
+    for (wins, losses) in [(3u32, 1u32), (30, 10)] {
+        let records = pentagon_records(&[(wins, losses, 0); 5]);
+        let report = PentagonReport::of(&content, &WinMatrix::of(&records)).expect("cycle");
+        let n = wins + losses;
+        for l in report.links() {
+            assert_eq!(l.rate, Some(0.75), "the rate is the same at n={n}");
+            assert_eq!(l.n_decided, n);
+        }
+        if n == 4 {
+            assert_eq!(report.undetermined(), 5, "75% of 4 is [30.1, 95.4]");
+            assert_eq!(report.holding(), 0);
+            assert_eq!(report.failing(), 0, "undetermined is not a failed design");
+            assert_eq!(report.undefined(), 0, "undetermined is not undefined");
+            assert!(!report.all_hold(), "a coin-flip-wide reading is not a pentagon");
+        } else {
+            assert_eq!(report.holding(), 5, "75% of 40 is [59.8, 85.8]");
+            assert_eq!(report.undetermined(), 0);
+            assert!(report.all_hold());
+        }
+    }
+}
+
 #[test]
 fn every_link_holding_is_the_whole_pentagon() {
     let content = shipped();
-    let records = pentagon_records(&[(3, 1, 0); 5]);
+    let records = pentagon_records(&[(30, 10, 0); 5]);
     let report = PentagonReport::of(&content, &WinMatrix::of(&records)).expect("cycle");
     assert_eq!(report.holding(), 5);
     assert!(report.all_hold());
@@ -343,8 +382,10 @@ fn an_all_timeout_batch_is_undefined_not_balanced() {
 #[test]
 fn a_links_rate_is_the_predators_not_the_preys() {
     let content = shipped();
-    // sentinel beats ripper 3 of 4: transposed this would be 0.25 and fail.
-    let records = series("mass_sentinel", "mass_ripper", 3, 1, 0);
+    // sentinel beats ripper 30 of 40: transposed this would be 0.25 and fail.
+    // (40, not 4, so the interval resolves either way — the direction is the
+    // subject here, not the sample size.)
+    let records = series("mass_sentinel", "mass_ripper", 30, 10, 0);
     let report = PentagonReport::of(&content, &WinMatrix::of(&records)).expect("cycle");
     let l = link(&report, "sentinel");
     assert_eq!(l.predator, "sentinel");
@@ -353,7 +394,7 @@ fn a_links_rate_is_the_predators_not_the_preys() {
     assert_eq!(l.prey_strategy.as_deref(), Some("mass_ripper"));
     assert_eq!(l.rate, Some(0.75), "the predator's rate, not 0.25");
     assert_eq!(l.verdict, Verdict::Holds);
-    assert_eq!(l.n_decided, 4);
+    assert_eq!(l.n_decided, 40);
 
     // The transpose is the losing reading, and it is *not* what a link reports.
     let m = WinMatrix::of(&records);
@@ -368,7 +409,7 @@ fn reversing_the_data_reverses_which_side_must_win() {
     for (predator, prey) in DESIGNED {
         set_nemesis(&mut content, prey, Some(predator));
     }
-    let records = series("mass_sentinel", "mass_ripper", 3, 1, 0);
+    let records = series("mass_sentinel", "mass_ripper", 30, 10, 0);
     let report = PentagonReport::of(&content, &WinMatrix::of(&records)).expect("cycle");
     let l = link(&report, "ripper");
     assert_eq!(l.prey, "sentinel");
@@ -415,7 +456,7 @@ fn a_mass_strategy_is_found_by_its_build_order_not_its_name() {
 fn a_cycle_unit_with_no_mass_strategy_is_a_reported_gap() {
     let mut content = shipped();
     content.strategies.retain(|s| s.id != "mass_bulwark");
-    let records = pentagon_records(&[(3, 1, 0); 5]);
+    let records = pentagon_records(&[(30, 10, 0); 5]);
     let report = PentagonReport::of(&content, &WinMatrix::of(&records)).expect("cycle");
 
     // Both links that touch bulwark lose a side.
@@ -468,21 +509,62 @@ fn the_real_batch_reports_what_the_sim_actually_does() {
         );
     }
 
-    // The measurement as of B3 (F-025): four of five links hold, and the
-    // Bulwark > Ravager link loses outright. Asserted, not hidden — B4 tunes
-    // RON until it holds, and this test is what tells it that it did.
-    assert_eq!(report.holding(), 4, "four predicted counters win their matchup");
-    let broken = link(&report, "bulwark");
-    assert_eq!(broken.prey, "ravager");
-    assert_eq!(broken.verdict, Verdict::Fails);
-    assert_eq!(
-        broken.rate,
-        Some(0.0),
-        "mass_bulwark does not win a single decided match against mass_ravager"
-    );
-    for l in report.links() {
-        if l.predator != "bulwark" {
-            assert_eq!(l.verdict, Verdict::Holds, "{} > {}", l.predator, l.prey);
+    // The measurement as of B3.5, and what eight matches can honestly say about
+    // it. F-025's reading — four links holding and `bulwark > ravager` losing
+    // outright at 0.0% — is gone: the armour re-tune (F-031) turned that link
+    // into the pentagon's strongest resolved hold but a run this small cannot
+    // resolve all five. Eight decided matches put ~±28 points of 95% interval
+    // around every rate, so a link only reads `Holds` or `Fails` here when it is
+    // lopsided enough to clear 50% with that interval; otherwise it reads
+    // `Undetermined`, which is a statement about the sample, not the design.
+    // F-031's 100-match run is the design verdict; this test pins what *this*
+    // batch does, link by link, so a behavioural regression still shows.
+    //
+    // Three hold, two are undetermined, and **nothing fails** — the first time
+    // in the project's history the pentagon has no link read as broken.
+    assert_eq!(report.failing(), 0, "no link reads as broken design:\n{report}");
+    assert_eq!(report.holding(), 3, "three links resolve as holds:\n{report}");
+    assert_eq!(report.undetermined(), 2, "two links the sample cannot call:\n{report}");
+    assert_eq!(report.undefined(), 0, "every link has decided matches");
+
+    // Link by link: the rate, and whether eight matches can resolve it.
+    #[rustfmt::skip]
+    let expected: &[(&str, f64, Verdict)] = &[
+        ("bulwark",  0.875, Verdict::Holds),         // > ravager  — was 0.0% at B3
+        ("ravager",  0.625, Verdict::Undetermined),  // > sentinel — F-031's coin flip
+        ("sentinel", 0.500, Verdict::Undetermined),  // > ripper
+        ("ripper",   1.000, Verdict::Holds),         // > arclight
+        ("arclight", 1.000, Verdict::Holds),         // > bulwark
+    ];
+    for (predator, rate, verdict) in expected {
+        let l = link(&report, predator);
+        assert_eq!(
+            l.rate,
+            Some(*rate),
+            "{} > {}: the win rate moved\n{report}",
+            l.predator,
+            l.prey
+        );
+        assert_eq!(l.verdict, *verdict, "{} > {}\n{report}", l.predator, l.prey);
+        // ...and the verdict really is the interval's doing: an undetermined
+        // link is one whose interval straddles a half, a resolved one is not.
+        let (lo, hi) = l.interval.expect("a decided link has an interval");
+        match verdict {
+            Verdict::Undetermined => assert!(
+                lo <= 0.5 && hi >= 0.5,
+                "{} > {}: called undetermined on an interval [{lo:.3}, {hi:.3}] that does \
+                 not straddle a half",
+                l.predator,
+                l.prey
+            ),
+            Verdict::Holds => assert!(
+                lo > 0.5,
+                "{} > {}: called a hold on an interval [{lo:.3}, {hi:.3}] that reaches \
+                 below a half",
+                l.predator,
+                l.prey
+            ),
+            v => panic!("unexpected expectation {v:?}"),
         }
     }
 }

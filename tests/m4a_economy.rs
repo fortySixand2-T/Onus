@@ -686,14 +686,20 @@ fn load_mutated(dir_name: &str, from: &str, to: &str) -> Result<Content, String>
 fn a_gatherer_missing_its_gather_data_is_rejected_at_load() {
     // Silently defaulting these to 0 makes a worker loop forever mining nothing,
     // so the loader must refuse the file instead.
-    let err = load_mutated("no_capacity", "mvp_carry_capacity: 10,", "")
+    // The anchors are read off the shipped content, so a content re-tune
+    // (B3.5 moved the worker's load from 10 Alloy to 2) cannot silently turn
+    // this probe into a no-op against text that is no longer there.
+    let c = content();
+    let cap = c.unit("worker").unwrap().mvp_carry_capacity;
+    let err = load_mutated("no_capacity", &format!("mvp_carry_capacity: {cap},"), "")
         .expect_err("a gatherer with no carry capacity is invalid content");
     assert!(
         err.contains("worker"),
         "the error names the offender: {err}"
     );
 
-    let err = load_mutated("no_gather_ticks", "mvp_gather_ticks: 90,", "")
+    let ticks = c.unit("worker").unwrap().mvp_gather_ticks;
+    let err = load_mutated("no_gather_ticks", &format!("mvp_gather_ticks: {ticks},"), "")
         .expect_err("a gatherer with no gather time is invalid content");
     assert!(
         err.contains("worker"),

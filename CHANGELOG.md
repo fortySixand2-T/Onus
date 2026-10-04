@@ -400,3 +400,67 @@
 - [2026-09-19] Modified: CHANGELOG.md — logged the B3.5 AC0b critic probe file
 - [2026-09-19] Modified: assets/data/strategies.ron — schema note corrected: a building may now be opened more than once, and each opening is its own production line
 - [2026-09-19] Modified: BALANCE_PLAN.md — B3.5 parallel-production criterion ticked after critic PASS
+- [2026-09-19] Modified: assets/data/units.ron — B3.5 tempo tuning: worker load 10 -> 2 Alloy (the economy clock), with the reasoning in the schema note
+- [2026-09-19] Modified: assets/data/strategies.ron — B3.5 tempo tuning: the five mass probes on 3 production lines each at attack_at_army 20 / interval 300, synth and turtle widened to 4 lines with larger commitments; mvp and rush deliberately untouched
+- [2026-09-19] Created: tests/b35_tempo.rs — pins the arc: decided-match median of a named 18-match batch inside the 5-8 minute band, and a stated minimum of combat units per long match
+- [2026-09-19] Modified: tests/b1_probe_set.rs — MASS_PROBE_BARRACKS replaces the hard-coded single-barracks probe count; knob identity now compares every opening's tick and offset, and domain span is counted by distinct building
+- [2026-09-19] Modified: FINDINGS.md — F-029 records the tempo levers (including every reject), the before/after distributions, the density reading, the golden-recompute proof, and the cap/pentagon blocker that stops the checkbox
+- [2026-09-20] Modified: BALANCE_PLAN.md — B3.5: separate the tick cap (raised to 15 min, a backstop) from the 5-8 min design band, and fix the armour grind that makes heavy matchups unresolvable
+- [2026-10-01] Modified: FINDINGS.md — F-031 opened: the mitigation-1 armour question re-searched over the commitment threshold, with the first six rows of the walk
+- [2026-10-01] Modified: FINDINGS.md — F-031: the mitigation-2 counterfactual walk, showing the commitment threshold (not the armour) carries most of the band-share gain
+- [2026-10-01] Modified: FINDINGS.md — F-031: the decisive 400-match mitigation 1 vs 2 comparison at the walk's optimum, and the pentagon's monotone degradation along the commitment threshold
+- [2026-10-01] Modified: FINDINGS.md — F-031: the kept content re-measured at 400 matches (band 38%, 2.00% timeouts, pentagon 5/5) and the sample-size correction to F-030's sentinel > ripper reading
+- [2026-10-01] Modified: FINDINGS.md — F-031: the 2x2 at 400 matches per cell — the armour change is worth +2 +/- 2.5 points of band share, i.e. nothing, and buys tail instead
+- [2026-10-01] Modified: FINDINGS.md — F-031: the isolated armour A/B at the kept threshold, 400 matches — mitigation 1 loses 9.5 points of band share (2.8 SE)
+- [2026-10-01] Modified: FINDINGS.md — F-031 closed: mitigation_per_armor stays at 2 (reverted with numbers), and the pentagon re-read at 25 seeds (1 250 matches) holds 5 of 5 links with every CI excluding 50%
+- [2026-10-01] Modified: FINDINGS.md — F-031: flagged b3_pentagon's F-025 pin (4/5 with bulwark > ravager at 0.0%) as a content-driven value change, with the power argument against its 8-match verdict
+- [2026-10-01] Modified: FINDINGS.md — F-031: how to reproduce every row (balance invocations) and where band share / p90 came from
+- [2026-10-01] Created: tests/critic_b35_armour.rs — critic probes for B3.5/F-031: shipped mitigation_per_armor is 2, the five mass probes stay knob-identical at attack_at_army 10, mvp untouched, a pentagon link pools 4 matches per seed (2 per mirror), Tally quantiles include capped matches, and the censored arclight > bulwark cell holds under worst-case censoring
+- [2026-10-02] Modified: tests/critic_b35_armour.rs — added a_holds_verdict_says_nothing_about_the_interval: the pentagon's `holds` is `rate > 0.5`, so the measured 52.6% ravager > sentinel link (n=196) is a hold whose 95% interval straddles 50%
+- [2026-10-02] Modified: FINDINGS.md — F-031 correction B1: `ravager > sentinel` is UNDETERMINED (pooled 236/430 = 54.9%, CI [50.2, 59.5], does not reproduce across seed bases); the pentagon reads 4 holding + 1 undetermined, not 5/5; withdrew the "cycle is intact" and "both broken links were noise" claims
+- [2026-10-02] Modified: FINDINGS.md — F-031 correction B2: the re-pin note said "5 of 5 links holding"; the test's own 2-seed batch reads 4 of 5 with a different failing link (`sentinel > ripper` at exactly 50.0% of 8, while `bulwark > ravager` holds at 87.5%), which is why the failure lands at line 477 and not at line 474's holding()==4
+- [2026-10-02] Modified: FINDINGS.md — F-031 correction B3: quantiles are over ALL matches (Tally::of pushes r.ticks for timeouts too), not decided-only; recorded the measured two-basis gap (6:21/10:57/14:48 vs printed 6:26/11:35/15:00 at 400 matches; 5:37 vs 6:10 at 1 250) and withdrew the parsed-median cross-check for batches with timeouts
+- [2026-10-02] Modified: FINDINGS.md — F-031 secondary corrections: base-row `units` is 4621 (4261 was A1's value copied into base and A3); the mitigation-2 counter-sweep covered only A=16/A=18, not the identical range; worst-case-censoring line for the 100.0% arclight > bulwark cell (88/100, CI [80.2, 93.0]); residual timeouts are 41/1250 (3.28%) concentrated 18/100 and 14/100, stated as the AC's unmet remainder for B4; band-share range corrected to ~31-38%
+- [2026-10-02] Modified: assets/data/strategies.ron — F-9 comment fix: the TEMPO note said the mass probes commit at 20 units when the shipped data is `attack_at_army: 10` (value changed in 3395214, comment written in 9a23f42). Comment only; no value moved.
+- [2026-10-02] Modified: FINDINGS.md — F-031: cross-pointer on the "why 25 seeds" power argument — the ±5 budget is nearer 150 seeds once clustering is counted, and ~±10 returns *undetermined* on a genuinely ~55% link
+- [2026-10-02] Modified: BALANCE_PLAN.md — ticked the four B3.5 checkboxes; rewrote the armour box as a measured negative (the grind was a misdiagnosis) and recorded the band/pentagon results with their unmet remainders
+- [2026-10-02] Modified: FINDINGS.md — F-032 opened: the item-4 proof that every pinned state_hash golden moved because `assets/data` moved and nothing else. `main`'s RON under the post-change binary passes 839 tests in both profiles, failing only the five assertions this branch wrote about the new content; no golden, budget or pentagon pin is among them
+- [2026-10-02] Modified: tests/m4a_economy.rs — read the worker's carry/gather anchors off the shipped content so the loader probe cannot rot (B3.5 moved the load 10 -> 2)
+- [2026-10-02] Modified: tests/critic_m4a.rs — derive "room for less than one load" from the content's carry capacity instead of a pinned 5
+- [2026-10-02] Modified: tests/critic_m4b.rs — compare the carried load against the content's capacity, not a hardcoded 10
+- [2026-10-02] Modified: tests/critic_m4c.rs — anchor the building-HP-scale mutation on the shipped value (40 -> 420)
+- [2026-10-02] Modified: tests/m4c_ai.rs — derive the HQ-kill horizon from content (kill_budget) instead of a pinned 3 000 ticks
+- [2026-10-02] Modified: tests/b1_matchup.rs — re-pinned the default-matchup state/journal goldens (3 seeds) on B3.5 content, with the F-032 licence recorded at the site
+- [2026-10-02] Modified: tests/b1_strategies.rs — re-pinned the one-barracks-default replay goldens (seeds 4, 11)
+- [2026-10-02] Modified: tests/b2_headless.rs — re-pinned BENCH_FIXTURE_HASHES (6 ticks) and BENCH_FIXTURE_FOLD
+- [2026-10-02] Modified: tests/b2_orientation.rs — re-pinned the two bench-fixture ticks it re-asserts
+- [2026-10-02] Modified: tests/b35_parallel.rs — re-pinned the shipped-default and single-opening neutrality goldens
+- [2026-10-02] Modified: tests/b35_queue_depth.rs — re-pinned the shipped-default and depth-1 neutrality goldens
+- [2026-10-02] Modified: tests/critic_b2_ac4.rs — re-pinned the independent state-hash goldens (3 seeds)
+- [2026-10-02] Modified: tests/critic_b35_ac0.rs — re-pinned all nine depth-1 (trace, end, journal) rows
+- [2026-10-02] Modified: tests/critic_b35_ac0b.rs — re-pinned the eight shipped-matchup (hash, journal) pairs
+- [2026-10-02] Modified: tests/b1_probe_set.rs — re-derived the two commitment horizons from the shipped match cap (DEFAULT_TICK_CAP) instead of a hand-picked 12 000 ticks
+- [2026-10-02] Modified: tests/critic_b1_ac3.rs — same re-derivation for three horizons, and the mass-probe masking precondition now allows repeated openings of one building
+- [2026-10-02] Modified: tests/critic_b1.rs — raised the rich/poor placement horizon to 12 000 ticks (the poor commander first affords its opening at 3 450)
+- [2026-10-02] Modified: tests/critic_p2.rs — raised the determinism fixture to 12 000 ticks (seed 7 now decides at 9 498)
+- [2026-10-02] Modified: tests/critic_m4b.rs — second carried-load anchor read from content too
+- [2026-10-02] Modified: FINDINGS.md — F-032 old-to-new re-pin table; F-033 (six horizons re-derived, five content anchors)
+- [2026-10-02] Modified: tests/b3_pentagon.rs — re-pinned the real-batch reading interval-aware (3 hold, 2 undetermined, 0 fail) with per-link rates and interval checks
+- [2026-10-02] Modified: FINDINGS.md — F-034, the third pentagon verdict and the shipped reading at eight matches a link
+- [2026-10-03] Modified: FINDINGS.md — F-034: corrected why sentinel > ripper reads undetermined at n=8 (sample size, not closeness)
+- [2026-10-03] Modified: tests/b1_probe_set.rs, tests/critic_b1.rs, tests/critic_b1_ac3.rs, tests/critic_p2.rs — removed four zz_ measurement tests that leaked into 62190b3
+- [2026-10-03] Modified: tests/critic_b1_ac3.rs, FINDINGS.md — mass-vs-mass resolution horizon is the match cap; F-033 row
+- [2026-10-03] Modified: tests/b1_probe_set.rs, FINDINGS.md — barracks-placement horizon is the match cap (still red); F-033 row; F-035 records the opening starvation
+- [2026-10-03] Modified: FINDINGS.md — F-035 wording on the peak-stockpile measurement
+- [2026-10-03] Modified: assets/data/strategies.ron — F-035: scripts list only the openings the sim places (mass probes 1 barracks, mass_ripper 2; synth_steel_flesh 2; turtle 3; synth_triad reordered to placement order)
+- [2026-10-03] Modified: tests/b1_probe_set.rs — MASS_PROBE_BARRACKS back to 1 with mass_ripper's named F-035 exception; gating placement test plays unopposed for the full match cap
+- [2026-10-03] Modified: tests/critic_b1_ac3.rs — mass-probe struct identity compares every field with openings cut to the shared first one (F-035)
+- [2026-10-03] Modified: tests/critic_b35_armour.rs — mass-probe line count may differ only for mass_ripper (F-035)
+- [2026-10-03] Modified: assets/data/strategies.ron — F-036: turtle attack_at_army 15 -> 26 so it commits last again (19 320 vs mass_bulwark 18 750)
+- [2026-10-03] Modified: FINDINGS.md — F-035 closed (scripts match reality; mass_ripper's real second Gene-Vats; 32/100 vs 0/98 comparison; golden proof); F-036 turtle threshold table
+- [2026-10-03] Modified: BALANCE_PLAN.md — B3.5 three-barracks lever marked scripted-not-realised (F-035); B4 open item for multi-barracks / opening reservation
+- [2026-10-03] Created: tests/critic_b35_closure.rs — critic probes for the B3.5 closure: Wilson vs two independent oracles, exhaustive Verdict boundary sweep, trimmed-vs-restored openings differential (ignored by default; k=5 seeds, 1 000 pairs, zero differences), turtle-latest on unmeasured seeds
+- [2026-10-03] Modified: tests/b1_probe_set.rs, tests/critic_b1_ac3.rs — turtle commit-tick comments updated to 19 320 (F-036)
+- [2026-10-03] Modified: tests/b3_pentagon.rs — module doc states the pinned reading: 3 holding, 2 undetermined, none failing
+- [2026-10-03] Modified: tests/m4c_ai.rs — sim_app_with_alloy's doc comment reattached to its function
+- [2026-10-03] Modified: FINDINGS.md — F-033 table points to F-036 for the turtle's new commit tick

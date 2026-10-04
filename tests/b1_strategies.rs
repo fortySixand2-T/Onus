@@ -551,9 +551,17 @@ fn the_fingerprint_covers_every_strategy_and_every_field() {
 ///
 /// The two hashes below were taken from the pre-B1 build (`mvp_ai` in
 /// `units.ron`) at tick 3_000 of the standard AI-vs-AI fixture.
+///
+/// **B3.5 re-pin (F-032):** these numbers were recomputed on B3.5's content.
+/// Because content is data, the tempo re-tune (F-029/F-030) moves every pinned
+/// per-tick `state_hash`; F-032 demonstrates — by replaying the pre-tune
+/// `assets/data` under this identical binary and watching every golden below
+/// pass at its old value — that the move is content-driven and nothing else.
+/// What the assertion means is unchanged: this match is frozen, and any Rust
+/// change that moves it is a regression.
 #[test]
 fn the_one_barracks_default_replays_exactly_as_it_did_before_b1() {
-    for (seed, golden) in [(4u64, 0xa71f_64ca_d502_03e9u64), (11, 0x5b39_8ee4_7854_23dc)] {
+    for (seed, golden) in [(4u64, 0xbd74_941f_b3ca_e489u64), (11, 0x8700_8a7d_696d_d45c)] {
         let mut app = ai_vs_ai_on(content(), seed);
         tick(&mut app, 3_000);
         let got = onus::sim::state_hash(app.world_mut());

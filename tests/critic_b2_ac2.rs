@@ -19,7 +19,7 @@ fn content() -> Content {
 }
 
 /// A matchup that decides quickly, so a boundary can be probed either side of
-/// the exact deciding tick without paying for a full eight minutes of sim.
+/// the exact deciding tick without paying for the full cap in sim.
 const DECIDER: (&str, &str) = ("rush", "rush");
 const DECIDER_SEED: u64 = 0;
 
@@ -182,8 +182,12 @@ fn probe_default_match_settings_still_the_pinned_fixture() {
     assert_eq!(d.strategies, [None, None]);
     assert!(!d.hashing);
     assert_eq!(d.tick_cap, DEFAULT_TICK_CAP);
-    assert_eq!(DEFAULT_TICK_CAP, 8 * 60 * SIM_HZ);
-    assert_eq!(DEFAULT_TICK_CAP, 28_800);
+    // Fifteen minutes since B3.5 (F-030): the cap is an anti-stalemate
+    // backstop, deliberately above the 5-8 minute design band rather than
+    // equal to its top, where it censored ordinary long matches. Both forms
+    // are still asserted, so the constant cannot drift without being seen.
+    assert_eq!(DEFAULT_TICK_CAP, 15 * 60 * SIM_HZ);
+    assert_eq!(DEFAULT_TICK_CAP, 54_000);
     // The default fixture plays what it played before the cap field existed.
     let mut app = headless::ai_vs_ai(content(), &MatchSettings::default().with_hashing(true))
         .expect("the default fixture needs no names");

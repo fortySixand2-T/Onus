@@ -8,9 +8,13 @@
 //!     link, its direction or its verdict;
 //!   - a link's rate is the predator's over the prey, and `of_records` agrees
 //!     with `of(WinMatrix::of(..))`;
-//!   - the four verdicts are kept apart: exactly 0.5 fails (including a cell
-//!     of nothing but decided draws), a hair above 0.5 holds, undecided is
-//!     `Undefined`, an unmeasurable link is `NoStrategy`;
+//!   - the five verdicts are kept apart, and the verdict is read off the
+//!     rate's **95% Wilson interval** rather than the bare rate (F-031): a
+//!     cell whose interval straddles 0.5 is `Undetermined` — exactly 0.5, a
+//!     hair either side of it, a cell of nothing but decided draws, and a big
+//!     rate over three matches all land there — a resolved win is `Holds`, a
+//!     resolved loss is `Fails`, nothing *decided* at all is `Undefined`, and
+//!     an unmeasurable link is `NoStrategy`;
 //!   - **an all-undefined or all-`NoStrategy` report never reads as balanced**;
 //!   - every malformed shape is a distinct reported error, never a panic, and
 //!     never a plausible-looking cycle;
@@ -156,15 +160,16 @@ fn reordering_units_cannot_change_a_link_or_a_verdict() {
 #[test]
 fn an_asymmetric_fixture_pins_the_direction_and_the_two_constructors_agree() {
     let content = shipped();
-    // bulwark > ravager, won 3 of 4 by the *predator*. Transposed it is 0.25
+    // bulwark > ravager, won 30 of 40 by the *predator*. Transposed it is 0.25
     // and the verdict flips, so this fixture cannot pass a transposed reading.
-    let records = series("mass_bulwark", "mass_ravager", 3, 1, 0, 0);
+    // 40 decided, not 4, so the interval resolves both readings (F-031).
+    let records = series("mass_bulwark", "mass_ravager", 30, 10, 0, 0);
     let report = PentagonReport::of(&content, &WinMatrix::of(&records)).expect("closed");
     let l = link(&report, "bulwark");
     assert_eq!(l.prey, "ravager");
     assert_eq!(l.rate, Some(0.75), "the predator's rate, never the transpose");
     assert_eq!(l.verdict, Verdict::Holds);
-    assert_eq!(l.n_decided, 4);
+    assert_eq!(l.n_decided, 40);
 
     let from_records = PentagonReport::of_records(&content, &records).expect("closed");
     assert_eq!(from_records, report, "of_records == of(WinMatrix::of(..))");
@@ -200,41 +205,87 @@ fn shipped_records(per_link: &[(u32, u32, u32, u32); 5]) -> Vec<MatchRecord> {
     out
 }
 
+/// The boundary, and it is **not** a strict inequality on the rate any more
+/// (F-031): a hair either side of half is a hair either side of half, and no
+/// sample this fixture can reach distinguishes it from a coin flip. Five
+/// different ways of being even, five `Undetermined` — and none of them is a
+/// statement that the design is broken.
 #[test]
-fn exactly_half_fails_and_a_hair_above_half_holds() {
+fn every_way_of_being_even_reads_undetermined_not_failed() {
     let content = shipped();
     let records = shipped_records(&[
         (1024, 1024, 0, 0), // exactly 0.5
         (1025, 1023, 0, 0), // 0.50048828125 — the smallest margin this denominator allows
         (0, 0, 8, 0),       // nothing but decided draws: exactly 0.5, and decided
         (1023, 1025, 0, 0), // just below
-        (2, 0, 1, 0),       // 2.5 / 3
+        (2, 0, 1, 0),       // 2.5 / 3 — a big rate on no matches at all
     ]);
     let report = PentagonReport::of(&content, &WinMatrix::of(&records)).expect("closed");
 
     assert_eq!(link(&report, "bulwark").rate, Some(0.5));
     assert_eq!(
         link(&report, "bulwark").verdict,
-        Verdict::Fails,
-        "a dead-even matchup is not a counter"
+        Verdict::Undetermined,
+        "a dead-even matchup is not a counter — and not a broken counter either"
     );
     let hair = link(&report, "ravager");
     assert!(hair.rate.unwrap() > 0.5 && hair.rate.unwrap() < 0.501, "{hair:?}");
-    assert_eq!(hair.verdict, Verdict::Holds, "strictly above half holds");
+    assert_eq!(
+        hair.verdict,
+        Verdict::Undetermined,
+        "0.05% above half over 2048 matches is [47.9, 52.2] — nothing is established"
+    );
     let draws = link(&report, "sentinel");
     assert_eq!(draws.rate, Some(0.5), "eight mutual losses are eight decided draws");
     assert_eq!(draws.n_decided, 8);
     assert_eq!(draws.n_timeout, 0);
-    assert_eq!(draws.verdict, Verdict::Fails);
-    assert_eq!(link(&report, "ripper").verdict, Verdict::Fails);
+    assert_eq!(draws.verdict, Verdict::Undetermined);
+    assert_eq!(link(&report, "ripper").verdict, Verdict::Undetermined);
     assert_eq!(link(&report, "arclight").rate, Some(2.5 / 3.0));
-    assert_eq!(link(&report, "arclight").verdict, Verdict::Holds);
+    assert_eq!(
+        link(&report, "arclight").verdict,
+        Verdict::Undetermined,
+        "83% of three matches is [31.0, 98.2]"
+    );
 
-    assert_eq!(report.holding(), 2);
-    assert_eq!(report.failing(), 3);
-    assert_eq!(report.undefined(), 0);
+    assert_eq!(report.holding(), 0);
+    assert_eq!(report.failing(), 0);
+    assert_eq!(report.undetermined(), 5);
+    assert_eq!(report.undefined(), 0, "every one of these cells has a rate");
     assert_eq!(report.gaps(), 0);
     assert!(!report.all_hold());
+}
+
+/// And the two decided verdicts are still told apart — an interval-aware
+/// verdict is not a verdict that never commits. Given a margin its sample can
+/// resolve, a hold is a hold and a failure is a failure.
+#[test]
+fn a_resolved_hold_and_a_resolved_failure_are_still_told_apart() {
+    let content = shipped();
+    let records = shipped_records(&[
+        (65, 35, 0, 0),   // 65% of 100 — [55.3, 73.6]
+        (35, 65, 0, 0),   // 35% of 100 — [26.4, 44.7]
+        (60, 40, 0, 0),   // 60% of 100 — [50.2, 69.1], the narrowest hold here
+        (40, 60, 0, 0),   // 40% of 100 — [30.9, 49.8], the narrowest failure
+        (0, 0, 0, 7),     // nothing decided at all
+    ]);
+    let report = PentagonReport::of(&content, &WinMatrix::of(&records)).expect("closed");
+    assert_eq!(link(&report, "bulwark").verdict, Verdict::Holds);
+    assert_eq!(link(&report, "ravager").verdict, Verdict::Fails);
+    assert_eq!(link(&report, "sentinel").verdict, Verdict::Holds);
+    assert_eq!(link(&report, "ripper").verdict, Verdict::Fails);
+    assert_eq!(link(&report, "arclight").verdict, Verdict::Undefined);
+    assert_eq!(report.holding(), 2);
+    assert_eq!(report.failing(), 2);
+    assert_eq!(report.undetermined(), 0);
+    assert_eq!(report.undefined(), 1);
+
+    // Every link prints its interval beside its rate, so no table can quote a
+    // verdict without the width it was read at.
+    let shown = report.to_string();
+    for (lo, hi) in [("55.3", "73.6"), ("26.4", "44.7"), ("50.2", "69.1"), ("30.9", "49.8")] {
+        assert!(shown.contains(&format!("[{lo}, {hi}]")), "interval missing from:\n{shown}");
+    }
 }
 
 /// The B3 probe, in this checkbox's clothing: nothing decided must never read

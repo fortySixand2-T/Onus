@@ -13,6 +13,13 @@
 //   mvp_train_ticks  — FixedUpdate ticks (60 Hz) to finish the unit
 //   mvp_carry_capacity / mvp_gather_ticks — worker gather loop (load size, and
 //                       ticks spent harvesting one load at a deposit)
+//                       `mvp_carry_capacity` is the **economy clock**: income
+//                       is loads/second times this, and an army costs a fixed
+//                       number of Alloy, so it sets how many minutes a force
+//                       takes to assemble. B3.5's tempo tuning (F-029) cut it
+//                       from 10 to 2 — a 5x slower build-up — which is how the
+//                       decided-match median moved from 1:16 into the brief's
+//                       5-8 minute band without anyone's army getting smaller.
 // `mvp_buildings` is the building cost table (HQ + the three barracks); each
 // lists the unit ids it can produce.
 //
@@ -44,7 +51,7 @@
             mvp_kind: Worker,
             mvp_alloy_cost: 10,
             mvp_train_ticks: 600,
-            mvp_carry_capacity: 10,
+            mvp_carry_capacity: 2,   // B3.5 tempo (F-029): was 10
             mvp_gather_ticks: 90,
             mvp_attack_ticks: 0, mvp_attack_range: 0.0,   // non-combatant
             speed: 5, offense: 0, defense: 3, armor: 0,
@@ -112,7 +119,7 @@
         damage_per_offense: 5,     // Offense -> damage per hit
         mitigation_per_armor: 2,   // Armor  -> flat mitigation per hit
         speed_per_point: 36.0,     // Speed  -> world units per second
-        building_hp_per_defense: 40,   // buildings' Defense -> HP pool (a base
+        building_hp_per_defense: 420,   // buildings' Defense -> HP pool (a base
                                        // outlasts a soldier without leaving the
                                        // 1-10 design scale)
         max_stat: 10,              // the design scale is 1-10; stats above this

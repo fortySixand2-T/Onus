@@ -88,13 +88,67 @@ mean — is provisional until the arc is right.
       across every barracks that can produce the unit. **Ship the data unchanged** (one opening
       per building, as today), so the capability lands behaviour-neutral and every pinned
       `state_hash` golden is untouched — the tuning that follows is then separable from it.
-- [ ] **Tune only RON** (`units.ron` HQ HP / costs / `mvp_combat` scaling, `resources.ron`
+- [x] **Separate the cap from the target band** (decided 2026-09-20). The 8-min cap and the
+      5–8 min band are the same number, so any realistic spread has its tail *censored*: at the
+      shipped cap the tuned candidate read 10.8% timeouts and left `bulwark > ravager`
+      **undefined** (0 decided), while the same content at a 20-min cap read median 6:32,
+      max 10:45 and **0 timeouts** (F-029). A cap is an anti-stalemate backstop, not a
+      statement of design intent. Raise `DEFAULT_MATCH_SECS` (`src/headless.rs`) to **15 min**
+      — the one Rust line the RON-only rule bends for, and it is harness config, not content —
+      and report **"% of decided matches inside the 5–8 min band"** as the design metric, with
+      the timeout rate kept separately as the stalemate signal.
+- [x] **The armour grind: a misdiagnosis, and a measured negative** (closed 2026-10-02,
+      F-030 + F-031). The premise of this box was wrong. The arithmetic is real — a Bulwark
+      mitigates `armor 9 × mitigation_per_armor 2 = 18` against its own `offense 4 ×
+      damage_per_offense 5 = 20` — but it was never what clipped the heavy class. Tick-by-tick
+      instrumentation of the Bulwark mirror found **two 25-unit armies, zero casualties, both
+      HQs untouched at ten minutes**: the armies were not fighting at all. The length came from
+      `attack_at_army: 20` against a 5× slower economy, so a match was "time to assemble twenty
+      units" and the first wave home ended it. Fixed instead by **dropping commitment
+      thresholds** (probes 20 → 10) and **raising HQ HP** (`building_hp_per_defense` 40 → 420),
+      so a loser rebuilds and fights again; density went from 9.9 casualties a match to 30.4.
+      `mitigation_per_armor` 2 → 1 was then measured twice *in the regime where fights happen*
+      and **rejected both times**: it cuts heavy fights 18–22% and the light end 1%, but costs
+      ~7–9 points of band share (36.5% → 29.1% on matched seeds, 2.2 SE) by compressing matches
+      *below* the 5-min floor while taking almost nothing off the cap, and it does not help the
+      pentagon either. **Unmet remainder, deferred to B4:** the residual censoring is the
+      glass-cannon Arclight (`offense 9 / defense 2 / armor 2`) against armour — `mass_arclight`
+      vs `mass_ravager` 18/100 and vs `mass_bulwark` 14/100 reach the cap. No cell is
+      `Undefined`, and the worst survives charging every timeout to the predator as a loss
+      (88.0%, CI [80.2, 93.0]), so B3 has a readable matrix — but that residue is a unit-stat
+      question, not a tempo one.
+- [x] **Tune only RON** (`units.ron` HQ HP / costs / `mvp_combat` scaling, `resources.ron`
       economy, `strategies.ron` tempo — **never Rust**) to bring the decided-match median
       into 5–8 min with few timeouts — now with `queue_depth` and barracks count among the
       levers (the mass probes must all take the same count, or they stop being comparable). Ledger the
       levers tried, the one kept, and the before/after length distribution.
-- [ ] **Re-run the batch and re-check the pentagon at the new length.** Report whether the
+      **Result** (F-029 → F-030 → F-031): median **1:16 → 6:21–6:36**, inside the band on every
+      independent sample, at **2–3% timeouts**, with density up from 10.6 to ~44 units built a
+      match — so F-026's trap (a longer clock bought by a smaller army) is absent. Levers kept:
+      `mvp_carry_capacity` 10 → 2, three barracks per mass probe (**scripted, not realised** —
+      F-035: under this economy no probe affords a third opening and only `mass_ripper` a
+      second, at tick ~9 330; the scripts now list only what is placed, so the Ripper readings
+      are of a two-line army and the other probes' of one barracks), `attack_at_army` 3 → 10,
+      `building_hp_per_defense` 40 → 420. Rejected with numbers: HQ HP as a lengthener,
+      `hp_per_defense` 20/14/10, `mitigation_per_armor` 1, `mvp_gather_ticks` 120. `mvp` is
+      deliberately untuned (its pinning test would change meaning); the cost is recorded.
+      **The band itself is not met and cannot be by tempo:** only **31–38%** of decided matches
+      land in 5–8 min, with **39–44% finishing under 5:00** because the Ripper and Sentinel
+      mirrors end at 2:29 and 3:38 and no commitment threshold lengthens a mirror. That floor is
+      B4's to lift.
+- [x] **Re-run the batch and re-check the pentagon at the new length.** Report whether the
       F-025 broken link persists or was a short-game artifact.
+      **Answer: it was an artifact of the short game, and of an 8-match sample.** `bulwark >
+      ravager`, pinned by F-025 at exactly 0.0%, measures **82.5–85.7%** — the link is not
+      broken, it was *reversed* by the old tempo. At 25 seeds / 1 250 matches the cycle reads
+      **4 holding + 1 undetermined** (`ripper > arclight` 93%, `arclight > bulwark` 96.5–100%,
+      `bulwark > ravager` 82.5–85.7%, `sentinel > ripper` 64–72%); **`ravager > sentinel` is a
+      coin flip** — five readings pool to 54.9%, CI [50.2, 59.5] — and settling it to ±5 needs
+      ~150 seeds once a seed's 4 correlated matches are discounted. F-030's `sentinel > ripper`
+      FAILS was itself sampling noise. **Standing lesson (F-031):** a CI excluding 50% on one
+      seed base is a hypothesis, not a verdict — reproduce on a disjoint base before writing
+      "holds", and note that `PentagonReport::holding()` is a bare `rate > 0.5` with no interval,
+      which is why `tests/b3_pentagon.rs` should assert with one.
 
 Because content is data, a RON change moves every pinned per-tick `state_hash` golden. With
 **no Rust touched**, any golden that moves is content-driven by construction — that is the
@@ -136,6 +190,15 @@ all-timeout run is flagged, not reported as balanced.
       criteria; re-run; iterate.
 - [ ] Ledger F-016+: the failing matchup(s), the change made, before/after win rates,
       final kill-criteria status.
+- [ ] **Multi-barracks as a real capability (open, from F-035).** The AI places an opening
+      only when the stockpile covers its cost, and its army step spends the stockpile on
+      anything cheaper first, so under B3.5's economy openings past the first rarely go up
+      (only `mass_ripper`'s second does). Add opening reservation — the army step holds back
+      the Alloy of a due opening — so scripted production lines are built. It changes every
+      multi-opening strategy and moves goldens, so it lands with its own proof. Then make the
+      five mass probes' opening lists identical again (empty
+      `b1_probe_set::MASS_PROBE_OPENING_EXCEPTIONS` and drop the per-probe exceptions in
+      `critic_b1_ac3` / `critic_b35_armour`).
 
 ## B5 — The human fun gate (not automatable — and required)
 

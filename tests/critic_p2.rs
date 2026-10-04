@@ -191,7 +191,11 @@ fn no_configuration_of_the_writer_changes_a_single_tick_of_the_sim() {
     // Past the decision, so the enabled writers actually reach the filesystem
     // during the run being compared — a writer that never acted would prove
     // nothing about a writer that did.
-    const TICKS: u32 = 4_800;
+    // Past the decision, re-measured on B3.5's content: seed 7 is decided at
+    // tick 9 498 (it was inside 4 800 before the economy slowed). The horizon
+    // has to clear the decision or the vacuity check below is the thing that
+    // fails, and nothing is proved about a writer that wrote (F-033).
+    const TICKS: u32 = 12_000;
     let a = Scratch::new("determinism-a");
     let b = Scratch::new("determinism-b");
 

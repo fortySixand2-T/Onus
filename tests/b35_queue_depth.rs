@@ -304,12 +304,20 @@ fn ordered_army(app: &App, f: Faction) -> usize {
 /// unedited — the pre-AC2 state hashes that have survived every milestone
 /// since. If adding a field to `strategies.ron` had changed a single tick of
 /// the default match, these would move.
+///
+/// **B3.5 re-pin (F-032):** these numbers were recomputed on B3.5's content.
+/// Because content is data, the tempo re-tune (F-029/F-030) moves every pinned
+/// per-tick `state_hash`; F-032 demonstrates — by replaying the pre-tune
+/// `assets/data` under this identical binary and watching every golden below
+/// pass at its old value — that the move is content-driven and nothing else.
+/// What the assertion means is unchanged: this match is frozen, and any Rust
+/// change that moves it is a regression.
 #[test]
 fn the_shipped_default_matchup_is_unmoved_by_the_new_field() {
     for (seed, state_golden, journal_golden) in [
-        (4u64, 0xa71f_64ca_d502_03e9u64, 0xe78e_ebdc_5c2c_a733u64),
-        (11, 0x5b39_8ee4_7854_23dc, 0x00b7_f8d8_713f_e467),
-        (23, 0xf4b5_7d1c_3c3f_2af7, 0x4682_1006_f2fa_e62a),
+        (4u64, 0xbd74_941f_b3ca_e489u64, 0x5567_5b78_44c3_d493u64),
+        (11, 0x8700_8a7d_696d_d45c, 0xb27b_6a66_4add_cfd7),
+        (23, 0x0fe5_2558_759f_6817, 0xb86b_2ad6_d1ed_0efa),
     ] {
         let c = content();
         let commanders = AiCommanders::new(seed, &[Faction::A, Faction::B]);
@@ -334,6 +342,14 @@ fn the_shipped_default_matchup_is_unmoved_by_the_new_field() {
 /// matchups, captured from the **pre-change binary** before `queue_depth`
 /// existed. Anything but a byte-identical replay means depth 1 is not the old
 /// constant.
+///
+/// **B3.5 re-pin (F-032):** these numbers were recomputed on B3.5's content.
+/// Because content is data, the tempo re-tune (F-029/F-030) moves every pinned
+/// per-tick `state_hash`; F-032 demonstrates — by replaying the pre-tune
+/// `assets/data` under this identical binary and watching every golden below
+/// pass at its old value — that the move is content-driven and nothing else.
+/// What the assertion means is unchanged: this match is frozen, and any Rust
+/// change that moves it is a regression.
 #[test]
 fn a_depth_one_match_replays_the_pre_change_hashes_and_journal() {
     for (name, seed, a, b, trace_golden, journal_golden) in [
@@ -342,16 +358,16 @@ fn a_depth_one_match_replays_the_pre_change_hashes_and_journal() {
             4u64,
             "depth_ripper",
             "depth_bulwark",
-            0xff87_0184_09ac_e43eu64,
-            0x4e16_04bd_46e0_99f6u64,
+            0xbc76_1268_e37b_dfa6u64,
+            0x501e_d9cf_a354_8f9bu64,
         ),
         (
             "neutral_b",
             11,
             "depth_bulwark",
             "depth_ripper",
-            0xc0a7_7e73_6876_e285,
-            0x565d_a2a6_6530_936a,
+            0x9b7a_b550_477e_fe7b,
+            0x8bc8_1050_1741_a3b9,
         ),
     ] {
         let c = neutral_content(name);

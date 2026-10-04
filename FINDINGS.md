@@ -1714,3 +1714,1209 @@ building, the victory building as a barracks, an army unit no opened barracks
 can produce — repeats and all, no barracks at all, a zero offset on the repeat,
 `queue_depth: 0`) plus the new positive: a strategy opening one building three
 times now loads.
+
+## F-029 — The arc is tunable in RON, and the 8-minute cap is the wall (B3.5 AC1)
+
+**What this entry is.** The tuning checkbox: move the decided-match median from
+~1:16 into DESIGN_BRIEF's 5-8 minute band **in RON only**, with the army *bigger*
+rather than smaller (the trap F-026 fell into). Every number below was measured
+on the box in release with `src/bin/balance`, at the shipped 28 800-tick
+(8:00) cap unless the row says otherwise; no Rust was touched anywhere in this
+run. **The result is a candidate, not a pass:** the tuning reaches the band,
+and it breaks a designed property of the instrument while doing it. Both halves
+are the finding.
+
+### Before
+
+Shipped content, whole roster (10 strategies x 10 x 2 seeds x 2 orientations =
+400 matches), decided-only:
+
+| min | p25 | median | p75 | p90 | max | timeouts | combat units built / match |
+|---|---|---|---|---|---|---|---|
+| 0:28 | 1:05 | **1:16** | 1:46 | 2:04 | 4:45 | 0 / 400 | 10.6 |
+
+The five mass probes alone (5 x 5 x 2 seeds x 2 orientations = 100): min 0:50,
+p25 1:05, median **1:19**, p75 1:31, max 2:24, 0 timeouts, 7.7 combat units per
+match. A pentagon computed on that is a statement about openings.
+
+### The levers, in the order they were tried
+
+Each row is a batch of the five mass probes, 2 seeds, both orientations (100
+matches), at the shipped cap. Changes are cumulative down the table except
+where a row says "reverted"; "units" is combat units built per match, both
+sides.
+
+| # | change | median | p25 | p75 | timeouts | units | verdict |
+|---|---|---|---|---|---|---|---|
+| base | shipped | 1:19 | 1:05 | 1:31 | 0 | 7.7 | — |
+| L1 | mass probes 1 -> 3 barracks (F-028's lever) | 1:03 | 0:51 | 1:07 | 1 | 10.2 | kept (density; it *shortens* the clock) |
+| L2 | + `building_hp_per_defense` 40 -> 160 | 1:27 | 1:13 | 1:34 | 2 | 22.1 | **reject**: +24s for a 4x HQ, and the tail grows |
+| L3 | HQ HP reverted; `attack_at_army` 3 -> 10 | 1:29 | 1:09 | 1:54 | 0 | 20.3 | kept |
+| L4 | + `mvp_carry_capacity` 10 -> 4 (income x0.4) | 2:18 | 1:35 | 2:51 | 0 | 18.2 | kept |
+| L5 | `attack_at_army` 16 | 3:15 | 2:12 | 3:58 | 0 | 29.3 | kept |
+| L6 | `attack_at_army` 24 | 4:34 | 3:02 | 5:27 | 5 | 43.2 | kept, then re-cut (L9) |
+| L7 | + `hp_per_defense` 20 -> 14 | 4:34 | 3:02 | 5:27 | 1 | 42.8 | **reject**: body identical, effect inside noise |
+| L8 | + `mvp_carry_capacity` 4 -> 3 | 5:53 | 3:34 | 7:02 | 8 | 41.1 | kept |
+| L9 | `attack_at_army` 20 | 5:01 | 3:05 | 6:04 | 7 | 35.5 | kept |
+| L10 | + `mitigation_per_armor` 2 -> 1 | 5:01 | 3:05 | 6:04 | 4 | 34.8 | **reject** (see M1) |
+| L11 | `attack_at_army` 24, mitigation 1 | 5:53 | 3:34 | 7:02 | 8 | 41.1 | — |
+| L12 | + `hp_per_defense` 14 -> 10 | 5:53 | 3:34 | 7:02 | 8 | 41.1 | **reject**: 3 of 100 matches changed at all |
+| L13 | combat scaling all reverted, `attack_at_army` 22 | 5:28 | 3:19 | 6:32 | 11 | 38.6 | — |
+| L14 | + `attack_interval_ticks` 600 -> 300 | 5:28 | 3:19 | 6:32 | 8 | 38.0 | kept |
+| C1 | `attack_at_army` 20, 4 seeds (200 matches) | 5:02 | 3:06 | 6:04 | 11 (5.5%) | 35.1 | kept |
+| C3 | + `building_hp_per_defense` 40 -> 120 | 5:04 | 3:07 | 6:07 | 11 (11%) | 35.5 | **reject**: floor unmoved, tail fattened |
+| M1 | final content + `mitigation_per_armor` 1 | 6:32 | 4:23 | 7:47 | 16 (16%) | — | **reject**: does not unstick the grind |
+
+**What the table says.** Three knobs move the clock and one of them is not a
+clock at all:
+
+- **Barracks count** (F-028) buys *army*, not time — it makes matches shorter
+  and much denser. It is what keeps the tuning out of F-026's trap: every later
+  row lengthens the game with the army growing, not shrinking.
+- **`mvp_carry_capacity`** is the economy clock. Income is loads/second times
+  the load, an army is a fixed number of Alloy, so this sets how many minutes a
+  force takes to assemble. 10 -> 4 -> 3 -> 2 is most of the length here.
+- **`attack_at_army`** is the commitment threshold: it decides how much of that
+  income is on the field when the decisive fight happens. It moved the median
+  from 1:29 to 5:53 by itself and raised density with it.
+- **`mvp_combat` scaling is nearly inert at batch level.** `hp_per_defense`
+  20 -> 14 -> 10 and `mitigation_per_armor` 2 -> 1 changed 3, 13 and 0 matches of
+  100 respectively; the quantiles did not move at all. Match length here is set
+  by how long an army takes to *assemble*, not by how long it takes to die.
+  Every combat-scaling change was therefore reverted, which also keeps the
+  pentagon's own dials out of a tempo tuning.
+- **HQ HP is not a lengthener either.** Quadrupling it (L2) bought 24 seconds
+  when armies were small, and tripling it at the tuned length (C3) moved the
+  median by 2 seconds while doubling the timeout rate: a 20-unit army chews any
+  HQ in seconds, so the knob only adds to matches that are already long.
+
+### What was kept
+
+`assets/data/units.ron`
+- `mvp_carry_capacity` **10 -> 2** (a 5x slower economy; the one number).
+
+`assets/data/strategies.ron`
+- the five `mass_*` probes: **3 openings each** of their own barracks
+  (at_tick 300/600/900, offset 130/165/200), `attack_at_army` **3 -> 20**,
+  `attack_interval_ticks` **600 -> 300**. Knob-identical, all five, F-018.
+- `synth_steel_flesh`: 4 lines (2 Foundry + 2 Gene-Vats), `attack_at_army` 16,
+  interval 300. `synth_triad`: 4 lines across all three domains,
+  `attack_at_army` 16, interval 300. `turtle`: 4 lines, `attack_at_army` 28,
+  interval 600 — still the latest, largest commitment in the set.
+- `rush` unchanged: it is the pole, and its identity is the tick-0 opening and
+  the one-body attack.
+- **`mvp` unchanged, deliberately.** B1 pins the default strategy field for
+  field as the faithful promotion of M4c's `mvp_ai`
+  (`b1_strategies::the_default_strategy_is_the_old_mvp_ai_number_for_number`,
+  and `m4c_ai` reads it as "the default AI" with one barracks). Retuning it
+  would change what those assertions *mean*, not just their values, so it was
+  reverted and left alone. The consequence is real and is a question for the
+  next checkbox: the shipped default now plays the slow economy on the old fast
+  tempo.
+
+### After
+
+Whole roster, 2 seeds, both orientations, 400 matches, shipped 28 800 cap,
+decided-only:
+
+| min | p25 | median | p75 | p90 | max | timeouts | combat units / match |
+|---|---|---|---|---|---|---|---|
+| 0:28 | 4:23 | **5:17** | 6:05 | 6:59 | 7:51 | 43 / 400 (10.8%) | 32.7 |
+
+(357 decided of 400. The 0:28 floor is the `rush` mirror — two all-ins meeting
+at the door — and is the same floor the shipped content had.)
+
+An intermediate reading worth keeping, because it is the price of leaving `mvp`
+untuned: with `mvp` on three Foundries and `attack_at_army: 12`, the same batch
+read decided median 5:08, p25 4:24, p75 6:03, **29 / 400 (7.25%) timeouts** and
+33 units per match. Reverting `mvp` to its pinned numbers cost 3.5 points of
+timeout rate and left the default strategy with two cells it cannot decide at
+all (row mean over 7 cells, not 9). The default AI is now the one script in the
+roster that commits three units into a five-minute economy.
+
+Density: **units built** 32.7 per match over the 400-match batch (before: 10.6), and on
+a 16-match probe of named matchups, **33.6 units built and 9.9 casualties** per
+match. The casualty number carries a caveat and it is the honest half of this
+entry: it ranges from 0 to 47. `synth_triad` vs `synth_steel_flesh` trades 47
+bodies over eight minutes and `mass_sentinel` vs `mass_ripper` trades 21, but
+`mass_arclight` vs `mass_sentinel` builds 37 units and loses **2**, and the
+`turtle` mirror builds 60 and loses 7. So the army is unambiguously bigger than
+before (F-026's failure mode is not present) but a good part of the added time
+is two armies *assembling*, not two armies trading. Making the fight itself the
+long part is a stat question (engagement ranges, damage-to-HP), which is B4's.
+
+### The cap binds, and that is the blocker
+
+The band's top and the runner's cap are the same eight minutes, so a
+distribution centred in the band loses its upper tail to the cap. Measured on
+the kept content, **the five mass probes on a raised 20-minute cap** (2 seeds,
+100 matches; a diagnostic run, never a shipped setting):
+
+| min | p25 | median | p75 | p90 | max | timeouts |
+|---|---|---|---|---|---|---|
+| 4:22 | 4:23 | **6:32** | 7:47 | 8:33 | 10:45 | 0 / 100 |
+
+Every one of those hundred matches decides — by 10:45 at the latest. So the
+probe set's true arc is 6:32, comfortably inside the band, and **16 of its 100
+matches exceed the 8-minute cap**: at the shipped cap they are recorded as
+timeouts, not as stalemates. The clipped 16 are one class: `mass_bulwark`
+mirrors, `mass_bulwark` vs `mass_ravager` both ways, and `mass_ravager`
+mirrors — the heavy-armour grind, where `armor * mitigation_per_armor` eats
+most of a hit (Bulwark on Bulwark is 20 damage against 18 mitigation).
+
+Two designed properties fail because of it, and neither can be edited without
+changing what it means:
+
+- `critic_b1_ac3::every_mass_versus_mass_cell_resolves_in_both_orientations`
+  ("a cell that times out is a hole in the pentagon, and a matrix of holes
+  cannot support the assertion B3 exists to make"): the Bulwark mirror does not
+  resolve inside its 20 000-tick horizon, and does not resolve inside the
+  28 800-tick match cap either. Raising the horizon past the cap would keep the
+  test green while the hole stays in B3's matrix.
+- `b3_pentagon::the_real_batch_reports_what_the_sim_actually_does`: at the new
+  length the reading is **2 of 5 links holding**, with `bulwark > ravager`
+  **undefined** (0 decided, 8 timeouts) and `ravager > sentinel` and
+  `sentinel > ripper` newly failing. F-025's one broken link was not a
+  short-game artifact; at the long length the instrument reads worse, and one
+  link cannot be read at all.
+
+Attempts to unstick the grind inside this checkbox's remit all failed: armour
+mitigation halved (M1) leaves 16 timeouts; unit HP cut by 30% and by 50%
+changed almost no match. **The grind is a unit-stat problem (B4's pass), not a
+tempo one** — which is exactly what F-025 said about the Bulwark before the
+clock was touched.
+
+### The suite: what moved, and why the gate is **not** green
+
+`cargo test --release --no-fail-fast` on the tuned content: **811 passed, 25
+failed** across 17 test binaries (`b35_tempo`'s two new tests are among the
+passes). The failures fall into three piles, and the third is why this entry
+stops rather than finishing:
+
+1. **Pinned per-tick `state_hash` goldens — content-driven, recomputable, and
+   deliberately not recomputed here.** Every one of them moved, because a RON
+   change moves every hash by construction (no Rust was touched: `git diff` on
+   `src/` and `benches/` is empty). **The proof was run**: with the
+   pre-change `assets/data` restored under the *post-change* binary (identical
+   Rust — `git diff f6a2aeb -- src benches` is empty), `b1_matchup`,
+   `b2_headless`, `b2_orientation`, `b35_parallel` and `b35_queue_depth` —
+   51 tests, every golden-bearing one in the suite's B-series — pass at their
+   **old** pinned values, unedited. Old data, old numbers; new data, new
+   numbers; nothing in between. The three distinct
+   fixtures behind them, old -> new, read straight off the failures:
+
+   | fixture (who pins it) | old | new |
+   |---|---|---|
+   | pre-AC2 default matchup, seed 4 (`b1_matchup`, `b1_strategies`, `b35_queue_depth`, `b35_parallel`) | `0xa71f_64ca_d502_03e9` | `0xbb69_254d_5833_7869` |
+   | pre-B2 bench fixture, tick 300 (`b2_headless`, `b2_orientation`) | `0xa5b4_138c_f475_fd00` | `0xb832_456b_5a74_b590` |
+   | `solo_ripper` vs `solo_bulwark` / `depth_ripper` vs `depth_bulwark`, seed 4 (`b35_parallel`, `b35_queue_depth`) | `0xff87_0184_09ac_e43e` | `0xfec2_0c1e_d0c2_f806` |
+
+   The rest — seeds 11 and 23 of the default matchup, the other bench ticks and
+   the fold, the journal digests, and the cross-process pins under
+   `critic_b1_ac2` / `critic_b2_ac4` / `critic_b35_ac0` / `critic_b35_ac0b` —
+   were left un-recomputed on purpose: re-pinning thirty goldens to a
+   candidate that pile 3 may force to be re-scaled means recomputing thirty
+   numbers twice, and buries the blocker in a large mechanical diff.
+
+2. **Fixture and budget values that legitimately change, meaning intact.**
+   `b1_probe_set::every_strategy_eventually_attacks` and
+   `critic_b1_ac3::every_strategy_commits_before_the_match_can_stop_it` give a
+   strategy 12 000 ticks (3:20) to commit, and a probe that masses twenty units
+   on the new economy commits at about 15 700; `critic_b1::a_placement_the_
+   commander_cannot_afford_consumes_no_randomness` builds a poor commander whose
+   budget no longer buys a barracks; `m4a_economy`, `critic_m4a` and
+   `critic_m4b` anchor on the old worker load (`the probe's anchor text still
+   exists`, `probe assumes a multi-Alloy load`, `the worker never picked up a
+   load` — the probe expects 10 Alloy and gets 2); and
+   `critic_p2::no_configuration_of_the_writer_changes_a_single_tick_of_the_sim`
+   reports `the fixture never decided`, its match horizon predating a
+   five-minute arc. Each of those is a number to re-measure
+   against the new content, and each keeps its meaning (a commitment budget
+   under the 28 800 cap is still "before the match can stop it").
+   `b1_probe_set`'s own probe-count assertion was already updated in this diff:
+   `MASS_PROBE_BARRACKS = 3` replaces a hard-coded 1, and the knob-identity test
+   now compares **every** opening's tick and offset rather than only the first.
+
+3. **Two assertions that cannot be re-valued without changing what they
+   say** — the blocker:
+   - `critic_b1_ac3::every_mass_versus_mass_cell_resolves_in_both_orientations`
+     (see above): the Bulwark grind does not resolve inside the match cap, so
+     raising the test's horizon past 28 800 would make the test pass while the
+     hole stays in B3's matrix.
+   - `b1_strategies::the_default_strategy_is_the_old_mvp_ai_number_for_number`
+     would have had to change if `mvp` were tuned. It was not tuned, so this one
+     passes — at the cost recorded above (10.8% timeouts instead of 7.25%, and
+     a default strategy with two undecidable cells).
+
+**Not run, therefore not claimed:** release-profile tests, `cargo clippy
+--all-targets -- -D warnings` in either profile, and `cargo bench --no-run`.
+The debug suite is red by construction while piles 1 and 3 stand.
+
+### Verdict
+
+The AC's number is reachable in RON: median **5:17** over the whole roster,
+10.8% timeouts, with 33 units built and ~10 casualties a match — an arc in the band with
+real armies in it, which is what F-026 could not do. But it is reached by
+letting the slowest matchup class run past the runner's cap, which takes the
+pentagon from "one broken link" to "two links broken and one unreadable".
+Whether to ship it, re-scale it down (the whole roster at median 4:24 keeps
+timeouts at 3.25% but leaves the band), or fix the Bulwark's stats first (B4)
+is a decision above this checkbox. **Stopped here rather than editing the
+assertions that say so.**
+
+## F-030 — The matches were never fights; the cap was censoring them (B3.5, after the cap decision)
+
+**What changed since F-029.** Two things were authorised: the match cap moves
+from 8 to **15 minutes** (`DEFAULT_MATCH_SECS`, the single Rust line the
+RON-only rule bends for — `git diff main -- src` shows that constant and its
+comment and nothing else), and the armour/damage relation may be retuned in RON
+so heavy matchups decide on their own. The design metric becomes **the share of
+decided matches inside the 5-8 minute band**, with the timeout rate kept beside
+it as the stalemate signal.
+
+Raising the cap alone did what it was predicted to do: F-029's content, replayed
+at 15 minutes, decides **every** match — 100 of 100 probe matches, median 6:32,
+max 10:45, and the pentagon's `bulwark > ravager` cell comes back from
+*undefined* to a measured 0.0%. The 8-minute cap had been censoring, not
+catching.
+
+### The diagnostic that redirected the whole tuning
+
+Before touching armour, one heavy matchup was instrumented tick by tick
+(`mass_bulwark` mirror, seed 0, sampled every 3 600 ticks):
+
+```
+t=0      units [3, 3]    HQ [400, 400]   casualties A 0 B 0
+t=3600   units [7, 7]    HQ [400, 400]   casualties A 0 B 0
+...
+t=36000  units [25, 25]  HQ [400, 400]   casualties A 0 B 0
+t=38551  decided
+```
+
+**Ten minutes, two full armies, zero casualties, both HQs untouched.** The
+armour arithmetic was never the binding constraint: the armies were not
+fighting at all. F-029's tuning had bought its length with
+`attack_at_army: 20` against a five-times-slower economy, so a match was
+*"time to assemble twenty units"* — unit cost divided by income — and the first
+wave to arrive ended the game. That also explains F-029's other readings: the
+cheapest unit dominated the matrix (`mass_ripper` row mean 95.8%), and armour
+changes moved nothing. The A/B proves it: `mitigation_per_armor` 2 -> 1 on that
+content changed the batch's max from **10:45 to 10:44** and left production
+identical to the unit. You cannot tune a fight that is not happening.
+
+### The re-tune: commit early, make the base hard
+
+The arc has to come from armies *meeting repeatedly*, not from a single
+assembled doomstack, so the two knobs moved the other way:
+
+- **commitment thresholds down** — the five probes from `attack_at_army: 20` to
+  **10** (knob-identical, all five), `synth_*` 16 -> 9, `turtle` 28 -> 15;
+- **base durability up** — `building_hp_per_defense` 40 -> **420**, so an HQ is
+  4 200 HP and survives waves: the loser of a fight gets to rebuild and fight
+  again instead of losing the match to the first wave that arrives.
+
+Measured, five mass probes, 2 seeds, 100 matches, 15-minute cap:
+
+| run | change | median | in 5-8 band | timeouts | pentagon |
+|---|---|---|---|---|---|
+| (F-029 content at 15 min) | — | 6:32 | 48% | 0 | 2/5, all cells decided |
+| C1b | `attack_at_army` 8, HQ 1 200 | 3:26 | 18% | 0 | 4/5 |
+| C2 | HQ 2 400 | 4:13 | 35% | 0 | 5/5 |
+| C3b | HQ 3 600 | 5:37 | 42% | 0 | 5/5 |
+| C4 | HQ 3 000, `attack_at_army` 10 | 4:48 | 35% | 0 | 4/5 |
+| P1 | + `mvp_gather_ticks` 90 -> 120 | 6:06 | 27% | 0 | **reject**: a slower economy stretches the expensive armies most and *widens* the spread |
+| **Na** | **HQ 4 200, `attack_at_army` 10 (kept)** | **6:36** | **36%** | **0** | 4/5, every cell decided |
+
+Whole roster (10 strategies, 2 seeds, both orientations, 400 matches):
+
+| run | median | p25 | p75 | p90 | in 5-8 band | timeouts |
+|---|---|---|---|---|---|---|
+| FULL1 (`attack_at_army` 8, HQ 3 600) | 4:29 | 3:44 | 6:03 | 8:28 | 30.5% | 6/400 (1.5%) |
+| FULL2 (HQ 4 200) | 4:36 | 3:50 | 6:19 | 8:55 | 30.5% | 7/400 (1.75%) |
+| **FULL3 (kept)** | **5:05** | 4:14 | 7:10 | 9:57 | **31.5%** | **9/400 (2.25%)** |
+
+**Density, and this is the point:** 37.1 combat units built and **30.4
+casualties** per match over an 18-match probe of named matchups, against
+F-029's 33.6 built and **9.9** lost. Three times the trading for the same army
+size. The same `mass_bulwark` mirror that spent ten minutes with zero
+casualties now decides at 6:33 with 16 bodies lost, and `mass_bulwark` vs
+`mass_ravager` at 6:46 with 20.
+
+### The armour lever: measured, and *not* taken
+
+Re-run in the new regime, where fights actually happen,
+`mitigation_per_armor` 2 -> 1 does exactly what the arithmetic predicts — it
+hits armour and leaves the swarm alone (mean length per pentagon cell):
+
+| cell | mitigation 2 | mitigation 1 | change |
+|---|---|---|---|
+| arclight / bulwark | 11:39 | 9:33 | **-18%** |
+| bulwark / sentinel | 7:43 | 6:05 | **-21%** |
+| bulwark / ripper | 6:35 | 5:07 | **-22%** |
+| bulwark / ravager | 7:47 | 7:19 | -6% |
+| ripper mirror | 2:29 | 2:27 | -1% |
+| sentinel mirror | 3:40 | 3:37 | -1% |
+
+So the lever works and does not distort the light end. **It was still not
+kept**, on the length criterion the checkbox is judged by: with the thresholds
+and base durability re-cut, the heavy class already decides on its own — every
+cell decided, 0 timeouts, slowest cell 11:39 inside a 15-minute cap, and the
+Bulwark mirror trades 16 bodies — while taking the armour change costs band
+share (36% -> 30% on the probes; 31% at HQ 4 800, tried as compensation). The
+decision is the band, not the pentagon: for the record, mitigation 1 *also*
+moved the pentagon from 4/5 to 3/5, and that played no part in keeping 2. **One
+number reverses this** (`mvp_combat.mitigation_per_armor`) if a later pass
+would rather have shorter heavy fights than a wider band.
+
+### The pentagon at the new length, every cell decided (observation)
+
+Whole roster, 400 matches, 8 decided per link, **0 timeouts in any pentagon
+cell**:
+
+| link | rate | sample |
+|---|---|---|
+| bulwark > ravager | 87.5% | 8 decided, 0 timeouts — **holds** |
+| ravager > sentinel | 62.5% | 8 decided, 0 timeouts — holds |
+| sentinel > ripper | 50.0% | 8 decided, 0 timeouts — **FAILS** (exactly even is not a counter, F-025) |
+| ripper > arclight | 100.0% | 8 decided, 0 timeouts — holds |
+| arclight > bulwark | 100.0% | 8 decided, 0 timeouts — holds |
+
+Four of five, and the failing one is *measurable* — which is the whole point of
+the exercise. Row means run from `rush` 4.2% to `turtle` 88.9%; both are outside
+B3's 65% kill-criterion and are B4's business, not this checkbox's. Note how
+much the reading moves with tempo (F-029's content read 2/5 with one cell
+undefined; C2/C3b read 5/5): **a pentagon is a statement about a tempo**, and it
+should be re-read whenever the arc changes.
+
+## F-031 — The armour question, closed: mitigation 1 earns its band share once the commitment threshold is re-walked (B3.5)
+
+**What this entry is.** F-030 measured `mvp_combat.mitigation_per_armor` 2 -> 1,
+found that it shortens heavy fights 18-22% and leaves the light end alone, and
+then **reverted it** because at the kept commitment threshold
+(`attack_at_army: 10`) it cost band share — 36% -> 30% on the five mass probes.
+That revert rested on an incomplete search: shortening the long tail *narrows*
+the distribution, and a narrower distribution with a low median can be
+re-centred by lengthening, which `attack_at_army` does. This entry completes the
+search over that knob, **at both mitigation settings** (a one-sided walk would
+only prove that `attack_at_army` matters), and settles whether F-030's revert
+was right.
+
+**Method.** Every row is `src/bin/balance` in release on the box, five mass
+probes, both spawn orientations, 15-minute cap:
+`balance --seeds K --minutes 15 --only mass_bulwark,mass_sentinel,mass_ripper,mass_ravager,mass_arclight`.
+`attack_at_army` moves on all five probes together (knob identity, F-018) and on
+the `synth_*` / `turtle` scripts in proportion to F-030's ratios (`synth` = 0.9x,
+`turtle` = 1.5x, integer-truncated); `mvp` and `rush` are untouched throughout.
+Quantiles are `Tally::length_quantile`'s definition (`ceil(q*n)`) over **every
+match in the batch, capped matches included** — `Tally::of` in `src/batch.rs`
+pushes `r.ticks` for every record, so a timeout contributes its full 15:00 to the
+length distribution. (The critic pinned this as
+`the_printed_length_quantiles_include_capped_matches`; an earlier draft of this
+entry wrongly described the basis as "decided matches only".) The two bases
+coincide only on a zero-timeout batch, and diverge measurably once there are
+timeouts — on the shipped content at 400 matches with 11 timeouts, decided-only
+median/p90/max is **6:21 / 10:57 / 14:48** against the printed **6:26 / 11:35 /
+15:00**; at 1 250 matches with 41 timeouts, decided-only median **5:37** against
+printed **6:10**. **Consequence to carry forward: every tail statistic quoted
+below (p90, max, "identical tails") includes capped matches**, so a content with
+more timeouts is flattered in the median and penalised in the tail by the same
+censoring. "band" is the share of **decided** matches in 5:00-8:00 (that one *is*
+decided-only); p90 is computed from the same per-match log on the printed basis. "units" is every unit both sides built
+across the batch (workers included), the F-026 density guard.
+
+### The walk, 2 seeds (100 matches per row)
+
+| row | mit | `attack_at_army` | median | p25 | p75 | p90 | max | **band** | timeouts | units |
+|---|---|---|---|---|---|---|---|---|---|---|
+| base (F-030 kept) | 2 | 10 | 6:36 | 4:42 | 8:57 | 10:39 | 14:42 | **36%** | 0 | 4621 |
+| A1 | 1 | 10 | 5:44 | 4:27 | 8:00 | 9:56 | 14:08 | 30% | 0 | 4261 |
+| A2 | 1 | 12 | 5:30 | 4:15 | 8:12 | 9:41 | 12:01 | 42% | 1 | 4092 |
+| A3 | 1 | 14 | 6:14 | 3:27 | 9:11 | 9:54 | 14:26 | 30% | 0 | 4261 *(suspect — see note)* |
+| A4 | 1 | 16 | 5:30 | 3:46 | 7:06 | 10:30 | 12:59 | **50%** | 0 | 3932 |
+| A5 | 1 | 18 | 6:05 | 4:06 | 7:17 | 8:33 | 14:38 | **51%** | 0 | 4014 |
+
+| A6 | 1 | 20 | 6:43 | 4:29 | 7:59 | 8:43 | 11:05 | 43% | 0 | 4207 |
+| A7 | 1 | 22 | 7:21 | 4:50 | 8:41 | 9:32 | 12:02 | 28% | 0 | 4487 |
+
+**Correction to the `units` column.** The base row's `units` is **4621**, not the
+4261 an earlier draft recorded: 4261 is row A1's value, and it had been copied
+into the base row (and, identically, into A3, which is why that cell is flagged
+suspect above and should be re-read before it is used). `units` is F-026's
+army-density guard, so a wrong number there is a wrong guard — the base row's
+density is *higher* than A1's, not equal to it, which strengthens rather than
+weakens the reading below.
+
+A1 reproduces F-030's reverted reading exactly (30%), which is the check that
+this is the same measurement. The walk has an interior optimum at
+`attack_at_army` **16-18**: band share 30 -> 42 -> 30 -> 50 -> 51 -> 43 -> 28,
+and the tail tightens with it (matches over 8:00: 26 at A=10, **13** at A=18).
+So the premise holds — mitigation 1 plus a higher commitment threshold clears
+the kept content's 36%.
+
+### The counterfactual: the same walk at mitigation 2
+
+A one-sided walk cannot tell the armour change from the threshold change, so the
+sweep was re-run with `mitigation_per_armor` left at 2 — **over the top of the
+range only.** An earlier draft called it "the *identical* sweep"; it was not.
+A=12 and A=14 were never run at mitigation 2, and the pooled "+2 ± 2.5 points"
+below uses **only A=16 and A=18**. The conclusion holds on those two thresholds;
+the method sentence claiming a matched full sweep does not.
+
+| row | mit | `attack_at_army` | median | p25 | p75 | p90 | max | **band** | timeouts | units |
+|---|---|---|---|---|---|---|---|---|---|---|
+| B1 | 2 | 16 | 6:15 | 3:48 | 7:41 | 11:09 | 14:21 | 44% | 1 | 4316 |
+| B2 | 2 | 18 | 6:09 | 4:08 | 7:53 | 10:13 | 13:21 | 46% | 1 | 4201 |
+| B3 | 2 | 20 | 6:45 | 4:30 | 8:01 | 8:59 | 13:44 | 36% | 0 | 4345 |
+| B4 | 2 | 22 | 7:23 | 4:51 | 8:43 | 9:33 | 12:12 | 28% | 0 | 4526 |
+
+**Most of the gain was the threshold, not the armour.** Mitigation 2 peaks in
+the same place (46% at A=18) and for the same reason. The armour change is worth
+about **5 points of band share** on top of that (51% vs 46%, 50% vs 44%) — which
+at 100 matches is roughly one standard error of the difference and therefore not
+yet a result. Hence the decisive run below.
+
+### The decisive run: 400 matches per setting, at the walk's optimum
+
+`attack_at_army: 18`, five probes, 8 seeds x both orientations (3 shards on
+seed bases 0/1/2, `seed_at` mixes the base so the three are different seed
+sets), 400 matches per setting:
+
+| mit | median | p25 | p75 | p90 | max | **band** | timeouts | over 8:00 | under 5:00 |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 6:05 | 4:07 | 7:51 | **10:03** | 14:49 | **47.4%** (186/392) | **8 (2.00%)** | 63 | 143 |
+| 2 | 6:09 | 4:10 | 7:55 | 10:19 | 14:53 | 42.6% (164/385) | 15 (3.75%) | 82 | 139 |
+
+Mitigation 1 wins every column it should: +4.8 points of band share, half the
+timeout rate, 63 over-length matches instead of 82. The band-share gap is ~1.3
+standard errors of the difference (SE ≈ 3.6 points at n≈390), so on band share
+alone the armour change is a *consistent small positive* rather than a proven
+one — it reads +5 at A=16 (50 vs 44), +5 at A=18 on 100 matches (51 vs 46) and
++4.8 at A=18 on 400. The timeout halving is the sharper signal, and it is the
+mechanism F-030 already measured: mitigation 1 shortens exactly the matches that
+were running long.
+
+### And here is what the walk costs: the pentagon degrades monotonically with the threshold
+
+The same batches, read as pentagon links (predator > prey, pooled over both
+orderings and orientations — `WinMatrix`'s own definition):
+
+| `attack_at_army` | 10 (F-030 kept) | 12 | 14 | 16 | 18 | 20 | 22 |
+|---|---|---|---|---|---|---|---|
+| links holding, mit 2 | **4/5** | — | — | 3/5 | 2/5 | 2/5 | 2/5 |
+
+A caution on this table that the rest of this entry earns: every cell but A=18 is
+an **n=8-per-link** reading — the exact sample size this entry declares unable to
+support a verdict — and `holding()` is a bare `rate > 0.5` count with no interval
+(the critic pinned this: `a_holds_verdict_says_nothing_about_the_interval`). Only
+A=18 is at 400 matches. The A=10 cell also disagrees with the 400-match and
+1 250-match re-reads below (4/5 here; 4 holding + 1 undetermined there). So read
+the *direction* — the threshold costs links — and not the individual counts.
+| links holding, mit 1 | 3/5 | 3/5 | 3/5 | 2/5 | 2/5 | 2/5 | 2/5 |
+
+At `attack_at_army: 18`, on 400 matches per setting, the reading is the same
+collapse at both mitigation settings — and it is not a sampling artefact:
+
+| link | mit 1, n=400 | mit 2, n=400 |
+|---|---|---|
+| sentinel > ripper | **0.0%** (n=32, CI [0.0, 10.7]) | **0.0%** (n=32, CI [0.0, 10.7]) |
+| ripper > arclight | 100.0% (n=32) | 100.0% (n=32) |
+| arclight > bulwark | 100.0% (n=30, 2 timeouts) | 100.0% (n=30, 2 timeouts) |
+| bulwark > ravager | **13.8%** (n=29, 3 timeouts) | **16.0%** (n=25, 7 timeouts) |
+| ravager > sentinel | **0.0%** (n=30, 2 timeouts) | 26.7% (n=30, 2 timeouts) |
+
+Every cell is still *readable* (no cell is undefined), but three of five designed
+counters are now decisively inverted with the CI excluding 50%, against the kept
+content's four confirmed links (plus one undetermined). The cause is the threshold, not the armour: both columns read
+the same. Raising `attack_at_army` makes a match "assemble eighteen bodies and
+commit", and at that size the cheap fast swarm (Ripper, every `x vs ripper` cell
+decides at ~4:08) runs away with the matrix — F-030's own diagnosis of F-029's
+content, reappearing one knob later.
+
+**So the two things the band metric wants from this knob are opposed:** band
+share peaks (47%) exactly where the counter-pentagon stops being readable as a
+cycle, and the pentagon reads best (4 links confirmed) at the threshold with the
+lowest band share (36%).
+
+### The baseline, re-measured at 400 matches — and it was never 36%
+
+F-030's 36% was a 100-match reading. The kept content on the same 400-match
+sample as the candidates:
+
+| content | median | p25 | p75 | p90 | max | **band** | timeouts | over 8:00 | under 5:00 | pentagon |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **kept (mit 2, A=10)** | 6:25 | 4:30 | 7:45 | 10:06 | 14:43 | **38.0%** (149/392) | 8 (2.00%) | 93 | 150 | **4 + 1?** |
+| mit 1, A=18 | 6:05 | 4:07 | 7:51 | 10:03 | 14:49 | 47.4% (186/392) | 8 (2.00%) | 63 | 143 | 2/5 |
+
+Two corrections to F-030 fall straight out of this, both from sample size:
+
+- the kept content's band share is **38%**, not 36%, and its timeout rate is
+  **2.00%, not 0** — the 100-match probe batch simply had no capped match in it;
+- the **spread is the same**. p90 10:06 vs 10:03, max 14:43 vs 14:49. Mitigation
+  1 does narrow the distribution, but the threshold that pays for its band share
+  widens it back by exactly as much. The candidate's only real spread win is the
+  over-8:00 count (63 vs 93).
+
+So the honest ledger of the candidate is **+9.4 points of band share, identical
+timeouts, identical tails, and three of five designed counters inverted.** (The
+"identical tails" reading is on the printed quantile basis, which **includes the
+capped matches at their full 15:00** — see Method. With equal timeout counts on
+both sides, 8 and 8, the comparison is still apples-to-apples; it would not be
+against a content with a different timeout rate.)
+
+### The pentagon's sample size, and F-030's `sentinel > ripper`
+
+F-030 recorded `sentinel > ripper` as **FAILS at exactly 50.0% over 8 decided
+matches**. 8 matches cannot tell 50% from 65%: the 95% Wilson interval on 4/8 is
+**[21.5, 78.5]**, which contains every rate anyone would care about. A pentagon
+cell accumulates 4 decided matches per seed (2 orientations x the two orderings
+`WinMatrix` pools), so the sample size is a seed count, and the seed count was 2.
+
+At **8 seeds (n = 32 per link)** on the kept content the link is not even close
+to even:
+
+| link | rate | n | 95% Wilson CI | verdict |
+|---|---|---|---|---|
+| sentinel > ripper | **68.8%** | 32 | [51.4, 82.0] | **holds** (CI excludes 50%) |
+| ripper > arclight | 96.9% | 32 | [84.3, 99.4] | holds |
+| arclight > bulwark | 100.0% | 30 (+2 to) | [88.6, 100.0] | holds |
+| bulwark > ravager | 90.6% | 32 | [75.8, 96.8] | holds |
+| ravager > sentinel | 53.1% | 32 | [36.4, 69.1] | **undetermined** — the CI straddles 50% |
+
+**The kept content reads 4 holding + 1 undetermined, not 4 broken-one.** F-030's
+one failing link was a sampling artefact of reading a 50/50-looking cell off
+eight matches; the real coin-flip in the cycle is `ravager > sentinel`, and at
+n=32 it cannot be called either way. That is the number that needs the seeds, so
+the run below raises it — **and at 430 pooled matches it is still undetermined
+(54.9%, CI [50.2, 59.5]), so this reading is the one that survived.**
+
+### The armour change's own effect, at 400 matches per cell of the 2x2
+
+| `attack_at_army` | mit 1 band | mit 2 band | mit 1 - mit 2 | mit 1 timeouts | mit 2 timeouts | mit 1 p90 | mit 2 p90 | mit 1 units/match | mit 2 units/match |
+|---|---|---|---|---|---|---|---|---|---|
+| 16 | 47.1% | **48.0%** | **-0.9** | 5 (1.25%) | 8 (2.00%) | 10:33 | 11:08 | 40.4 | 43.5 |
+| 18 | **47.4%** | 42.6% | **+4.8** | 8 (2.00%) | 15 (3.75%) | 10:03 | 10:19 | 42.3 | 44.3 |
+
+Pooled over the two thresholds the armour change is worth **+2 points of band
+share with a standard error of about 2.5** — it is not distinguishable from
+nothing. The n=100 rows that made it look like +5 were one standard error of
+sampling. What *does* survive the larger sample is the mechanism F-030 named:
+mitigation 1 consistently cuts the timeout rate (5 vs 8 at A=16, 8 vs 15 at
+A=18) and shaves the top of the distribution, because it shortens exactly the
+heavy matchups that were running into the cap. It buys **tail**, not band.
+
+### The isolated A/B, at the kept threshold and 400 matches: mitigation 1 loses
+
+F-030 ran this comparison on 100 matches (36% -> 30%) and reverted on it. At four
+times the sample, with the threshold left exactly where the shipped content has
+it (`attack_at_army: 10`):
+
+| content | median | p25 | p75 | p90 | max | **band** | timeouts | under 5:00 | units/match | pentagon |
+|---|---|---|---|---|---|---|---|---|---|---|
+| mit **2**, A=10 (shipped) | 6:25 | 4:30 | 7:45 | 10:06 | 14:43 | **38.0%** | 8 (2.00%) | 150 | 44.4 | **4 + 1?** |
+| mit **1**, A=10 | 5:06 | 4:23 | 7:16 | 9:54 | 14:22 | **28.5%** | 7 (1.75%) | 191 | 41.4 | 3/5 |
+
+**-9.5 points of band share** (SE of the difference ~3.4, so ~2.8 SE: this one
+*is* a result, not noise), and the mechanism is visible in the last two columns —
+mitigation 1 pushes 41 more matches *below* 5:00 while removing only one from the
+cap. It compresses the distribution downward past the band's floor. F-030 read
+the same effect at a quarter of the sample and called it correctly.
+
+### The pentagon, sized properly: 25 seeds, 1 250 matches, 4 holding + 1 undetermined
+
+**Why 25 seeds.** A pentagon cell collects 4 decided matches per seed (two spawn
+orientations x the two orderings `WinMatrix` pools into one cell), so the link
+sample size *is* a seed count. 25 seeds puts **~100 decided matches per link**,
+whose 95% Wilson half-width is about 10 points: enough to call a link that is
+really 65% (80% power needs n≈85 for a 15-point deviation from 50%) and enough to
+refuse one that is really even. 8 matches — F-030's sample — has a half-width of
+28 and can refuse nothing. Sharper than ~±10 gets expensive fast: ±5 needs ~400
+matches per link, i.e. 100 seeds and about 4 CPU-hours per reading — **and that
+seed count is optimistic: see the clustering correction below, which puts it
+nearer 150.** Note also what ~±10 buys and what it does not: it can confirm a
+link that is really 65%, but on a link that is really ~55% it returns
+*undetermined*, which is exactly what happened to `ravager > sentinel`.
+
+Kept content, `balance --seeds 25 --minutes 15 --only <the five probes>` (as
+three shards on seed bases 10/11/12), **1 250 matches**:
+
+| link | rate | n decided | timeouts | 95% Wilson CI | verdict |
+|---|---|---|---|---|---|
+| sentinel > ripper | **71.7%** | 99 | 1 | [62.2, 79.6] | **holds** |
+| ripper > arclight | 93.0% | 100 | 0 | [86.3, 96.6] | holds |
+| arclight > bulwark | 100.0% | 88 | 12 | [95.8, 100.0] | holds (survives worst-case censoring — see below) |
+| bulwark > ravager | 85.7% | 98 | 2 | [77.4, 91.3] | holds |
+| ravager > sentinel | 62.9% *(this sample)* | 97 | 3 | [53.0, 71.8] | **UNDETERMINED — does not reproduce, see below** |
+
+**Four of five hold; `ravager > sentinel` is undetermined.** The four links in the
+table above reproduce across independent seed bases and can be stated as results:
+
+| link | this reading | independent re-read | verdict |
+|---|---|---|---|
+| bulwark > ravager | 85.7% | 82.5% | holds |
+| sentinel > ripper | 71.7% | 64.0% | holds |
+| ripper > arclight | 93.0% | 93.0% | holds |
+| arclight > bulwark | 100.0% | 96.5% | holds (and see the censoring note below) |
+
+**`ravager > sentinel` does not.** Read on five different seed bases it gives
+62.5% (n=8), 70.0% (n=30), **62.9% (n=97 — the row above, seed bases 10/11/12)**,
+**46.5% (n=99, base 500)** and **52.6% (n=196, base 900; Wilson [45.6, 59.4], and
+[43.9, 61.1] once the seed clustering is accounted for — design effect 1.51)**.
+**Pooled: 236/430 = 54.9%, 95% CI [50.2, 59.5]** — a band that straddles 50 and
+is consistent with a coin flip. One sample reading 62.9% with a CI that excludes
+50% is what sampling variation looks like at n≈100; it is not a result.
+
+So the earlier draft of this entry was wrong on three counts, and they are
+withdrawn here:
+
+- **withdrawn:** "five of five, every CI excluding 50%". The shipped content reads
+  **4 holding + 1 undetermined**;
+- **withdrawn:** "the designed counter-pentagon is intact in the shipped content".
+  Four of its five links are confirmed; the fifth is unmeasured either way, so
+  the *cycle* is not established — a cycle needs all five;
+- **withdrawn:** "both links F-030 and F-025 reported broken were sampling
+  noise". Only **`sentinel > ripper`** was (it reproduces at 71.7% / 64.0%).
+  Nothing here shows `ravager > sentinel` is fine; it shows nobody knows.
+
+**This entry's own 8-seed section had it right** and the 25-seed section
+overturned it on a single sample. That section said, of n=32: "the real coin-flip
+in the cycle is `ravager > sentinel`, and at n=32 it cannot be called either
+way." That was the correct reading, and moving to n=97 did not earn the right to
+replace it — **it is the same sampling error F-031 exists to correct in F-030**,
+committed one sample size later by this entry. Lesson, bluntly: a CI that
+excludes 50% on *one* seed base is a hypothesis, not a finding; reproduce on a
+disjoint seed base before writing "holds".
+
+**What settling it would cost.** ±5 points on a link needs **~400 decided matches
+per link** — and that is the optimistic count, because the four matches a seed
+contributes to a cell are correlated (same map, same seeded RNG stream): the
+measured design effect on this link is **1.51**, so a seed's 4 matches are worth
+roughly 2.6 independent trials. Budget ~150 seeds, not 100, for a ±5 reading.
+
+**A 100.0% cell with 12% censoring needs one more line to be readable at all**,
+and here it is: charge **all 12** capped matches to the predator as losses and
+`arclight > bulwark` is still **88/100 = 88.0%, CI [80.2, 93.0]** — a hold under
+the worst case the censoring allows. (The critic pinned this as
+`the_censored_arclight_bulwark_cell_holds_even_if_every_timeout_is_a_loss`.)
+Without that line a one-sided interval on a 100.0% cell says nothing about what
+the 12 missing matches could have done.
+
+Length on the same 1 250 matches (the kept content's most reliable arc reading
+to date): min 2:27, p25 4:29, **median 6:23**, p75 8:02, p90 11:13, max 14:54,
+**band 34.7%** (420/1212), **38 timeouts (3.04%)**, 45.5 units built per match.
+(Independent re-reads of band share on this content are **36.5% (n=389)** and
+**31.4% (n=1 209)**, so see the range correction in the verdict below.)
+
+That timeout rate is the other correction to F-030, which reported 0 on 100
+matches, and it is **worse than this entry first recorded**: at 1 250 matches
+**41 timeouts, 3.28%**, concentrated harder than reported — `mass_arclight` vs
+`mass_ravager` **18 of 100** and vs `mass_bulwark` **14 of 100**, vs
+`mass_sentinel` 5 of 100, `bulwark`-`ravager` 3 of 100, `ravager`-`sentinel`
+1 of 100, every other cell 0. The *class* and the diagnosis below (glass-cannon
+Arclight against armour) reproduce; the **magnitude is 14-18% of a cell, not
+12%**. Every cell is still *readable* (82 decided in the worst), so the matrix is
+not holed, but the heavy grind is not gone — it is rarer. **State this as the
+AC's unmet remainder:** the 5-8 minute arc is not clean while one sixth of a cell
+cannot finish, and it is deferred to B4 with the stat question below. **That residue is the live item, and it is a unit-stat
+question**: the Arclight is `offense 9 / defense 2 / armor 2`, a glass cannon that
+cannot finish an armoured line before the armoured line's mitigation eats its
+damage, so the two sides rebuild forever. It is B4's, exactly as F-025 and F-029
+both concluded.
+
+### Verdict: REVERTED. F-030's call was right, and this is now a closed question.
+
+`mvp_combat.mitigation_per_armor` stays at **2**. Nothing in `assets/data/` is
+changed by this entry — the revert is the absence of a diff, and
+`git diff main -- src benches` still shows `DEFAULT_MATCH_SECS` and its comment
+and nothing else.
+
+The three things the completed search establishes, none of which was available
+from F-030's single row:
+
+1. **At the shipped threshold the armour change is a measured loss**: 28.5% band
+   against 38.0%, on 400 matches a side, ~2.8 SE. It pushes matches *below* the
+   band's floor (191 under 5:00 against 150) far faster than it pulls them off
+   the cap (7 timeouts against 8).
+2. **Where band share is higher, the threshold earned it, not the armour.**
+   `attack_at_army` has an interior optimum at 16-18 worth ~9 points of band
+   share (38% -> 47-48%), and at that optimum mitigation 1 vs 2 reads -0.9 at
+   A=16 and +4.8 at A=18: **+2 ± 2.5 points pooled, i.e. nothing.** Taking the
+   armour change to "unlock" the threshold is a misreading of which knob moved.
+3. **And the threshold's 9 points are not for sale anyway**: the pentagon
+    degrades monotonically along it — 4/5 at A=10, 3/5 at 16, 2/5 at 18 and above
+    (and see the caution on that table: only A=18 is at 400 matches; the rest are
+    n=8-per-link, so the *monotonicity* is weaker evidence than the endpoints),
+   *identically at both mitigation settings* — because at 18 bodies a side the
+   cheap swarm runs away with the matrix (every `x vs mass_ripper` cell decides
+   at ~4:08 and `sentinel > ripper` inverts to 0.0%). A batch that cannot read
+   the counter-pentagon is the instrument B3 exists to build, broken.
+
+So the band-share ceiling of this knob set is real and the content sits near it:
+~31-38% of decided probe matches inside 5-8 minutes (readings: 31.4% at n=1 209,
+34.7% at n=1 212, 36.5% at n=389, 38.0% at n=392 — an earlier draft's "best
+reading ~34.7-38%" quoted only the optimistic half of that spread), with ~39%
+*below* 5:00
+because the Ripper and Sentinel mirrors decide in 2:29 and 3:38 and no commitment
+threshold lengthens them. **Lifting the floor is a unit-stat problem, not a
+tempo one** — the same conclusion the armour grind reaches from the other end,
+and the same destination: B4.
+
+What F-030 left as an invitation — "one number reverses this" — is withdrawn.
+One number does not reverse it: at the shipped threshold mitigation 1 is 9.5
+points worse, and at any threshold where it is not worse, it is not better
+either.
+
+### One consequence for the suite, flagged not fixed
+
+`b3_pentagon::the_real_batch_reports_what_the_sim_actually_does` fails on this
+branch's content (`cargo test --release --test b3_pentagon`: 17 passed, 1
+failed — `left: Holds, right: Fails` at `tests/b3_pentagon.rs:477`). It pins
+F-025's reading: `holding() == 4` with `bulwark > ravager` **at exactly 0.0%**.
+Under the B3.5 content that link is 85.7% over 98 decided matches, so the pin is
+a content-driven value change, due for re-measurement with the rest of them.
+
+Two notes for whoever re-pins it, both from this entry:
+
+- **the new value is 4 of 5 links holding, with a different failing link than
+  F-025's.** On the test's own batch (`BatchSettings::default()`, seed base 0,
+  `.with_seeds(2)`, 100 matches) the shipped content reads `bulwark > ravager`
+  **87.5%** — so F-025's failing link now holds — while `sentinel > ripper` lands
+  on **exactly 50.0% of 8 decided matches**, which `Verdict` reports as `Fails`.
+  `holding()` is therefore still **4**, which is why the failure lands at
+  `tests/b3_pentagon.rs:477` (the `bulwark > ravager` verdict) and *not* at line
+  474's `assert_eq!(report.holding(), 4)` — that assert passes, and the reported
+  failure line is itself the proof that `holding() == 4` on this content. The
+  walk table above reads 4/5 for this content too. **Do not re-pin this as 5/5**;
+  the 1 250-match reading is 4 holding + 1 undetermined, not 5 holding, and the
+  2-seed batch is a different (and under-powered) reading again;
+- the test takes its verdict from **2 seeds — 8 decided matches per link — and
+  that sample cannot support the word `Fails`** (95% half-width 28 points). It is
+  the same under-powered reading that put a wrong `FAILS` in F-030 and (on the
+  evidence of the reproducing 64-72% `sentinel > ripper` and 82-86%
+  `bulwark > ravager` links above) a wrong one in F-025. **This is the
+  recommendation that matters:** if the pin is rewritten, it should either raise
+  its seed count or assert the verdict with its interval, so a 50/50-looking cell
+  is reported as *undetermined* rather than as a broken design. On the shipped
+  content that is exactly the cell the test currently trips over —
+  `sentinel > ripper` at 50.0% of 8 — and the link's larger-sample reading
+  (64-72%) says the 8-match `Fails` is an artefact, not a design failure.
+
+### Reproducing the numbers
+
+Every row above is `src/bin/balance` in release and nothing else; the batches are
+named by their flags, so each is one command. `balance` already prints median,
+p25, p75 and max (`Tally::length_quantile`), the timeout count, production totals
+and the pentagon table; **band share and p90 are not printed**, and were computed
+from the per-match progress lines `balance` writes to stderr
+(`[n/total] a vs b seed s [orient] -> result in T ticks (m:ss)`) with a throwaway
+script, using `length_quantile`'s own quantile definition (`ceil(q*n)`) and its
+own basis (all matches, timeouts included — see Method).
+
+**One cross-check claimed here is withdrawn.** An earlier draft said "the parsed
+median reproduces the printed one on every batch". That check is only valid on a
+batch with **zero timeouts**, which is why it "worked" on the 100-match walk rows
+and could not have worked on the 400- and 1 250-match batches: those have 8-41
+capped matches, and on a decided-only basis their medians differ from the printed
+ones by 5s to 33s (6:21 vs 6:26 at 400; 5:37 vs 6:10 at 1 250). Treat it as
+withdrawn for every batch with a timeout in it. The surviving reproduction check
+is that **row A1 reproduces F-030's 30%** band share. A batch split into shards on seed bases
+10/11/12 is three such commands; `seed_at` mixes the base, so the shards are
+different seed sets rather than overlapping ones. If band share becomes a
+standing report rather than a one-off reading, it belongs in `Tally` where it can
+be tested — which is a B3 checkbox ("match-length distribution vs the 5-8 minute
+target"), not this entry's.
+
+## F-032 — The goldens moved because the data moved, and here is the proof (B3.5 closure, item 4)
+
+**What this entry is.** BALANCE_PLAN's B3.5 box ends with a licence and a
+condition: "Because content is data, a RON change moves every pinned per-tick
+`state_hash` golden. With **no Rust touched**, any golden that moves is
+content-driven by construction — that is the argument that licenses recomputing
+them, and **it must be demonstrated, not asserted**." F-029 ran that
+demonstration for five B-series binaries at an earlier content state and
+deliberately left ~30 goldens un-recomputed. This entry redoes the proof for the
+*final* B3.5 content, over the **whole** suite rather than the B-series, and then
+recomputes.
+
+### The precondition: the Rust really is identical
+
+`git diff main -- src benches` at `d8f95cd` is exactly two hunks of one file:
+`src/headless.rs`'s `DEFAULT_MATCH_SECS` (8 min -> 15 min), its derived
+`DEFAULT_TICK_CAP`, and the comment explaining why (the cap decision, F-029).
+Nothing in `src/sim/`, nothing in `benches/`. A hash is a function of sim state,
+so the only thing on this branch that *can* move one is `assets/data`.
+
+`DEFAULT_MATCH_SECS` itself cannot move a per-tick hash: it is a stopping
+condition on the batch runner, not an input to any sim system, and every golden
+here is pinned at a tick (300, 600, ...) or a fold over ticks far below either
+cap. The suite demonstrates this too — see below: the goldens pass *unchanged*
+with the new cap compiled in and the old data loaded.
+
+### The proof, run both ways and in both profiles
+
+`Content` is loaded at runtime from `CARGO_MANIFEST_DIR/assets/data`
+(`headless::content`), so the swap is a file copy, not a rebuild — which is also
+the only reason this proof is cheap. (`touch`ed after every copy regardless: an
+`rsync -a`-restored file can look older than the last build and silently not be
+rebuilt. It has produced a false green in this project before.)
+
+| run | binary | `assets/data` | result |
+|---|---|---|---|
+| P1 | post-change (debug) | **`main`'s** | **839 passed, 5 failed** |
+| P2 | post-change (release) | **`main`'s** | **839 passed, 5 failed** — the same five |
+| N1 | post-change (debug) | post-change | see the re-pin table below |
+| N2 | post-change (release) | post-change | identical to N1 |
+
+**Not one golden is among P1/P2's failures.** All five are assertions this branch
+*wrote about the new content*, and each fails holding the old value in its hand:
+
+| test | file | says |
+|---|---|---|
+| `every_combat_unit_is_massed_by_exactly_one_probe` | `b1_probe_set` | `mass_bulwark` opens 1 barracks, wanted 3 |
+| `the_mass_probes_are_knob_identical` | `b1_probe_set` | a mass probe opens 1 production line, wanted 3 |
+| `the_five_mass_probes_are_knob_identical_at_attack_at_army_ten` | `critic_b35_armour` | `attack_at_army` is 3, wanted 10 |
+| `the_decided_match_median_is_in_the_five_to_eight_minute_band` | `b35_tempo` | median **1:16**, outside the band |
+| `the_matches_are_dense_enough_to_be_fights` | `b35_tempo` | **6** combat units a match, under 18 |
+
+So: **old data, old numbers; new data, new numbers; nothing in between.** Every
+golden-bearing suite in the tree — not only F-029's five — passes at its old,
+unedited pin under the new binary: `b1_matchup`, `b1_strategies`, `b2_headless`,
+`b2_orientation`, `b2_production`, `b35_parallel`, `b35_queue_depth`,
+`critic_b1_ac2`, `critic_b2_ac1`, `critic_b2_ac4`, `critic_b35_ac0`,
+`critic_b35_ac0b`, `critic_m4b`, `critic_m4c`, `critic_m5`, `critic_m6`,
+`m5_replay`, `m6_cross_process`, `m6_lockstep`, `p2_log_writer`. And so does
+every *budget* the next section re-measures, and `b3_pentagon`'s F-025 pin: under
+`main`'s data the pentagon still reads `bulwark > ravager` at 0.0%. That is the
+whole licence, and it is now a measurement rather than an argument.
+
+### The re-pin, old → new
+
+Forty-two numbers across nine suites. Recomputed on the box under B3.5's content
+(`units.ron` md5 `6c28883759fc7eee792deefcdad223f8`), identical in debug and
+release, which is its own determinism check.
+
+**The default matchup at 3 000 ticks** — pinned independently in four files
+(`b1_matchup`, `b35_parallel`, `b35_queue_depth`, `critic_b2_ac4` for the state,
+`b1_strategies` for seeds 4 and 11):
+
+| seed | state, old → new | journal, old → new |
+|---|---|---|
+| 4 | `0xa71f64cad50203e9` → `0xbd74941fb3cae489` | `0xe78eebdc5c2ca733` → `0x55675b7844c3d493` |
+| 11 | `0x5b398ee4785423dc` → `0x87008a7d696dd45c` | `0x00b7f8d8713fe467` → `0xb27b6a664addcfd7` |
+| 23 | `0xf4b57d1c3c3f2af7` → `0x0fe52558759f6817` | `0x46821006f2fae62a` → `0xb86b2ad6d1ed0efa` |
+
+**The bench fixture** (`b2_headless`, two of the ticks re-asserted in
+`b2_orientation`):
+
+| tick | old → new |
+|---|---|
+| 1 | `0x9a74d7adacad19be` → `0x5addc3afc88c09ee` |
+| 10 | `0x624e8c15e1922eb5` → `0xe6cf18953a100975` |
+| 60 | `0x3f80afb2a96f1736` → `0xf3869a1a5ddc98c6` |
+| 120 | `0x545c43c242aa59f0` → `0x8bfd07059b1453a0` |
+| 300 | `0xa5b4138cf475fd00` → `0x13edd185edb004f0` |
+| 600 | `0x1007e832729309b0` → `0x2b3039ab98739900` |
+| fold of all 600 | `0x606003707bc19408` → `0x496070b2de2d41f8` |
+
+**The neutrality pairs** — the same two matches under two names, pinned in
+`b35_parallel` (`solo_*`) and `b35_queue_depth` (`depth_*`); both files carried
+identical numbers before and carry identical numbers after, which is itself a
+check that the two capabilities really are the same fixture:
+
+| matchup | trace, old → new | journal, old → new |
+|---|---|---|
+| ripper vs bulwark, seed 4 | `0xff87018409ace43e` → `0xbc761268e37bdfa6` | `0x4e1604bd46e099f6` → `0x501ed9cfa3548f9b` |
+| bulwark vs ripper, seed 11 | `0xc0a77e736876e285` → `0x9b7ab550477efe7b` | `0x565da2a66530936a` → `0x8bc810501741a3b9` |
+
+**`critic_b35_ac0`'s nine depth-1 rows** (trace over 4 000 ticks, end state,
+journal) and **`critic_b35_ac0b`'s eight shipped-matchup pairs** (120-sample
+trace over 7 200 ticks, journal) moved in all 27 + 16 values; the new tables are
+in the test files, each with the licence recorded at the site.
+
+**The cross-process pin** (`critic_b1_ac2`) is not a literal in a file but a
+`target/critic_b1_ac2/pins/*.txt` written by the first process to run the
+fixture. Its panic message says to delete it to re-pin, and that is what was
+done — the pin re-forms from the new data on the next run, and the assertion
+(two processes must agree) is untouched.
+
+## F-033 — Six horizons were numbers, not budgets (B3.5 closure, item 5)
+
+B3.5's slower economy (worker load 10 → 2) stretched everything in time, and six
+assertions were holding a horizon that used to be generous and no longer is. The
+rule applied to each: **keep what the assertion means, re-derive the number.**
+
+| assertion | old | new | why that number |
+|---|---|---|---|
+| `b1_probe_set::every_strategy_eventually_attacks` | 12 000 | `DEFAULT_TICK_CAP` (54 000) | "eventually" *means* "inside the match it will be played in". Measured latest committer: `mass_bulwark` at tick 18 750 |
+| `b1_probe_set::the_rush_commits_early_and_the_turtle_masses_first` | 12 000 | `DEFAULT_TICK_CAP` | the turtle's first wave is now at 13 470, past the old horizon |
+| `critic_b1_ac3::every_strategy_commits_before_the_match_can_stop_it` | 12 000 | `DEFAULT_TICK_CAP` | the assertion is literally about the match cap; derived from it, not from a number that happens to pass |
+| `critic_b1_ac3::each_mass_probe_fields_an_army_of_its_own_unit` | 12 000 | `DEFAULT_TICK_CAP` | same, for the same measured 18 750 |
+| `critic_b1::a_placement_the_commander_cannot_afford_consumes_no_randomness` | 3 000 | 12 000 | measured: the poor commander (20 starting Alloy) first affords its opening at tick 3 450; the rich one places at 300 |
+| `critic_p2::no_configuration_of_the_writer_changes_a_single_tick_of_the_sim` | 4 800 | 12 000 | measured: seed 7 is decided at tick 9 498, and the probe's own vacuity check requires being past the decision |
+| `b1_probe_set::every_strategy_places_its_barracks_and_builds_its_own_order` | 6 000 | `DEFAULT_TICK_CAP` | an opening not up by the cap goes up in no match that will be played. `MIN_TRAINED = 2` kept: a floor against a token unit, not a rate. **Still red at the cap** (`mass_bulwark` places 1 of 3 foundries): not a horizon problem, see F-035 |
+| `critic_b1_ac3::every_mass_versus_mass_cell_resolves_in_both_orientations` | 20 000 | `DEFAULT_TICK_CAP` | the test defines a hole as a cell that *times out*, and timeout means the match cap. Measured: the `mass_bulwark` mirror on seed 7 now decides near tick 23 500, past the old horizon; all 25 cells resolve inside the cap on seed 7 (release). One seed only: F-031 measures 14-18% of `mass_arclight` vs armoured matches reaching the cap across seeds, so this green is a sample, not a proof that no hole exists |
+
+Measured commitment ticks on the shipped set, solo, seed 4 (first attack / tick
+the match ended):
+
+| probe | first attack | over at |
+|---|---|---|
+| rush | 750 | 4 129 |
+| mvp | 4 440 | 8 418 |
+| mass_ripper | 7 830 | 9 013 |
+| synth_steel_flesh | 10 830 | 12 251 |
+| mass_sentinel | 11 460 | 13 099 |
+| turtle | 13 470 | 14 531 |
+| mass_arclight | 14 130 | 16 022 |
+| synth_triad | 14 670 | 16 127 |
+| mass_ravager | 15 060 | 17 079 |
+| mass_bulwark | 18 750 | 23 319 |
+
+*Superseded for the turtle by F-036: at `attack_at_army` 26 the turtle first attacks at 19 320, after mass_bulwark.*
+
+Five more fixtures were anchored to *content values* rather than horizons, and
+are now read from the content instead of pinned, so the next re-tune cannot turn
+a probe into a silent no-op: the worker's carry capacity (`m4a_economy`'s loader
+mutation anchor, `critic_m4a`'s "room for less than one load", `critic_m4b`'s
+two carried-load assertions), the building HP scale (`critic_m4c`, 40 → 420) and
+the time one Ripper needs to level an HQ (`m4c_ai`, three loops that pinned
+3 000 ticks against a pool that grew ten-fold — now a `kill_budget(content,
+attacker, building)` derived from HP, damage, mitigation and attack period).
+
+## F-034 — A coin flip is not a broken counter: the pentagon needed a third verdict (B3.5 closure)
+
+`PentagonReport` had two readings for a link with data: `rate > 0.5` was `Holds`,
+anything else `Fails`. `b3_pentagon::the_real_batch_reports_what_the_sim_actually
+_does` reads **eight** decided matches per link (5 x 5 probes x 2 seeds x 2
+orientations, of which 8 land on each pentagon link). Eight matches put roughly
+**±28 points** of two-sided 95% interval around a rate. So that test was
+reporting, as *broken design*, links whose data cannot distinguish 45% from 55%
+— and F-031 had just measured one of them (`ravager > sentinel`, pooled 54.9%,
+CI [50.2, 59.5] over 430 matches) as a genuine coin flip.
+
+The fix is a third verdict, not a bigger batch:
+
+| verdict | means |
+|---|---|
+| `Holds` | the whole interval is above a half — the counter resolves |
+| `Fails` | the whole interval is below a half — the counter is backwards |
+| `Undetermined` | the interval straddles a half — **the sample cannot call it** |
+| `Undefined` | no decided matches (every match timed out) — unchanged |
+| `NoStrategy` | the unit has no mass probe — unchanged |
+
+`Undetermined` and `Undefined` are deliberately distinct: "we measured and it is
+too close to call" is not "we have no measurement". The interval is Wilson's
+score interval at z = 1.959963985, on `Cell::n_decided` (timeouts are not
+sample, per F-024), and `Cell::wilson_interval` is pinned in `src/metrics.rs`
+against the eight intervals F-031 quotes.
+
+What this changed in the reading of the shipped pentagon at eight matches a link:
+
+| link | decided | rate | 95% interval | verdict |
+|---|---|---|---|---|
+| arclight > bulwark | 8 | 100.0% | [67.6, 100.0] | holds |
+| ripper > arclight | 8 | 100.0% | [67.6, 100.0] | holds |
+| bulwark > ravager | 8 | 87.5% | [52.9, 97.8] | holds |
+| ravager > sentinel | 8 | 62.5% | [30.6, 86.3] | undetermined |
+| sentinel > ripper | 8 | 50.0% | [21.5, 78.5] | undetermined |
+
+**Three hold, two are undetermined, and nothing fails** — the first reading in
+the project's history with no link called broken. F-025's `bulwark > ravager` at
+0.0% is now the pentagon's strongest resolved hold at this sample size; the two
+undetermined cells are undetermined for two different reasons. `ravager >
+sentinel` is genuinely close: F-031's 430-match run puts it at 54.9%, CI [50.2,
+59.5]. `sentinel > ripper` is **not** close: F-031 and the critic reproduced it
+at 64.0% and 71.7% on ~100 matches each. It reads undetermined here only because
+n = 8 cannot call anything short of a near-sweep (a 6/8 still has a lower bound
+under 50%), not because the link is in doubt. The old test
+would have re-pinned them as 5/5 holding, which would have been a *stronger*
+claim than the data supports in the same breath as deleting a true one.
+
+Blast radius, handled deliberately rather than by loosening: `critic_b3_ac2`'s
+`exactly_half_fails_and_a_hair_above_half_holds` pinned the old rule by name and
+is now `every_way_of_being_even_reads_undetermined_not_failed`; several synthetic
+fixtures used n = 4 (interval ±35 points) and were scaled x10 so each test's
+original intent survives the new rule; and a new test pins the difference head
+on — the same 75% rate reads `Undetermined` at n = 4 and `Holds` at n = 40.
+
+## F-035 — The extra openings never go up: B3.5's economy starves the tech step (B3.5 closure, closed)
+
+**Status: closed — option 3, "scripts match reality"; see *Resolution* at the
+end of this entry, which also corrects the solo measurement below (it missed
+`mass_ripper`'s second Gene-Vats).** Gating test:
+`b1_probe_set::every_strategy_places_its_barracks_and_builds_its_own_order`,
+which F-033 moved to the match cap and which is still red there. Raising the
+horizon cannot fix it, and the assertion was not weakened.
+
+Measured solo, seed 4, release, 54 000 ticks (the match is over well before
+the cap, and nothing is placed after it):
+
+| probe | openings placed | over at | trained | opening cost | unit cost(s) |
+|---|---|---|---|---|---|
+| mvp | 1/1 | 8 418 | 6 | 150 | 70, 110 |
+| rush | 1/1 | 4 129 | 6 | 150 | 40 |
+| synth_triad | 4/4 (last at 7 740) | 16 127 | 12 | 150, 150, 200, 150 | 70, 40, 80 |
+| turtle | **3/4** | 14 531 | 18 | 150 x4 | 70, 40, 110 |
+| synth_steel_flesh | **2/4** | 12 251 | 12 | 150 x4 | 70, 40, 110 |
+| mass_ripper | **1/3** | 9 013 | 12 | 150 x3 | 40 |
+| mass_sentinel | **1/3** | 13 099 | 12 | 150 x3 | 70 |
+| mass_arclight | **1/3** | 16 022 | 12 | 200 x3 | 80 |
+| mass_ravager | **1/3** | 17 079 | 12 | 150 x3 | 90 |
+| mass_bulwark | **1/3** | 23 319 | 13 | 150 x3 | 110 |
+
+Mechanism, from `src/sim/ai.rs`: each decision runs tech before army, and an
+opening is placed only when `budget >= cost`. Every unit in these build orders
+is cheaper than the opening. Once the first barracks is up, the army step
+spends the stockpile whenever it reaches the next unit's price and the line is
+free. At B3.5's worker load (2) the income never lets the stockpile climb from
+a unit's price to 150-200 between two army spends, so the second and third
+openings are never affordable. This follows from the outcome itself: tech runs
+first, so any decision past an opening's `at_tick` with the stockpile at its
+cost would have placed it. The measured peak stockpile (296-302) is the
+starting stockpile; the probe did not record the post-placement peak
+separately.
+
+Consequences:
+- F-030's "three production lines" for the mass probes **do not happen** in
+  the shipped content. Every mass probe plays on one barracks.
+  `MASS_PROBE_BARRACKS = 3` and the knob-identity tests still pass, because
+  they read the scripts and not the realised openings.
+- The probes are still mutually comparable (F-018): all five realise the same
+  one opening.
+- The B3.5 pentagon reading (F-034) was taken on these realised one-barracks
+  armies, so it is a reading of what the sim does, not of what the scripts
+  intend.
+
+Options, none taken (content is final for this closure, and the AI priority is
+a design call):
+1. Content: make the openings affordable, for example with cheaper extra
+   barracks, later `at_tick`s paired with a reserve, or a different income.
+2. AI: have the army step reserve the next due opening's cost (`tick >=
+   at_tick` and not yet standing) before it trains. This changes every
+   strategy with more than one opening and moves goldens.
+3. Spec: accept one realised barracks, drop the duplicate openings from the
+   mass probes and set `MASS_PROBE_BARRACKS` back to 1. This changes the
+   F-030 rationale.
+
+### Resolution (closed): the scripts list what the sim places
+
+**Decision (the user's): option 3.** Every opening that never goes up is removed
+from `strategies.ron`, so each script lists exactly the placements the sim
+makes, in the order it makes them. Multi-barracks as a capability (the army step
+reserving the Alloy of a due opening) is deferred to B4.
+
+**Correction to the table above: `mass_ripper` does place a second barracks.**
+The solo fixture ends the match the moment the probe levels the inert enemy HQ —
+`mass_ripper` at tick 9 013 — and the sim stops thinking once a match is
+decided, so "measured to 54 000 ticks" above really meant "to the end of the solo
+match". In head-to-head play the Ripper's second Gene-Vats goes up at **tick
+9 330**, on every seed and orientation measured. The Ripper costs 40 Alloy, the
+cheapest body in the game, so it is the one probe whose income outruns its
+spending and whose stockpile climbs to 150. No probe ever placed a third
+opening. This was found by the proof obligation, not by inspection: the first
+trim also cut the Ripper's second Gene-Vats, and
+`b3_pentagon::the_real_batch_reports_what_the_sim_actually_does`'s pinned
+`sentinel > ripper` moved 0.50 -> 0.75. That trim was not committed.
+
+**What the B3.5 measurements were taken on, therefore:** the Ripper readings
+(F-029 to F-034, every cell with `mass_ripper` in it) were taken on a
+**two-line** Ripper army from tick 9 330 onward; the other four mass probes on
+**one** barracks. Neither changes under this closure: the scripts now describe
+exactly those armies, so the measurements stand as readings of the shipped
+content.
+
+**The comparison (release, same binary, old `strategies.ron` vs the first trim
+that cut every probe to one opening).** Each match played under both data sets,
+diffed on length, winner and the full placement list of both sides:
+
+| roster | seeds | matches | differ | of which winner flips |
+|---|---|---|---|---|
+| the five `mass_*` probes (the `b3_pentagon` batch: `seed_at(0, k)`, k = 0, 1, both orientations) | 2 | 100 | **32** — every non-mirror match with `mass_ripper` in it; the other 68 are identical | 7 |
+| `mvp`, `mass_bulwark`, `mass_arclight`, `synth_steel_flesh`, `synth_triad`, `rush`, `turtle` (all ordered pairings, both orientations) | 1 (`seed_at(0, 0)`) | 98 | **0** | 0 |
+
+The Ripper mirror does not differ because it is decided before tick 9 330. In
+the second row the trimmed `turtle` and `synth_steel_flesh` openings, the dropped
+second and third openings of `mass_bulwark` and `mass_arclight`, and the
+`synth_triad` reorder change nothing.
+
+**What shipped (`c68a4c9`):**
+
+| strategy | openings before | openings after | note |
+|---|---|---|---|
+| `mass_bulwark`, `mass_sentinel`, `mass_ravager`, `mass_arclight` | 3 | 1 | |
+| `mass_ripper` | 3 | **2** | the second Gene-Vats (at_tick 600, offset 165) is real; the third is not |
+| `synth_steel_flesh` | 4 | 2 | Foundry, Gene-Vats |
+| `synth_triad` | 4 | 4 | **reordered** to placement order: the second Gene-Vats (150, placed ~5 190) before the Aether Spire (200, placed ~7 740). Each entry keeps its own at_tick and offset, so the k-th placement of a building gets the same offset as before |
+| `turtle` | 4 | 3 | Foundry, Gene-Vats, Foundry |
+| `mvp`, `rush` | 1 | 1 | unchanged |
+
+**The golden-unchanged proof.** `cargo test --release --no-fail-fast` on the
+box with the shipped trim and no Rust change: **847 passed, 1 failed**. The one
+failure is `critic_b1_ac3::the_rush_is_the_earliest_and_the_turtle_the_latest_of_the_whole_set`,
+which F-036 handles and which reads no golden. Every per-tick `state_hash`
+golden, every journal pin and the `b3_pentagon` rate pins pass at their old
+values; the gating test is green.
+
+**Test changes, none of them loosening:**
+- F-018's knob identity (`b1_probe_set::the_mass_probes_are_knob_identical`,
+  `critic_b1_ac3::the_mass_probes_are_identical_in_every_field_of_the_struct`,
+  `critic_b35_armour::the_five_mass_probes_are_knob_identical_at_attack_at_army_ten`):
+  the opening **count** may differ, and only for `mass_ripper`, named
+  (`b1_probe_set::MASS_PROBE_OPENING_EXCEPTIONS`). Every opening the probes
+  share is still compared tick for tick and offset for offset, and every other
+  field is still asserted identical; the struct-wide `Debug` comparison cuts
+  each probe to its shared first opening and compares everything else. Each
+  site says B4's opening reservation should make the five identical again.
+- `MASS_PROBE_BARRACKS` is 1 again.
+- The gating test plays **unopposed** (no enemy HQ, so the match cannot end)
+  and asserts the match is still running after `DEFAULT_TICK_CAP` ticks.
+  Against the inert HQ every strategy ended its match long before the cap
+  (`mass_ripper` at 9 013), so "by the match cap" was never what it tested, and
+  the Ripper's real second opening could not appear in it.
+
+## F-036 — The turtle was no longer the late pole; `attack_at_army` 15 -> 26 (B3.5 closure)
+
+**Gating test:** `critic_b1_ac3::the_rush_is_the_earliest_and_the_turtle_the_latest_of_the_whole_set`
+(B1's design intent: the rush commits earliest, the turtle latest). Red since
+B3.5's tempo pass: the mass probes' `attack_at_army` went 3 -> 10 (F-030), and at
+B3.5's income the turtle's 15 no longer kept it behind them.
+
+**Measured first-attack ticks** (solo, release, 54 000-tick budget). They are
+identical on seeds 1, 2, 3, 4, 5, 7, 11 and 23 (the seed only turns the
+placement direction) and identical before and after F-035's trim:
+
+| strategy | first attack (tick) |
+|---|---|
+| rush | 750 |
+| mvp | 4 440 |
+| mass_ripper | 7 830 |
+| synth_steel_flesh | 10 830 |
+| mass_sentinel | 11 460 |
+| **turtle @ 15** | **13 470** |
+| mass_arclight | 14 130 |
+| synth_triad | 14 670 |
+| mass_ravager | 15 060 |
+| mass_bulwark | 18 750 — the slowest non-turtle |
+
+**The turtle's commit tick against its threshold** (seeds 4 and 7, identical):
+
+| `attack_at_army` | first attack (tick) | force | margin over 18 750 |
+|---|---|---|---|
+| 16 | 14 760 | 16 | short |
+| 18 | 14 910 | 18 | short |
+| 20 | 16 950 | 21 | short |
+| 22 | 17 130 | 22 | short by 1 620 |
+| 24 | 19 140 | 25 | +390 ticks (6.5 s) |
+| **26** | **19 320** | 26 | **+570 ticks (9.5 s)** |
+
+23 and 25 were not measured. The guess of ~22 was not enough; 24 clears by only
+390 ticks, so **26** is the value shipped (the user's choice). One RON number;
+no Rust change.
+
+**Goldens: none moved, so none were recomputed.** `cargo test --release
+--no-fail-fast` with `attack_at_army: 26`: **848 passed, 0 failed**. The gating
+test is green, and every per-tick `state_hash` golden, journal pin and
+`b3_pentagon` pin passes at its existing value: no pinned fixture plays the
+turtle past its first wave. The F-032 licence was therefore not needed. Its
+precondition holds anyway: no Rust changed, and the same binary with
+`attack_at_army: 15` passes the same goldens (F-035's 847 / 1 run, whose one
+failure is this test).

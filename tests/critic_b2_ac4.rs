@@ -213,12 +213,20 @@ fn probe_an_unrelated_resource_shifts_entity_ids_and_nothing_else() {
 /// The state goldens are sim truth and must be byte-identical to the pre-AC2
 /// values, in a file the implementer does not own. Pinned here independently
 /// of `tests/b1_matchup.rs`.
+///
+/// **B3.5 re-pin (F-032):** these numbers were recomputed on B3.5's content.
+/// Because content is data, the tempo re-tune (F-029/F-030) moves every pinned
+/// per-tick `state_hash`; F-032 demonstrates — by replaying the pre-tune
+/// `assets/data` under this identical binary and watching every golden below
+/// pass at its old value — that the move is content-driven and nothing else.
+/// What the assertion means is unchanged: this match is frozen, and any Rust
+/// change that moves it is a regression.
 #[test]
 fn probe_the_state_hash_goldens_are_byte_identical_to_the_pre_ac2_values() {
     for (seed, state_golden) in [
-        (4u64, 0xa71f_64ca_d502_03e9u64),
-        (11, 0x5b39_8ee4_7854_23dc),
-        (23, 0xf4b5_7d1c_3c3f_2af7),
+        (4u64, 0xbd74_941f_b3ca_e489u64),
+        (11, 0x8700_8a7d_696d_d45c),
+        (23, 0x0fe5_2558_759f_6817),
     ] {
         let mut app = golden_fixture(
             content(),

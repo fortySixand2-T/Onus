@@ -1561,7 +1561,8 @@ fn a_carrying_worker_is_never_stripped_by_the_clearing_pass() {
             break;
         }
     }
-    assert_eq!(carried(&app, w), 10, "the worker never picked up a load");
+    let cap = content().unit("worker").unwrap().mvp_carry_capacity;
+    assert_eq!(carried(&app, w), cap, "the worker never picked up a load");
     // Re-task every tick while it walks home; the load must survive all of it.
     for t in 0..120 {
         push(
@@ -1576,7 +1577,7 @@ fn a_carrying_worker_is_never_stripped_by_the_clearing_pass() {
         let banked = app.world().resource::<Stockpiles>().alloy(Faction::A);
         assert_eq!(
             carried(&app, w) + banked,
-            10,
+            cap,
             "tick {t}: the load was destroyed by re-tasking"
         );
         assert!(

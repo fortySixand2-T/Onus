@@ -17,13 +17,22 @@
 //! PASS/FAIL against the kill criteria is a later checkbox. Here every link
 //! carries its own [`Verdict`], and the four states are kept apart on purpose:
 //!
-//! - [`Verdict::Holds`] — the predator's rate over the prey is **strictly**
-//!   above 0.5. A dead-even matchup is not a counter.
-//! - [`Verdict::Fails`] — a defined rate at or below 0.5. That is the sim doing
-//!   its job: the stats or the nemesis magnitude are wrong.
-//! - [`Verdict::Undefined`] — nothing was decided (an unplayed or all-timeout
-//!   matchup). Not 0.5, and not a hold: an all-timeout run must be flagged, not
-//!   reported as balanced.
+//! - [`Verdict::Holds`] — the predator wins, and the **sample says so**: its
+//!   rate is above 0.5 and the whole 95% interval around it is too. A dead-even
+//!   matchup is not a counter.
+//! - [`Verdict::Fails`] — the predator loses and the whole interval is below
+//!   0.5. That is the sim doing its job: the stats or the nemesis magnitude are
+//!   wrong.
+//! - [`Verdict::Undetermined`] — a rate exists, but its interval **straddles**
+//!   0.5: this many matches cannot tell the link from a coin flip. Distinct
+//!   from `Fails`, and that distinction is the whole point (F-031): at 8
+//!   decided matches the 95% half-width is 28 points, so a bare `rate > 0.5`
+//!   records a coin flip as a broken design — which it did, twice, in F-025 and
+//!   F-030 for a link that reproduces at 64-72% once the sample is 100.
+//! - [`Verdict::Undefined`] — nothing was **decided** (an unplayed or
+//!   all-timeout matchup): there is no rate at all, which is a different thing
+//!   from a rate too noisy to read. Not 0.5, and not a hold: an all-timeout run
+//!   must be flagged, not reported as balanced.
 //! - [`Verdict::NoStrategy`] — the instrument is incomplete: some unit of the
 //!   cycle has no strategy that masses it, so the matchup was never measurable.
 //!   A gap in the probe set, not a reading about the game.
@@ -165,11 +174,16 @@ pub fn mass_strategy<'c>(content: &'c Content, unit: &str) -> Option<&'c Strateg
 /// What one predicted counter did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Verdict {
-    /// The predator's rate over its prey is strictly above 0.5.
+    /// The predator's rate over its prey is above 0.5 and so is the whole 95%
+    /// interval around it.
     Holds,
-    /// A defined rate at or below 0.5 — the predicted counter does not win.
+    /// The predator's rate is at or below 0.5 and the whole 95% interval is
+    /// **below** 0.5 — the predicted counter demonstrably does not win.
     Fails,
-    /// Nothing was decided: no rate exists. Never 0.5.
+    /// A rate exists, but its 95% interval contains 0.5: the sample cannot tell
+    /// this link from a coin flip. Not a hold, and **not** a failed design.
+    Undetermined,
+    /// Nothing was decided: no rate exists at all. Never 0.5.
     Undefined,
     /// One of the two units has no strategy that masses it: unmeasurable.
     NoStrategy,
@@ -181,6 +195,7 @@ impl Verdict {
         match self {
             Verdict::Holds => "holds",
             Verdict::Fails => "FAILS",
+            Verdict::Undetermined => "undetermined",
             Verdict::Undefined => "undefined",
             Verdict::NoStrategy => "no probe",
         }
@@ -202,6 +217,9 @@ pub struct Link {
     /// `W[predator_strategy][prey_strategy]` — the **predator's** rate, never
     /// the transpose.
     pub rate: Option<f64>,
+    /// The 95% Wilson interval around [`Link::rate`] — how wide the reading is,
+    /// carried beside it so a verdict can never be quoted without its error.
+    pub interval: Option<(f64, f64)>,
     /// Decided matches behind the rate.
     pub n_decided: u32,
     /// Matches of this pair that hit the tick cap. Not in the rate.
@@ -215,9 +233,15 @@ impl fmt::Display for Link {
             Some(r) => format!("{:>5.1}%", 100.0 * r),
             None => "   -- ".to_string(),
         };
+        // The interval prints with the rate, always: a pentagon table that
+        // quoted a percentage without its width is what F-031 is about.
+        let ci = match self.interval {
+            Some((lo, hi)) => format!(" [{:.1}, {:.1}]", 100.0 * lo, 100.0 * hi),
+            None => String::new(),
+        };
         write!(
             f,
-            "{:>8} > {:<8} {rate}  {:>3} decided, {} timeouts  {}",
+            "{:>8} > {:<8} {rate}{ci}  {:>3} decided, {} timeouts  {}",
             self.predator,
             self.prey,
             self.n_decided,
@@ -270,6 +294,13 @@ impl PentagonReport {
     /// Links whose predicted counter did **not** win — the findings B4 tunes.
     pub fn failing(&self) -> usize {
         self.count(Verdict::Fails)
+    }
+
+    /// Links whose interval straddles 0.5 — read, but not readable as either a
+    /// counter or a broken one. These are a **sample-size** report, not a design
+    /// one: more seeds move them, retuning need not.
+    pub fn undetermined(&self) -> usize {
+        self.count(Verdict::Undetermined)
     }
 
     /// Links with no decided match behind them.
@@ -333,11 +364,16 @@ impl Link {
             _ => None,
         };
         let rate = cell.and_then(|c| c.rate());
-        let verdict = match (&predator_strategy, &prey_strategy, rate) {
+        let interval = cell.and_then(|c| c.wilson_interval());
+        // The interval decides, not the point estimate: a cell whose interval
+        // contains 0.5 is a cell this many matches cannot read, and calling it
+        // `Fails` would publish sampling noise as a design verdict (F-031).
+        let verdict = match (&predator_strategy, &prey_strategy, interval) {
             (None, _, _) | (_, None, _) => Verdict::NoStrategy,
             (_, _, None) => Verdict::Undefined,
-            (_, _, Some(r)) if r > 0.5 => Verdict::Holds,
-            _ => Verdict::Fails,
+            (_, _, Some((lo, _))) if lo > 0.5 => Verdict::Holds,
+            (_, _, Some((_, hi))) if hi < 0.5 => Verdict::Fails,
+            _ => Verdict::Undetermined,
         };
         Link {
             predator,
@@ -345,6 +381,7 @@ impl Link {
             predator_strategy,
             prey_strategy,
             rate,
+            interval,
             n_decided: cell.map(|c| c.n_decided).unwrap_or(0),
             n_timeout: cell.map(|c| c.n_timeout).unwrap_or(0),
             verdict,
