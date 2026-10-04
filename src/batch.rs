@@ -340,26 +340,39 @@ pub fn run_match(
     Ok(MatchRecord::new(content, settings, result, ticks, produced))
 }
 
-/// Everything a batch built, per unit id, in the header order of its first
-/// record — the one production number a whole run can be read at a glance from.
+/// Everything a batch built, per unit id — the one production number a whole
+/// run can be read at a glance from.
 ///
-/// Summed **by unit id**, not by column index, so records carrying different
-/// headers could never be added together misaligned. An empty batch totals
-/// nothing (not a row of zeros: there is no roster to name).
+/// **The schema is the union of every record's unit ids**, in order of first
+/// appearance (record order, then each record's header order), found by a
+/// linear scan — never a map, so the row order is a function of the records
+/// alone. For a [`run_batch`] result every record carries the same header, so
+/// this is content (RON) order.
+///
+/// Summed **by unit id**, never by column index, so records carrying different
+/// headers can never be added together misaligned, and a later record naming a
+/// unit the first does not is counted under its own name rather than dropped.
+/// An unlabelled block ([`ProductionCounts::default`]) contributes no column
+/// and no count — which is lossless, because the type's fields are private and
+/// its only unlabelled value is the empty one: it has no count to lose.
+///
+/// (Until F-037 the header was taken from `records.first()` and every later
+/// record read through it, so an unlabelled first record silently zeroed the
+/// whole batch.) An empty batch, or one with no labelled record, totals
+/// nothing: there is no roster to name, so not a row of zeros.
 pub fn production_totals(records: &[MatchRecord]) -> Vec<(String, u32)> {
-    let Some(first) = records.first() else {
-        return Vec::new();
-    };
-    let ids: Vec<String> = first.produced.unit_ids().to_vec();
-    ids.into_iter()
-        .map(|id| {
-            let n = records
-                .iter()
-                .map(|r| r.produced.get(Faction::A, &id) + r.produced.get(Faction::B, &id))
-                .sum();
-            (id, n)
-        })
-        .collect()
+    let mut totals: Vec<(String, u32)> = Vec::new();
+    for r in records {
+        for f in headless::SIDES {
+            for (id, n) in r.produced.by_unit(f) {
+                match totals.iter_mut().find(|(known, _)| known == id) {
+                    Some((_, acc)) => *acc += n,
+                    None => totals.push((id.to_string(), n)),
+                }
+            }
+        }
+    }
+    totals
 }
 
 /// The strategy ids this batch plays, in content (RON) order.

@@ -464,3 +464,7 @@
 - [2026-10-03] Modified: tests/b3_pentagon.rs — module doc states the pinned reading: 3 holding, 2 undetermined, none failing
 - [2026-10-03] Modified: tests/m4c_ai.rs — sim_app_with_alloy's doc comment reattached to its function
 - [2026-10-03] Modified: FINDINGS.md — F-033 table points to F-036 for the turtle's new commit tick
+- [2026-10-03] Modified: src/batch.rs — production_totals derives its schema from the union of every record's unit ids (F-037); an unlabelled first record no longer drops the batch
+- [2026-10-03] Created: tests/b3_totals.rs — pins the production_totals silent-drop bug and the union schema
+- [2026-10-03] Modified: FINDINGS.md — F-037, production totals schema decision
+- [2026-10-03] Modified: BALANCE_PLAN.md — B3 production_totals box ticked with result

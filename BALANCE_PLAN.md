@@ -174,10 +174,13 @@ Then B3's remaining ACs are computed on valid-length matches.
       from a stated power calculation — enough to detect a few-percent seat bias, not to
       rubber-stamp one.
 - [ ] Emit a stdout table + a machine-readable `balance_report.ron` (gitignored artifact).
-- [ ] **Harden `batch::production_totals`** (B3 is its consumer): derive the column schema
+- [x] **Harden `batch::production_totals`** (B3 is its consumer): derive the column schema
       from the union of record keys, or refuse an unlabelled record — today it takes its
       header from `records.first()` and silently drops every later row's production if that
       row is unlabelled.
+      **Result** (F-037): union of the records' headers, first-appearance order, summed by
+      name; an unlabelled block cannot carry a count, so skipping it is lossless
+      (`tests/b3_totals.rs`).
 
 Critic probes: an injected imbalance (a deliberately broken multiplier fixture) makes the
 gate FAIL; a strictly-dominant or strictly-losing strategy is surfaced by name; an

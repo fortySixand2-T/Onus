@@ -2920,3 +2920,42 @@ turtle past its first wave. The F-032 licence was therefore not needed. Its
 precondition holds anyway: no Rust changed, and the same binary with
 `attack_at_army: 15` passes the same goldens (F-035's 847 / 1 run, whose one
 failure is this test).
+
+## F-037 — Production totals: the schema is the union of the records' headers (B3)
+
+**Wall.** `batch::production_totals` took its column header from
+`records.first()` and read every later record through it (noted, not fixed, in
+F-024). Two silent losses followed. A first record carrying an **unlabelled**
+block (`ProductionCounts::default()` — what every synthetic record carries)
+gave an empty header, so the whole batch totalled *nothing*: measured on a
+played `rush` vs `mass_ripper` record behind an unlabelled one, the totals were
+`[]` instead of `worker 2, ripper 3, ...`. And any unit a later record named but
+the first did not was dropped from the table.
+
+**The two options, and the one taken.** The AC offered: derive the schema from
+the union of the record keys, or refuse an unlabelled record.
+**Union**, for three reasons:
+
+- **It is lossless.** `ProductionCounts`'s fields are private and its only
+  constructors are `of` and `zeroed` (both fully labelled) and `Default` (empty
+  header, empty counts). An unlabelled block therefore *cannot* carry a count, so
+  skipping it drops nothing — there is no information a refusal would protect.
+- **Refusing would turn a fact into an error.** Synthetic records are
+  unlabelled by design across the B2/B3 suites, and
+  `critic_b2_ac4::probe_an_unlabelled_row_contributes_zero_not_a_misaligned_column`
+  already pins that an unlabelled row contributes zero next to a played one; a
+  `Result` would weaken that pinned behaviour into a refusal.
+- **It also closes the second hole**, which a refusal would not: records from
+  different rosters are summed by name with every name kept.
+
+**Rule.** Columns appear in first-appearance order — record order, then that
+record's header order — by a linear scan, never a map, so the output is a
+function of the records alone. For a `run_batch` result every record has the
+same header, so the order is still content (RON) order. Summing goes through
+`by_unit`, i.e. by name, so two headers can never be added misaligned. A batch
+with no labelled record totals nothing (no roster to name).
+
+**Gating test:** `tests/b3_totals.rs` —
+`an_unlabelled_first_record_no_longer_drops_the_batch` (red before: `left: []`)
+and `the_schema_is_the_union_of_every_records_unit_ids` (red before: `phantom`
+missing). No sim change, no RON change, no golden moved.
