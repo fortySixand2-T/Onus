@@ -525,3 +525,4 @@
 - [2026-10-04] Modified: BALANCE_PLAN.md — K2 result line reads undetermined, per-mirror batch size stated
 - [2026-10-04] Modified: FINDINGS.md — F-040 K2 cites F-039's n_eff 895 at deff 1.38
 - [2026-10-04] Modified: tests/b3_gate.rs — module header states K3 as the band share plus timeouts and K2 as pooled plus every mirror
+- [2026-10-04] Modified: FINDINGS.md — F-040 reading confirmed with the committed balance bin (4 seeds, 800 matches)

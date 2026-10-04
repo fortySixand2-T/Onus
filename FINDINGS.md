@@ -3320,6 +3320,20 @@ No RON changed. This is the reading F-039 promised. It is the report that
 **Gate: FAIL.** K1 fails on one strategy, named by the gate: **`turtle`**.
 K3 fails on band share (43.8%, resolved below 50%).
 
+**Confirmed with the committed bin** (after the second B3 critic). On the
+committed tree, `balance --seeds 4 --report /tmp/onus_b3_final_report.ron`
+ran serially on the box (`nice 19`, shared with the trading agents and a
+debug/release `cargo test`): 800 matches in 49:10 wall (3.7 s a match),
+42 MB peak RSS, exit 0. Its tables match the scratch harness's line for line
+(the same win matrix, cell samples and pentagon), and so does its kill gate:
+- **FAIL**: K1 on `turtle` 99.3% [94.9, 100.0], DOMINANT;
+- K3 on band share 43.8% [39.7, 48.0] of 786 decided (timeouts 1.8%
+  [0.9, 3.2] PASS);
+- `rush` 6.2% [1.4, 13.0] named `losing (named, not gated)`;
+- K2 undetermined (pool n_eff 58; every mirror n 8).
+
+The bin plays the matches the harness did and gates them the same way.
+
 ### K1 — strength (FAIL)
 
 *(Re-read after the B3 critic fixes, same seeds: the 800 records came back
