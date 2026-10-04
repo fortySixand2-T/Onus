@@ -166,7 +166,10 @@ Then B3's remaining ACs are computed on valid-length matches.
       Report, for each predicted counter, whether it actually wins its matchup (>50%).
       A predicted counter that *loses* means the stats or the +30% nemesis magnitude are
       wrong — that's the sim doing its job.
-- [ ] Match-length distribution (median, % hitting the cap) vs the 5–8 min target.
+- [x] Match-length distribution (median, % hitting the cap) vs the 5–8 min target.
+      **Result**: `metrics::LengthDistribution` — band counts, band share (in-band ÷ decided)
+      and p0/10/25/50/75/90/100 over **decided** matches only; timeout rate (÷ all) and the
+      same percentiles over **all** matches, timeouts at the cap, beside them (`tests/b3_length.rs`).
 - [ ] **Kill-criteria PASS/FAIL** (from DESIGN_BRIEF): no strategy/unit win-rate >65%
       regardless of counter; mirrors within tolerance of 50%; matches terminate in target.
       **The mirror ~50% assertion lives here** (BALANCE_PLAN lists it under B2's probes, but

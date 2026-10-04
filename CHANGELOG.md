@@ -468,3 +468,6 @@
 - [2026-10-03] Created: tests/b3_totals.rs — pins the production_totals silent-drop bug and the union schema
 - [2026-10-03] Modified: FINDINGS.md — F-037, production totals schema decision
 - [2026-10-03] Modified: BALANCE_PLAN.md — B3 production_totals box ticked with result
+- [2026-10-03] Modified: src/metrics.rs — B3 match-length distribution (LengthBand, LengthDistribution, LengthSummary): decided-only vs all-match bases
+- [2026-10-03] Created: tests/b3_length.rs — B3 match-length distribution tests (band, both quantile bases, all-timeout, real batch)
+- [2026-10-03] Modified: BALANCE_PLAN.md — ticked the B3 match-length box with its result

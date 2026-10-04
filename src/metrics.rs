@@ -30,8 +30,19 @@
 //! from a caller's list, in **order of first appearance** in the slice (slot A
 //! before slot B within a record). For a [`crate::batch::run_batch`] result
 //! that is RON order. No map is iterated to produce it.
+//!
+//! ## Match length
+//!
+//! [`LengthDistribution`] places a batch against the design's 5–8 minute
+//! target ([`LengthBand`]) on two bases it never mixes: **decided** matches
+//! (band counts, band share, decided percentiles) and **all** matches with a
+//! timeout entered at its cap (the timeout rate, and [`crate::batch::Tally`]'s
+//! censored percentiles, F-031).
+
+use serde::{Deserialize, Serialize};
 
 use crate::batch::{MatchRecord, MatchResult};
+use crate::headless::SIM_HZ;
 use crate::sim::spatial::Faction;
 
 /// Half-wins for one decided match's winner: a whole win is two halves, so a
@@ -466,6 +477,200 @@ impl Big {
             .cmp(&other.0.len())
             .then_with(|| self.0.iter().rev().cmp(other.0.iter().rev()))
     }
+}
+
+// ---- match length -----------------------------------------------------------
+
+/// The percentiles every length report prints, in this order.
+pub const REPORTED_PERCENTILES: [u32; 7] = [0, 10, 25, 50, 75, 90, 100];
+
+/// The design's target length for a match — DESIGN_BRIEF's 5–8 minute arc —
+/// in sim ticks, **inclusive at both ends**.
+///
+/// Harness configuration, like the tick cap (F-020, F-029): it says what a
+/// report compares against, not how the game plays, so it is not content.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LengthBand {
+    pub min_ticks: u32,
+    pub max_ticks: u32,
+}
+
+impl LengthBand {
+    /// `lo..=hi` whole minutes of play at [`SIM_HZ`].
+    pub const fn minutes(lo: u32, hi: u32) -> Self {
+        Self {
+            min_ticks: lo * 60 * SIM_HZ,
+            max_ticks: hi * 60 * SIM_HZ,
+        }
+    }
+
+    pub fn contains(&self, ticks: u32) -> bool {
+        (self.min_ticks..=self.max_ticks).contains(&ticks)
+    }
+}
+
+impl Default for LengthBand {
+    /// DESIGN_BRIEF's 5–8 minutes.
+    fn default() -> Self {
+        Self::minutes(5, 8)
+    }
+}
+
+/// How long a batch's matches ran, on **two bases that are never mixed**.
+///
+/// - **decided** — matches the sim ended ([`MatchResult::is_decided`]: a win
+///   or a mutual loss). The decided percentiles and the band counts are over
+///   these only: a timeout never finished, so it has no length to place in a
+///   band.
+/// - **all** — every match, a timeout entered at the tick it was stopped (the
+///   cap). This is [`crate::batch::Tally`]'s basis (F-031); a censored median
+///   is flattered by short games and a censored tail is clipped at the cap, so
+///   it is reported *beside* the decided basis, never instead of it.
+///
+/// [`LengthDistribution::band_share`] is in-band ÷ **decided**;
+/// [`LengthDistribution::timeout_rate`] is timeouts ÷ **all**. Two rates, two
+/// denominators, reported separately (B3.5: band share is the design metric,
+/// the timeout rate the stalemate signal).
+///
+/// Percentiles are nearest-rank, `ceil(p·n/100)`, in integer arithmetic — a
+/// length some match actually had, and no float rounding in the rank.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LengthDistribution {
+    pub band: LengthBand,
+    pub total: u32,
+    /// Matches the sim ended, mutual losses included.
+    pub decided: u32,
+    pub timeouts: u32,
+    /// Decided matches shorter than the band.
+    pub below_band: u32,
+    /// Decided matches inside the band (inclusive).
+    pub in_band: u32,
+    /// Decided matches longer than the band.
+    pub above_band: u32,
+    /// Decided lengths, ascending.
+    decided_lengths: Vec<u32>,
+    /// Every length, timeouts at their cap, ascending.
+    all_lengths: Vec<u32>,
+}
+
+impl LengthDistribution {
+    pub fn of(records: &[MatchRecord], band: LengthBand) -> Self {
+        let mut d = LengthDistribution {
+            band,
+            total: 0,
+            decided: 0,
+            timeouts: 0,
+            below_band: 0,
+            in_band: 0,
+            above_band: 0,
+            decided_lengths: Vec::new(),
+            all_lengths: Vec::with_capacity(records.len()),
+        };
+        for r in records {
+            d.total += 1;
+            d.all_lengths.push(r.ticks);
+            if !r.result.is_decided() {
+                d.timeouts += 1;
+                continue;
+            }
+            d.decided += 1;
+            d.decided_lengths.push(r.ticks);
+            if r.ticks < band.min_ticks {
+                d.below_band += 1;
+            } else if r.ticks > band.max_ticks {
+                d.above_band += 1;
+            } else {
+                d.in_band += 1;
+            }
+        }
+        d.decided_lengths.sort_unstable();
+        d.all_lengths.sort_unstable();
+        d
+    }
+
+    /// In-band share of **decided** matches; `None` if nothing was decided —
+    /// an all-timeout batch has no band share, not a band share of zero.
+    pub fn band_share(&self) -> Option<f64> {
+        (self.decided > 0).then(|| self.in_band as f64 / self.decided as f64)
+    }
+
+    /// Timeouts over **all** matches; `None` for an empty batch.
+    pub fn timeout_rate(&self) -> Option<f64> {
+        (self.total > 0).then(|| self.timeouts as f64 / self.total as f64)
+    }
+
+    /// Every match hit the cap: the batch measured nothing about the game.
+    pub fn is_all_timeout(&self) -> bool {
+        self.total > 0 && self.timeouts == self.total
+    }
+
+    /// The `p`-th percentile (`0..=100`) of **decided** match length, ticks.
+    pub fn decided_percentile(&self, p: u32) -> Option<u32> {
+        nearest_rank(&self.decided_lengths, p)
+    }
+
+    /// The `p`-th percentile of **all** match lengths, timeouts at the cap.
+    pub fn all_percentile(&self, p: u32) -> Option<u32> {
+        nearest_rank(&self.all_lengths, p)
+    }
+
+    /// Decided lengths, ascending — for interval computations over the order
+    /// statistics.
+    pub fn decided_lengths(&self) -> &[u32] {
+        &self.decided_lengths
+    }
+
+    /// The serializable reading: counts, both rates, and both bases at
+    /// [`REPORTED_PERCENTILES`].
+    pub fn summary(&self) -> LengthSummary {
+        let at = |f: &dyn Fn(u32) -> Option<u32>| {
+            REPORTED_PERCENTILES.iter().map(|&p| (p, f(p))).collect()
+        };
+        LengthSummary {
+            band: self.band,
+            total: self.total,
+            decided: self.decided,
+            timeouts: self.timeouts,
+            below_band: self.below_band,
+            in_band: self.in_band,
+            above_band: self.above_band,
+            band_share: self.band_share(),
+            timeout_rate: self.timeout_rate(),
+            decided_quantiles: at(&|p| self.decided_percentile(p)),
+            all_quantiles: at(&|p| self.all_percentile(p)),
+        }
+    }
+}
+
+/// A [`LengthDistribution`] reduced to what a report carries. Every quantile
+/// list is `(percent, ticks)`, `None` where the basis is empty.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct LengthSummary {
+    pub band: LengthBand,
+    pub total: u32,
+    pub decided: u32,
+    pub timeouts: u32,
+    pub below_band: u32,
+    pub in_band: u32,
+    pub above_band: u32,
+    /// In-band ÷ decided.
+    pub band_share: Option<f64>,
+    /// Timeouts ÷ all.
+    pub timeout_rate: Option<f64>,
+    /// Over decided matches only.
+    pub decided_quantiles: Vec<(u32, Option<u32>)>,
+    /// Over every match, timeouts entered at the cap.
+    pub all_quantiles: Vec<(u32, Option<u32>)>,
+}
+
+/// Nearest rank: the value at rank `ceil(p·n/100)` (1-based, at least 1).
+fn nearest_rank(sorted: &[u32], p: u32) -> Option<u32> {
+    if sorted.is_empty() {
+        return None;
+    }
+    let n = sorted.len() as u64;
+    let rank = (p.min(100) as u64 * n).div_ceil(100).clamp(1, n);
+    sorted.get(rank as usize - 1).copied()
 }
 
 #[cfg(test)]
