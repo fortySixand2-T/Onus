@@ -9,18 +9,13 @@
 //! - **K2 seat bias** — mirrors are within a tolerance of 50%: neither the
 //!   faction slot nor the spawn base picks the winner of an identical matchup.
 //! - **K3 termination** — matches terminate in the 5–8 minute target: the
-//!   **median match** ends inside the band, and few hit the cap. This is the
-//!   target B3.5 tuned to and closed on ("bring the decided-match median into
-//!   5–8 min with few timeouts"). The median is read as two proportions so it
-//!   gets an interval like everything else: the median is at or after 5:00 iff
-//!   at most half of all matches end before 5:00, and at or before 8:00 iff at
-//!   most half run past 8:00 — **a timeout counts as running past**: it did not
-//!   terminate in the target, and it is not dropped to flatter the median.
-//!   The band share (in-band ÷ decided, B3.5's design metric) is always read
-//!   and printed, and gated only when [`GateSpec::gate_band_share`] is set: its
-//!   ceiling on today's knobs (~31–38%, F-031) is a B4 unit-stat question, and
-//!   the gate states which reading it applied rather than moving the bar
-//!   silently (F-038).
+//!   **band share** (in-band ÷ decided, B3.5's design metric) is at least
+//!   `min_band_share`, and at most `max_timeout_rate` of all matches hit the
+//!   cap. A median inside the band is not enough — a batch split 47% short /
+//!   6% in band / 47% long has its median in the gap and almost nothing in
+//!   target (critic B3). The median and the before/after shares (a timeout
+//!   counts as *after*) are read with intervals and reported as context; they
+//!   are never part of the status (F-038).
 //!
 //! The thresholds are harness configuration ([`GateSpec`]), stated once and
 //! recorded in FINDINGS (F-038), never content.
@@ -117,11 +112,8 @@ pub struct GateSpec {
     pub mirror_tolerance: f64,
     /// K3: the target length band.
     pub band: LengthBand,
-    /// K3: the band-share bar (in-band ÷ decided) — always read, gated only
-    /// when [`GateSpec::gate_band_share`] is set.
+    /// K3: the band-share bar (in-band ÷ decided).
     pub min_band_share: f64,
-    /// K3: whether the band share is part of the K3 status, or advisory.
-    pub gate_band_share: bool,
     /// K3: the most matches that may hit the cap.
     pub max_timeout_rate: f64,
     /// Intra-cluster correlation of one `(pair, seed)`'s matches; see the
@@ -136,7 +128,6 @@ impl Default for GateSpec {
             mirror_tolerance: 0.05,
             band: LengthBand::default(),
             min_band_share: 0.5,
-            gate_band_share: false,
             max_timeout_rate: 0.05,
             icc: F031_ICC,
         }
@@ -329,18 +320,16 @@ pub struct Termination {
     pub status: Status,
     pub band: LengthBand,
     pub min_band_share: f64,
-    pub gate_band_share: bool,
     pub max_timeout_rate: f64,
-    /// Matches decided before the band ÷ all, judged "at most 50%": the median
-    /// match is not too short.
+    /// Reported, not gated: matches decided before the band ÷ all, judged
+    /// "at most 50%" (the median match is not too short).
     pub below: Reading,
-    /// Matches decided after the band, plus timeouts, ÷ all, judged "at most
-    /// 50%": the median match is not too long.
+    /// Reported, not gated: matches decided after the band, plus timeouts,
+    /// ÷ all, judged "at most 50%" (the median match is not too long).
     pub beyond: Reading,
-    /// In-band ÷ decided, judged "at least `min_band_share`"; part of the
-    /// status only if `gate_band_share`.
+    /// Gated: in-band ÷ decided, judged "at least `min_band_share`".
     pub band_share: Reading,
-    /// Timeouts ÷ all, judged "at most `max_timeout_rate`".
+    /// Gated: timeouts ÷ all, judged "at most `max_timeout_rate`".
     pub timeout_rate: Reading,
     /// Median of decided matches, ticks (reported).
     pub decided_median: Option<u32>,
@@ -535,15 +524,10 @@ fn termination(records: &[MatchRecord], m: &WinMatrix, spec: &GateSpec) -> Termi
         spec.icc,
         Rule::AtLeast(spec.min_band_share),
     );
-    let mut parts = vec![below.status, beyond.status, timeout_rate.status];
-    if spec.gate_band_share {
-        parts.push(band_share.status);
-    }
     Termination {
-        status: Status::all(parts),
+        status: Status::all([band_share.status, timeout_rate.status]),
         band: spec.band,
         min_band_share: spec.min_band_share,
-        gate_band_share: spec.gate_band_share,
         max_timeout_rate: spec.max_timeout_rate,
         below,
         beyond,

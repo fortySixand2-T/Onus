@@ -116,7 +116,6 @@ fn the_default_thresholds_are_the_stated_ones() {
     assert_eq!(s.mirror_tolerance, 0.05);
     assert_eq!(s.band, LengthBand::default());
     assert_eq!(s.min_band_share, 0.5);
-    assert!(!s.gate_band_share, "band share is read and printed, gated only on request (F-038)");
     assert_eq!(s.max_timeout_rate, 0.05);
     assert_eq!(s.icc, 0.17, "F-031: deff 1.51 at 4 matches a cluster");
 }
@@ -422,11 +421,11 @@ fn short_matches_fail_the_band_and_capped_ones_fail_the_timeout_rate() {
 }
 
 /// 30% of matches end at 3:00, 40% at 6:00, 30% at 10:00: the median match is
-/// in the band but only 40% of them are. By default K3 is the median (PASS)
-/// and the band share is advisory (read FAIL, printed); with
-/// `gate_band_share` the same batch FAILs K3.
+/// in the band but only 40% of decided matches are. K3 is the band share
+/// (B3.5's design metric), so it FAILs; the median and the before/after
+/// shares are reported context and do not rescue it (critic B3, F-038).
 #[test]
-fn the_band_share_is_advisory_unless_gated() {
+fn the_band_share_gates_k3_even_when_the_median_is_in_band() {
     let mut recs = balanced(&["x", "y"], 600);
     for (i, r) in recs.iter_mut().enumerate() {
         r.ticks = match i % 10 {
@@ -441,13 +440,10 @@ fn the_band_share_is_advisory_unless_gated() {
     assert_eq!(g.termination.below.status, Status::Pass);
     assert_eq!(g.termination.beyond.status, Status::Pass);
     assert_eq!(g.termination.band_share.status, Status::Fail);
-    assert_eq!(g.termination.status, Status::Pass);
+    assert_eq!(g.termination.timeout_rate.status, Status::Pass);
     assert_eq!(g.termination.decided_median, Some(6 * 60 * SIM_HZ));
-
-    let strict = GateSpec { gate_band_share: true, ..GateSpec::default() };
-    let g = KillGate::of(&shipped(), &recs, &strict);
-    assert!(g.termination.gate_band_share);
-    assert_eq!(g.termination.status, Status::Fail);
+    assert_eq!(g.termination.status, Status::Fail, "40% in band is not 'terminate in target'");
+    assert_eq!(g.status, Status::Fail);
 }
 
 // ---- order and determinism ---------------------------------------------------
@@ -587,16 +583,15 @@ fn the_shipped_reading_on_the_pentagon_batch() {
     assert_eq!(g.termination.timeout_rate.value, Some(0.0));
     assert_eq!(g.termination.timeout_rate.status, Status::Undetermined, "0 of 100 cannot certify <5%");
     assert_eq!(g.termination.band_share.value, Some(0.36));
-    assert_eq!(g.termination.band_share.status, Status::Fail, "advisory: 36% of decided in band");
-    // The median match is resolved inside the band: 34% end before 5:00 and
-    // 30% after 8:00, each interval clear of 50%.
+    assert_eq!(g.termination.band_share.status, Status::Fail, "36% of decided in band, resolved below 50%");
+    // Reported context: the median match is resolved inside the band (34% end
+    // before 5:00 and 30% after 8:00), which does not rescue the band share.
     assert_eq!(g.termination.below.value, Some(0.34));
     assert_eq!(g.termination.below.status, Status::Pass);
     assert_eq!(g.termination.beyond.value, Some(0.3));
     assert_eq!(g.termination.beyond.status, Status::Pass);
-    assert_eq!(g.termination.status, Status::Undetermined, "only the timeout bar is open");
+    assert_eq!(g.termination.status, Status::Fail, "the band share is resolved below 50%");
 
-    // The whole gate: nothing fails, three criteria the batch is too small to
-    // decide. Not a PASS.
-    assert_eq!(g.status, Status::Undetermined);
+    // The whole gate: K3 fails (B3.5's band-share ceiling, deferred to B4).
+    assert_eq!(g.status, Status::Fail);
 }

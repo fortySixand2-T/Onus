@@ -2974,9 +2974,9 @@ configuration, not content.
 |---|---|---|
 | K1 strength | each strategy's row mean (mean over opponents, mirror excluded) | at most 65% |
 | K2 seat bias | pooled slot-A share of decided mirrors; pooled left-base share | 50% +/- 5 points, both |
-| K3 termination | share of all matches ending before 5:00; share ending after 8:00 **or timing out** | at most 50% each (the median match is in the band) |
+| K3 termination | band share (in-band / decided) | at least 50% |
 | | timeout rate (timeouts / all) | at most 5% |
-| | band share (in-band / decided) | at least 50%, **advisory** unless `gate_band_share` |
+| | *reported, not gated:* share of all ending before 5:00; share ending after 8:00 or timing out; decided median | — |
 
 **The interval decides, as for the pentagon (F-034).** Every reading carries a
 95% Wilson interval (the same `z` and expression as `Cell::wilson_interval`,
@@ -2984,8 +2984,8 @@ now shared as `metrics::wilson_bounds`). PASS needs the whole interval on the
 right side of the bar, FAIL the whole interval on the wrong side, and anything
 else, including no data, is **undetermined**. A criterion passes only if every
 one of its readings passes. One FAIL fails it. The gate's status combines the
-three criteria the same way. An all-timeout run therefore FAILs K3 (100% "after
-8:00", 100% timeouts) and leaves K1/K2 undetermined, and it carries an
+three criteria the same way. An all-timeout run therefore FAILs K3 (100%
+timeouts; its band share is undetermined, nothing was decided) and leaves K1/K2 undetermined, and it carries an
 `all_timeout` flag. It can never read as balanced.
 
 **Clustering.** One `(pair, seed)` cluster is up to 4 matches (2 slot orders x
@@ -3014,19 +3014,21 @@ FAIL. Seat bias is one mechanism (slot = turn order and stream, base =
 geography), so the gate tests it once, pooled, by slot and by base. Each
 mirror's slot-A reading is printed beside the gate, not folded into it.
 
-**Why K3 is the median and band share is advisory.** B3.5 tuned to and closed
-on "the decided-match median into 5–8 min with few timeouts"
-(BALANCE_PLAN B3.5). It recorded band share's ~31–38% ceiling on today's knobs
-as a B4 unit-stat question (F-031). A gate that silently raised the bar to
-"most matches in band" would FAIL the content on a criterion its own closure
-deferred. A gate that dropped band share would hide it. So K3 gates the
-median, with an interval, read as two proportions: the median is at or after
-5:00 iff at most half end before it, and at or before 8:00 iff at most half run
-past it. A timeout counts as running past, because it did not terminate in
-target. Band share is always read and printed with its own verdict, and
-`GateSpec { gate_band_share: true, .. }` makes it binding
-(`the_band_share_is_advisory_unless_gated`). B4 decides which bar is the
-design's.
+**Why K3 is the band share.** *(Corrected after the B3 critic; the first
+version gated the median and made band share advisory, which was a moved
+goalpost.)* "Matches terminate in target" is a statement about matches, not
+about the middle one. The critic's fixture splits 47% short / 6% in band / 47%
+long: its median sits in the gap and the median-only K3 read PASS with 94% of
+matches outside 5–8 min (`critic_b3_gate::probe_k3_does_not_pass_when_six_percent_of_matches_are_in_target`).
+Band share (in-band / decided) is the metric B3.5 itself defined as the design
+metric; the timeout rate is its stalemate signal. So K3 gates exactly those
+two: band share at least 50% with its clustered Wilson interval, and timeouts at
+most 5%. The decided median and the before/after shares are still read with
+intervals and printed as context, never folded into the status
+(`b3_gate::the_band_share_gates_k3_even_when_the_median_is_in_band`). On
+today's knobs band share is ~36–44% (F-031, F-040), so **shipped K3 reads
+FAIL**. That is the honest reading of a problem B3.5 deferred to B4, not a
+reason to lower the bar. There is no switch to make band share advisory.
 
 ### The power calculation
 
@@ -3094,19 +3096,22 @@ This is `b3_pentagon`'s real batch, pinned in
 | K3 ends before 5:00 | 34% [24.1, 45.5] of 100 | PASS |
 | K3 ends after 8:00 or times out | 30% [20.6, 41.4] | PASS |
 | K3 timeouts | 0 of 100, [0, 5.09] | undetermined |
-| K3 band share (advisory) | 36% [25.9, 47.6] of decided | FAIL vs 50% |
+| K3 band share | 36% [25.9, 47.6] of decided | **FAIL** vs 50% |
 | decided median | 6:36 | |
 
-**Gate: undetermined.** Nothing fails. On these probes the median match is
-resolved inside 5–8 minutes. Everything else is a statement about 100 matches:
+**Gate: FAIL** *(corrected after the B3 critic: this read "undetermined" while
+K3 gated the median; the before/after rows above are now reported context)*.
+K3 fails on band share, resolved below 50%. Nothing else fails. On these probes
+the median match is inside 5–8 minutes, but most matches are not. The rest is a
+statement about 100 matches:
 - The two strongest probes (Sentinel 65.6%, Ripper 68.8%) sit on the 65% bar
   with ~+/-19 points of interval.
 - Zero timeouts in 100 cannot certify a rate below 5%, because the upper bound
   is 5.09%.
 - The 13/20 slot-A reading is noise at n_eff 17.
 
-The advisory band share reproduces F-031's ~31–38% ceiling. That ceiling is
-B4's question, as F-038 says.
+The band share reproduces F-031's ~31–38% ceiling. K3 now gates on it, so
+the ceiling FAILs K3. Raising it is B4's job (F-038).
 
 ### 2. A mirror-only seat-bias batch: every strategy, 62 seeds (1 240 matches) — K2 PASS
 
@@ -3155,6 +3160,8 @@ K3 belongs to a roster batch (section 1, and the full-roster report in F-040).
 
 ## F-040 — The first full-roster report: the turtle is dominant, the gate FAILs (B3)
 
+*Corrected after the B3 critic (K3 gates band share, F-038).*
+
 No RON changed. This is the reading F-039 promised. It is the report that
 `balance --seeds 4` writes to `balance_report.ron`:
 - same seeds (`seed_at(0, k)`, k < 4), same roster order, same orientation
@@ -3167,6 +3174,7 @@ No RON changed. This is the reading F-039 promised. It is the report that
   box with a debug `cargo test` run.
 
 **Gate: FAIL.** K1 fails on one strategy, named by the gate: **`turtle`**.
+K3 fails on band share (43.8%, resolved below 50%).
 
 ### K1 — strength (FAIL)
 
@@ -3207,24 +3215,25 @@ n_eff 68. Every per-mirror row has 8 matches. The interval is too wide to
 judge, which is the outcome F-038's power calculation predicted for a roster
 batch. F-039's mirror-only batch (n_eff 1 057) is the K2 reading of record.
 
-### K3 — length (PASS)
+### K3 — length (FAIL on band share)
 
 | reading | value | 95% interval | status |
 |---|---|---|---|
-| decided median | **5:33** | | in band |
-| ends before 5:00 | 39.6% of all | [35.6, 43.8] | PASS (at most 50%) |
-| ends after 8:00 or times out | 17.4% of all | [14.4, 20.8] | PASS (at most 50%) |
+| band share | **43.8%** of 786 decided | [39.7, 48.0] | **FAIL** (at least 50%) |
 | timeouts | **1.8%** (14 of 800) | [0.9, 3.2] | **PASS** (at most 5%) |
-| band share (advisory) | 43.8% of 786 decided | [39.7, 48.0] | FAIL vs 50%, not gated |
+| decided median | 5:33 | | context: in band |
+| ends before 5:00 | 39.6% of all | [35.6, 43.8] | context, not gated |
+| ends after 8:00 or times out | 17.4% of all | [14.4, 20.8] | context, not gated |
 
 Decided quantiles are p10 2:54, p25 4:15, p50 5:33, p75 6:49 and p90 9:30. The
 all-match basis differs from these only in the tail (p90 9:56, p100 at the
 15:00 cap).
 
 The timeout bar that F-039 left open is now resolved: the upper bound of 3.2%
-is under 5%. The band share is above F-031's ~31–38% probe ceiling. Even so,
-fewer than half of decided matches land in 5–8 minutes, so it stays advisory
-and is B4's question (F-038).
+is under 5%. The band share is above F-031's ~31–38% probe ceiling, but its
+whole interval is under 50%: fewer than half of decided matches land in 5–8
+minutes, so K3 FAILs. The shortfall is mostly short games (39.6% end before
+5:00). Lengthening them is B4's question (F-038).
 
 ### Pentagon at 4 seeds
 

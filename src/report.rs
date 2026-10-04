@@ -331,27 +331,32 @@ impl fmt::Display for BalanceReport {
         let k3 = &g.termination;
         writeln!(
             f,
-            "  K3 length    {}  the median match ends in {}-{}, at most {} timeouts",
+            "  K3 length    {}  at least {} of decided matches end in {}-{}, at most {} timeouts",
             status(k3.status),
+            pct0(k3.min_band_share),
             mmss(k3.band.min_ticks),
             mmss(k3.band.max_ticks),
             pct0(k3.max_timeout_rate)
         )?;
-        writeln!(f, "    before band   {:<12} {}  (at most 50% of all)", status(k3.below.status), reading(&k3.below))?;
         writeln!(
             f,
-            "    after/capped  {:<12} {}  (at most 50% of all)",
-            status(k3.beyond.status),
-            reading(&k3.beyond)
+            "    band share    {:<12} {}  (at least {} of decided)",
+            status(k3.band_share.status),
+            reading(&k3.band_share),
+            pct0(k3.min_band_share)
         )?;
         writeln!(f, "    timeouts      {:<12} {}", status(k3.timeout_rate.status), reading(&k3.timeout_rate))?;
         writeln!(
             f,
-            "    band share    {:<12} {}  (at least {} of decided; {})",
-            status(k3.band_share.status),
-            reading(&k3.band_share),
-            pct0(k3.min_band_share),
-            if k3.gate_band_share { "gated" } else { "advisory, not gated" }
+            "    before band   {:<12} {}  (of all; reported, not gated)",
+            status(k3.below.status),
+            reading(&k3.below)
+        )?;
+        writeln!(
+            f,
+            "    after/capped  {:<12} {}  (of all; reported, not gated)",
+            status(k3.beyond.status),
+            reading(&k3.beyond)
         )?;
         writeln!(
             f,

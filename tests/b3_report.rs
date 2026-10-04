@@ -159,7 +159,8 @@ fn the_tables_never_start_a_line_with_a_matrix_row_marker() {
         "after/capped",
         "timeouts",
         "band share",
-        "advisory, not gated",
+        "reported, not gated",
+        "at least 50% of decided",
         "p50",
     ] {
         assert!(text.contains(needle), "`{needle}` missing:\n{text}");

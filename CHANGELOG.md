@@ -486,3 +486,9 @@
 - [2026-10-03] Modified: FINDINGS.md — F-040 first full-roster report: turtle dominant (K1 FAIL), K3 PASS, K2 undetermined at 4 seeds
 - [2026-10-03] Modified: BALANCE_PLAN.md — ticked the B3 report box with its result
 - [2026-10-04] Created: tests/critic_b3_gate.rs — critic B3 probes: K3 median-only pass, K2 pooled-mirror masking, unnamed all-losing strategy, row-mean interval width, package-root report clobber, bin report determinism
+- [2026-10-04] Modified: src/gate.rs — K3 gates band share (at least 50% of decided) and timeouts; median and before/after shares are reported context; gate_band_share removed
+- [2026-10-04] Modified: src/report.rs — K3 table leads with the gated band share and timeouts, before/after marked reported, not gated
+- [2026-10-04] Modified: tests/b3_gate.rs — K3 band-share gating test; shipped pin now reads K3 FAIL, gate FAIL
+- [2026-10-04] Modified: tests/b3_report.rs — K3 table needles
+- [2026-10-04] Modified: FINDINGS.md — F-038/F-039/F-040 corrected: K3 gates band share; shipped K3 FAIL
+- [2026-10-04] Modified: BALANCE_PLAN.md — B3 result lines corrected for K3
