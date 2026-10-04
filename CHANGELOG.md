@@ -517,3 +517,4 @@
 - [2026-10-04] Modified: BALANCE_PLAN.md — rush named losing on the full-roster run
 - [2026-10-04] Modified: FINDINGS.md — F-040 re-read on the final gate: records identical, statuses unchanged, K1/K2 intervals restated (worst-case row variance, mirror deff 1.38)
 - [2026-10-04] Modified: BALANCE_PLAN.md — turtle interval restated on the final method
+- [2026-10-04] Created: tests/critic_b3_gate2.rs — B3 re-review critic probes (K2 per-mirror PASS masking, K3 band-share variants, losing variants, row-mean oracle/coverage, order invariance)
