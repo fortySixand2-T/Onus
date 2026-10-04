@@ -10,6 +10,12 @@ bevy = "0.19"
 serde = { version = "1", features = ["derive"] }
 ron = "0.8"
 
+[features]
+# Proof switch only (B4, F-041): compiles the AI commander's opening reservation
+# out, which reproduces the pre-B4 commander exactly. It exists so the golden
+# proof can be re-run; no shipped build turns it on.
+no-opening-reservation = []
+
 # Fast dev rebuilds (dev only): `cargo run --features bevy/dynamic_linking`
 # Pair with the `mold` linker on Linux for best iteration times.
 

@@ -268,20 +268,27 @@ fn train_army_orders(app: &App, f: Faction) -> usize {
 /// pass at its old value — that the move is content-driven and nothing else.
 /// What the assertion means is unchanged: this match is frozen, and any Rust
 /// change that moves it is a regression.
+///
+/// **B4 re-pin (F-041):** the opening reservation and the restored
+/// multi-barracks scripts move every row but `mvp` (one opening). F-041 shows
+/// the move is the reservation plus that data and nothing else: this binary
+/// built with `--features no-opening-reservation` on the pre-B4
+/// `strategies.ron` passes every pre-B4 golden. The pre-B4 rows are in F-041.
 #[test]
 fn depth_one_replays_the_pre_change_tree_tick_for_tick() {
-    // (a, b, seed, trace, end, journal) — captured on ca6f9c0.
+    // (a, b, seed, trace, end, journal) — captured on ca6f9c0; re-pinned at
+    // B3.5 (F-032) and B4 (F-041).
     #[rustfmt::skip]
     let goldens: &[(&str, &str, u64, u64, u64, u64)] = &[
         ("mvp", "mvp", 4, 0x3fc03b8fe6b85f9c, 0x25156a333a60d5f5, 0x55675b7844c3d493),
-        ("mass_ripper", "mass_arclight", 7, 0x28b235776567bfdb, 0x2712cca3a3f9623d, 0x75541b9be9a704af),
-        ("mass_arclight", "mass_ripper", 7, 0xed81f894ea6404c5, 0xe34df6330cc3de55, 0x7b14173f43fbd987),
-        ("rush", "turtle", 13, 0x150c965cb92bc5dd, 0x1bcc0d24269d5401, 0xa0aafca7c1569ab8),
-        ("turtle", "rush", 13, 0xcfa20a8b9f637c8c, 0xf57569c0425baf71, 0xfeb9e8af864c9d83),
-        ("synth_triad", "mass_ravager", 101, 0xb1f07889d96577ea, 0x13452c110f3c1aa3, 0x3c49146fdbaa1138),
-        ("mass_bulwark", "mass_sentinel", 55, 0x8d6e712a54adb2bd, 0x5135af6559226198, 0x04a1178d2cad2459),
-        ("mass_sentinel", "mass_bulwark", 55, 0x3759cc67de4c88c5, 0x1a882b6c65ee06ee, 0xd16f832427aac821),
-        ("synth_steel_flesh", "rush", 99, 0x506d4c5a7aafe94e, 0xd8cbe7b2962d19ed, 0x8a9b279965598ebb),
+        ("mass_ripper", "mass_arclight", 7, 0xcb0d0cefd1c35cee, 0xb52ef814cef8f447, 0x8fc66471b75cccd4),
+        ("mass_arclight", "mass_ripper", 7, 0x3771c88168bd1d1e, 0x21e24911388b5397, 0xc96cb7bdb5808ccb),
+        ("rush", "turtle", 13, 0x06942a8403be0db2, 0x9d84c955b59db380, 0x4a8a3944ddad8438),
+        ("turtle", "rush", 13, 0x007df9983eb19101, 0xf073adc204087164, 0x9f41c2f1759a59fd),
+        ("synth_triad", "mass_ravager", 101, 0x86b641af01e15e6b, 0x531069917b244e5d, 0xc624d8e697c1d7c8),
+        ("mass_bulwark", "mass_sentinel", 55, 0x2b0e2f236b69728a, 0x5bc08751984d65e2, 0x5979ac905d17e069),
+        ("mass_sentinel", "mass_bulwark", 55, 0x64e1c8d4d36836ac, 0x4ecd0c5380f1157a, 0xa82aa83505b2a07f),
+        ("synth_steel_flesh", "rush", 99, 0x694a4cc5e47de61a, 0xb536edde395aa937, 0x086d9db263577fd8),
     ];
     for (a, b, seed, g_trace, g_end, g_journal) in goldens {
         let c = content();

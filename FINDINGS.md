@@ -3440,3 +3440,200 @@ package root with a 1-tick toy one. Two fixes were possible:
 (`report::DEFAULT_REPORT_PATH`), and `--report` without a value is still an
 error. Pinned by `b3_report::without_report_the_binary_prints_the_tables_and_writes_no_file`
 and `critic_b3_gate::probe_running_the_bin_as_the_suite_does_leaves_the_package_root_report_alone`.
+
+## F-041 — Opening reservation: scripted production lines are built (B4, multi-barracks)
+
+F-035 found that openings after the first rarely go up. The tech step places an
+opening only when the stockpile covers its cost, and the army step spends the
+stockpile first on anything cheaper. B3.5 therefore cut every script down to
+what the sim actually placed. B4 adds the missing rule to the commander and
+restores the scripts.
+
+### The rule (`sim::ai`, tech and army steps)
+
+- An opening is **due** once `tick >= at_tick` and it is not standing. It is
+  counted the same way as before (B3.5 AC0b), so a barracks that is lost
+  becomes due again.
+- The first due opening that the tech walk cannot pay for, in RON order, has
+  its Alloy **reserved**. The army step trains only if
+  `budget >= unit cost + reserve`. **While an opening is due, the army waits.**
+- **The tech walk itself is unchanged.** A later, cheaper opening that is due
+  and affordable still goes up past an unaffordable one, and it still takes
+  the only RNG draw. That is the skip rule which
+  `critic_b35_ac0b::critic_a_skipped_expensive_opening_does_not_eat_the_draw`
+  pins.
+  - A first version also held the reserve back from later openings, which put
+    the openings up strictly in RON order. It broke that critic test, so it
+    was dropped. `synth_triad` therefore keeps F-035's listed order: its
+    second Gene-Vats (150) still goes up before its Aether Spire (200).
+- The worker step is not held, because workers are the income that pays for
+  the opening.
+- An opening whose `at_tick` is still ahead reserves nothing. A one-opening
+  script, and any script once all its openings stand, plays exactly as it did
+  before B4.
+- Determinism: the rule reads only the script (RON order), the counted
+  standing barracks and the stockpile. It adds no RNG draw and no map
+  iteration.
+
+### Restored scripts (opening lists only — no stat, cost, nemesis or threshold moved)
+
+- Every `mass_*` probe has three identical lines again: 300/130, 600/165 and
+  900/200.
+  - `b1_probe_set::MASS_PROBE_BARRACKS = 3`.
+  - `MASS_PROBE_OPENING_EXCEPTIONS` is empty.
+  - The per-probe cut in `critic_b1_ac3` and the line-count exception in
+    `critic_b35_armour` are gone.
+- `synth_steel_flesh` has four openings again (adds Foundry 1200/195 and
+  Gene-Vats 1500/225).
+- `turtle` has four openings again (adds Gene-Vats 2400/210).
+- `turtle` keeps F-036's `attack_at_army: 26`.
+
+### Tests (`tests/b4_reservation.rs`)
+
+| test | without the reservation | with it |
+|---|---|---|
+| `a_three_line_script_builds_all_three_lines_in_a_real_match` (gating) | red: 1 of 3 Foundries in a 25 359-tick match | green |
+| `every_multi_opening_strategy_places_its_whole_script_in_a_head_to_head` | red: `mass_ripper` placed 1 of 2 | green |
+| `the_army_trains_nothing_while_an_opening_is_due` | red: trained at tick 2 460 with the second Foundry (due 600) unplaced | green |
+| `a_cheaper_later_opening_still_goes_up_and_the_reserved_one_follows` | red: 1 of 3 placed | green |
+| `an_opening_not_yet_due_changes_nothing` | green | green (confinement) |
+
+### The golden proof (F-032 standard)
+
+The proof switch is the Cargo feature `no-opening-reservation`. It compiles
+the reservation out: `const RESERVING = !cfg!(..)`, which gates the single
+line that sets the reserve. Nothing else differs. No shipped build turns it
+on. A content knob was rejected for two reasons:
+- it would add a `StrategyDef` field, which `critic_m5`'s fingerprint
+  coverage would then require;
+- it would change the data under proof.
+
+Command, on the box, on the final B4 `src/` and `Cargo.toml`, with
+`assets/data/strategies.ron` and every test file this change edits put back
+to HEAD (071aad9):
+- the files: `b1_probe_set`, `critic_b1_ac3`, `critic_b35_armour`,
+  `critic_b35_ac0`, `critic_b35_ac0b`, `b3_gate`, `b3_pentagon`;
+- the command:
+  `CARGO_BUILD_JOBS=3 nice -n 19 cargo test --release --no-fail-fast --features no-opening-reservation -- --test-threads=2`
+
+**Result: 936 passed, 4 failed, 1 ignored.**
+- The four failures are exactly the four new B4 tests that need the
+  reservation.
+- Every pre-B4 golden and pin passes at its old value: the `state_hash`
+  traces, the journal digests, the pentagon and gate batch readings, and the
+  F-036 ordering ticks.
+
+So the new binary with the switch on is the pre-B4 commander. Everything
+that moves below moves because of the reservation and the restored lists.
+
+### Goldens and pins re-pinned (old → new)
+
+`critic_b35_ac0::depth_one_replays_the_pre_change_tree_tick_for_tick` covers
+4 000 ticks per row. Each cell is trace / end / journal:
+
+| matchup, seed | pre-B4 (B3.5, F-032) | B4 |
+|---|---|---|
+| mvp v mvp, 4 | `3fc03b8fe6b85f9c` / `25156a333a60d5f5` / `55675b7844c3d493` | unchanged |
+| mass_ripper v mass_arclight, 7 | `28b235776567bfdb` / `2712cca3a3f9623d` / `75541b9be9a704af` | `cb0d0cefd1c35cee` / `b52ef814cef8f447` / `8fc66471b75cccd4` |
+| mass_arclight v mass_ripper, 7 | `ed81f894ea6404c5` / `e34df6330cc3de55` / `7b14173f43fbd987` | `3771c88168bd1d1e` / `21e24911388b5397` / `c96cb7bdb5808ccb` |
+| rush v turtle, 13 | `150c965cb92bc5dd` / `1bcc0d24269d5401` / `a0aafca7c1569ab8` | `06942a8403be0db2` / `9d84c955b59db380` / `4a8a3944ddad8438` |
+| turtle v rush, 13 | `cfa20a8b9f637c8c` / `f57569c0425baf71` / `feb9e8af864c9d83` | `007df9983eb19101` / `f073adc204087164` / `9f41c2f1759a59fd` |
+| synth_triad v mass_ravager, 101 | `b1f07889d96577ea` / `13452c110f3c1aa3` / `3c49146fdbaa1138` | `86b641af01e15e6b` / `531069917b244e5d` / `c624d8e697c1d7c8` |
+| mass_bulwark v mass_sentinel, 55 | `8d6e712a54adb2bd` / `5135af6559226198` / `04a1178d2cad2459` | `2b0e2f236b69728a` / `5bc08751984d65e2` / `5979ac905d17e069` |
+| mass_sentinel v mass_bulwark, 55 | `3759cc67de4c88c5` / `1a882b6c65ee06ee` / `d16f832427aac821` | `64e1c8d4d36836ac` / `4ecd0c5380f1157a` / `a82aa83505b2a07f` |
+| synth_steel_flesh v rush, 99 | `506d4c5a7aafe94e` / `d8cbe7b2962d19ed` / `8a9b279965598ebb` | `694a4cc5e47de61a` / `b536edde395aa937` / `086d9db263577fd8` |
+
+`critic_b35_ac0b::critic_shipped_matchups_are_bit_identical` covers 7 200
+ticks. Each cell is hash / journal:
+
+| # | matchup, seed | pre-B4 | B4 |
+|---|---|---|---|
+| 0-2 | mvp v mvp 1, mvp v rush 2, rush v mvp 3 | unchanged | unchanged |
+| 3 | synth_triad v turtle, 4 | `e94d2708dca81c49` / `4666a3b3563b8890` | `622c06205abf7772` / `65f9917da21d98f2` |
+| 4 | turtle v synth_triad, 5 | `b7d0e39bdfb0757c` / `926206a7e2150e39` | `1aa33ab2d6a04527` / `a6552ff89996a930` |
+| 5 | mass_arclight v mass_ripper, 6 | `283fcec8bb5ebf41` / `c7328be1b0e09085` | `54b9d0fd2c5779be` / `2dbb7d71846b917e` |
+| 6 | mass_ripper v mass_arclight, 7 | `1bc7d81e51c54e99` / `90d87cb290ad3f58` | `241e74a2e363c562` / `f6546287f161a392` |
+| 7 | synth_steel_flesh v mass_bulwark, 8 | `478a4be3e491483e` / `c9f9d38ba031b30b` | `3835febbbac676e3` / `b54435b778763907` |
+
+Only the matchups with a multi-opening side move. The `mvp`/`rush` rows,
+which have one opening each, are bit-identical, as the confinement predicts.
+
+`b3_pentagon::the_real_batch_reports_what_the_sim_actually_does` (five mass
+probes, 2 seeds, 8 matches a link):
+
+| link | B3.5 | B4 |
+|---|---|---|
+| bulwark > ravager | 87.5% holds | 87.5% holds |
+| ravager > sentinel | 62.5% undetermined | 25.0% [7.1, 59.1] undetermined |
+| sentinel > ripper | 50.0% undetermined | 62.5% undetermined |
+| ripper > arclight | 100% holds | 75.0% undetermined |
+| arclight > bulwark | 100% holds | 83.3% (6 decided, 2 timeouts) undetermined |
+| total | 3 hold, 2 undetermined | 1 holds, 4 undetermined, 0 fail |
+
+`b3_gate::the_shipped_reading_on_the_pentagon_batch` (the same 100 matches):
+
+| reading | B3 (F-039) | B4 |
+|---|---|---|
+| K1 rows (bulwark / sentinel / ripper / ravager / arclight) | 37.5 / 65.6 / 68.8 / 46.9 / 31.3 | 26.0 / 78.1 / 68.8 / 34.4 / 42.7 |
+| K1 status | undetermined | undetermined (sentinel [57.0, 95.7] and ripper straddle 65%) |
+| K2 slot A / left base | 65% / 45% (n 20) | 55% / 55% (n 20), undetermined |
+| K3 decided median | 23 790 (6:36) | 22 962 (6:22) |
+| K3 timeouts | 0 of 100 | 2 of 100, undetermined |
+| K3 band share | 36%, **FAIL** | 55.1% [43.5, 66.1], undetermined |
+| before 5:00 / after 8:00 | 34% / 30% | 10% / 36% |
+| gate | **FAIL** | undetermined |
+
+### What the restored lines did to the B3.5 design tests (left red, not re-tuned)
+
+The brief froze every RON value except the opening lists, so the five tests
+below stay red. Each one is a design reading, not a golden, and none is
+weakened. They are phase 2's targets.
+
+1. **`b35_tempo::the_decided_match_median_is_in_the_five_to_eight_minute_band`**
+   - The poles batch (`mass_bulwark`, `mvp`, `rush`) now has a decided median
+     of **2:44** (9 844 ticks), against the 5–8 minute band.
+   - Batch: 2:05 2:07 2:18 2:24 2:34 2:34 2:35 2:43 2:43 2:44 2:44 4:13 6:10
+     7:52 7:53 7:53 8:21 8:29.
+   - Three real Foundries reach `attack_at_army` 10 much faster than one
+     Foundry did. F-029/F-030 calibrated the threshold against an army that,
+     per F-035, was being built on one line.
+2. **The F-036 ordering, turtle latest.**
+   - Failing: `critic_b1_ac3::the_rush_is_the_earliest_and_the_turtle_the_latest_of_the_whole_set`
+     (solo, seed 4) and
+     `critic_b35_closure::the_turtle_commits_last_on_every_seed_with_the_claimed_margin`.
+   - The turtle now first commits at **tick 20 580** (19 320 at F-036).
+     `mass_bulwark` now commits at **23 820**, later than the turtle.
+   - Mirror commit ticks on seed `seed_at(0x70A71E, 0)`:
+
+     | strategy | commit tick |
+     |---|---|
+     | `rush` | 750 |
+     | `mvp` | 4 440 |
+     | `mass_ripper` | 11 280 |
+     | `synth_steel_flesh` | 14 100 |
+     | `synth_triad` | 14 670 |
+     | `mass_sentinel` | 16 500 |
+     | `mass_ravager` | 20 130 |
+     | `turtle` | 20 580 |
+     | `mass_arclight` | 20 910 |
+     | `mass_bulwark` | 23 820 |
+
+   - In a mirror, a mass probe now holds its army for three openings of a
+     150–200 building, so the slow-economy probes (bulwark, arclight) commit
+     later than the turtle.
+   - Rush is still the earliest. `b1_probe_set::the_rush_commits_early_and_the_turtle_masses_first`,
+     which compares only rush and turtle, is green.
+   - Per the brief, the turtle was not re-tuned.
+3. **`critic_b1_ac3::every_mass_versus_mass_cell_resolves_in_both_orientations`**:
+   `mass_bulwark` vs `mass_arclight` does not resolve within 54 000 ticks.
+   This is the same pairing behind the two timeouts in the pentagon batch.
+4. **`critic_b3_ac2::a_crippled_probe_breaks_the_link_it_cripples`**: its
+   baseline premise, "arclight > bulwark holds on shipped content" (1 seed),
+   now reads undetermined, so the injected-imbalance check has no holding
+   link to break.
+
+The reservation is the capability the B4 plan asked for. These four
+readings are what that capability does to a tempo tuned without it. Restoring
+them is B4's RON tuning loop: thresholds and timings, plus a decision on
+whether the poles' ordering is still the design. They are recorded here and
+were not touched.

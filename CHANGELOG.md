@@ -528,3 +528,15 @@
 - [2026-10-04] Modified: FINDINGS.md — F-040 reading confirmed with the committed balance bin (4 seeds, 800 matches)
 - [2026-10-04] Created: tests/critic_b3_gate3.rs — B3 third critic probes: K2 every-reading rule (open mirror, left-base FAIL behind an open mirror, zero/timeout-only mirrors, tolerance edges, interval oracle, printed K2 line)
 - [2026-10-04] Modified: FINDINGS.md — F-038 per-mirror sizing states its independence assumption (conservative by Šidák); match counts = seeds × 20
+- [2026-10-04] Modified: src/sim/ai.rs — B4 opening reservation: the first due, unaffordable opening's Alloy is held back from the army step (F-041)
+- [2026-10-04] Modified: Cargo.toml — `no-opening-reservation` proof-only feature (F-041 golden proof)
+- [2026-10-04] Created: tests/b4_reservation.rs — B4 reservation tests: three lines built in a real match, every multi-opening script placed, army waits while an opening is due, skip rule kept, not-yet-due confinement
+- [2026-10-04] Modified: assets/data/strategies.ron — restored pre-F-035 opening lists (mass probes x3, synth_steel_flesh x4, turtle x4); no stat/cost/threshold change
+- [2026-10-04] Modified: tests/b1_probe_set.rs — MASS_PROBE_BARRACKS 3, MASS_PROBE_OPENING_EXCEPTIONS empty
+- [2026-10-04] Modified: tests/critic_b1_ac3.rs — dropped the per-probe opening cut (lists identical again)
+- [2026-10-04] Modified: tests/critic_b35_armour.rs — dropped the opening-count exception
+- [2026-10-04] Modified: tests/critic_b35_ac0.rs — B4 golden re-pin (F-041)
+- [2026-10-04] Modified: tests/critic_b35_ac0b.rs — B4 golden re-pin of shipped matchups 3-7 (F-041)
+- [2026-10-04] Modified: tests/b3_pentagon.rs — B4 re-pin of the 2-seed pentagon batch reading (F-041)
+- [2026-10-04] Modified: tests/b3_gate.rs — B4 re-pin of the shipped gate reading on the pentagon batch (F-041)
+- [2026-10-04] Modified: FINDINGS.md — F-041 opening reservation: rule, golden proof, old→new goldens, design tests left red

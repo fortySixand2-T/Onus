@@ -1007,16 +1007,21 @@ fn critic_shipped_matchups_are_bit_identical() {
     // commit (92626b2), before AC0b — and re-pinned at B3.5 (F-032), when the
     // content re-tune moved every per-tick `state_hash`. F-032 demonstrates the
     // move is content-driven: the pre-tune `assets/data` under this identical
-    // binary passes at the pre-B3.5 numbers.
+    // binary passes at the pre-B3.5 numbers. Rows 3-7 re-pinned again at B4
+    // (F-041), when the opening reservation and the restored multi-barracks
+    // scripts moved every matchup with more than one opening; the pre-B4 rows
+    // are reproduced by this binary built with `--features
+    // no-opening-reservation` on the pre-B4 `strategies.ron` (F-041's proof).
+    // Rows 0-2 (`mvp`, `rush`: one opening each) did not move.
     let expected: [(u64, u64); 8] = [
         (0x47c76bb871e46efb, 0xbd416bd4be86da11),
         (0x79c341576e931fc4, 0x2a25c84bba78866a),
         (0xba80ea4ba6cacdea, 0x74973f97c60a686b),
-        (0xe94d2708dca81c49, 0x4666a3b3563b8890),
-        (0xb7d0e39bdfb0757c, 0x926206a7e2150e39),
-        (0x283fcec8bb5ebf41, 0xc7328be1b0e09085),
-        (0x1bc7d81e51c54e99, 0x90d87cb290ad3f58),
-        (0x478a4be3e491483e, 0xc9f9d38ba031b30b),
+        (0x622c06205abf7772, 0x65f9917da21d98f2), // B4; was (0xe94d2708dca81c49, 0x4666a3b3563b8890)
+        (0x1aa33ab2d6a04527, 0xa6552ff89996a930), // B4; was (0xb7d0e39bdfb0757c, 0x926206a7e2150e39)
+        (0x54b9d0fd2c5779be, 0x2dbb7d71846b917e), // B4; was (0x283fcec8bb5ebf41, 0xc7328be1b0e09085)
+        (0x241e74a2e363c562, 0xf6546287f161a392), // B4; was (0x1bc7d81e51c54e99, 0x90d87cb290ad3f58)
+        (0x3835febbbac676e3, 0xb54435b778763907), // B4; was (0x478a4be3e491483e, 0xc9f9d38ba031b30b)
     ];
     assert_eq!(
         got.to_vec(),
