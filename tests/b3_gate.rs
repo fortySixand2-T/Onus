@@ -118,6 +118,30 @@ fn the_default_thresholds_are_the_stated_ones() {
     assert_eq!(s.min_band_share, 0.5);
     assert_eq!(s.max_timeout_rate, 0.05);
     assert_eq!(s.icc, 0.17, "F-031: deff 1.51 at 4 matches a cluster");
+    assert_eq!(s.mirror_design_effect, 1.38, "F-038: slot A, clustered by seed, measured");
+}
+
+/// Mirror (K2) readings use the measured seed-clustered design effect, 1.38,
+/// not F-031's pair ICC (which gives 1.17 at 2 matches a cluster); a batch
+/// whose own clustering is worse keeps the larger ICC-based effect.
+#[test]
+fn mirror_readings_use_the_measured_seed_clustered_design_effect() {
+    let g = gate(&balanced(&["x", "y", "z"], 600));
+    for r in [&g.seat.slot_a, &g.seat.left_spawn] {
+        assert_eq!(r.design_effect, 1.38);
+        assert!((r.n_eff - r.n as f64 / 1.38).abs() < 1e-9);
+    }
+    for m in &g.seat.mirrors {
+        assert_eq!(m.slot_a.design_effect, 1.38);
+        assert_eq!(m.left_spawn.design_effect, 1.38);
+    }
+    // One seed, 100 mirror matches: one cluster, deff 1 + 99 x 0.17 > 1.38.
+    let one_seed: Vec<MatchRecord> = (0..50).flat_map(|_| fair_mirror("x", 0)).collect();
+    let g = gate(&one_seed);
+    assert!((g.seat.slot_a.design_effect - (1.0 + 99.0 * 0.17)).abs() < 1e-9);
+    // K1/K3 readings keep F-031's ICC.
+    let g = gate(&balanced(&["x", "y"], 600));
+    assert!((g.termination.timeout_rate.design_effect - 1.0 - 0.17 * (4800.0 / 1800.0 - 1.0)).abs() < 1e-9);
 }
 
 #[test]

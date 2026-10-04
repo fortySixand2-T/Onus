@@ -501,3 +501,7 @@
 - [2026-10-04] Modified: tests/b3_report.rs — without --report the bin prints the tables and writes no file
 - [2026-10-04] Modified: FINDINGS.md — F-040: why the report file is opt-in
 - [2026-10-04] Modified: BALANCE_PLAN.md — report result line notes the opt-in write
+- [2026-10-04] Modified: src/gate.rs — mirror (K2) readings use at least the measured seed-clustered design effect 1.38 (MIRROR_DEFF, GateSpec::mirror_design_effect)
+- [2026-10-04] Modified: tests/b3_gate.rs — mirror design-effect test; default thresholds include 1.38
+- [2026-10-04] Modified: FINDINGS.md — F-038 power table redone at deff 1.38 (z-test 4.7 pts, gate FAIL 9.6 pts); F-039 K2 re-read: PASS [47.6, 54.1]
+- [2026-10-04] Modified: BALANCE_PLAN.md — K2 result line at deff 1.38

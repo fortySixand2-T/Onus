@@ -2993,8 +2993,22 @@ timeouts; its band share is undetermined, nothing was decided) and leaves K1/K2 
 F-031 measured deff 1.51 at m = 4, so ICC rho = 0.51/3 = **0.17**
 (`gate::F031_ICC`). Each reading counts its own distinct clusters (unordered
 pair + seed; no map) and uses deff = 1 + (m - 1) rho at its mean cluster size
-m, then takes Wilson on n_eff = n / deff. That gives deff 1.17 for a pooled
-mirror reading and ~1.40 for K3 on a mixed batch. A row mean (K1) is a mean of
+m, then takes Wilson on n_eff = n / deff. That gives ~1.40 for K3 on a mixed
+batch. **Mirror readings are the exception** *(corrected after the B3 critic)*:
+rho = 0.17 gives a 2-match mirror cluster deff 1.17, but measured on F-039's
+62-seed mirror-only batch (1 235 decided) the slot-A share has:
+- deff **1.381** with the **seed** as the cluster (robust cluster variance over
+  binomial variance, 62 clusters);
+- deff 1.344 with `(strategy, seed)` as the cluster (620 clusters), i.e. a
+  mirror ICC of ~0.34, twice F-031's;
+- deff 1.08 with the strategy as the cluster (10 clusters).
+
+The left-base share measures 0.93 by seed, 0.66 by `(strategy, seed)` and
+2.17 by strategy. The last is on only 10 clusters, so it is noise-dominated,
+and the per-mirror readings test strategy-level base effects directly.
+K2 uses the conservative seed-clustered value: every seat reading's deff is
+at least `gate::MIRROR_DEFF` = 1.38 (`GateSpec::mirror_design_effect`;
+`b3_gate::mirror_readings_use_the_measured_seed_clustered_design_effect`). A row mean (K1) is a mean of
 k cells. Its interval is Wilson at the mean on n_eff = k^2 / sum(deff_i / n_i),
 the binomial sample with the variance of a mean of k cells at that rate. That
 is conservative (sum p_i(1-p_i) <= k p(1-p)), and for k = 1 it **is** the cell's
@@ -3045,26 +3059,45 @@ reason to lower the bar. There is no switch to make band share advisory.
 
 ### The power calculation
 
+*(Corrected after the B3 critic: the first version used the mirror deff 1.17
+from F-031's ICC. It is redone here at the measured 1.38.)*
+
 Seat bias is a proportion against 0.5. With alpha = 0.05 two-sided and power
 0.8 (z = 1.960, 0.842), detecting a true share of 0.5 + delta needs
 n_eff = ((1.960 x 0.5 + 0.842 x sqrt(p1(1 - p1))) / delta)^2 decided mirror
-matches. The decided count is n = n_eff x 1.17 (mirror deff). A full-roster
-seed (10 strategies) plays **20 mirror matches**: 10 mirrors x 2 orientations,
-i.e. 2 decided matches per mirror per seed, minus timeouts.
+matches. The decided count is n = n_eff x **1.38** (measured mirror deff, above). A
+full-roster seed (10 strategies) plays **20 mirror matches**: 10 mirrors x 2
+orientations, i.e. 2 decided matches per mirror per seed, minus timeouts.
 
 | seat bias to detect | n_eff | decided mirrors | full-roster seeds | full-roster matches |
 |---|---|---|---|---|
-| 10 points | 194 | 227 | 12 | 2 400 |
-| 7 points | 398 | 466 | 24 | 4 800 |
-| **5 points** | **783** | **916** | **46** | **9 200** |
-| 3 points | 2 178 | 2 548 | 128 | 25 600 |
-| 2 points | 4 903 | 5 737 | 287 | 57 400 |
+| 10 points | 194 | 268 | 14 | 2 800 |
+| 7 points | 398 | 550 | 28 | 5 600 |
+| **5 points** | **783** | **1 080** | **54** | **10 800** |
+| 3 points | 2 178 | 3 006 | 151 | 30 200 |
+| 2 points | 4 903 | 6 767 | 339 | 67 800 |
 
 **PASSing K2 is harder than detecting a bias.** Even when the true share is
 exactly 0.5, the whole 95% interval must fit inside +/-5 points. That needs
 half-width <= 5 with 80% probability, so n_eff >= ((1.960 + 1.282) x 0.5 /
-0.05)^2 = **1 051**. That is 1 230 decided mirrors, or **62 full-roster
-seeds** (12 400 matches).
+0.05)^2 = **1 051**. That is **1 451** decided mirrors, or **73 full-roster
+seeds** (14 600 matches).
+
+**What the 62-seed mirror batch buys** (F-039 section 2: 1 235 decided, so
+n_eff = 1 235 / 1.38 = 895). Two different numbers:
+- **The z-test detectable bias is ~4.7 points.** A two-sided test at alpha
+  0.05 rejects 50% with 80% power when the true share is 50% +/- 4.7.
+- **The gate itself FAILs with 80% power only at ~9.6 points.** K2 FAILs when
+  the whole Wilson interval lies outside 45–55%, i.e. at an observed share
+  >= 58.3% at this n_eff. The true share that reaches it 80% of the time is
+  59.6%, a 9.6-point bias (the critic's normal-approximation figure is ~9.3).
+  Between ~5 and ~9.6 points the gate reads **undetermined**, never PASS.
+  That is the property that matters: a bias the batch cannot resolve does not
+  pass.
+
+At 62 seeds the measured K2 still **PASSes**: slot A 50.9% [47.6, 54.1],
+left base 51.0% [47.7, 54.3], and no mirror is resolved outside tolerance
+(F-039 section 2).
 
 **Throughput, measured on the box** (release, `nice 19`, shared with the trading
 agents): the B3 pentagon batch played 100 matches serially in 332 s, i.e.
@@ -3073,9 +3106,11 @@ seeds (3 points) ~23.5. On a box that runs live trading, neither is a modest
 batch. **So the full-roster size is infeasible here, and the K2 question is
 sized separately.** K2 reads only mirrors, so a **mirror-only** batch spends
 every match on it. 62 seeds x 10 mirrors x 2 orientations = **1 240 matches**
-(~1.1 CPU-hours) gives the n that can PASS +/-5 points, and it detects a
-~4.3-point bias at 80% power. A 3-point bias stays out of reach (2 548 decided
-mirrors, ~2.3 CPU-hours). It is the next step if the 62-seed reading is close.
+(~1.1 CPU-hours) was sized for the n that can PASS +/-5 points at deff 1.17. At
+the measured 1.38 that needs 73 seeds; 62 gave a PASS anyway, because the
+observed shares sit near 51% (above). It detects a ~4.7-point bias at 80% power
+(z-test). A 3-point bias stays out of reach (3 006 decided mirrors, ~2.9
+CPU-hours). It is the next step if the 62-seed reading is ever close.
 K1 and K3 are read on roster batches. A row mean over k opponents at s seeds
 has n_eff ~ k x 4s / 1.51, so its half-width is about 0.98 / sqrt(n_eff). On
 the five probes (k = 4) that is ~+/-20 points at 2 seeds and ~+/-13 at 5. On
@@ -3137,23 +3172,36 @@ every match on it:
 - Wall time was 1 425 s, i.e. **3.45 CPU-s a match**, consistent with F-038's
   3.3.
 
-| reading | value | 95% interval | n (decided) | clusters | n_eff | status |
+*(Re-read after the B3 critic with the corrected gate: deff 1.38 and
+per-mirror FAIL gating, F-038. The batch was replayed and its outcomes are
+identical, match for match. The first version's numbers were slot A [47.8,
+53.9] and left [48.0, 54.0] at n_eff 1 057.)*
+
+| reading | value | 95% interval | n (decided) | deff | n_eff | status |
 |---|---|---|---|---|---|---|
-| slot A share | **50.9%** | [47.8, 53.9] | 1 235 | 620 | 1 057 | **PASS** |
-| left-base share | **51.0%** | [48.0, 54.0] | 1 235 | 620 | 1 057 | **PASS** |
+| slot A share | **50.9%** | [47.6, 54.1] | 1 235 | 1.38 | 895 | **PASS** |
+| left-base share | **51.0%** | [47.7, 54.3] | 1 235 | 1.38 | 895 | **PASS** |
 
-**K2 PASSes at +/-5 points.** At this n the gate would have *detected* a seat
-bias of ~4.3 points with 80% power. A 3-point bias is not excluded (that needs
-~2 548 decided mirrors, F-038).
+**K2 PASSes at +/-5 points**, and no mirror is resolved outside tolerance.
+At this n, a z-test would detect a ~4.7-point seat bias with 80% power. The
+gate itself FAILs one with 80% power only at ~9.6 points (F-038). A 3-point
+bias is not excluded (that needs ~3 006 decided mirrors).
 
-The per-mirror rows (reported, not gated) are all undetermined at 124 matches
-each, with intervals ~+/-9 points. The extremes are:
-- `mvp` 41.1% [32.2, 50.6], which just touches 50%;
-- `rush` 58.1% [48.5, 67.0].
+The per-mirror readings, which now FAIL K2 if resolved, are all undetermined
+at 121–124 matches each, with intervals ~+/-10 points:
 
-With ten mirrors read at once, two at ~1.7–1.8 SE is what chance gives. Neither is
-evidence of a per-strategy seat edge, and neither changes the pooled reading.
-They are the rows to re-read first if a bigger seat batch is ever run.
+| mirror | slot A | left base |
+|---|---|---|
+| `mvp` | 41.1% [31.5, 51.5] | 52.4% [42.2, 62.4] |
+| `rush` | 58.1% [47.7, 67.7] | 51.6% [41.4, 61.7] |
+| `mass_arclight` | 48.8% [38.7, 59.0] | **64.9% [54.6, 74.0]** |
+| others | 47.6–54.8% | 43.8–55.7% |
+
+**`mass_arclight`'s left base is the closest to a FAIL.** Its lower bound is
+54.6%, 0.4 points inside the 55% edge. It agrees with the left-base share's
+by-strategy design effect of 2.17 (F-038), which hints at strategy-level
+geography. With twenty per-mirror readings, one at ~2.9 SE is unusual but not
+decisive. It is the first row to re-read in a bigger seat batch.
 
 Five of the 1 240 matches timed out, all in the two synth mirrors (3 + 2). Four
 were mutual losses.

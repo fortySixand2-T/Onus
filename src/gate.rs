@@ -47,9 +47,12 @@
 //! cluster — an intra-cluster correlation of `ρ = 0.51 / 3 = 0.17`. Each
 //! reading counts its own clusters and uses the standard design effect
 //! `deff = 1 + (m − 1)·ρ` for its mean cluster size `m`, then computes Wilson
-//! on the effective sample `n / deff`. So a mirror (`m = 2`, `deff = 1.17`) is
-//! discounted less than a pentagon link (`m = 4`, `deff = 1.51`), and a batch
-//! whose records all share one seed is discounted heavily, as it should be.
+//! on the effective sample `n / deff`. A batch whose records all share one
+//! seed is discounted heavily, as it should be. **Mirror (K2) readings** are
+//! the exception: `ρ = 0.17` gives a 2-match mirror cluster only 1.17, but the
+//! slot-A share measured on a mirror-only batch has a design effect of 1.38
+//! with the seed as the cluster (1.34 by `(strategy, seed)`), so seat readings
+//! use at least [`MIRROR_DEFF`] (F-038).
 //!
 //! Pure: a function of `(&Content, &[MatchRecord], &GateSpec)`. No map is
 //! iterated; every list is in matrix (first-appearance) order.
@@ -119,6 +122,10 @@ pub struct GateSpec {
     /// Intra-cluster correlation of one `(pair, seed)`'s matches; see the
     /// module docs. 0 treats every match as independent.
     pub icc: f64,
+    /// K2: the design effect of a mirror seat reading, at least. Measured, not
+    /// derived from `icc` (F-038); a batch whose own `icc`-based effect is
+    /// larger keeps that.
+    pub mirror_design_effect: f64,
 }
 
 impl Default for GateSpec {
@@ -130,6 +137,7 @@ impl Default for GateSpec {
             min_band_share: 0.5,
             max_timeout_rate: 0.05,
             icc: F031_ICC,
+            mirror_design_effect: MIRROR_DEFF,
         }
     }
 }
@@ -137,6 +145,13 @@ impl Default for GateSpec {
 /// F-031's measured design effect, 1.51, on a cluster of 4 matches:
 /// `ρ = (1.51 − 1) / (4 − 1) = 0.17`.
 pub const F031_ICC: f64 = 0.17;
+
+/// The slot-A share's design effect over a mirror-only batch, measured with the
+/// **seed** as the cluster (robust variance / binomial variance), 62 seeds,
+/// 1 235 decided mirrors: 1.381 (F-038). F-031's ICC understates it for
+/// mirrors (1.17 at 2 matches a cluster; the `(strategy, seed)`-cluster
+/// measurement is 1.34), so seat readings use this, the conservative one.
+pub const MIRROR_DEFF: f64 = 1.38;
 
 /// A proportion read off a batch, with the interval that decides its status.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -203,7 +218,19 @@ impl Reading {
     /// A proportion of `half_successes / (2·n)` (halves, so a mutual loss is
     /// representable), over `clusters` clusters, judged by `rule`.
     pub fn proportion(half_successes: u64, n: u32, clusters: u32, icc: f64, rule: Rule) -> Self {
-        let deff = design_effect(n, clusters, icc);
+        Self::proportion_at_least(half_successes, n, clusters, icc, 1.0, rule)
+    }
+
+    /// [`Reading::proportion`] with the design effect floored at `min_deff`.
+    pub fn proportion_at_least(
+        half_successes: u64,
+        n: u32,
+        clusters: u32,
+        icc: f64,
+        min_deff: f64,
+        rule: Rule,
+    ) -> Self {
+        let deff = design_effect(n, clusters, icc).max(min_deff);
         let n_eff = n as f64 / deff;
         let value = (n > 0).then(|| half_successes as f64 / (2.0 * n as f64));
         let interval = value.map(|p| wilson_bounds(p, n_eff));
@@ -474,7 +501,7 @@ fn seat_bias(records: &[MatchRecord], m: &WinMatrix, spec: &GateSpec) -> SeatBia
         let n = mirrors.len() as u32;
         let clusters = distinct(mirrors.iter().map(|r| key(m, r)).collect()).len() as u32;
         let s: u64 = mirrors.iter().map(|r| of(r)).sum();
-        Reading::proportion(s, n, clusters, spec.icc, rule)
+        Reading::proportion_at_least(s, n, clusters, spec.icc, spec.mirror_design_effect, rule)
     };
     let slot_a = pooled(&|r| half(r, Faction::A));
     let left_spawn = pooled(&|r| half(r, r.orientation.left()));
@@ -490,7 +517,7 @@ fn seat_bias(records: &[MatchRecord], m: &WinMatrix, spec: &GateSpec) -> SeatBia
             let n = own.len() as u32;
             let read = |of: &dyn Fn(&MatchRecord) -> u64| {
                 let s: u64 = own.iter().map(|r| of(r)).sum();
-                Reading::proportion(s, n, clusters, spec.icc, rule)
+                Reading::proportion_at_least(s, n, clusters, spec.icc, spec.mirror_design_effect, rule)
             };
             Some(MirrorRow {
                 strategy: id.clone(),
