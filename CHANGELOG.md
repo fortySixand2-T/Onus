@@ -515,3 +515,5 @@
 - [2026-10-04] Modified: tests/b3_report.rs — a strictly weak strategy is tagged LOSING in the table and named in the report
 - [2026-10-04] Modified: FINDINGS.md — F-038 losing rule (symmetric bar, named not gated); F-040 rush correction (37.5% is a loss)
 - [2026-10-04] Modified: BALANCE_PLAN.md — rush named losing on the full-roster run
+- [2026-10-04] Modified: FINDINGS.md — F-040 re-read on the final gate: records identical, statuses unchanged, K1/K2 intervals restated (worst-case row variance, mirror deff 1.38)
+- [2026-10-04] Modified: BALANCE_PLAN.md — turtle interval restated on the final method

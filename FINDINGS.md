@@ -3286,18 +3286,24 @@ K3 fails on band share (43.8%, resolved below 50%).
 
 ### K1 — strength (FAIL)
 
+*(Re-read after the B3 critic fixes, same seeds: the 800 records came back
+match-for-match identical, so the matrix, the K3 reading and every status are
+unchanged. The intervals below are the final method's — row means on the
+worst-case variance (F-038), mirrors at deff 1.38 — and are a little wider
+than first printed.)*
+
 | strategy | row mean | 95% interval (n_eff ~95) | status |
 |---|---|---|---|
-| `turtle` | **99.3%** | [94.9, 99.9] | **FAIL, DOMINANT** (beats all 9 opponents) |
-| `mass_sentinel` | 68.3% | [58.4, 76.8] | undetermined |
-| `mass_ripper` | 68.1% | [58.2, 76.6] | undetermined |
-| `synth_steel_flesh` | 54.1% | [43.9, 64.0] | PASS |
-| `synth_triad` | 54.1% | [44.1, 63.8] | PASS |
-| `mass_arclight` | 47.9% | [38.0, 58.0] | PASS |
-| `mass_ravager` | 45.0% | [35.2, 55.1] | PASS |
-| `mass_bulwark` | 30.5% | [22.2, 40.4] | PASS |
-| `mvp` | 26.4% | [18.6, 36.0] | PASS |
-| `rush` | 6.2% | [2.9, 13.0] | PASS, **LOSING** (named, not gated) |
+| `turtle` | **99.3%** | [94.9, 100.0] | **FAIL, DOMINANT** (beats all 9 opponents) |
+| `mass_sentinel` | 68.3% | [58.4, 77.7] | undetermined |
+| `mass_ripper` | 68.1% | [58.2, 77.4] | undetermined |
+| `synth_steel_flesh` | 54.1% | [43.9, 64.4] | PASS |
+| `synth_triad` | 54.1% | [44.1, 64.2] | PASS |
+| `mass_arclight` | 47.9% | [37.8, 58.1] | PASS |
+| `mass_ravager` | 45.0% | [34.8, 55.1] | PASS |
+| `mass_bulwark` | 30.5% | [21.2, 40.4] | PASS |
+| `mvp` | 26.4% | [17.5, 36.0] | PASS |
+| `rush` | 6.2% | [1.4, 13.0] | PASS, **LOSING** (named, not gated) |
 
 The turtle's off-diagonal cells are 93.8–100%. This is not new; the gate is
 the first thing to *fail* on it:
@@ -3322,8 +3328,8 @@ are the next rows to watch.
 
 ### K2 — seat (undetermined here; PASS on F-039's batch)
 
-Slot A is 61.3% [49.4, 71.9] and left base 48.8% [37.3, 60.3], at n 80 and
-n_eff 68. Every per-mirror row has 8 matches. The interval is too wide to
+Slot A is 61.3% [48.4, 72.7] and left base 48.8% [36.4, 61.3], at n 80 and
+n_eff 58 (mirror deff 1.38). Every per-mirror row has 8 matches. The interval is too wide to
 judge, which is the outcome F-038's power calculation predicted for a roster
 batch. F-039's mirror-only batch (n_eff 1 057) is the K2 reading of record.
 
