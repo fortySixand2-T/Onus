@@ -425,6 +425,40 @@ fn a_strictly_dominant_and_a_strictly_losing_strategy_are_named() {
     assert!(!mid.dominant && !mid.losing);
 }
 
+/// A strategy whose row is resolved below `1 − max_strength` (35%, the mirror
+/// image of K1's bar) is named `losing` even though it splits some matchups
+/// evenly (critic B3). Naming does not gate: K1 bounds strength from above
+/// only (F-038). The bar moves with `max_strength`.
+#[test]
+fn a_row_resolved_below_the_mirror_bar_is_named_losing_but_not_gated() {
+    let mut recs = Vec::new();
+    let ids = ["a", "b", "c", "d", "e"];
+    for seed in 0..100 {
+        recs.extend(pair_seed("a", "low", seed, 4));
+        recs.extend(pair_seed("b", "low", seed, 4));
+        for x in ["c", "d", "e"] {
+            recs.extend(pair_seed(x, "low", seed, 2));
+        }
+        for (i, x) in ids.iter().enumerate() {
+            for y in &ids[i + 1..] {
+                recs.extend(pair_seed(x, y, seed, 2));
+            }
+        }
+    }
+    let g = gate(&recs);
+    let low = g.strength.rows.iter().find(|r| r.strategy == "low").unwrap();
+    assert!((low.strength.value.unwrap() - 0.3).abs() < 1e-12);
+    assert!(low.strength.interval.unwrap().1 < 0.35);
+    assert!(low.losing);
+    assert_eq!(g.strength.losing, ["low"]);
+    assert!(g.strength.dominant.is_empty() && g.strength.failing.is_empty());
+    assert_eq!(g.strength.status, Status::Pass, "a weak row is named, not gated");
+
+    let loose = GateSpec { max_strength: 0.75, ..GateSpec::default() };
+    let g = KillGate::of(&shipped(), &recs, &loose);
+    assert!(g.strength.losing.is_empty(), "30% is not resolved below 1 - 0.75");
+}
+
 #[test]
 fn a_strong_row_at_a_small_sample_is_undetermined_not_failing() {
     let mut recs = Vec::new();

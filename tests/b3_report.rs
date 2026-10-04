@@ -263,3 +263,25 @@ fn without_report_the_binary_prints_the_tables_and_writes_no_file() {
     assert!(stdout.contains("kill gate"), "the tables still print:\n{stdout}");
     assert!(!stdout.contains("report       "), "no report line without a report:\n{stdout}");
 }
+
+/// A strictly weak strategy is tagged in the table and named in the report,
+/// and the table says the name does not gate (critic B3, F-038).
+#[test]
+fn a_strictly_weak_strategy_is_tagged_in_the_table_and_named_in_the_report() {
+    let min = 60 * SIM_HZ;
+    let mut recs = Vec::new();
+    for seed in 0..40 {
+        for o in Orientation::ALL {
+            recs.push(rec("mass_sentinel", "rush", seed, o, A, 6 * min));
+            recs.push(rec("rush", "mass_sentinel", seed, o, B, 6 * min));
+        }
+    }
+    let r = BalanceReport::of(&shipped(), &BatchSettings::default(), &recs);
+    assert_eq!(r.gate.strength.losing, ["rush"]);
+    let back = BalanceReport::from_ron(&r.to_ron().unwrap()).unwrap();
+    assert_eq!(back.gate.strength.losing, ["rush"], "the RON carries the name");
+    let text = r.to_string();
+    let row = text.lines().find(|l| l.trim_start().starts_with("rush ")).expect("rush row");
+    assert!(row.contains("LOSING"), "{row}");
+    assert!(text.contains("losing (named, not gated): rush"), "{text}");
+}

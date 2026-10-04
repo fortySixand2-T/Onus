@@ -191,6 +191,7 @@ Then B3's remaining ACs are computed on valid-length matches.
       `balance` prints it and, on request, writes it (`--report PATH`, opt-in). The first full-roster run (4 seeds,
       800 matches) reads **FAIL**: `turtle` is dominant at 99.3% [94.9, 99.9], and K3 FAILs on
       band share 43.8% [39.7, 48.0] (median 5:33, timeouts 1.8% PASS).
+      `rush` (6.2%) is named `losing`: row interval wholly below 35%, named, not gated (F-038).
 - [x] **Harden `batch::production_totals`** (B3 is its consumer): derive the column schema
       from the union of record keys, or refuse an unlabelled record — today it takes its
       header from `records.first()` and silently drops every later row's production if that

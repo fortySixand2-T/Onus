@@ -311,7 +311,11 @@ impl fmt::Display for BalanceReport {
                 r.opponents,
             )?;
         }
-        for (label, names) in [("failing", &k1.failing), ("dominant", &k1.dominant), ("losing", &k1.losing)] {
+        for (label, names) in [
+            ("failing", &k1.failing),
+            ("dominant", &k1.dominant),
+            ("losing (named, not gated)", &k1.losing),
+        ] {
             if !names.is_empty() {
                 writeln!(f, "    {label}: {}", names.join(", "))?;
             }

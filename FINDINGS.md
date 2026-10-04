@@ -3044,9 +3044,29 @@ undetermined a little more often, never PASS more often.
 
 **Names, not just a status.** K1 lists the strategies whose row is resolved
 above 65% (`failing`), the ones whose every opponent cell is resolved above
-50% (`dominant`), and the ones resolved below 50% against every opponent
-(`losing`), all in matrix order. Each row also carries the unit it masses
-(`pentagon::mass_strategy`), so "unit win rate" reads off the probe row.
+50% (`dominant`), and the strictly weak ones (`losing`), all in matrix order.
+Each row also carries the unit it masses (`pentagon::mass_strategy`), so
+"unit win rate" reads off the probe row.
+
+**`losing` is the mirror image of K1's bar.** *(Corrected after the B3
+critic; the first version named a strategy `losing` only if every one of its
+cells was resolved below 50%, so a strategy that loses every matchup but splits
+one too few matches to resolve it went unnamed —
+`critic_b3_gate::probe_a_strategy_losing_every_matchup_is_named`, where `low`
+reads 12.5% with its interval topping out at 28.1%.)* A strategy is named `losing` when either:
+- its row interval lies wholly below `1 − max_strength` (35%), the same
+  interval read against the symmetric bar; or
+- every opponent cell is resolved below 50% (the old rule, kept).
+
+It is **named, not gated.** The spec's K1 is "no unit/strategy wins >65%
+regardless of counter": it bounds strength from above only, and asks for
+weak strategies to be *surfaced by name*, not to fail the gate. A strategy too
+weak to use is a balance problem B4 owns, but not a kill criterion as written;
+gating it would add a criterion the plan does not have. The table tags the row
+`LOSING` and prints `losing (named, not gated): ...`; the RON carries
+`strength.losing`. The bar moves with `max_strength`. Tests:
+`b3_gate::a_row_resolved_below_the_mirror_bar_is_named_losing_but_not_gated`,
+`b3_report::a_strictly_weak_strategy_is_tagged_in_the_table_and_named_in_the_report`.
 
 **K2: pooled for PASS, per mirror for FAIL.** *(Corrected after the B3
 critic; the first version only reported per-mirror rows, so two mirrors with
@@ -3277,7 +3297,7 @@ K3 fails on band share (43.8%, resolved below 50%).
 | `mass_ravager` | 45.0% | [35.2, 55.1] | PASS |
 | `mass_bulwark` | 30.5% | [22.2, 40.4] | PASS |
 | `mvp` | 26.4% | [18.6, 36.0] | PASS |
-| `rush` | 6.2% | [2.9, 13.0] | PASS (K1 bounds strength only) |
+| `rush` | 6.2% | [2.9, 13.0] | PASS, **LOSING** (named, not gated) |
 
 The turtle's off-diagonal cells are 93.8–100%. This is not new; the gate is
 the first thing to *fail* on it:
@@ -3288,9 +3308,13 @@ the first thing to *fail* on it:
 
 No RON change was made: B3 only measures. Tuning the turtle is B4.
 
-`rush`, at 6.2%, is not named `losing`, because it is not strictly losing. It
-takes 37.5% of `mass_bulwark` and 18.8% of `synth_triad`. A floor on weak
-strategies is not one of B3's kill criteria; it is B4's to add if wanted.
+`rush`, at 6.2%, is named **`losing`**: its row interval lies wholly below
+35%. *(Corrected after the B3 critic. This paragraph first said `rush` was
+"not strictly losing" because it takes 37.5% of `mass_bulwark` and 18.8% of
+`synth_triad`. Both are losses, so it loses every matchup; the old rule missed
+it only because those two cells were not resolved below 50% at 16 matches
+each.)* Naming does not gate (F-038): K1 bounds strength from above. Lifting
+the rush is B4's.
 
 `mass_sentinel` and `mass_ripper` sit just above 65%, with intervals that
 straddle it. Resolving them needs roughly n_eff >= 400, about 16+ seeds. They

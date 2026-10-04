@@ -509,3 +509,9 @@
 - [2026-10-04] Modified: src/metrics.rs — WILSON_Z visible in the crate for the gate's intervals
 - [2026-10-04] Modified: tests/b3_gate.rs — row-mean interval contains the normal interval on the true variance; one-cell row contains the cell's Wilson and normal intervals
 - [2026-10-04] Modified: FINDINGS.md — F-038 row-mean claim corrected and the method stated
+- [2026-10-04] Modified: src/gate.rs — `losing` also names a row whose interval lies wholly below 1 − max_strength (35%); named, not gated
+- [2026-10-04] Modified: src/report.rs — K1 names line reads `losing (named, not gated)`
+- [2026-10-04] Modified: tests/b3_gate.rs — a row resolved below the mirror bar is named losing but does not gate
+- [2026-10-04] Modified: tests/b3_report.rs — a strictly weak strategy is tagged LOSING in the table and named in the report
+- [2026-10-04] Modified: FINDINGS.md — F-038 losing rule (symmetric bar, named not gated); F-040 rush correction (37.5% is a loss)
+- [2026-10-04] Modified: BALANCE_PLAN.md — rush named losing on the full-roster run

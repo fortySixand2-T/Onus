@@ -379,7 +379,10 @@ pub struct StrengthRow {
     pub strength: Reading,
     /// Beats **every** opponent, each cell's interval above 50%.
     pub dominant: bool,
-    /// Loses to every opponent, each cell's interval below 50%.
+    /// Strictly weak: loses to every opponent (each cell's interval below
+    /// 50%), or its row interval lies wholly below `1 − max_strength` — the
+    /// mirror image of K1's bar. Named, not gated: K1 bounds strength from
+    /// above only (F-038).
     pub losing: bool,
 }
 
@@ -394,7 +397,8 @@ pub struct Strength {
     pub failing: Vec<String>,
     /// Strategies that beat every opponent, by name.
     pub dominant: Vec<String>,
-    /// Strategies that lose to every opponent, by name.
+    /// Strictly weak strategies ([`StrengthRow::losing`]), by name. Reported,
+    /// not gated.
     pub losing: Vec<String>,
 }
 
@@ -530,6 +534,8 @@ fn strength(content: &Content, records: &[MatchRecord], m: &WinMatrix, spec: &Ga
             let mean = m.row_mean(i);
             let strength = Reading::mean_of(mean.mean, &ns, &cs, spec.icc, Rule::AtMost(spec.max_strength));
             let decided_opponents = ns.len() as u32;
+            let loses_every_matchup = opponents > 0 && decided_opponents == opponents && loses_all;
+            let row_below_mirror_bar = strength.interval.is_some_and(|(_, hi)| hi < 1.0 - spec.max_strength);
             StrengthRow {
                 strategy: id.clone(),
                 unit: content
@@ -541,7 +547,7 @@ fn strength(content: &Content, records: &[MatchRecord], m: &WinMatrix, spec: &Ga
                 opponents,
                 strength,
                 dominant: opponents > 0 && decided_opponents == opponents && wins_all,
-                losing: opponents > 0 && decided_opponents == opponents && loses_all,
+                losing: loses_every_matchup || row_below_mirror_bar,
             }
         })
         .collect();
