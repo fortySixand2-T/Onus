@@ -527,3 +527,4 @@
 - [2026-10-04] Modified: tests/b3_gate.rs — module header states K3 as the band share plus timeouts and K2 as pooled plus every mirror
 - [2026-10-04] Modified: FINDINGS.md — F-040 reading confirmed with the committed balance bin (4 seeds, 800 matches)
 - [2026-10-04] Created: tests/critic_b3_gate3.rs — B3 third critic probes: K2 every-reading rule (open mirror, left-base FAIL behind an open mirror, zero/timeout-only mirrors, tolerance edges, interval oracle, printed K2 line)
+- [2026-10-04] Modified: FINDINGS.md — F-038 per-mirror sizing states its independence assumption (conservative by Šidák); match counts = seeds × 20

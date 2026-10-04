@@ -3161,8 +3161,15 @@ fair seats assumed):
 
 | target | n_eff per mirror | decided per mirror | mirror-only seeds | mirror-only matches | CPU-hours at 3.45 s |
 |---|---|---|---|---|---|
-| one mirror's reading PASSes +/-5 with 80% probability | 1 051 | 1 451 | 726 | 14 510 | ~14 |
-| all 20 readings PASS jointly with 80% probability (each at 98.9%) | 2 025 | 2 795 | 1 398 | 27 950 | ~27 |
+| one mirror's reading PASSes +/-5 with 80% probability | 1 051 | 1 451 | 726 | 14 520 | ~14 |
+| all 20 readings PASS jointly with 80% probability (each at 98.9%) | 2 025 | 2 795 | 1 398 | 27 960 | ~27 |
+
+The joint row multiplies the 20 readings' probabilities as if independent.
+They are not (slot A and left base share matches), but within a mirror the two
+are uncorrelated when orientations are balanced, and for any correlation among
+roughly normal readings Šidák's inequality makes the product a lower bound on
+the joint probability, so the seed count errs high. Match counts are seeds × 20
+(10 mirrors × 2 orderings).
 
 Settling K2 as PASS therefore takes a **~1 400-seed mirror-only batch,
 ~28 000 matches**, roughly 23x the 62-seed batch. It was not run. A
