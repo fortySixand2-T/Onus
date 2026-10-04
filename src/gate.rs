@@ -293,12 +293,15 @@ pub struct Strength {
     pub losing: Vec<String>,
 }
 
-/// One mirror's seat reading. Reported, **not gated** (F-038).
+/// One mirror's seat readings. A **resolved FAIL** here fails K2; an
+/// undetermined one does not block a pooled PASS (multiplicity, F-038).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MirrorRow {
     pub strategy: String,
     /// Slot A's share of this mirror, judged against the tolerance.
     pub slot_a: Reading,
+    /// The left-hand base's share of this mirror, judged the same way.
+    pub left_spawn: Reading,
 }
 
 /// K2: mirrors are within tolerance of 50%, by slot and by spawn base.
@@ -310,7 +313,7 @@ pub struct SeatBias {
     pub slot_a: Reading,
     /// The left-hand base's share of every decided mirror (geography).
     pub left_spawn: Reading,
-    /// Per mirror, in matrix order — reported, not part of the status.
+    /// Per mirror, in matrix order. A resolved FAIL in any of them fails K2.
     pub mirrors: Vec<MirrorRow>,
 }
 
@@ -475,7 +478,7 @@ fn seat_bias(records: &[MatchRecord], m: &WinMatrix, spec: &GateSpec) -> SeatBia
     };
     let slot_a = pooled(&|r| half(r, Faction::A));
     let left_spawn = pooled(&|r| half(r, r.orientation.left()));
-    let per_mirror = (0..m.len())
+    let per_mirror: Vec<MirrorRow> = (0..m.len())
         .filter_map(|i| {
             let id = &m.ids()[i];
             let own: Vec<&&MatchRecord> = mirrors.iter().filter(|r| &r.strategies[0] == id).collect();
@@ -484,15 +487,28 @@ fn seat_bias(records: &[MatchRecord], m: &WinMatrix, spec: &GateSpec) -> SeatBia
                 return None;
             }
             let clusters = distinct(own.iter().map(|r| key(m, r)).collect()).len() as u32;
-            let s: u64 = own.iter().map(|r| half(r, Faction::A)).sum();
+            let n = own.len() as u32;
+            let read = |of: &dyn Fn(&MatchRecord) -> u64| {
+                let s: u64 = own.iter().map(|r| of(r)).sum();
+                Reading::proportion(s, n, clusters, spec.icc, rule)
+            };
             Some(MirrorRow {
                 strategy: id.clone(),
-                slot_a: Reading::proportion(s, own.len() as u32, clusters, spec.icc, rule),
+                slot_a: read(&|r| half(r, Faction::A)),
+                left_spawn: read(&|r| half(r, r.orientation.left())),
             })
         })
         .collect();
+    // The pooled readings decide PASS; a per-mirror reading can only FAIL
+    // the criterion, when its own interval lies wholly outside tolerance.
+    // An undetermined mirror is left open: ten mirrors at 2 matches a seed
+    // cannot each be resolved to +/-5 points (F-038).
+    let mirror_fail = per_mirror
+        .iter()
+        .any(|r| r.slot_a.status == Status::Fail || r.left_spawn.status == Status::Fail);
+    let pooled_status = Status::all([slot_a.status, left_spawn.status]);
     SeatBias {
-        status: Status::all([slot_a.status, left_spawn.status]),
+        status: if mirror_fail { Status::Fail } else { pooled_status },
         tolerance: spec.mirror_tolerance,
         slot_a,
         left_spawn,

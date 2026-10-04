@@ -319,15 +319,27 @@ impl fmt::Display for BalanceReport {
         let k2 = &g.seat;
         writeln!(
             f,
-            "  K2 seat      {}  mirrors within 50% +/- {} by slot and by spawn",
+            "  K2 seat      {}  mirrors within 50% +/- {} by slot and by spawn, pooled and per mirror",
             status(k2.status),
             pct0(k2.tolerance)
         )?;
         writeln!(f, "    slot A      {:<12} {}", status(k2.slot_a.status), reading(&k2.slot_a))?;
         writeln!(f, "    left base   {:<12} {}", status(k2.left_spawn.status), reading(&k2.left_spawn))?;
         for m in &k2.mirrors {
-            writeln!(f, "    mirror {:<w$}  slot A {}  (reported, not gated)", m.strategy, reading(&m.slot_a))?;
+            writeln!(
+                f,
+                "    mirror {:<w$}  slot A {} {}  left base {} {}",
+                m.strategy,
+                status(m.slot_a.status),
+                reading(&m.slot_a),
+                status(m.left_spawn.status),
+                reading(&m.left_spawn)
+            )?;
         }
+        writeln!(
+            f,
+            "    (a mirror resolved outside tolerance FAILs K2; an undetermined one does not block PASS)"
+        )?;
         let k3 = &g.termination;
         writeln!(
             f,

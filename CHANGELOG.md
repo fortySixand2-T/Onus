@@ -492,3 +492,7 @@
 - [2026-10-04] Modified: tests/b3_report.rs — K3 table needles
 - [2026-10-04] Modified: FINDINGS.md — F-038/F-039/F-040 corrected: K3 gates band share; shipped K3 FAIL
 - [2026-10-04] Modified: BALANCE_PLAN.md — B3 result lines corrected for K3
+- [2026-10-04] Modified: src/gate.rs — K2 reads slot A and left base per mirror too; a per-mirror reading resolved outside tolerance FAILs K2
+- [2026-10-04] Modified: src/report.rs — per-mirror rows print slot A and left base with their statuses
+- [2026-10-04] Modified: tests/b3_gate.rs — per-mirror FAIL gates K2 (by slot and by base); an undetermined mirror does not block PASS
+- [2026-10-04] Modified: FINDINGS.md — F-038 K2 rule corrected: pooled for PASS, per mirror for FAIL, with the multiplicity argument

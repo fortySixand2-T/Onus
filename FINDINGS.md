@@ -3007,12 +3007,25 @@ above 65% (`failing`), the ones whose every opponent cell is resolved above
 (`losing`), all in matrix order. Each row also carries the unit it masses
 (`pentagon::mass_strategy`), so "unit win rate" reads off the probe row.
 
-**Why K2 is pooled, and per-mirror rows are only reported.** Per mirror, a
-full-roster seed gives 2 matches. Ten separate +/-5-point tests would each need
-the whole pooled sample below, and their multiplicity would turn noise into a
-FAIL. Seat bias is one mechanism (slot = turn order and stream, base =
-geography), so the gate tests it once, pooled, by slot and by base. Each
-mirror's slot-A reading is printed beside the gate, not folded into it.
+**K2: pooled for PASS, per mirror for FAIL.** *(Corrected after the B3
+critic; the first version only reported per-mirror rows, so two mirrors with
+opposite, fully resolved seat edges pooled to 50% and PASSed —
+`critic_b3_gate::probe_k2_does_not_pass_when_one_mirror_is_resolved_outside_tolerance`.)*
+K2 reads slot A and left base both pooled and per mirror:
+- **Any per-mirror reading resolved outside 50% +/- 5 FAILs K2.** Its whole
+  interval is outside tolerance, so the data says that mirror is seat-biased,
+  whatever the pool says.
+- **An undetermined per-mirror reading does not block PASS.** Per mirror, a
+  full-roster seed gives 2 matches. Requiring all ten mirrors to *PASS* +/-5
+  would need ten times F-038's pooled sample. The multiplicity argument cuts
+  the other way for FAIL: a FAIL needs the interval wholly beyond 5 points, so
+  for a truly fair mirror each FAIL is a > 1.96-SE excursion *past* a 5-point
+  margin. Ten such tests at any n give a family-wise false-FAIL rate below
+  10 x 2.5% and, at the sizes run here, far below it. Requiring PASS of every
+  mirror would instead make K2 unpassable at any feasible n.
+- **PASS** therefore means: both pooled readings inside tolerance and no
+  mirror resolved outside it (`b3_gate::an_undetermined_mirror_row_does_not_block_a_pooled_pass`,
+  `b3_gate::a_resolved_per_mirror_fail_fails_seat_bias_even_when_the_pool_is_fair`).
 
 **Why K3 is the band share.** *(Corrected after the B3 critic; the first
 version gated the median and made band share advisory, which was a moved

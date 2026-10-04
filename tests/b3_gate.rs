@@ -286,18 +286,63 @@ fn a_batch_without_mirrors_cannot_pass_seat_bias() {
 }
 
 #[test]
-fn per_mirror_rows_are_reported_in_matrix_order_and_not_gated() {
+fn an_undetermined_mirror_row_does_not_block_a_pooled_pass() {
     let mut recs = balanced(&["x", "y"], 600);
-    // One mirror leans 60/40 on slot A; the pooled reading still passes.
+    // `y` gets 20 extra slot-A wins (620 of 1220, resolved fair); `z` is a
+    // 20-match mirror that leans 14/6 on slot A (undetermined) with its base
+    // split 10/10 (slot A wins both orientations on seeds 0..7).
     for seed in 600..620 {
         recs.push(rec("y", "y", seed, Orientation::Normal, A, SIX_MIN));
     }
+    for seed in 0..10u64 {
+        let w = if seed < 7 { A } else { B };
+        recs.push(rec("z", "z", seed, Orientation::Normal, w, SIX_MIN));
+        recs.push(rec("z", "z", seed, Orientation::Swapped, w, SIX_MIN));
+    }
     let g = gate(&recs);
     let ids: Vec<&str> = g.seat.mirrors.iter().map(|m| m.strategy.as_str()).collect();
-    assert_eq!(ids, ["x", "y"]);
+    assert_eq!(ids, ["x", "y", "z"]);
     assert_eq!(g.seat.mirrors[0].slot_a.n, 1200);
     assert_eq!(g.seat.mirrors[1].slot_a.n, 1220);
-    assert_eq!(g.seat.status, Status::Pass);
+    assert_eq!(g.seat.mirrors[1].slot_a.status, Status::Pass);
+    assert_eq!(g.seat.mirrors[2].slot_a.value, Some(0.7));
+    assert_eq!(g.seat.mirrors[2].slot_a.status, Status::Undetermined);
+    assert_eq!(g.seat.mirrors[2].left_spawn.value, Some(0.5));
+    assert_eq!(g.seat.slot_a.status, Status::Pass);
+    assert_eq!(g.seat.status, Status::Pass, "an open per-mirror row is multiplicity, not a FAIL");
+}
+
+/// Two mirrors with opposite, fully resolved seat edges pool to exactly 50%.
+/// A resolved per-mirror FAIL fails K2 by slot (critic B3) and by base.
+#[test]
+fn a_resolved_per_mirror_fail_fails_seat_bias_even_when_the_pool_is_fair() {
+    let mut by_slot = Vec::new();
+    let mut by_base = Vec::new();
+    for seed in 0..600 {
+        for o in Orientation::ALL {
+            by_slot.push(rec("x", "x", seed, o, A, SIX_MIN));
+            by_slot.push(rec("y", "y", seed, o, B, SIX_MIN));
+            // x: the left base always wins; y: the right base always wins.
+            by_base.push(rec("x", "x", seed, o, MatchResult::Decided(o.left()), SIX_MIN));
+            let right = if o.left() == Faction::A { Faction::B } else { Faction::A };
+            by_base.push(rec("y", "y", seed, o, MatchResult::Decided(right), SIX_MIN));
+        }
+    }
+    let g = gate(&by_slot);
+    assert_eq!(g.seat.slot_a.value, Some(0.5));
+    assert_eq!(g.seat.slot_a.status, Status::Pass);
+    assert_eq!(g.seat.mirrors[0].slot_a.status, Status::Fail);
+    assert_eq!(g.seat.status, Status::Fail);
+
+    let g = gate(&by_base);
+    assert_eq!(g.seat.slot_a.status, Status::Pass);
+    assert_eq!(g.seat.left_spawn.value, Some(0.5));
+    assert_eq!(g.seat.left_spawn.status, Status::Pass);
+    assert_eq!(g.seat.mirrors[0].left_spawn.value, Some(1.0));
+    assert_eq!(g.seat.mirrors[0].left_spawn.status, Status::Fail);
+    assert_eq!(g.seat.mirrors[1].left_spawn.status, Status::Fail);
+    assert_eq!(g.seat.status, Status::Fail);
+    assert_eq!(g.status, Status::Fail);
 }
 
 // ---- K1: dominance, surfaced by name ----------------------------------------
