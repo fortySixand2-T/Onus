@@ -3637,3 +3637,144 @@ readings are what that capability does to a tempo tuned without it. Restoring
 them is B4's RON tuning loop: thresholds and timings, plus a decision on
 whether the poles' ordering is still the design. They are recorded here and
 were not touched.
+
+## F-042 — The B4 baseline: the turtle still FAILs K1, K3 is no longer failing, one pentagon link breaks (B4)
+
+This is the reading B4's tuning loop starts from. It was taken on the
+post-reservation build (F-041, commit 3c878f7), on the box, single-threaded
+under `nice 19`. **No RON value is tuned yet.** The only content change since
+F-040 is the restored opening lists (F-041).
+
+Command:
+`./target/release/balance --seeds 4 --report /tmp/onus_b4_baseline.ron`
+
+- Seeds `seed_at(0, k)` for k < 4: the same seeds, roster order, orientation
+  order and 15-min cap as F-040.
+- 800 matches in 37:23 wall, 2.8 s a match, 42 MB peak RSS, exit 0.
+
+**Gate: FAIL.** K1 fails on `turtle` only.
+- K3 is undetermined. At F-040 it was FAIL.
+- K2 is undetermined, as at F-040.
+
+### K1 — strength (FAIL, on `turtle`)
+
+| strategy | B4 row mean [95%] | status | F-040 |
+|---|---|---|---|
+| `turtle` | **88.2%** [80.2, 94.7] | **FAIL** | 99.3% [94.9, 100.0], FAIL, DOMINANT |
+| `mass_sentinel` | 66.0% [56.0, 75.5] | undetermined | 68.3% [58.4, 77.7], undetermined |
+| `rush` | 62.5% [52.5, 72.2] | undetermined | 6.2% [1.4, 13.0], PASS, LOSING |
+| `mvp` | 59.7% [49.7, 69.6] | undetermined | 26.4% [17.5, 36.0], PASS |
+| `synth_triad` | 52.5% [42.5, 62.5] | PASS | 54.1% [44.1, 64.2], PASS |
+| `mass_ripper` | 43.1% [33.1, 53.1] | PASS | 68.1% [58.2, 77.4], undetermined |
+| `mass_arclight` | 40.4% [30.3, 50.6] | PASS | 47.9% [37.8, 58.1], PASS |
+| `synth_steel_flesh` | 38.9% [29.0, 49.0] | PASS | 54.1% [43.9, 64.4], PASS |
+| `mass_ravager` | 34.8% [25.2, 44.8] | PASS | 45.0% [34.8, 55.1], PASS |
+| `mass_bulwark` | **14.0%** [7.0, 22.4] | PASS, **LOSING** | 30.5% [21.2, 40.4], PASS |
+
+All rows have n 137–144 in 36 clusters and n_eff 92–95.
+
+- **Failing: `turtle`.** It is no longer *dominant*. It takes 37.5% of
+  `rush`, and every other cell is 68.8–100%.
+- **Losing (named, not gated): `mass_bulwark`**, which replaces F-040's
+  `rush`. Its only winning cell is its pentagon prey `mass_ravager`
+  (86.7%). Against everything else it takes 0–14.3%, including 14.3%
+  against its predator `mass_arclight`.
+- **The rush is no longer losing.** Three real lines on every mass probe
+  delay their armies. A mass probe now holds its army for three openings, as
+  the commit ticks in F-041 show. The rush, with one opening, now beats
+  `mass_ripper`, `mass_arclight` and `synth_triad` 100% and `mass_bulwark`
+  87.5%.
+- `mass_ripper` dropped from 68.1% to 43.1%.
+- The rows to watch at the 65% bar are still `mass_sentinel` (66.0%, its
+  interval straddling the bar) and now `rush`.
+
+### K2 — seat (undetermined)
+
+| reading | B4 | F-040 |
+|---|---|---|
+| slot A (pool, 80 mirrors) | 50.0% [37.5, 62.5], n_eff 58 | 61.3% [48.4, 72.7] |
+| left base (pool) | 50.0% [37.5, 62.5] | 48.8% [36.4, 61.3] |
+| per mirror (8 each) | all undetermined | all undetermined |
+
+**The K2 re-read of `mass_arclight`.** F-039 named this mirror's left base
+as the reading closest to a FAIL: 64.9% [54.6, 74.0] on 62 seeds of the
+pre-B4 content. This run played the mirror alone:
+- `balance --only mass_arclight --seeds 126 --report /tmp/onus_b4_arclight.ron`;
+- that is F-039's 62 seeds plus 64 more, k < 126;
+- 252 matches, 14:42 wall, exit 0.
+
+| reading | B4, 126 seeds (252 decided, 0 timeouts) | F-039, 62 seeds (pre-B4) |
+|---|---|---|
+| left base | **52.4%** [45.2, 59.5], n_eff 183 | 64.9% [54.6, 74.0] |
+| slot A | 53.2% [45.9, 60.3] | 48.8% [38.7, 59.0] |
+| status | undetermined (not resolved outside 50 +/- 5) | undetermined (0.4 pts from FAIL) |
+
+Split by seed range (from the bin's per-match log; left base):
+- k < 62 (F-039's seeds): 58.9% (73 of 124);
+- k >= 62 (the 64 new seeds): 46.1% (59 of 128).
+
+The 64 new seeds pull the reading back toward 50%. The near-FAIL does not
+recur, and K2 does not fail on this mirror.
+
+Caveat: this is not a pure re-read of F-039's sample. The content changed
+(arclight now builds three Spires), so the first 62 seeds are new matches on
+the same seeds. It also still does not *pass*: the interval reaches 59.5%,
+past the 55% edge. Settling K2 as PASS still needs F-038's ~1 400 mirror
+seeds. Do not read K3 off this batch: it is mirror-only, and every match is
+6:15–11:47.
+
+### K3 — length (undetermined; was FAIL)
+
+| reading | B4 | F-040 |
+|---|---|---|
+| band share | **48.5%** of 792 decided, [44.3, 52.7], undetermined | 43.8% of 786, [39.7, 48.0], **FAIL** |
+| timeouts | 1.0% (8 of 800), [0.4, 2.2], PASS | 1.8% (14), [0.9, 3.2], PASS |
+| decided median | 5:58 | 5:33 |
+| ends before 5:00 (of all) | 31.8% [28.0, 35.7] | 39.6% [35.6, 43.8] |
+| ends after 8:00 or times out | 20.2% [17.1, 23.8] | 17.4% [14.4, 20.8] |
+
+- Decided quantiles: p10 2:21, p25 3:30, p50 5:58, p75 7:18, p90 9:05,
+  p100 14:37.
+- The band share's interval now straddles 50%. The short-game share fell
+  8 points.
+- All 8 timeouts involve `mass_arclight` or `mass_bulwark`. By unordered
+  matchup:
+
+  | matchup | timeouts |
+  |---|---|
+  | arclight v synth_steel_flesh | 4 |
+  | bulwark v arclight | 2 |
+  | bulwark v ravager | 1 |
+  | arclight v synth_triad | 1 |
+
+  These are the same stalls behind F-041's red
+  `every_mass_versus_mass_cell_resolves` (bulwark v arclight).
+
+### Pentagon at 4 seeds
+
+| link | B4 | F-040 |
+|---|---|---|
+| bulwark > ravager | 86.7% [62.1, 96.3], 15 decided, 1 timeout, holds | 93.3%, holds |
+| ravager > sentinel | **25.0% [10.2, 49.5], 16 decided, FAILS** | 43.8%, undetermined |
+| sentinel > ripper | 56.2% [33.2, 76.9], undetermined | 68.8%, undetermined |
+| ripper > arclight | 62.5% [38.6, 81.5], undetermined | 93.8%, holds |
+| arclight > bulwark | 85.7% [60.1, 96.0], 14 decided, 2 timeouts, holds | 100%, holds |
+
+That is 2 hold, 2 undetermined and **1 fails**. It is the first link read as
+broken since F-031. `ravager > sentinel` was F-031's coin flip, and with
+three lines each the Sentinel wins it outright.
+
+### What B4's tuning loop inherits
+
+1. **The turtle** fails K1 at 88.2%. Lifting it is the one gating failure.
+2. **`ravager > sentinel`** breaks the pentagon.
+3. **`mass_bulwark` is losing** at 14.0%.
+4. **K3** is one resolved band-share reading away from PASS or FAIL. The
+   F-041 tempo test reads 2:44 on its three-pole batch.
+5. **The five design tests F-041 left red** are part of this loop:
+   - tempo median;
+   - turtle-latest ordering (two tests);
+   - bulwark v arclight resolution;
+   - crippled-probe baseline.
+
+No RON was changed for this reading.

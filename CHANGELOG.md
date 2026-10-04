@@ -540,3 +540,5 @@
 - [2026-10-04] Modified: tests/b3_pentagon.rs — B4 re-pin of the 2-seed pentagon batch reading (F-041)
 - [2026-10-04] Modified: tests/b3_gate.rs — B4 re-pin of the shipped gate reading on the pentagon batch (F-041)
 - [2026-10-04] Modified: FINDINGS.md — F-041 opening reservation: rule, golden proof, old→new goldens, design tests left red
+- [2026-10-04] Modified: FINDINGS.md — F-042 B4 baseline (4-seed roster batch + 126-seed mass_arclight K2 re-read) compared with F-040/F-039
+- [2026-10-04] Modified: BALANCE_PLAN.md — ticked B4 "Run the harness" with the F-042 one-line result

@@ -209,7 +209,10 @@ all-timeout run is flagged, not reported as balanced.
 
 ## B4 — First balance pass (the tuning loop)
 
-- [ ] Run the harness; read the matrix + pentagon assertion.
+- [x] Run the harness; read the matrix + pentagon assertion. *(F-042: 4-seed baseline on the
+      post-reservation build — gate FAIL on K1 `turtle` 88.2%; K3 band share 48.5% undetermined;
+      pentagon 2 hold / 2 undetermined / `ravager > sentinel` fails; `mass_arclight` K2 re-read 52.4%
+      left base over 126 seeds, undetermined.)*
 - [ ] Tune **only RON** (`mvp_combat`, unit costs, `nemesis_bonus`, timings) toward the
       criteria; re-run; iterate.
 - [ ] Ledger F-016+: the failing matchup(s), the change made, before/after win rates,
