@@ -505,3 +505,7 @@
 - [2026-10-04] Modified: tests/b3_gate.rs — mirror design-effect test; default thresholds include 1.38
 - [2026-10-04] Modified: FINDINGS.md — F-038 power table redone at deff 1.38 (z-test 4.7 pts, gate FAIL 9.6 pts); F-039 K2 re-read: PASS [47.6, 54.1]
 - [2026-10-04] Modified: BALANCE_PLAN.md — K2 result line at deff 1.38
+- [2026-10-04] Modified: src/gate.rs — row-mean interval built on the worst-case variance of a mean of the cells (max_mean_variance): hull of its normal and score intervals, conservative for unequal cells
+- [2026-10-04] Modified: src/metrics.rs — WILSON_Z visible in the crate for the gate's intervals
+- [2026-10-04] Modified: tests/b3_gate.rs — row-mean interval contains the normal interval on the true variance; one-cell row contains the cell's Wilson and normal intervals
+- [2026-10-04] Modified: FINDINGS.md — F-038 row-mean claim corrected and the method stated

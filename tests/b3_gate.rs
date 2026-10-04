@@ -209,7 +209,7 @@ fn clustering_widens_the_interval() {
 }
 
 #[test]
-fn a_row_mean_over_one_cell_has_that_cells_wilson_interval() {
+fn a_row_mean_over_one_cell_contains_that_cells_wilson_and_normal_intervals() {
     let recs: Vec<MatchRecord> = (0..7)
         .map(|s| rec("x", "y", s, Orientation::Normal, A, SIX_MIN))
         .chain((7..10).map(|s| rec("x", "y", s, Orientation::Normal, B, SIX_MIN)))
@@ -219,11 +219,45 @@ fn a_row_mean_over_one_cell_has_that_cells_wilson_interval() {
     let g = KillGate::of(&shipped(), &recs, &spec);
     assert_eq!(g.strength.rows[0].strategy, "x");
     assert_eq!(g.strength.rows[0].strength.value, Some(0.7));
-    assert_eq!(
-        g.strength.rows[0].strength.interval,
-        m.cell(0, 1).unwrap().wilson_interval(),
-        "k = 1, ρ = 0: the row interval is the cell's, to the bit"
-    );
+    let (lo, hi) = g.strength.rows[0].strength.interval.unwrap();
+    let (wlo, whi) = m.cell(0, 1).unwrap().wilson_interval().unwrap();
+    let sd = (0.7f64 * 0.3 / 10.0).sqrt();
+    assert!(lo <= wlo && hi >= whi, "k = 1: contains the cell's Wilson interval");
+    assert!(lo <= 0.7 - Z * sd + 1e-12 && hi >= 0.7 + Z * sd - 1e-12, "and its normal interval");
+}
+
+const Z: f64 = 1.959_963_985_3;
+
+/// F-038's claim, held for unequal cells (critic B3): whatever the cell rates
+/// behind a row mean, its interval contains the normal interval on the true
+/// variance of that mean, `Σ p_i(1−p_i)/n_i / k²`; and it is still defined at
+/// 0% and 100%.
+#[test]
+fn the_row_mean_interval_contains_the_normal_interval_on_the_true_variance() {
+    let configs: &[&[(f64, u32)]] = &[
+        &[(0.5, 10), (1.0, 1000)],
+        &[(0.5, 10), (0.0, 1000)],
+        &[(0.9, 16), (0.1, 16), (0.5, 400)],
+        &[(0.3, 8), (0.6, 120), (0.75, 60), (0.2, 16)],
+        &[(0.55, 2), (0.45, 5), (0.99, 300)],
+        &[(0.5, 50), (0.5, 50)],
+        &[(0.2, 30)],
+    ];
+    for cells in configs {
+        let k = cells.len() as f64;
+        let mean = cells.iter().map(|c| c.0).sum::<f64>() / k;
+        let sd = (cells.iter().map(|&(p, n)| p * (1.0 - p) / n as f64).sum::<f64>()).sqrt() / k;
+        let ns: Vec<u32> = cells.iter().map(|c| c.1).collect();
+        let r = Reading::mean_of(Some(mean), &ns, &ns, 0.0, Rule::AtMost(0.65));
+        let (lo, hi) = r.interval.unwrap();
+        assert!(lo <= mean && mean <= hi, "{cells:?}");
+        assert!(lo <= (mean - Z * sd).max(0.0) + 1e-9, "{cells:?}: lo {lo} vs normal {}", mean - Z * sd);
+        assert!(hi >= (mean + Z * sd).min(1.0) - 1e-9, "{cells:?}: hi {hi} vs normal {}", mean + Z * sd);
+    }
+    let all_won = Reading::mean_of(Some(1.0), &[10, 1000], &[10, 1000], 0.0, Rule::AtMost(0.65));
+    let (lo, hi) = all_won.interval.unwrap();
+    assert_eq!(hi, 1.0);
+    assert!(lo < 0.9, "100% over 10 + 1000 is not certainty: lo {lo}");
 }
 
 // ---- PASS is reachable, and each criterion fails on its own -----------------

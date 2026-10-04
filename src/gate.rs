@@ -246,14 +246,26 @@ impl Reading {
     }
 
     /// A **mean of independent proportions** (a row mean): `mean` over cells
-    /// of sizes `ns` with per-cell design effects `deffs`, judged by `rule`.
+    /// of sizes `ns` in `clusters` clusters, judged by `rule`.
     ///
-    /// The interval is Wilson's at `p = mean` on the effective sample
-    /// `n_eff = k² / Σ (deff_i / n_i)` — the sample whose binomial variance at
-    /// the mean equals the variance of a mean of `k` cells all at that rate.
-    /// That is conservative (the true variance `Σ p_i(1−p_i)` is at most `k`
-    /// times `p̄(1−p̄)`), it is defined at 0% and 100%, it contains the mean,
-    /// and for one cell it **is** that cell's Wilson interval.
+    /// Cell `i` contributes variance `p_i(1−p_i)·w_i / k²` with
+    /// `w_i = deff_i / n_i`. Only the mean is known, so the interval is built
+    /// on `V(μ)`, the **largest** variance any cell rates averaging `μ` could
+    /// have ([`max_mean_variance`]), and is the hull of two intervals:
+    ///
+    /// - the normal interval `mean ± z·√V(mean)`. The true rates average
+    ///   `mean`, so `V(mean)` is at least the true variance: this **contains
+    ///   the normal interval on the true variance**, whatever the cell rates
+    ///   and however unequal the cell sizes (critic B3: a cell of 10 beside
+    ///   one of 1 000);
+    /// - the score interval, every `μ` with `|mean − μ| ≤ z·√V(μ)`. This is
+    ///   Wilson's construction on the worst case, so it stays defined at 0%
+    ///   and 100%, where the normal interval collapses.
+    ///
+    /// With equal `w_i` (and so for one cell), `V(μ) = μ(1−μ)/n_eff` and the two
+    /// parts are Wilson's and the normal interval at `mean` on
+    /// `n_eff = k² / Σ w_i`, computed in closed form. `n_eff` is reported as
+    /// `k² / Σ w_i` in every case.
     pub fn mean_of(
         mean: Option<f64>,
         ns: &[u32],
@@ -261,17 +273,25 @@ impl Reading {
         icc: f64,
         rule: Rule,
     ) -> Self {
-        let k = ns.len() as f64;
-        let inv: f64 = ns
+        let w: Vec<f64> = ns
             .iter()
             .zip(clusters)
             .filter(|(n, _)| **n > 0)
             .map(|(&n, &c)| design_effect(n, c, icc) / n as f64)
-            .sum();
+            .collect();
+        let k = w.len() as f64;
+        let inv: f64 = w.iter().sum();
         let n: u32 = ns.iter().sum();
         let n_eff = if inv > 0.0 { k * k / inv } else { 0.0 };
+        let equal = w.windows(2).all(|p| p[0] == p[1]);
         let interval = match mean {
-            Some(p) if n_eff > 0.0 => Some(wilson_bounds(p, n_eff)),
+            Some(p) if n_eff > 0.0 && equal => {
+                Some(hull(wilson_bounds(p, n_eff), normal(p, p * (1.0 - p) / n_eff)))
+            }
+            Some(p) if n_eff > 0.0 => Some(hull(
+                worst_case_score_interval(p, &w),
+                normal(p, max_mean_variance(p, &w)),
+            )),
             _ => None,
         };
         Reading {
@@ -284,6 +304,64 @@ impl Reading {
             status: rule.judge(interval),
         }
     }
+}
+
+/// The largest variance of a mean of `k = w.len()` independent proportions
+/// whose rates average `mu`: `max Σ w_i p_i(1−p_i) / k²` subject to
+/// `Σ p_i = k·mu`, `0 ≤ p_i ≤ 1`. Concave, so the KKT point is the maximum:
+/// `p_i = clamp((1 − λ/w_i)/2, 0, 1)` with `λ` found by bisection (`Σ p_i` is
+/// decreasing in `λ`). Equal weights give every `p_i = mu`.
+pub fn max_mean_variance(mu: f64, w: &[f64]) -> f64 {
+    let k = w.len() as f64;
+    if k == 0.0 || mu <= 0.0 || mu >= 1.0 {
+        return 0.0;
+    }
+    let target = mu * k;
+    let rates = |lambda: f64| w.iter().map(move |&wi| ((1.0 - lambda / wi) / 2.0).clamp(0.0, 1.0));
+    let top = w.iter().cloned().fold(0.0, f64::max);
+    let (mut lo, mut hi) = (-top, top);
+    for _ in 0..200 {
+        let mid = 0.5 * (lo + hi);
+        if rates(mid).sum::<f64>() > target {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    let lambda = 0.5 * (lo + hi);
+    w.iter().zip(rates(lambda)).map(|(wi, p)| wi * p * (1.0 - p)).sum::<f64>() / (k * k)
+}
+
+/// `p ± z·√var`, clamped to `[0, 1]`.
+fn normal(p: f64, var: f64) -> (f64, f64) {
+    let half = crate::metrics::WILSON_Z * var.max(0.0).sqrt();
+    ((p - half).max(0.0), (p + half).min(1.0))
+}
+
+fn hull(a: (f64, f64), b: (f64, f64)) -> (f64, f64) {
+    (a.0.min(b.0), a.1.max(b.1))
+}
+
+/// Every `μ` in `[0, 1]` with `|p − μ| ≤ z·√V(μ)`, `V` = [`max_mean_variance`].
+/// `V` is concave, so each side has a single crossing, found by bisection.
+fn worst_case_score_interval(p: f64, w: &[f64]) -> (f64, f64) {
+    let z = crate::metrics::WILSON_Z;
+    let inside = |mu: f64| (p - mu).abs() <= z * max_mean_variance(mu, w).sqrt();
+    let edge = |mut out: f64, mut inn: f64| {
+        if inside(out) {
+            return out;
+        }
+        for _ in 0..200 {
+            let mid = 0.5 * (out + inn);
+            if inside(mid) {
+                inn = mid;
+            } else {
+                out = mid;
+            }
+        }
+        inn
+    };
+    (edge(0.0, p), edge(1.0, p))
 }
 
 /// K1 for one strategy.

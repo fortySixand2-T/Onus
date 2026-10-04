@@ -3009,11 +3009,38 @@ and the per-mirror readings test strategy-level base effects directly.
 K2 uses the conservative seed-clustered value: every seat reading's deff is
 at least `gate::MIRROR_DEFF` = 1.38 (`GateSpec::mirror_design_effect`;
 `b3_gate::mirror_readings_use_the_measured_seed_clustered_design_effect`). A row mean (K1) is a mean of
-k cells. Its interval is Wilson at the mean on n_eff = k^2 / sum(deff_i / n_i),
-the binomial sample with the variance of a mean of k cells at that rate. That
-is conservative (sum p_i(1-p_i) <= k p(1-p)), and for k = 1 it **is** the cell's
-interval: `a_row_mean_over_one_cell_has_that_cells_wilson_interval` checks
-this bit for bit at rho = 0.
+k cells, with variance sum(p_i(1-p_i) w_i) / k^2, where w_i = deff_i / n_i.
+
+*(Corrected after the B3 critic.)* The first version took Wilson at the mean
+on n_eff = k^2 / sum(w_i), i.e. variance p(1-p) sum(w_i) / k^2, and called it
+conservative. That holds for equal cells only. With unequal w_i, the true
+variance exceeds it when the near-50% cells are the small ones. For cells of
+10 at 50% and 1 000 at 100%, its
+interval was narrower than the normal interval on the true variance
+(`critic_b3_gate::probe_the_row_mean_interval_is_at_least_as_wide_as_the_true_one`).
+
+The fix uses V(mu), the **largest** variance of a mean of these k cells over
+all cell rates averaging mu. It is a concave maximisation, solved by KKT
+water-filling, p_i = clamp((1 - lambda / w_i) / 2, 0, 1) (`gate::max_mean_variance`).
+The interval is the hull of two parts:
+- **the normal interval mean +/- z sqrt(V(mean)).** It contains the normal
+  interval on the true variance, whatever the cell rates, because the true
+  rates average `mean`;
+- **the score interval {mu : |mean - mu| <= z sqrt(V(mu))}.** This is Wilson's
+  construction on the worst case. It keeps the interval defined at 0% and 100%.
+
+With equal cells, both parts are closed form: Wilson and the normal interval
+at n_eff. For k = 1 the row interval therefore contains the cell's Wilson
+interval rather than equalling it.
+
+Pinned by:
+- `b3_gate::the_row_mean_interval_contains_the_normal_interval_on_the_true_variance`
+  (seven cell configurations, sizes 2 to 1 000);
+- `b3_gate::a_row_mean_over_one_cell_contains_that_cells_wilson_and_normal_intervals`.
+
+The cost is width. Near 50% at small n the normal part is a little wider than
+Wilson's (about 2 points at n_eff ~20). A borderline row therefore reads
+undetermined a little more often, never PASS more often.
 
 **Names, not just a status.** K1 lists the strategies whose row is resolved
 above 65% (`failing`), the ones whose every opponent cell is resolved above

@@ -53,7 +53,7 @@ const HALF: u32 = 1;
 /// The two-sided 95% normal quantile, for [`Cell::wilson_interval`]. 95% is the
 /// confidence every interval quoted in FINDINGS (F-031) is quoted at; keeping
 /// one constant keeps the code and the ledger talking about the same width.
-const WILSON_Z: f64 = 1.959_963_985_3;
+pub(crate) const WILSON_Z: f64 = 1.959_963_985_3;
 
 /// One cell of a [`WinMatrix`]: the row strategy's record against the column
 /// strategy.
