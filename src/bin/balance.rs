@@ -11,7 +11,7 @@
 //! counts next to the balanced aggregate.
 //!
 //! ```text
-//! balance [--seeds K] [--seed-base N] [--tick-cap T] [--minutes M] [--only a,b,c]
+//! balance [--seeds K] [--seed-base N] [--tick-cap T] [--minutes M] [--only a,b,c] [--report PATH]
 //! ```
 //!
 //! - `--seeds K`      how many seeds every matchup is played on (default 1)
@@ -19,6 +19,8 @@
 //! - `--tick-cap T`   per-match tick budget (default 8 min at 60 Hz = 28_800)
 //! - `--minutes M`    the same budget expressed in minutes of play
 //! - `--only a,b,c`   restrict the roster; an unknown id is refused, not ignored
+//! - `--report PATH`  where to write the machine-readable report (default
+//!   `balance_report.ron`, gitignored)
 //! - `--help`         print this usage on stdout and exit successfully
 //!
 //! `--tick-cap` and `--minutes` set the same budget: **the last one on the
@@ -28,8 +30,11 @@
 //!
 //! Progress goes to **stderr** (a hundred matches is a long silence otherwise);
 //! the summary goes to stdout, followed by the win-rate matrix (B3,
-//! [`onus::metrics::WinMatrix`]). The machine-readable `balance_report.ron` is
-//! a later checkbox — nothing here writes a file.
+//! [`onus::metrics::WinMatrix`]), the pentagon, the match-length distribution
+//! and the kill-criteria gate ([`onus::report::BalanceReport`]'s tables). The
+//! same reading is written as RON to `--report PATH` (atomically); a report
+//! that cannot be written fails the run rather than leaving a stale file to be
+//! read as this batch's.
 
 use std::process::ExitCode;
 
@@ -37,21 +42,29 @@ use onus::batch::{self, BatchSettings, MatchRecord, MatchResult, Tally};
 use onus::headless::{self, Orientation, SIM_HZ};
 use onus::metrics::WinMatrix;
 use onus::pentagon::PentagonReport;
+use onus::report::{BalanceReport, DEFAULT_REPORT_PATH};
 
 fn usage() -> &'static str {
-    "usage: balance [--seeds K] [--seed-base N] [--tick-cap T] [--minutes M] [--only a,b,c] [--help]\n\
+    "usage: balance [--seeds K] [--seed-base N] [--tick-cap T] [--minutes M] [--only a,b,c] [--report PATH] [--help]\n\
      \n\
      every matchup is played in both spawn orientations, so the batch is\n\
      N x N x K x 2 matches.\n\
      --tick-cap and --minutes set the same budget: the last one given wins.\n\
-     out-of-range values are refused, never truncated."
+     out-of-range values are refused, never truncated.\n\
+     --report PATH writes the machine-readable report (default balance_report.ron)."
 }
 
 /// What the command line asked for. `--help` is a *request*, not an error: it
 /// succeeds on stdout, while a mistyped flag still fails on stderr.
 enum Request {
     Help,
-    Run(Box<BatchSettings>),
+    Run(Box<Run>),
+}
+
+/// A batch to play and where its report goes.
+struct Run {
+    settings: BatchSettings,
+    report: std::path::PathBuf,
 }
 
 /// Parse argv into a [`Request`]. Every flag is refused rather than guessed: a
@@ -60,6 +73,7 @@ enum Request {
 /// `u32`.
 fn parse(args: &[String]) -> Result<Request, String> {
     let mut settings = BatchSettings::default();
+    let mut report = std::path::PathBuf::from(DEFAULT_REPORT_PATH);
     let mut i = 0;
     while i < args.len() {
         let flag = args[i].as_str();
@@ -102,6 +116,7 @@ fn parse(args: &[String]) -> Result<Request, String> {
             "--only" => {
                 settings.only = Some(value()?.split(',').map(|s| s.trim().to_string()).collect())
             }
+            "--report" => report = value()?.into(),
             "--help" | "-h" => return Ok(Request::Help),
             other => return Err(format!("unknown flag `{other}`\n{}", usage())),
         }
@@ -113,7 +128,7 @@ fn parse(args: &[String]) -> Result<Request, String> {
     if settings.tick_cap == 0 {
         return Err("--tick-cap must be at least 1".to_string());
     }
-    Ok(Request::Run(Box::new(settings)))
+    Ok(Request::Run(Box::new(Run { settings, report })))
 }
 
 /// A percentage in parentheses, or nothing at all when there is no rate to
@@ -207,13 +222,14 @@ fn main() -> ExitCode {
             println!("{}", usage());
             return ExitCode::SUCCESS;
         }
-        Ok(Request::Run(s)) => *s,
+        Ok(Request::Run(run)) => *run,
         Err(e) => {
             eprintln!("{e}");
             return ExitCode::FAILURE;
         }
     };
 
+    let Run { settings, report: report_path } = settings;
     let content = match headless::content() {
         Ok(c) => c,
         Err(e) => {
@@ -361,6 +377,15 @@ fn main() -> ExitCode {
     let matrix = WinMatrix::of(&records);
     print_matrix(&matrix);
     print_pentagon(&content, &matrix);
+    // The length distribution and the kill gate, from the same value that is
+    // written to disk — the table and the file cannot disagree.
+    let report = BalanceReport::of(&content, &settings, &records);
+    print!("{report}");
+    if let Err(e) = report.write(&report_path) {
+        eprintln!("report: could not write {}: {e}", report_path.display());
+        return ExitCode::FAILURE;
+    }
+    println!("report       {}", report_path.display());
     if t.total > 0 && t.timeouts == t.total {
         println!(
             "WARNING: every match hit the cap. This batch measures nothing about \

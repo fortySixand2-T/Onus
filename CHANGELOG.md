@@ -477,3 +477,11 @@
 - [2026-10-03] Created: tests/b3_gate.rs — kill-gate tests: rules, design effect, each criterion failing, names, all-timeout, injected imbalance, shipped pin
 - [2026-10-03] Modified: FINDINGS.md — F-038 gate thresholds and seed-count power calculation; F-039 shipped-content reading
 - [2026-10-03] Modified: BALANCE_PLAN.md — ticked the B3 kill-criteria box with its result
+- [2026-10-03] Created: src/report.rs — BalanceReport: win matrix, pentagon verdicts, length distribution, kill gate; RON round trip, atomic write, stdout table
+- [2026-10-03] Modified: src/bin/balance.rs — prints the length and kill-gate tables and writes balance_report.ron (--report PATH)
+- [2026-10-03] Modified: src/pentagon.rs — Verdict and Link derive Serialize/Deserialize for the report
+- [2026-10-03] Modified: src/lib.rs — registered the report module
+- [2026-10-03] Modified: .gitignore — ignore the /balance_report.ron artifact
+- [2026-10-03] Created: tests/b3_report.rs — report round trip, contents, determinism, all-timeout flag, gitignore, bin --report end to end
+- [2026-10-03] Modified: FINDINGS.md — F-040 first full-roster report: turtle dominant (K1 FAIL), K3 PASS, K2 undetermined at 4 seeds
+- [2026-10-03] Modified: BALANCE_PLAN.md — ticked the B3 report box with its result

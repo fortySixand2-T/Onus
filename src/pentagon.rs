@@ -39,6 +39,8 @@
 
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 use crate::batch::MatchRecord;
 use crate::metrics::WinMatrix;
 use crate::sim::content::{Content, StrategyDef};
@@ -172,7 +174,7 @@ pub fn mass_strategy<'c>(content: &'c Content, unit: &str) -> Option<&'c Strateg
 }
 
 /// What one predicted counter did.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Verdict {
     /// The predator's rate over its prey is above 0.5 and so is the whole 95%
     /// interval around it.
@@ -204,7 +206,7 @@ impl Verdict {
 
 /// One link of the cycle: a predicted counter, the matchup that tests it, and
 /// what that matchup said.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Link {
     /// Unit id of the predicted counter.
     pub predator: String,

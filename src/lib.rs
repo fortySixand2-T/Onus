@@ -29,6 +29,7 @@ pub mod metrics;
 pub mod net;
 pub mod pentagon;
 pub mod replay_io;
+pub mod report;
 pub mod setup;
 pub mod sim;
 pub mod ui;

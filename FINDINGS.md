@@ -3152,3 +3152,88 @@ K3 belongs to a roster batch (section 1, and the full-roster report in F-040).
 - **The timeout bar.** At ~2–3% timeouts (F-031), resolving "at most 5%" needs
   roughly n_eff >= 150–300. That is a few hundred roster matches, which F-040's
   batch provides.
+
+## F-040 — The first full-roster report: the turtle is dominant, the gate FAILs (B3)
+
+No RON changed. This is the reading F-039 promised. It is the report that
+`balance --seeds 4` writes to `balance_report.ron`:
+- same seeds (`seed_at(0, k)`, k < 4), same roster order, same orientation
+  order, shipped 15-min cap;
+- played by a scratch harness (not committed) that ran `run_match` in 3 threads
+  and re-sorted the records into the bin's seed/roster/orientation order before
+  `BalanceReport::of`;
+- 800 matches (10 x 10 ordered pairs x 2 orientations x 4 seeds) in 1 715 s
+  wall. That is ~6.4 CPU-s a match, against F-038's 3.3, because it shared the
+  box with a debug `cargo test` run.
+
+**Gate: FAIL.** K1 fails on one strategy, named by the gate: **`turtle`**.
+
+### K1 — strength (FAIL)
+
+| strategy | row mean | 95% interval (n_eff ~95) | status |
+|---|---|---|---|
+| `turtle` | **99.3%** | [94.9, 99.9] | **FAIL, DOMINANT** (beats all 9 opponents) |
+| `mass_sentinel` | 68.3% | [58.4, 76.8] | undetermined |
+| `mass_ripper` | 68.1% | [58.2, 76.6] | undetermined |
+| `synth_steel_flesh` | 54.1% | [43.9, 64.0] | PASS |
+| `synth_triad` | 54.1% | [44.1, 63.8] | PASS |
+| `mass_arclight` | 47.9% | [38.0, 58.0] | PASS |
+| `mass_ravager` | 45.0% | [35.2, 55.1] | PASS |
+| `mass_bulwark` | 30.5% | [22.2, 40.4] | PASS |
+| `mvp` | 26.4% | [18.6, 36.0] | PASS |
+| `rush` | 6.2% | [2.9, 13.0] | PASS (K1 bounds strength only) |
+
+The turtle's off-diagonal cells are 93.8–100%. This is not new; the gate is
+the first thing to *fail* on it:
+- F-029/F-030 read turtle row means of 88.9–90.3% and called them "B4's
+  business".
+- F-036 raised its `attack_at_army` from 15 to 26 for B1's ordering test.
+  Its strength was not re-read then.
+
+No RON change was made: B3 only measures. Tuning the turtle is B4.
+
+`rush`, at 6.2%, is not named `losing`, because it is not strictly losing. It
+takes 37.5% of `mass_bulwark` and 18.8% of `synth_triad`. A floor on weak
+strategies is not one of B3's kill criteria; it is B4's to add if wanted.
+
+`mass_sentinel` and `mass_ripper` sit just above 65%, with intervals that
+straddle it. Resolving them needs roughly n_eff >= 400, about 16+ seeds. They
+are the next rows to watch.
+
+### K2 — seat (undetermined here; PASS on F-039's batch)
+
+Slot A is 61.3% [49.4, 71.9] and left base 48.8% [37.3, 60.3], at n 80 and
+n_eff 68. Every per-mirror row has 8 matches. The interval is too wide to
+judge, which is the outcome F-038's power calculation predicted for a roster
+batch. F-039's mirror-only batch (n_eff 1 057) is the K2 reading of record.
+
+### K3 — length (PASS)
+
+| reading | value | 95% interval | status |
+|---|---|---|---|
+| decided median | **5:33** | | in band |
+| ends before 5:00 | 39.6% of all | [35.6, 43.8] | PASS (at most 50%) |
+| ends after 8:00 or times out | 17.4% of all | [14.4, 20.8] | PASS (at most 50%) |
+| timeouts | **1.8%** (14 of 800) | [0.9, 3.2] | **PASS** (at most 5%) |
+| band share (advisory) | 43.8% of 786 decided | [39.7, 48.0] | FAIL vs 50%, not gated |
+
+Decided quantiles are p10 2:54, p25 4:15, p50 5:33, p75 6:49 and p90 9:30. The
+all-match basis differs from these only in the tail (p90 9:56, p100 at the
+15:00 cap).
+
+The timeout bar that F-039 left open is now resolved: the upper bound of 3.2%
+is under 5%. The band share is above F-031's ~31–38% probe ceiling. Even so,
+fewer than half of decided matches land in 5–8 minutes, so it stays advisory
+and is B4's question (F-038).
+
+### Pentagon at 4 seeds
+
+| link | rate | 95% interval | sample | verdict |
+|---|---|---|---|---|
+| bulwark > ravager | 93.3% | [70.2, 98.8] | 15 decided, 1 timeout | holds |
+| ravager > sentinel | 43.8% | [23.1, 66.8] | | undetermined |
+| sentinel > ripper | 68.8% | [44.4, 85.8] | | undetermined |
+| ripper > arclight | 93.8% | | | holds |
+| arclight > bulwark | 100% | | | holds |
+
+That is 3 hold and 2 undetermined; none fails.

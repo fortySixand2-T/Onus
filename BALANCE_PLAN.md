@@ -182,7 +182,12 @@ Then B3's remaining ACs are computed on valid-length matches.
       K2 **PASSes** at 62 seeds: slot A 50.9% [47.8, 53.9], left 51.0% [48.0, 54.0].
       The 5-probe batch reads **undetermined**: nothing fails, the median is in band, and
       band share is 36% (advisory).
-- [ ] Emit a stdout table + a machine-readable `balance_report.ron` (gitignored artifact).
+- [x] Emit a stdout table + a machine-readable `balance_report.ron` (gitignored artifact).
+      **Result** (F-040): `report::BalanceReport` holds the win matrix, the pentagon verdicts with
+      intervals, the length distribution and the kill gate. It round-trips through RON, and
+      `balance` prints it and writes it (`--report PATH`). The first full-roster run (4 seeds,
+      800 matches) reads **FAIL**: `turtle` is dominant at 99.3% [94.9, 99.9]. K3 PASSes (median
+      5:33, 1.8% timeouts).
 - [x] **Harden `batch::production_totals`** (B3 is its consumer): derive the column schema
       from the union of record keys, or refuse an unlabelled record — today it takes its
       header from `records.first()` and silently drops every later row's production if that
