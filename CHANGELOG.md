@@ -542,3 +542,4 @@
 - [2026-10-04] Modified: FINDINGS.md — F-041 opening reservation: rule, golden proof, old→new goldens, design tests left red
 - [2026-10-04] Modified: FINDINGS.md — F-042 B4 baseline (4-seed roster batch + 126-seed mass_arclight K2 re-read) compared with F-040/F-039
 - [2026-10-04] Modified: BALANCE_PLAN.md — ticked B4 "Run the harness" with the F-042 one-line result
+- [2026-10-04] Modified: FINDINGS.md — F-043 B4 phase-2 RON search: screens, best candidate d2 (4-seed reading), budget exhausted, nothing kept

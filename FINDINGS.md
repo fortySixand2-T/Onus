@@ -3778,3 +3778,148 @@ three lines each the Sentinel wins it outright.
    - crippled-probe baseline.
 
 No RON was changed for this reading.
+
+## F-043 — B4 tuning, phase 2: the RON search, budget exhausted, nothing kept (B4)
+
+This entry records the RON-only search that followed F-042. The compute budget
+(about 8 box CPU-hours) ran out before any candidate met the gate. **No RON is
+changed by this entry.** The shipped content is still F-042's, and so are its
+readings and its five red design tests.
+
+Method:
+- Candidates were whole `units.ron` / `strategies.ron` copies, swapped into
+  the box tree one at a time and restored afterwards.
+- Content loads at runtime from `assets/data`, so nothing was rebuilt.
+- Screens used three batches:
+  - the B3.5 poles batch, `--only mass_bulwark,mvp,rush --seeds 1`, which is
+    the `b35_tempo` fixture;
+  - `--only` subsets;
+  - the 1-seed roster.
+- The five red tests were run in release against each surviving candidate.
+- The best candidate was then confirmed on the 4-seed roster.
+
+### Constraints the search found (tests that pin RON values)
+
+These values cannot move without editing a test, so they were held:
+- `mvp` is pinned number for number (`b1_strategies`, `critic_b35_armour`).
+- The mass probes' `attack_at_army` is 10 and `mitigation_per_armor` is 2
+  (`critic_b35_armour`).
+- Offense and armor of bulwark, ravager, sentinel, arclight and ripper, and
+  `damage_per_offense` / `nemesis_bonus`, are pinned through exact
+  `damage_per_hit` values (`src/sim/combat.rs` L1 tests, `critic_m4b`).
+- `mvp_gather_ticks: 90` is string-matched by `critic_m4a`.
+
+### The economy is the clock
+
+An AI-journal trace of the F-042 content shows how slowly a mass probe
+builds. On the default seed, `mass_bulwark` with 6 workers and lines at
+300 / 600 / 900 trains one Bulwark roughly every 1 830 ticks. That is one
+unit's cost in income, so three lines cannot be fed. Each later line also
+costs 150 that would otherwise be army.
+
+`mvp` against `mass_bulwark`: `mvp` attacks at tick 4 440 with three units.
+`mass_bulwark` has one Bulwark (trained at 330), and its second comes at
+9 120. `mvp` levels the HQ by 2:30–3:10. That is the
+`b35_tempo` red: 11 of the 18 poles matches end under 5:00.
+
+### Screens (poles batch: decided median tick at index 9, in band 18 000..28 800 = PASS)
+
+| try | change on F-042 content | poles median | note |
+|---|---|---|---|
+| s1a | bulwark 90 Alloy / 1 200 train | 9 196 | `mvp` itself gets faster (it trains a Bulwark) |
+| s1d | bulwark 80 / 1 100 | 7 989 | worse |
+| s2a / s2b | `building_hp_per_defense` 700 / 900 | 11 663 / 12 698 | stretches the long games past 8:00, not the short ones |
+| o1 | mass probes' 2nd/3rd lines at 3 000 / 6 000 | 15 205 | `mvp` still wins in one orientation |
+| w9 + o1 | o1, plus mass `worker_target` 9 | 22 196 | PASS |
+| w9 + o1 + bulwark attack 70 ticks | | 21 595 | PASS; all five reds green apart from the closure re-pin |
+
+A 16-cell grid was run over worker 6/9 × bulwark cost × bulwark attack ×
+openings. Only the o1 cells reached the band. Without the extra workers, only
+`w6 + o1 + attack 70` did so (21 441).
+
+### Roster screens (1 seed, 200 matches each; ± about 20 points per row)
+
+| cand | content (cumulative intent) | reds | K1 worst | K3 band | links | rejected because |
+|---|---|---|---|---|---|---|
+| c1 | w9+o1+atk70, turtle worker 9, ravager 75/1 000, steel_flesh 2nd pair at 3 000 / 6 000 | not run | mass_sentinel 80.6 | 41.7% | no fail | mass probes beat every non-mass script (mvp 25, rush 19) |
+| c2 | c1 with mass workers 6 | — | turtle 83.3 | 48.0% | bulwark>ravager 25 | turtle |
+| c5 | c2 with mass workers 9, turtle worker 7 / attack 20, ravager 80/1 100 | 5/5 (closure re-pin) | — | — | — | (rosters as c6) |
+| c6 | c5 with synth workers 10 | — | mass_sentinel 75.0 | **35.6% FAIL** | no fail | K3; turtle fixed (38.9) |
+| c7a | c6 with building HP 520, rush workers 4 | — | mass_sentinel 77.8 | 38.9% FAIL | no fail | building HP barely moves the median (+12 s); rush workers change nothing |
+| d1 | mass workers 6, mass lines 300 / 9 000 / 15 000, rest as c4 | 4/5 | — | — | — | arclight>bulwark undetermined (bulwark attack 70 makes the bulwark kill a 40-HP Arclight in 3 hits) |
+| d3 | d1 with arclight defense 3 | 1/5 | — | — | — | stalls |
+| **d2** | d1 with the bulwark attack back to 90 | **5/5** (closure re-pin) | turtle 71.3 | 39.9% FAIL | bulwark>ravager 0/4 | best on the reds; confirmed below |
+| d4 | d2 with ripper 50/800 and ravager 90/1 100 | not run | turtle 80.6, triad 79.6 | 37.1% FAIL | no fail | worse everywhere; rush 5.6 |
+
+Other notes:
+- `c3` (mass workers 6, bulwark defense 10) and `c4` (mass workers 8),
+  both on the c5 line, failed `b35_tempo`'s density floor and the
+  `mass_bulwark`/`mass_arclight` seed-7 stall.
+
+### The best candidate (d2), 4 seeds, 800 matches
+
+The d2 diff against the shipped content:
+- `ravager`: 90 → 80 Biomass, train 1 200 → 1 100.
+- All five `mass_*`: 2nd/3rd lines 600 / 900 → 9 000 / 15 000. Still
+  knob-identical.
+- `synth_steel_flesh`: 3rd/4th lines 1 200 / 1 500 → 3 000 / 6 000.
+- `turtle`: `worker_target` 12 → 7, `attack_at_army` 26 → 20.
+
+The five red design tests under d2 (release):
+- `b35_tempo` median: green. The density test stays green.
+- rush-earliest / turtle-latest: green.
+- every mass×mass cell resolves: green.
+- the crippled-probe premise: green.
+- The closure: the ordering and margin hold on the first seed (turtle
+  26 190, latest other `mass_bulwark` 23 820). Only the F-036 pin
+  (19 320 / 18 750) is red.
+
+**Gate: FAIL** (F-042: FAIL).
+
+| reading | d2 | F-042 |
+|---|---|---|
+| K1 | **FAIL on `mass_ripper` 77.6% [68.2, 86.0]** | FAIL on `turtle` 88.2% [80.2, 94.7] |
+| turtle | 68.3% [58.3, 77.8] undetermined | 88.2% FAIL |
+| mass_sentinel | 66.9% [56.8, 76.5] undetermined | 66.0% undetermined |
+| mass_bulwark | 21.6% [13.3, 30.9] LOSING | 14.0% LOSING |
+| rush | 23.6% [15.1, 33.1] LOSING | 62.5% |
+| K3 band share | **33.9% [30.1, 38.0] FAIL** (median 6:17; 281 below, 237 above) | 48.5% [44.3, 52.7] undetermined |
+| timeouts | 2.0% PASS | 1.0% PASS |
+| K2 | undetermined, slot A 57.5% | undetermined, 50.0% |
+| bulwark > ravager | 57.1% undetermined | 86.7% holds |
+| ravager > sentinel | 37.5% [18.5, 61.4] undetermined | **25.0% FAILS** |
+| sentinel > ripper | 37.5% undetermined | 56.2% undetermined |
+| ripper > arclight | 93.8% holds | 62.5% undetermined |
+| arclight > bulwark | 93.8% holds | 85.7% holds |
+
+The rest of d2's rows: `mvp` 37.5, `mass_ravager` 52.7, `mass_arclight`
+50.4, `synth_steel_flesh` 45.3, `synth_triad` 56.0.
+
+What d2 achieves and what it costs:
+- It turns the five design tests green and removes the pentagon FAIL. It
+  also takes the turtle off K1.
+- It makes `mass_ripper` the K1 failure.
+- It spreads match length both ways. `rush` loses almost every cell inside
+  3 minutes, and the slow mass lines push the mass×mass cells past 8:00. K3
+  goes from undetermined to FAIL.
+- It was not kept.
+
+### What is needed next
+
+1. **K3 is the binding constraint.** Under d2 the decided median is
+   centred (6:17), but the spread is too wide.
+   - The short tail is mostly `rush` (32 of its 40 matches end under 5:00 in
+     c7a) and `mvp`.
+   - The long tail is mass×mass.
+   - The levers that moved length here (workers, line timing) move a mass
+     probe's strength just as much.
+   - The levers that would move length alone are pinned by tests (gather
+     ticks, mitigation) or barely move it (building HP).
+2. **`mass_ripper` (77.6%).** A ripper nerf by cost (d4) knocked `rush`
+   and the synths down with it, because they share the unit.
+3. The next search should start from d2. Steps worth a screen:
+   - a ripper train-time nerf only;
+   - `rush` `attack_interval_ticks` / think interval, so the rush stops
+     feeding single rippers into a defended base;
+   - a `mass_*` `attack_interval_ticks` change, to shorten mass×mass
+     sieges.
