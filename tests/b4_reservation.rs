@@ -19,8 +19,13 @@
 //! What is encoded here:
 //!   - a three-line script really builds three lines **in a real match** (red
 //!     before the reservation: one of three went up);
-//!   - every multi-opening strategy in the shipped set places its whole script
-//!     in a head-to-head;
+//!   - every multi-opening strategy in the shipped set, in its own mirror,
+//!     places a script-order **prefix** of its openings, and every opening it
+//!     left unplaced came due too late to bank: `at_tick + grace > end tick`,
+//!     with `grace` the fewest ticks its Alloy can be banked from empty at the
+//!     side's best-case income, derived from the loaded RON (F-046, the bound);
+//!     at least one strategy must still place more than one opening, so the
+//!     bound cannot make the claim vacuous;
 //!   - the army never trains while an opening is due;
 //!   - the hold does not reorder the tech walk: a cheaper opening listed later
 //!     still goes up past a reserved one, and both stand;
@@ -129,10 +134,54 @@ fn a_three_line_script_builds_all_three_lines_in_a_real_match() {
     );
 }
 
-/// Every strategy the shipped set scripts with more than one opening places
-/// **all** of them, in script order, in a head-to-head (its own mirror, both
-/// sides checked) before the match ends. Iterated from the content, so a script
-/// added later is covered too.
+/// The fewest ticks a side running `strategy` can take to bank `building`'s
+/// Alloy from an empty stockpile — the opening's **grace**.
+///
+/// Derivation, every value from the loaded content (`assets/data/*.ron`):
+///   - the side keeps at most `worker_target` gatherers (the strategy's RON);
+///   - one gatherer delivers at most `mvp_carry_capacity` Alloy per
+///     `mvp_gather_ticks` (the gathering unit's RON): a trip is at least the
+///     harvest, plus a walk to the deposit and back that only makes it longer;
+///   - so the side's income is at most `worker_target * carry / gather_ticks`
+///     Alloy per tick, and banking `alloy_cost` (the building's RON) from zero
+///     takes at least `ceil(alloy_cost * gather_ticks / (worker_target * carry))`
+///     ticks.
+///
+/// It is a **lower bound** on the real banking time — walking, the army and
+/// worker spending before the opening comes due, and lost workers all slow it
+/// — so it excuses the fewest openings an income model can: the claim it bounds
+/// stays as strict as an honest bound allows. Walking time is left out because
+/// the deposit's distance is fixture geometry (`headless`), not content.
+fn grace(c: &Content, strategy: &str, building: &str) -> u32 {
+    let gatherers: Vec<_> = c.units.iter().filter(|u| u.gathers).collect();
+    assert_eq!(gatherers.len(), 1, "the content has one gathering unit");
+    let (carry, gather_ticks) = (
+        gatherers[0].mvp_carry_capacity,
+        gatherers[0].mvp_gather_ticks,
+    );
+    let workers = c.strategy(strategy).unwrap().worker_target;
+    let cost = c.building(building).unwrap().alloy_cost;
+    assert!(
+        carry > 0 && gather_ticks > 0 && workers > 0,
+        "a zero income term: carry {carry}, gather_ticks {gather_ticks}, workers {workers}"
+    );
+    (cost * gather_ticks).div_ceil(workers * carry)
+}
+
+/// Every strategy the shipped set scripts with more than one opening, in its
+/// own mirror (seed `seed_at(0, 1)`, both sides checked), places its openings
+/// **in script order** and leaves unplaced only an opening that came due too
+/// close to the match end to bank: what was placed is a prefix of the script,
+/// and every unplaced opening has `at_tick + grace > end tick` ([`grace`] —
+/// derived from the RON, not chosen). Equivalently, every opening due at least
+/// `grace` ticks before the end is placed. Iterated from the content, so a
+/// script added later is covered too.
+///
+/// The bound (F-046): g1 scripts `mass_sentinel`'s third line at 15 000 and its
+/// mirror ends at 15 519, too soon to bank a Foundry at any income the RON
+/// allows; the claim is about the reservation, not about the match outlasting
+/// every script. Non-vacuity: at least one strategy must still place more than
+/// one opening on both sides, so the bound cannot excuse the whole claim away.
 #[test]
 fn every_multi_opening_strategy_places_its_whole_script_in_a_head_to_head() {
     let c = content();
@@ -143,6 +192,7 @@ fn every_multi_opening_strategy_places_its_whole_script_in_a_head_to_head() {
         .map(|s| s.id.clone())
         .collect();
     assert!(!multi.is_empty(), "the shipped set has no multi-opening strategy");
+    let mut placed_more_than_one = Vec::new();
     for id in &multi {
         let s = c.strategy(id).unwrap();
         let want: Vec<usize> = s
@@ -155,16 +205,39 @@ fn every_multi_opening_strategy_places_its_whole_script_in_a_head_to_head() {
         let stopped = play_until(&mut app, |app| {
             placements(app, Faction::A).len() >= n && placements(app, Faction::B).len() >= n
         });
+        let mut fewest = n;
         for f in [Faction::A, Faction::B] {
             let got: Vec<usize> = placements(&app, f).iter().map(|(_, b)| *b).collect();
-            assert_eq!(
-                got, want,
-                "`{id}` ({f:?}) placed {got:?} of its scripted {want:?} by tick {stopped} \
-                 (match over: {})",
+            fewest = fewest.min(got.len());
+            assert!(
+                got.len() <= n && got[..] == want[..got.len()],
+                "`{id}` ({f:?}) placed {got:?}, not a script-order prefix of {want:?}, \
+                 by tick {stopped} (match over: {})",
                 over(&app)
             );
+            for (k, o) in s.barracks.iter().enumerate().skip(got.len()) {
+                let g = grace(&c, id, &o.building);
+                assert!(
+                    o.at_tick + g > stopped,
+                    "`{id}` ({f:?}) left opening {k} (`{}`, at_tick {}) unplaced, but with \
+                     grace {g} it was due by tick {} and the match ran to tick {stopped} \
+                     (match over: {}); placed {got:?} of {want:?}",
+                    o.building,
+                    o.at_tick,
+                    o.at_tick + g,
+                    over(&app)
+                );
+            }
+        }
+        if fewest > 1 {
+            placed_more_than_one.push(id.clone());
         }
     }
+    assert!(
+        !placed_more_than_one.is_empty(),
+        "no multi-opening strategy placed more than one opening on both sides of its mirror: \
+         the grace bound has made the claim vacuous"
+    );
 }
 
 /// The rule itself: no `TrainArmy` is ever issued on a decision at which an

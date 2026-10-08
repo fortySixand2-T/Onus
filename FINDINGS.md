@@ -4601,3 +4601,50 @@ is placed. This is a test *claim*, not a golden, so it was not edited: whether t
 should hold for a match that ends early, or g1's 15 000 line should move, is the user's call.
 Every golden and every measured pin is green. The expected "0 failed" is therefore not met by
 exactly this one test.
+
+### The claim, bounded (the user's decision)
+
+The user chose to **bound** the whole-script claim, not drop it, and to leave every RON
+value alone. `every_multi_opening_strategy_places_its_whole_script_in_a_head_to_head` now
+asserts, for every multi-opening strategy in its own mirror (`seed_at(0, 1)`, both sides):
+- what was placed is a **prefix of the script, in script order**;
+- every unplaced opening has `at_tick + grace > end tick`, with a message naming the
+  opening, its `at_tick`, `grace` and the end tick. Equivalently, every opening due at
+  least `grace` ticks before the end is placed;
+- **non-vacuity:** at least one strategy places more than one opening on both sides.
+
+`grace` is per opening and **derived, not chosen**. It is the fewest ticks the side can
+take to bank the opening's Alloy from an empty stockpile:
+`ceil(alloy_cost * mvp_gather_ticks / (worker_target * mvp_carry_capacity))`. Every
+term is read from the loaded `Content`: the building's cost, the strategy's
+`worker_target`, and the gathering unit's carry and gather ticks.
+- This is the best-case income: at most `worker_target` gatherers, each delivering at
+  most one load per harvest.
+- Walking to the deposit and back is left out, because the deposit distance is fixture
+  geometry, not content. Leaving it out only lowers `grace`.
+- So `grace` is a lower bound on the real banking time. It excuses the fewest openings an
+  income model can, which keeps the claim as strict as an honest bound allows.
+
+On g1 a Foundry's grace with six workers is 1 125 ticks.
+- `mass_sentinel`'s third line is due at 15 000 + 1 125 = 16 125, after its mirror ends
+  at 15 519. It is excused.
+- Its second line is due at 9 000 + 1 125 = 10 125, well inside the match. It is still
+  required, and it is placed.
+
+**Proof.** On the box, on g1:
+- the bounded test passes in debug and release;
+- with `--features no-opening-reservation` it is still **red**: "`mass_bulwark` (A) left
+  opening 1 (`foundry`, at_tick 9000) unplaced, but with grace 1125 it was due by tick
+  10125 and the match ran to tick 20923 (match over: true); placed [1] of [1, 1, 1]". The
+  bound does not hide the failure the reservation fixes. The other three reservation
+  tests are red there too, as in F-041.
+
+The full gate after the change was run on the box. Before it, `touch` was run on `src`,
+`tests`, `benches` and the RON files:
+
+| step | result |
+|---|---|
+| `cargo clippy --all-targets -- -D warnings` | clean (exit 0) |
+| `cargo test` (debug) | **940 passed, 0 failed, 1 ignored** |
+| `cargo test --release` | **940 passed, 0 failed, 1 ignored** |
+| `cargo bench --no-run` | builds (exit 0) |
