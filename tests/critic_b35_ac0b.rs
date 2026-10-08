@@ -713,6 +713,21 @@ fn critic_every_order_is_applied_no_budget_is_committed_twice() {
 // 3. An RNG draw happens only when a placement is emitted
 // =============================================================================
 
+/// F-044: "a stockpile that buys exactly one Foundry and no Aether Spire" —
+/// the shipped Foundry's cost plus 10 (160 at F-033's prices), read from the
+/// content so a cost re-tune moves the fixture instead of breaking it.
+fn one_foundry_stock() -> u32 {
+    let c = Content::load_from_dir(&data_dir()).expect("shipped content");
+    let foundry = c.building("foundry").unwrap().alloy_cost;
+    let spire = c.building("aether_spire").unwrap().alloy_cost;
+    let stock = foundry + 10;
+    assert!(
+        stock < 2 * foundry && stock < spire,
+        "fixture: {stock} must buy one Foundry ({foundry}) and no Aether Spire ({spire})"
+    );
+    stock
+}
+
 /// A rich commander and a poor one running the same script must place their
 /// *first* barracks in the same direction: the placements the poor one could
 /// not afford consumed no randomness.
@@ -733,13 +748,14 @@ fn critic_unaffordable_placements_consume_no_randomness() {
     let c_rich = loaded("rng_rich", &text);
     let c_poor = loaded("rng_poor", &text);
     let mut rich = solo(c_rich, 0xABCDEF, "s", 100_000, false);
-    let mut poor = solo(c_poor, 0xABCDEF, "s", 160, false);
+    let stock = one_foundry_stock();
+    let mut poor = solo(c_poor, 0xABCDEF, "s", stock, false);
     tick(&mut rich, 600);
     tick(&mut poor, 600);
     let pr = placements(&rich, Faction::A);
     let pp = placements(&poor, Faction::A);
     assert_eq!(pr.len(), 3, "the rich commander places all three");
-    assert_eq!(pp.len(), 1, "160 Alloy buys exactly one foundry: {pp:?}");
+    assert_eq!(pp.len(), 1, "{stock} Alloy buys exactly one foundry: {pp:?}");
     assert_eq!(
         pp[0].2, pr[0].2,
         "the first placement's direction is the same draw in both runs — the two \
@@ -751,8 +767,10 @@ fn critic_unaffordable_placements_consume_no_randomness() {
 /// unaffordable must not eat the draw the next, cheaper opening takes.
 #[test]
 fn critic_a_skipped_expensive_opening_does_not_eat_the_draw() {
-    // Aether Spire costs 200, Foundry 150. With 160 Alloy the spire is never
-    // affordable at the first decision; the foundry is.
+    // The Aether Spire costs more than the Foundry (200 v 150 at F-033). With
+    // the Foundry's cost + 10 the spire is never affordable at the first
+    // decision; the foundry is (F-044: the stock is read, not pinned).
+    let stock = one_foundry_stock();
     let two = file_of(
         "s",
         &[ok_entry(
@@ -765,8 +783,8 @@ fn critic_a_skipped_expensive_opening_does_not_eat_the_draw() {
         "s",
         &[ok_entry("s", &[("foundry", 0, 100.0)], &[("sentinel", 1)])],
     );
-    let mut a = solo(loaded("rng_skip_two", &two), 0x5EED, "s", 160, false);
-    let mut b = solo(loaded("rng_skip_one", &just_foundry), 0x5EED, "s", 160, false);
+    let mut a = solo(loaded("rng_skip_two", &two), 0x5EED, "s", stock, false);
+    let mut b = solo(loaded("rng_skip_one", &just_foundry), 0x5EED, "s", stock, false);
     tick(&mut a, 120);
     tick(&mut b, 120);
     let pa = placements(&a, Faction::A);

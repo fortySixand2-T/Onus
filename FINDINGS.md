@@ -3923,3 +3923,208 @@ What d2 achieves and what it costs:
      feeding single rippers into a defended base;
    - a `mass_*` `attack_interval_ticks` change, to shorten mass×mass
      sieges.
+
+## F-044 — Unpinning the balance values from the tests (B4, test-only)
+
+F-043 found that tests pinning shipped balance values (damage numbers,
+`mitigation_per_armor`, the mass probes' `attack_at_army`, `mvp_gather_ticks`)
+blocked the combat levers. This entry removes those pins. Following F-033
+(`kill_budget(content, …)`), each rewritten test now derives its expected
+value from the loaded RON.
+
+**Nothing in the sim or the content changes.**
+- The two `src/sim` edits are both inside `#[cfg(test)] mod tests`.
+- No RON changes.
+- One new test-support file, `tests/support/ron_field.rs`. It reads a field's
+  literal text from the shipped RON, so a mutation anchor such as
+  `damage_mult: 1.3,` follows a re-tune instead of pinning it.
+
+**How meaning is kept.**
+- A combat test still checks the arithmetic. Its expectation is the
+  documented formula, evaluated in the test from content inputs, never by
+  calling `damage_per_hit`:
+  - `offense*damage_per_offense − armor*mitigation_per_armor`, saturating;
+  - for nemesis: `floor(base*mult_milli/1000)`, with the armor rule applied;
+  - `defense*hp_per_defense`;
+  - `round(damage_mult*1000)`, from the decimal *as written*.
+- Probe values that only need to differ from the shipped value are chosen
+  relative to it, e.g. `damage_per_offense` becomes shipped−2.
+- Fixtures that relied on today's stats now state their precondition: at
+  least three hits to kill, a prey with armor, and a non-nemesis pair.
+
+**Left pinned on purpose:**
+- the `mvp` identity pins (b1_strategies, critic_b1, m4c_ai,
+  `the_mvp_strategy_is_untouched_by_the_tempo_pass`);
+- per-tick goldens and measured readings (they move under F-032);
+- design claims such as the five F-041 reds.
+
+Some literal anchors remain on values outside the B4 lever set, and are still
+pinned:
+- the worker's `mvp_alloy_cost: 10` in the M5/M6/P2 fingerprint and replay
+  probes;
+- `starting_alloy: 300` in critic_b1 and critic_m4a's `starting_alloy`
+  probes;
+- the HQ's `mvp_defense: 10, mvp_armor: 4` in critic_m4c;
+- the strategies' `mvp` anchors.
+
+If B4 needs one of these levers, its anchors have to be unpinned first.
+
+### The rewritten tests
+
+Each row gives the test, what it pinned before, what it derives now, and the
+mutations that turn it red. Mutation ids refer to the table below.
+
+**`src/sim/combat.rs` unit tests**
+
+| Test | Pinned | Now derives | Red under |
+|---|---|---|---|
+| `damage_is_offense_minus_flat_armor` | 37 | plain formula, arclight→ravager | M1 |
+| `armor_can_absorb_a_hit_but_never_heals` | worker→bulwark 0 (vacuous: worker offense 0) | in-memory armed worker vs bulwark armor > hit | M1 |
+| `nemesis_boosts_by_30_percent_and_skips_armor` | 26 / 10 / 35−18 | nemesis and plain formulas | M1, M2, M5 |
+| `the_nemesis_multiplier_is_integer_per_mille` | `mult_milli == 1300`; a tautological 13/10 loop | `round(damage_mult*1000)`; the floor checked through `damage_per_hit` on an in-memory probe | M2, M3, M4 |
+| `health_pool_comes_from_defense` | (180,180) | `defense*hp_per_defense` | M6 |
+
+**`src/sim/content.rs`**
+
+| Test | Pinned | Now derives | Red under |
+|---|---|---|---|
+| `lookups_resolve_by_id_in_ron_order` | arclight offense 9 | offense read off the RON text | M7 |
+
+**`m4a_economy`**
+
+| Test | Pinned | Now derives | Red under |
+|---|---|---|---|
+| `loads_units_and_resources_from_ron` | bulwark (2,4,9,9), mult 1.3 | each field read off the RON text | M7 |
+| `unbuildable_or_free_content_is_rejected_at_load` | anchor `mvp_alloy_cost: 70,` | sentinel field, read | M14 |
+
+**`m4b_combat`**
+
+| Test | Pinned | Now derives | Red under |
+|---|---|---|---|
+| `a_unit_attacks_the_enemy_in_range_until_it_dies_and_despawns` | 18 per hit, 60 HP | formula; `defense*hp_per_defense` | M1, M6 |
+| `an_enemy_outside_engage_range_is_ignored` | worker 60 HP | `defense*hp_per_defense` | M6 |
+| `nemesis_adds_30_percent_and_ignores_armor` | 1300 | the RON decimal ×1000, rounded | M2, M3, M5 |
+| `the_nemesis_bonus_applies_in_a_live_fight` | `base*13/10` | `base*mult_milli/1000` plus the armor rule | M2, M5 |
+| `a_nemesis_multiplier_is_exact_or_refused` | anchor `1.3` | field read; shipped case plus a 1.3 case | M2, M3, M5, M19 |
+| `out_of_scale_stats_are_rejected_and_the_bonus_never_wraps` | anchor `speed: 2, offense: 4,` | bulwark field, read | M13 |
+| `a_scale_the_validator_cannot_multiply_is_an_error_not_a_panic` | four literal anchors | fields, read | M18 |
+
+**`critic_m4b`**
+
+| Test | Pinned | Now derives | Red under |
+|---|---|---|---|
+| `the_stat_scaling_is_read_from_the_ron_not_hardcoded` | 10, 15; anchors | formula on the edited factor (moved off its shipped value) | M1, M6 |
+| `the_nemesis_bonus_is_read_from_the_ron_and_floors` | 1150 / 23 / 18 | mult moved to 1.15 (1.25 if 1.15 ships); `ignore_armor` flipped; formula | M2, M3, M5 |
+| `degenerate_or_missing_combat_content_is_rejected_at_load` | nine literal anchors | fields read; leash = engage/2 | M12 |
+| `max_stat_is_data_and_bounds_exactly_the_design_scale` | `max_stat: 10`, sentinel offense 6, "arclight 9" | max_stat+1; the roster's top stat −1 | M13 |
+| `a_degenerate_scale_is_rejected_not_overflowed_inside_the_validator`, `accepted_content_never_needs_a_saturating_hit` | anchors | fields, read | M18 |
+| `a_nemesis_multiplier_is_rejected_or_applied_as_written` | anchor | field, read | M19 |
+| `every_accepted_multiplier_is_applied_exactly_as_written` | anchor | field, read | M3 |
+| `the_shipped_multiplier_is_exactly_1300_per_mille` (name kept) | 1300 | the RON decimal ×1000 in f64 | M3 |
+
+**`critic_m4a` (pass2)**
+
+| Test | Pinned | Now derives | Red under |
+|---|---|---|---|
+| `a_one_tick_gather_lands_on_the_first_mining_tick`, `gather_and_production_honour_the_ron_tick_counts_identically` | anchors `mvp_gather_ticks: 90`, `mvp_train_ticks: 600` | worker fields, read | M8 |
+| `every_charge_follows_the_edited_ron_price` | anchors worker 10, foundry 150 | fields, read | M9 |
+| `validation_rejects_every_class_of_unplayable_content` | foundry 150, sentinel 900, ranges | fields, read | M11 |
+| `missing_starting_alloy…`, `starting_alloy_comes_from_ron…` | anchor `starting_alloy: 300` | field, read | not mutated (no failure under p1) |
+
+**Other test files**
+
+| Test | Pinned | Now derives | Red under |
+|---|---|---|---|
+| `critic_m4c::targeting_matches_the_oracle_with_half_claims_on_the_field` | assumed nobody dies on tick 1 | oracle read with the sim's own death rule (a unit whose nearest enemy died holds no `Target`); at least half the field still checked | M20 |
+| `critic_m5::content_that_would_break_the_round_trip_cannot_be_loaded` | foundry `alloy_cost: 150` | cost from content | M15 |
+| `m5_replay::a_duplicated_content_id_is_impossible_to_load` | foundry `alloy_cost: 150` | cost from content | M15 |
+| `m5_replay::the_fingerprint_covers_the_whole_content_exactly` | `36.0` → `36.000004` | shipped value → next f32 | M17 |
+| `m4c_ai::the_victory_target_must_be_exactly_one_building` | foundry 150 | cost from content | see the note on M16 |
+| `critic_b35_ac0b::critic_unaffordable_placements_consume_no_randomness`, `critic_a_skipped_expensive_opening_does_not_eat_the_draw` | 160 Alloy | Foundry cost + 10, asserting it buys exactly one Foundry and no Spire | M10 |
+| `critic_b35_armour::the_shipped_combat_scaling_keeps_mitigation_per_armor_off_the_reverted_one` (was `…_at_two`) | mitigation == 2 | the F-031 decision: mitigation ≠ 1 | R1 |
+| `critic_b35_armour::the_five_mass_probes_are_knob_identical_at_one_shipped_threshold` (was `…_at_attack_at_army_ten`) | each probe's threshold == 10 | every probe equals probe 0, and the threshold is ≥ 1; the other knob-identity checks are unchanged | R2 |
+
+### Mutations
+
+Each mutation was applied alone in the box tree. The tests it guards were run
+in debug, then the file was restored and `touch`ed.
+
+| Id | Mutation |
+|---|---|
+| M1 | Plain hits ignore mitigation. |
+| M2 | Nemesis is checked in reverse (the prey is boosted). |
+| M3 | `milli_exact` floors instead of rounding. |
+| M4 | The nemesis boost uses ceiling division instead of floor. |
+| M5 | `ignore_armor` is inverted. |
+| M6 | The HP pool is `defense*hp_per_defense + 1`. |
+| M7 | The loader swaps offense and speed. |
+| M8 | A load lands one tick late. |
+| M9 | A placement charges one Alloy over the RON price. |
+| M10 | The AI reads a barracks price as 11 higher. |
+| M11 | A zero training time is accepted. |
+| M12 | `pursue_range < engage_range` is accepted. |
+| M13 | The `max_stat` bounds are off. |
+| M14 | A free unit is accepted. |
+| M15 | Duplicate ids are accepted. |
+| M16 | Two victory buildings are accepted. |
+| M17 | The fingerprint rounds `speed_per_point`. |
+| M18 | The representability check accepts everything. |
+| M19 | An unrepresentable multiplier saturates instead of being refused. |
+| M20 | Targeting picks the next row instead of the nearest enemy. |
+| R1 | RON `mitigation_per_armor: 1`. |
+| R2 | `mass_ripper` `attack_at_army` +1. |
+
+**Result: 52 of 54 test×mutation pairs went red.** Two stayed green:
+
+- **M3 × `loads_units_and_resources_from_ron`.** Expected: that test reads
+  `damage_mult` as a float and never touches per-mille, so it does not guard
+  rounding.
+- **M16 × `the_victory_target_must_be_exactly_one_building`.** Making the
+  Foundry a second victory building is already refused by the separate rule
+  "a strategy's barracks may not be the victory target". So the
+  `victory.len() != 1` check is not the one exercised here. This weakness
+  predates F-044: the rewrite only reads the Foundry's cost. It is recorded
+  here and not fixed in a balance milestone.
+
+`armor_can_absorb_a_hit_but_never_heals` was vacuous before this entry: the
+Worker's offense is 0, so it went green under M1. It is now built on an armed
+in-memory Worker and goes red under M1.
+
+### The two suite proofs
+
+**Proof 1: the shipped RON reads exactly as before.** Release, on the final
+Step A tree: **935 passed, 5 failed, 1 ignored**. The 5 are the same F-041
+reds:
+- `b35_tempo` median;
+- `critic_b1_ac3` mass×mass resolution;
+- `critic_b1_ac3` rush/turtle ordering;
+- `critic_b35_closure`;
+- `critic_b3_ac2` crippled probe.
+
+**Proof 2: the tests follow the content.** I ran a scratch candidate `p1`
+that perturbs almost every lever at once:
+- bulwark off/def/arm 5/8/8;
+- sentinel off 7, arm 4, cost 75;
+- ripper arm 2, train 700;
+- ravager off 8, arm 3;
+- arclight off 8;
+- gather 85 ticks;
+- Foundry 160;
+- `damage_per_offense` 6, `mitigation_per_armor` 3, `hp_per_defense` 22,
+  `damage_mult` 1.4;
+- mass `attack_at_army` 11.
+
+Results:
+- **Before the rewrite:** 85 failures.
+- **After the rewrite:** 918 passed, 22 failed. None of the 22 is a content
+  pin. They are:
+  - the per-tick and state-hash goldens: b1_matchup, b1_strategies,
+    b2_headless, b2_orientation, b35_parallel ×2, b35_queue_depth ×2,
+    critic_b1_ac2, critic_b2_ac4, critic_b35_ac0, critic_b35_ac0b bit-identity;
+  - the measured readings: b3_gate, b3_pentagon, b35_tempo density;
+  - the behavioural design claims that any final RON must satisfy:
+    - b1_probe_set and b4_reservation (`synth_steel_flesh` places its script in
+      order);
+    - the five F-041 reds.
+
+The shipped RON was restored afterwards and checked byte for byte.

@@ -543,3 +543,17 @@
 - [2026-10-04] Modified: FINDINGS.md — F-042 B4 baseline (4-seed roster batch + 126-seed mass_arclight K2 re-read) compared with F-040/F-039
 - [2026-10-04] Modified: BALANCE_PLAN.md — ticked B4 "Run the harness" with the F-042 one-line result
 - [2026-10-04] Modified: FINDINGS.md — F-043 B4 phase-2 RON search: screens, best candidate d2 (4-seed reading), budget exhausted, nothing kept
+- [2026-10-07] Created: tests/support/ron_field.rs — F-044 test helper: read a field's literal text off the shipped RON so mutation anchors track re-tunes
+- [2026-10-07] Modified: src/sim/combat.rs — F-044 unit tests derive damage/HP/per-mille expectations from the loaded RON (test module only)
+- [2026-10-07] Modified: src/sim/content.rs — F-044 lookup test reads arclight offense off the RON text (test module only)
+- [2026-10-07] Modified: tests/critic_m4b.rs — F-044 combat-scaling and nemesis pins derived from the RON; anchors read
+- [2026-10-07] Modified: tests/m4b_combat.rs — F-044 damage/HP/multiplier pins derived from the RON; anchors read
+- [2026-10-07] Modified: tests/critic_m4a.rs — F-044 gather/train/price/starting-alloy anchors read off the RON
+- [2026-10-07] Modified: tests/m4a_economy.rs — F-044 bulwark stats and free-unit anchor read off the RON
+- [2026-10-07] Modified: tests/critic_m4c.rs — F-044 oracle test reads targets with the sim's death rule (fixture no longer assumes no tick-1 deaths)
+- [2026-10-07] Modified: tests/critic_m5.rs — F-044 foundry-twin cost read from content
+- [2026-10-07] Modified: tests/m5_replay.rs — F-044 foundry-twin cost and speed_per_point fingerprint step read from content
+- [2026-10-07] Modified: tests/m4c_ai.rs — F-044 two-victory anchor reads the foundry cost from content
+- [2026-10-07] Modified: tests/critic_b35_ac0b.rs — F-044 one-foundry stock is the shipped Foundry cost + 10
+- [2026-10-07] Modified: tests/critic_b35_armour.rs — F-044 mitigation pin becomes "not the reverted 1"; mass threshold read from probe 0 (two tests renamed)
+- [2026-10-07] Modified: FINDINGS.md — F-044 unpinning table, mutation results, suite proofs

@@ -24,6 +24,10 @@ fn content() -> Content {
     Content::load_from_dir(&data_dir()).expect("assets/data/*.ron parse into sim structs")
 }
 
+#[path = "support/ron_field.rs"]
+mod ron_field;
+use ron_field::{field, field_after, shipped};
+
 // ---- AC1: content is data ---------------------------------------------------
 
 #[test]
@@ -38,7 +42,11 @@ fn loads_units_and_resources_from_ron() {
         "unit order is the RON order (stable, deterministic)"
     );
 
-    // Stats come across intact.
+    // Stats come across intact: each field lands in its own slot. F-044: the
+    // expected numbers are read off the RON *text* (not pinned), so a re-tune
+    // moves both sides while a swapped or dropped field still fails.
+    let units = shipped("units.ron");
+    let written = |key: &str| field_after(&units, "id: \"bulwark\"", key).num::<u32>();
     let bulwark = c.unit("bulwark").expect("bulwark defined");
     assert_eq!(
         (
@@ -47,10 +55,16 @@ fn loads_units_and_resources_from_ron() {
             bulwark.defense,
             bulwark.armor
         ),
-        (2, 4, 9, 9)
+        (
+            written("speed"),
+            written("offense"),
+            written("defense"),
+            written("armor")
+        )
     );
     assert_eq!(bulwark.nemesis.as_deref(), Some("ravager"));
-    assert!((c.nemesis_bonus.damage_mult - 1.3).abs() < 1e-6);
+    let mult = field(&units, "damage_mult").num::<f32>();
+    assert!((c.nemesis_bonus.damage_mult - mult).abs() < 1e-6);
     assert!(c.nemesis_bonus.ignore_armor);
 
     // Resources: three domains defined, MVP active set is Alloy only.
@@ -709,7 +723,8 @@ fn a_gatherer_missing_its_gather_data_is_rejected_at_load() {
 
 #[test]
 fn unbuildable_or_free_content_is_rejected_at_load() {
-    let err = load_mutated("free_unit", "mvp_alloy_cost: 70,", "mvp_alloy_cost: 0,")
+    let cost = field_after(&shipped("units.ron"), "id: \"sentinel\"", "mvp_alloy_cost");
+    let err = load_mutated("free_unit", &cost.from, &cost.with(0))
         .expect_err("a free unit is invalid content");
     assert!(err.contains("sentinel"), "{err}");
 

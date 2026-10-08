@@ -21,6 +21,15 @@ use onus::sim::{CommandQueue, Engaging, MoveTarget, Order, Position, RateReport}
 
 // ---- harness ---------------------------------------------------------------
 
+#[path = "support/ron_field.rs"]
+mod ron_field;
+use ron_field::{field, field_after, shipped};
+
+/// A shipped `units.ron` field (F-044: anchors are read, not pinned).
+fn unit_field(key: &str) -> ron_field::Field {
+    field(&shipped("units.ron"), key)
+}
+
 fn data_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data")
 }
@@ -474,22 +483,42 @@ fn the_stat_scaling_is_read_from_the_ron_not_hardcoded() {
     let bulwark = base.unit_index("bulwark").unwrap();
     let ripper = base.unit_index("ripper").unwrap();
 
-    let hp2 = mutated("hp40", "hp_per_defense: 20,", "hp_per_defense: 40,");
+    // F-044: each factor is moved off its *shipped* value, whatever that is,
+    // and the expected number is the documented formula on the edited inputs.
+    let f = unit_field("hp_per_defense");
+    let hp2 = mutated("hp40", &f.from, &f.with(2 * f.num::<u32>()));
     assert_eq!(
         Health::from_def(&hp2, bulwark).max,
         2 * Health::from_def(&base, bulwark).max,
         "the HP pool scales with mvp_combat.hp_per_defense"
     );
 
-    let d3 = mutated("dmg3", "damage_per_offense: 5,", "damage_per_offense: 3,");
-    // bulwark offense 4 -> 12, ripper armor 1 * 2 -> 2.
-    assert_eq!(damage_per_hit(&d3, bulwark, ripper), 10);
+    assert_ne!(
+        base.units[bulwark].nemesis.as_deref(),
+        Some("ripper"),
+        "a plain (non-nemesis) pair"
+    );
+    let (off, arm) = (base.units[bulwark].offense, base.units[ripper].armor);
+    let (dpo, mpa) = (base.combat.damage_per_offense, base.combat.mitigation_per_armor);
 
-    let m5 = mutated("mit5", "mitigation_per_armor: 2,", "mitigation_per_armor: 5,");
-    // bulwark offense 4 * 5 = 20, ripper armor 1 * 5 = 5.
-    assert_eq!(damage_per_hit(&m5, bulwark, ripper), 15);
+    let f = unit_field("damage_per_offense");
+    let dpo2 = if dpo > 2 { dpo - 2 } else { dpo + 3 };
+    let d3 = mutated("dmg3", &f.from, &f.with(dpo2));
+    // bulwark offense * the edited factor, minus ripper armor * mitigation.
+    let want = (off * dpo2).saturating_sub(arm * mpa);
+    assert!(want > 0, "the probe must land a hit to measure the factor");
+    assert_eq!(damage_per_hit(&d3, bulwark, ripper), want);
 
-    let s72 = mutated("spd", "speed_per_point: 36.0,", "speed_per_point: 72.0,");
+    let f = unit_field("mitigation_per_armor");
+    let mpa2 = mpa + 3;
+    let m5 = mutated("mit5", &f.from, &f.with(mpa2));
+    // bulwark offense * damage_per_offense, minus ripper armor * the edited factor.
+    let want = (off * dpo).saturating_sub(arm * mpa2);
+    assert!(want > 0 && arm > 0, "the probe must see the mitigation move");
+    assert_eq!(damage_per_hit(&m5, bulwark, ripper), want);
+
+    let f = unit_field("speed_per_point");
+    let s72 = mutated("spd", &f.from, &f.with(format!("{:?}", 2.0 * f.num::<f32>())));
     assert_eq!(
         move_speed(&s72, bulwark),
         2.0 * move_speed(&base, bulwark),
@@ -501,35 +530,69 @@ fn the_stat_scaling_is_read_from_the_ron_not_hardcoded() {
 /// is floor of an integer per-mille.
 #[test]
 fn the_nemesis_bonus_is_read_from_the_ron_and_floors() {
-    let c = mutated("mult115", "damage_mult: 1.3,", "damage_mult: 1.15,");
+    // F-044: the multiplier is moved off its shipped value (to 1.15, or 1.25
+    // if 1.15 is what ships) and the armor rule is flipped, whatever it is.
+    let shipped_c = content();
+    let f = unit_field("damage_mult");
+    let (text, milli) = if f.value == "1.15" { ("1.25", 1_250) } else { ("1.15", 1_150) };
+    let c = mutated("mult115", &f.from, &f.with(text));
     let (b, r) = (
         c.unit_index("bulwark").unwrap(),
         c.unit_index("ravager").unwrap(),
     );
-    assert_eq!(c.nemesis_bonus.mult_milli(), 1_150);
-    // base 20; floor(20 * 1150 / 1000) = 23; armor still ignored.
-    assert_eq!(damage_per_hit(&c, b, r), 23);
+    assert_eq!(c.units[b].nemesis.as_deref(), Some("ravager"), "the pentagon");
+    assert_eq!(c.nemesis_bonus.mult_milli(), milli);
+    let base = c.units[b].offense * c.combat.damage_per_offense;
+    let mitigation = c.units[r].armor * c.combat.mitigation_per_armor;
+    assert!(mitigation > 0, "the prey must have armor for the rule to show");
+    let armor_rule = |boosted: u32, ignore: bool| {
+        if ignore {
+            boosted
+        } else {
+            boosted.saturating_sub(mitigation)
+        }
+    };
+    // floor(base * milli / 1000), then the shipped armor rule.
+    let boosted = base * milli / 1_000;
+    assert_eq!(
+        damage_per_hit(&c, b, r),
+        armor_rule(boosted, shipped_c.nemesis_bonus.ignore_armor)
+    );
 
-    let c = mutated("keeparmor", "ignore_armor: true,", "ignore_armor: false,");
-    // floor(20 * 1.3) = 26, then the Ravager's 4 armor * 2 = 8 is subtracted.
-    assert_eq!(damage_per_hit(&c, b, r), 18);
+    let f = unit_field("ignore_armor");
+    let flipped = !shipped_c.nemesis_bonus.ignore_armor;
+    let c = mutated("keeparmor", &f.from, &f.with(flipped));
+    assert_eq!(c.nemesis_bonus.ignore_armor, flipped);
+    // floor(base * shipped milli / 1000), under the flipped armor rule.
+    let boosted = base * shipped_c.nemesis_bonus.mult_milli() / 1_000;
+    assert_eq!(damage_per_hit(&c, b, r), armor_rule(boosted, flipped));
 }
 
 // ---- P11: load-time validation of the new content ---------------------------
 
 #[test]
 fn degenerate_or_missing_combat_content_is_rejected_at_load() {
-    for (name, from, to) in [
-        ("hp0", "hp_per_defense: 20,", "hp_per_defense: 0,"),
-        ("dmg0", "damage_per_offense: 5,", "damage_per_offense: 0,"),
-        ("mit0", "mitigation_per_armor: 2,", "mitigation_per_armor: 0,"),
-        ("spd0", "speed_per_point: 36.0,", "speed_per_point: 0.0,"),
-        ("leash", "pursue_range: 400.0,", "pursue_range: 100.0,"),
-        ("nocadence", "mvp_attack_ticks: 90,", ""),
-        ("noblock", "mvp_combat: (", "mvp_combat_typo: ("),
-        ("weakmult", "damage_mult: 1.3,", "damage_mult: 0.5,"),
-        ("badprey", "nemesis: \"ravager\"", "nemesis: \"nobody\""),
-    ] {
+    // F-044: anchors read off the shipped RON; the degenerate values are fixed.
+    let units = shipped("units.ron");
+    let edit = |key: &str, to: &str| {
+        let f = field(&units, key);
+        (f.from.clone(), f.with(to))
+    };
+    let half_engage = format!("{:?}", content().combat.engage_range / 2.0);
+    let cadence = field_after(&units, "id: \"bulwark\"", "mvp_attack_ticks");
+    let cases: Vec<(&str, (String, String))> = vec![
+        ("hp0", edit("hp_per_defense", "0")),
+        ("dmg0", edit("damage_per_offense", "0")),
+        ("mit0", edit("mitigation_per_armor", "0")),
+        ("spd0", edit("speed_per_point", "0.0")),
+        ("leash", edit("pursue_range", &half_engage)),
+        ("nocadence", (cadence.from.clone(), cadence.removed())),
+        ("noblock", ("mvp_combat: (".into(), "mvp_combat_typo: (".into())),
+        ("weakmult", edit("damage_mult", "0.5")),
+        ("badprey", ("nemesis: \"ravager\"".into(), "nemesis: \"nobody\"".into())),
+    ];
+    for (name, (from, to)) in &cases {
+        let (name, from, to) = (*name, from.as_str(), to.as_str());
         assert!(
             load_mutated(name, from, to).is_err(),
             "`{name}` must be rejected at load, not silently defaulted"
@@ -894,17 +957,29 @@ fn load_with_combat(name: &str, edits: &[(&str, &str)]) -> Result<Content, Strin
 /// must be refused, and lowering it below a shipped stat must refuse the roster.
 #[test]
 fn max_stat_is_data_and_bounds_exactly_the_design_scale() {
-    assert!(content().combat.max_stat >= 10, "the 1-10 scale must fit");
+    let c = content();
+    assert!(c.combat.max_stat >= 10, "the 1-10 scale must fit");
+    // F-044: the probes are built off the shipped scale and roster.
+    let units = shipped("units.ron");
+    let max = field(&units, "max_stat");
+    let over = field_after(&units, "id: \"sentinel\"", "offense");
     assert!(
-        load_with_combat("stat_11", &[("speed: 7, offense: 6,", "speed: 7, offense: 11,")]).is_err(),
+        load_with_combat("stat_11", &[(&over.from, &over.with(c.combat.max_stat + 1))]).is_err(),
         "a stat above the declared scale must be rejected"
     );
+    let top = c
+        .units
+        .iter()
+        .flat_map(|u| [u.speed, u.offense, u.defense, u.armor])
+        .max()
+        .unwrap();
+    assert!(top > 1, "the roster has a stat to undercut");
     assert!(
-        load_with_combat("max_8", &[("max_stat: 10,", "max_stat: 8,")]).is_err(),
-        "lowering max_stat below a shipped stat (arclight offense 9) must reject"
+        load_with_combat("max_8", &[(&max.from, &max.with(top - 1))]).is_err(),
+        "lowering max_stat below a shipped stat (the roster's top, {top}) must reject"
     );
     assert!(
-        load_with_combat("max_10", &[("max_stat: 10,", "max_stat: 10,  ")]).is_ok(),
+        load_with_combat("max_10", &[(&max.from, &format!("{}  ", max.from))]).is_ok(),
         "the shipped roster must still load"
     );
 }
@@ -917,8 +992,11 @@ fn a_degenerate_scale_is_rejected_not_overflowed_inside_the_validator() {
     let r = load_with_combat(
         "degenerate_scale",
         &[
-            ("max_stat: 10,", "max_stat: 4000000000,"),
-            ("damage_per_offense: 5,", "damage_per_offense: 4000000000,"),
+            (&unit_field("max_stat").from, &unit_field("max_stat").with(4000000000u32)),
+            (
+                &unit_field("damage_per_offense").from,
+                &unit_field("damage_per_offense").with(4000000000u32),
+            ),
         ],
     );
     assert!(
@@ -935,10 +1013,13 @@ fn accepted_content_never_needs_a_saturating_hit() {
     let c = load_with_combat(
         "wrap_to_zero",
         &[
-            ("max_stat: 10,", "max_stat: 134217728,"),
-            ("damage_per_offense: 5,", "damage_per_offense: 67108864,"),
-            ("damage_mult: 1.3,", "damage_mult: 2.048,"),
-            ("hp_per_defense: 20,", "hp_per_defense: 1,"),
+            (&unit_field("max_stat").from, &unit_field("max_stat").with(134217728)),
+            (
+                &unit_field("damage_per_offense").from,
+                &unit_field("damage_per_offense").with(67108864),
+            ),
+            (&unit_field("damage_mult").from, &unit_field("damage_mult").with("2.048")),
+            (&unit_field("hp_per_defense").from, &unit_field("hp_per_defense").with(1)),
         ],
     );
     let Ok(c) = c else {
@@ -1249,7 +1330,8 @@ fn a_gatherer_re_arms_when_the_job_ends() {
 #[test]
 fn a_nemesis_multiplier_is_rejected_or_applied_as_written() {
     let big = 5_000_000.0f64;
-    let Ok(c) = load_mutated("huge_mult", "damage_mult: 1.3,", "damage_mult: 5000000.0,") else {
+    let f = unit_field("damage_mult");
+    let Ok(c) = load_mutated("huge_mult", &f.from, &f.with("5000000.0")) else {
         return; // rejected at load — also a correct answer.
     };
     let (attacker, defender) = (
@@ -1642,7 +1724,8 @@ fn every_accepted_multiplier_is_applied_exactly_as_written() {
         ("m_1e30", "1e30", 1e30f32),
     ];
     for (name, text, value) in cases {
-        let loaded = load_mutated(name, "damage_mult: 1.3,", &format!("damage_mult: {text},"));
+        let f = unit_field("damage_mult");
+        let loaded = load_mutated(name, &f.from, &f.with(text));
         let Ok(c) = loaded else { continue }; // a refusal is a correct answer
         let want = (value as f64 * 1_000.0f64).round();
         assert!(
@@ -1684,9 +1767,12 @@ fn every_accepted_multiplier_is_applied_exactly_as_written() {
 /// `f64` did not move it.
 #[test]
 fn the_shipped_multiplier_is_exactly_1300_per_mille() {
+    // F-044: the expectation is the decimal *as written in the RON*, scaled in
+    // f64 — so an f32 detour that moved it (1.3 -> 1299.99995 -> 1299) fails.
     let c = content();
-    assert_eq!(c.nemesis_bonus.milli_exact(), Some(1_300));
-    assert_eq!(c.nemesis_bonus.mult_milli(), 1_300);
+    let written = (unit_field("damage_mult").num::<f64>() * 1_000.0).round() as u32;
+    assert_eq!(c.nemesis_bonus.milli_exact(), Some(written));
+    assert_eq!(c.nemesis_bonus.mult_milli(), written);
 }
 
 /// P43. Nemesis is an *iff* over the whole roster, still, with the checked
