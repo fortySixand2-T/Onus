@@ -61,11 +61,13 @@ Numbers are placeholders for the balance sim to settle.
 
 | Unit | Barracks (domain) | Role | Spd | Off | Def | Arm | Cost | Bonus vs |
 |------|-------------------|------|:--:|:--:|:--:|:--:|------|----------|
-| **Bulwark**  | Foundry (Machine)     | walking fortress        | 2 | 4 | 9 | 9 | 110 Alloy   | Ravager  |
+| **Bulwark**  | Foundry (Machine)     | walking fortress        | 2 | 4 | 9 | 9 | 95 Alloy    | Ravager  |
 | **Sentinel** | Foundry (Machine)     | agile war-frame         | 7 | 6 | 5 | 5 | 70 Alloy    | Ripper   |
 | **Ripper**   | Gene-Vats (Flesh)     | fragile swarm           | 9 | 6 | 3 | 1 | 40 Biomass  | Arclight |
-| **Ravager**  | Gene-Vats (Flesh)     | regenerating bio-titan  | 4 | 7 | 8 | 4 | 90 Biomass  | Sentinel |
+| **Ravager**  | Gene-Vats (Flesh)     | regenerating bio-titan  | 4 | 7 | 8 | 4 | 80 Biomass  | Sentinel |
 | **Arclight** | Aether Spire (Energy) | armor-melting channeler | 5 | 9 | 2 | 2 | 80 Aether   | Bulwark  |
+
+Timings live in `assets/data/units.ron` (`mvp_train_ticks`, `mvp_attack_ticks`, at 60 ticks/s). B4's tuning pass (F-046) set the ones it moved: Bulwark trains in 1300 ticks (was 1500) and Ravager in 1100 (was 1200); Ripper hits every 50 ticks (was 40). The costs above are B4's too (Bulwark 110 -> 95, Ravager 90 -> 80).
 
 Economy unit (from HQ, not a barracks): **Worker** — gathers and builds, cheap, no combat role.
 

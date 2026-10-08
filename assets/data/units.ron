@@ -62,9 +62,9 @@
     combat: [
         (
             id: "bulwark",   name: "Bulwark",   barracks: "foundry",      // Machine
-            cost: (resource: "alloy",   amount: 110),
+            cost: (resource: "alloy",   amount: 95),
             mvp_kind: Soldier,
-            mvp_alloy_cost: 110, mvp_train_ticks: 1500,
+            mvp_alloy_cost: 95, mvp_train_ticks: 1300,
             mvp_attack_ticks: 90, mvp_attack_range: 48.0,
             speed: 2, offense: 4, defense: 9, armor: 9, nemesis: "ravager",
         ),
@@ -81,14 +81,14 @@
             cost: (resource: "biomass", amount: 40),
             mvp_kind: Scout,
             mvp_alloy_cost: 40, mvp_train_ticks: 720,
-            mvp_attack_ticks: 40, mvp_attack_range: 40.0,
+            mvp_attack_ticks: 50, mvp_attack_range: 40.0,
             speed: 9, offense: 6, defense: 3, armor: 1, nemesis: "arclight",
         ),
         (
             id: "ravager",   name: "Ravager",   barracks: "gene_vats",    // Flesh
-            cost: (resource: "biomass", amount: 90),
+            cost: (resource: "biomass", amount: 80),
             mvp_kind: Soldier,
-            mvp_alloy_cost: 90, mvp_train_ticks: 1200,
+            mvp_alloy_cost: 80, mvp_train_ticks: 1100,
             mvp_attack_ticks: 75, mvp_attack_range: 44.0,
             speed: 4, offense: 7, defense: 8, armor: 4, nemesis: "sentinel",
         ),

@@ -560,3 +560,7 @@
 - [2026-10-08] Modified: FINDINGS.md — F-045 B4 phase-3 RON search from d2 (combat levers freed); best candidate g1 recorded, gate still FAIL on K1 turtle, no RON kept
 - [2026-10-08] Modified: BALANCE_PLAN.md — B4 multi-barracks box ticked (delivered by F-041); tuning and ledger boxes left open
 - [2026-10-08] Modified: FINDINGS.md — F-045: full-gate counts on f4e5409 (debug and release 935/5/1, clippy and bench clean) and the stale debug-rlib mtime trap
+- [2026-10-08] Modified: assets/data/units.ron — install B4 candidate g1 (F-045): bulwark 95 Alloy / train 1300, ravager 80 / train 1100, ripper attack 50
+- [2026-10-08] Modified: assets/data/strategies.ron — install g1: mass_* 2nd/3rd lines at 9000/15000, synth_steel_flesh lines 3/4 at 3000/6000, turtle workers 10 / attack_at_army 24; comments updated
+- [2026-10-08] Modified: DESIGN_BRIEF.md — roster costs (bulwark 95, ravager 80) and a note on the B4 timing changes
+- [2026-10-08] Modified: tests/b4_reservation.rs — comment no longer quotes bulwark's old 110 Alloy

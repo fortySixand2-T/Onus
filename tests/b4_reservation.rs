@@ -108,7 +108,7 @@ fn play_until(app: &mut App, done: impl Fn(&App) -> bool) -> u32 {
 // ---- the capability -----------------------------------------------------------
 
 /// **The gating test.** A `mass_bulwark` scripted with F-030's three Foundries
-/// (the most expensive body, 110 Alloy, so the hardest case) plays a real
+/// (the most expensive body, so the hardest case) plays a real
 /// head-to-head against the shipped `mass_sentinel` and must stand all three
 /// before the match ends. Red before the reservation: the first Foundry went up
 /// and the stockpile never reached 150 again (F-035).
