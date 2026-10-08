@@ -221,12 +221,17 @@ fn probe_an_unrelated_resource_shifts_entity_ids_and_nothing_else() {
 /// pass at its old value — that the move is content-driven and nothing else.
 /// What the assertion means is unchanged: this match is frozen, and any Rust
 /// change that moves it is a regression.
+///
+/// **B4 re-pin (F-046):** recomputed again on B4's tuned content (candidate
+/// g1: unit costs and timings). No Rust changed; F-046 shows the pre-g1
+/// `assets/data` passing at the previous values under this identical binary,
+/// and tabulates old -> new.
 #[test]
 fn probe_the_state_hash_goldens_are_byte_identical_to_the_pre_ac2_values() {
     for (seed, state_golden) in [
-        (4u64, 0xbd74_941f_b3ca_e489u64),
-        (11, 0x8700_8a7d_696d_d45c),
-        (23, 0x0fe5_2558_759f_6817),
+        (4u64, 0x7bc8_e24c_34c6_b32fu64),
+        (11, 0x8542_718f_99cf_7112),
+        (23, 0x0c79_bef6_a75d_654d),
     ] {
         let mut app = golden_fixture(
             content(),

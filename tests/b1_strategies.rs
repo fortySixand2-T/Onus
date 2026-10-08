@@ -559,9 +559,14 @@ fn the_fingerprint_covers_every_strategy_and_every_field() {
 /// pass at its old value — that the move is content-driven and nothing else.
 /// What the assertion means is unchanged: this match is frozen, and any Rust
 /// change that moves it is a regression.
+///
+/// **B4 re-pin (F-046):** recomputed again on B4's tuned content (candidate
+/// g1: unit costs and timings). No Rust changed; F-046 shows the pre-g1
+/// `assets/data` passing at the previous values under this identical binary,
+/// and tabulates old -> new.
 #[test]
 fn the_one_barracks_default_replays_exactly_as_it_did_before_b1() {
-    for (seed, golden) in [(4u64, 0xbd74_941f_b3ca_e489u64), (11, 0x8700_8a7d_696d_d45c)] {
+    for (seed, golden) in [(4u64, 0x7bc8_e24c_34c6_b32fu64), (11, 0x8542_718f_99cf_7112)] {
         let mut app = ai_vs_ai_on(content(), seed);
         tick(&mut app, 3_000);
         let got = onus::sim::state_hash(app.world_mut());

@@ -478,12 +478,17 @@ fn the_same_strategy_pair_and_seed_replays_bit_identically() {
 /// pass at its old value — that the move is content-driven and nothing else.
 /// What the assertion means is unchanged: this match is frozen, and any Rust
 /// change that moves it is a regression.
+///
+/// **B4 re-pin (F-046):** recomputed again on B4's tuned content (candidate
+/// g1: unit costs and timings). No Rust changed; F-046 shows the pre-g1
+/// `assets/data` passing at the previous values under this identical binary,
+/// and tabulates old -> new.
 #[test]
 fn the_default_matchup_is_byte_for_byte_what_it_was_before_ac2() {
     for (seed, state_golden, journal_golden) in [
-        (4u64, 0xbd74_941f_b3ca_e489u64, 0x5567_5b78_44c3_d493u64),
-        (11, 0x8700_8a7d_696d_d45c, 0xb27b_6a66_4add_cfd7),
-        (23, 0x0fe5_2558_759f_6817, 0xb86b_2ad6_d1ed_0efa),
+        (4u64, 0x7bc8_e24c_34c6_b32fu64, 0x22a1_1bed_2624_375fu64),
+        (11, 0x8542_718f_99cf_7112, 0xea6b_737b_371b_6c53),
+        (23, 0x0c79_bef6_a75d_654d, 0x3197_5c19_62b7_9ace),
     ] {
         // The implicit default, through the untouched constructor.
         let mut app = ai_vs_ai_with(content(), AiCommanders::new(seed, &[Faction::A, Faction::B]));

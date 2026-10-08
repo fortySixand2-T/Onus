@@ -524,20 +524,22 @@ fn the_real_batch_reports_what_the_sim_actually_does() {
     // reading; this test pins what *this* batch does, link by link, so a
     // behavioural regression still shows.
     //
-    // One holds, four are undetermined, and nothing fails.
+    // B4's tuned content (g1, F-046) moves it again: `arclight > bulwark` and
+    // `ripper > arclight` resolve as holds, the other three stay undetermined,
+    // and nothing fails. (F-041: one hold, four undetermined.)
     assert_eq!(report.failing(), 0, "no link reads as broken design:\n{report}");
-    assert_eq!(report.holding(), 1, "one link resolves as a hold:\n{report}");
-    assert_eq!(report.undetermined(), 4, "four links the sample cannot call:\n{report}");
+    assert_eq!(report.holding(), 2, "two links resolve as holds:\n{report}");
+    assert_eq!(report.undetermined(), 3, "three links the sample cannot call:\n{report}");
     assert_eq!(report.undefined(), 0, "every link has decided matches");
 
     // Link by link: the rate, and whether eight matches can resolve it.
     #[rustfmt::skip]
     let expected: &[(&str, f64, Verdict)] = &[
-        ("bulwark",  0.875,     Verdict::Holds),         // > ravager  — 0.0% at B3
-        ("ravager",  0.250,     Verdict::Undetermined),  // > sentinel — 0.625 at B3.5
-        ("sentinel", 0.625,     Verdict::Undetermined),  // > ripper   — 0.500 at B3.5
-        ("ripper",   0.750,     Verdict::Undetermined),  // > arclight — 1.000 at B3.5
-        ("arclight", 5.0 / 6.0, Verdict::Undetermined),  // > bulwark  — 1.000 at B3.5; 2 timeouts
+        ("bulwark",  0.750,     Verdict::Undetermined),  // > ravager  — 0.875 holds at F-041; 0.0% at B3
+        ("ravager",  0.500,     Verdict::Undetermined),  // > sentinel — 0.250 at F-041; 0.625 at B3.5
+        ("sentinel", 0.375,     Verdict::Undetermined),  // > ripper   — 0.625 at F-041; 0.500 at B3.5
+        ("ripper",   0.875,     Verdict::Holds),         // > arclight — 0.750 at F-041; 1.000 at B3.5
+        ("arclight", 1.000,     Verdict::Holds),         // > bulwark  — 5/6 at F-041 (2 timeouts); 1.000 at B3.5
     ];
     for (predator, rate, verdict) in expected {
         let l = link(&report, predator);

@@ -564,3 +564,12 @@
 - [2026-10-08] Modified: assets/data/strategies.ron — install g1: mass_* 2nd/3rd lines at 9000/15000, synth_steel_flesh lines 3/4 at 3000/6000, turtle workers 10 / attack_at_army 24; comments updated
 - [2026-10-08] Modified: DESIGN_BRIEF.md — roster costs (bulwark 95, ravager 80) and a note on the B4 timing changes
 - [2026-10-08] Modified: tests/b4_reservation.rs — comment no longer quotes bulwark's old 110 Alloy
+- [2026-10-08] Modified: tests/b1_matchup.rs — F-046: default-matchup golden hashes re-pinned on g1
+- [2026-10-08] Modified: tests/b1_strategies.rs — F-046: strategy golden hashes re-pinned on g1
+- [2026-10-08] Modified: tests/b35_parallel.rs — F-046: matchup and solo-fixture golden hashes re-pinned on g1
+- [2026-10-08] Modified: tests/b35_queue_depth.rs — F-046: matchup and solo-fixture golden hashes re-pinned on g1
+- [2026-10-08] Modified: tests/critic_b2_ac4.rs — F-046: golden hashes re-pinned on g1
+- [2026-10-08] Modified: tests/critic_b35_ac0.rs — F-046: nine golden rows re-pinned on g1
+- [2026-10-08] Modified: tests/critic_b35_ac0b.rs — F-046: eight golden rows re-pinned on g1
+- [2026-10-08] Modified: tests/b3_gate.rs — F-046: shipped pentagon-batch reading re-pinned to g1's measured values
+- [2026-10-08] Modified: tests/b3_pentagon.rs — F-046: real-batch link verdicts re-pinned to g1's measured values

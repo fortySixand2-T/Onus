@@ -688,7 +688,8 @@ fn an_injected_imbalance_fails_the_gate_and_names_the_strategy() {
 /// five mass probes, two seeds — `b3_pentagon`'s real batch). A measurement,
 /// pinned so a behavioural change shows; F-039 recorded it at B3 and F-041
 /// re-pins it at B4, when the opening reservation and the restored three-line
-/// scripts moved it (the B3 values are kept in the comments).
+/// scripts moved it; F-046 re-pins it on B4's tuned content (g1). The earlier
+/// values are kept in the comments.
 #[test]
 fn the_shipped_reading_on_the_pentagon_batch() {
     let content = shipped();
@@ -699,10 +700,11 @@ fn the_shipped_reading_on_the_pentagon_batch() {
     let settings = BatchSettings::default().with_only(probes).with_seeds(2);
     let recs = batch::run_batch(&content, &settings, &mut |_| {}).expect("shipped names");
     let g = KillGate::of(&content, &recs, &GateSpec::default());
-    // K1: no row is resolved either way above 65%. `mass_sentinel` is the
-    // strongest (78.1%, interval [57.0, 95.7]) and `mass_ripper` (68.8%) both
-    // straddle the bar; the other three are resolved below it. Undetermined,
-    // not PASS. (B3: 37.5 / 65.6 / 68.8 / 46.9 / 31.3.)
+    // K1: no row is resolved either way above 65%. `mass_ripper` is the
+    // strongest (68.8%, interval [47.5, 88.5]); it, `mass_sentinel` (56.3%)
+    // and `mass_arclight` (53.1%) straddle the bar; the other two are resolved
+    // below it. Undetermined, not PASS. (F-041: 26.0 / 78.1 / 68.8 / 34.4 /
+    // 42.7; B3: 37.5 / 65.6 / 68.8 / 46.9 / 31.3.)
     let rows: Vec<(&str, Option<f64>, Status)> = g
         .strength
         .rows
@@ -712,11 +714,11 @@ fn the_shipped_reading_on_the_pentagon_batch() {
     assert_eq!(
         rows,
         [
-            ("mass_bulwark", Some(0.2604166666666667), Status::Pass),
-            ("mass_sentinel", Some(0.78125), Status::Undetermined),
+            ("mass_bulwark", Some(0.28125), Status::Pass),
+            ("mass_sentinel", Some(0.5625), Status::Undetermined),
             ("mass_ripper", Some(0.6875), Status::Undetermined),
-            ("mass_ravager", Some(0.34375), Status::Pass),
-            ("mass_arclight", Some(0.4270833333333333), Status::Pass),
+            ("mass_ravager", Some(0.4375), Status::Pass),
+            ("mass_arclight", Some(0.53125), Status::Undetermined),
         ]
     );
     assert!(g.strength.failing.is_empty());
@@ -724,26 +726,29 @@ fn the_shipped_reading_on_the_pentagon_batch() {
     assert!(g.strength.losing.is_empty());
     assert_eq!(g.strength.status, Status::Undetermined);
 
-    // K2: 20 decided mirrors, slot A 11 of 20, left base 11 of 20 — both
-    // intervals ~±23 points wide. Undetermined: F-038 sizes the run that can
-    // decide it. (B3: 13 of 20 and 9 of 20.)
+    // K2: 20 decided mirrors, slot A 14.5 of 20 (72.5%), left base 13.5 of 20
+    // (67.5%) — both intervals ~±21 points wide and straddling the 5-point
+    // tolerance. Undetermined: F-038 sizes the run that can decide it.
+    // (F-041: 11 of 20 and 11 of 20; B3: 13 of 20 and 9 of 20.)
     assert_eq!(g.seat.slot_a.n, 20);
-    assert_eq!(g.seat.slot_a.value, Some(0.55));
-    assert_eq!(g.seat.left_spawn.value, Some(0.55));
+    assert_eq!(g.seat.slot_a.value, Some(0.725));
+    assert_eq!(g.seat.left_spawn.value, Some(0.675));
     assert_eq!(g.seat.status, Status::Undetermined);
 
-    // K3. The median decided match is 6:22 (B3: 6:36); 2 of 100 time out
-    // (B3: none), and 54 of 98 decided end inside the band — 55.1%, interval
-    // [43.5, 66.1], which straddles 50% where B3's 36% was resolved below it.
-    assert_eq!(g.termination.decided_median, Some(22_962), "6:22");
+    // K3. The median decided match is 7:00 (F-041: 6:22; B3: 6:36); 2 of 100
+    // time out (F-041: 2; B3: none), and 41 of 98 decided end inside the band
+    // — 41.8%, interval [31.1, 53.5], which straddles 50% (F-041: 55.1%; B3's
+    // 36% was resolved below it).
+    assert_eq!(g.termination.decided_median, Some(25_250), "7:00");
     assert_eq!(g.termination.timeout_rate.value, Some(0.02));
     assert_eq!(g.termination.timeout_rate.status, Status::Undetermined, "2 of 100 cannot certify <5%");
-    assert_eq!(g.termination.band_share.value, Some(0.5510204081632653));
-    assert_eq!(g.termination.band_share.status, Status::Undetermined, "55% of decided in band, not resolved either side of 50%");
-    // Reported context: 10% end before 5:00 and 36% after 8:00 (B3: 34% / 30%).
-    assert_eq!(g.termination.below.value, Some(0.1));
+    assert_eq!(g.termination.band_share.value, Some(0.41836734693877553));
+    assert_eq!(g.termination.band_share.status, Status::Undetermined, "42% of decided in band, not resolved either side of 50%");
+    // Reported context: 25% end before 5:00 and 34% after 8:00 (F-041: 10% /
+    // 36%; B3: 34% / 30%).
+    assert_eq!(g.termination.below.value, Some(0.25));
     assert_eq!(g.termination.below.status, Status::Pass);
-    assert_eq!(g.termination.beyond.value, Some(0.36));
+    assert_eq!(g.termination.beyond.value, Some(0.34));
     assert_eq!(g.termination.beyond.status, Status::Pass);
     assert_eq!(g.termination.status, Status::Undetermined, "nothing in K3 is resolved failing");
 
