@@ -216,9 +216,10 @@ all-timeout run is flagged, not reported as balanced.
 - [x] Tune **only RON** (`mvp_combat`, unit costs, `nemesis_bonus`, timings) toward the
       criteria; re-run; iterate.
       *(F-043, F-045, F-046: candidate g1 installed, RON only, goldens re-pinned under the
-      F-032 proof; the kill gate still **FAILs on K1 `turtle`** at 84.0%. Caveat: g1 turns
+      F-032 proof; the kill gate still **FAILs on K1 `turtle`** at 84.0%. g1 turned
       `b4_reservation`'s whole-script placement claim red (a `mass_sentinel` mirror ends at
-      tick 15 519, before its tick-15 000 third line), left unedited for the user's call.)*
+      tick 15 519, before its tick-15 000 third line); per the user's call the claim is now
+      bounded by a RON-derived grace (F-046), still red without the reservation.)*
 - [x] Ledger F-016+: the failing matchup(s), the change made, before/after win rates,
       final kill-criteria status. *(F-042 → F-046: baseline, two search phases, the g1
       install and its reading. Final status: gate FAIL on K1 `turtle` 84.0%, K2/K3

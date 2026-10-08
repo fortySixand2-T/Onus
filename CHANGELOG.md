@@ -581,3 +581,4 @@
 - [2026-10-08] Modified: BALANCE_PLAN.md — tick "Tune only RON" and "Ledger" with their results (gate still FAILs on K1 turtle); add the unticked "Turtle dominance needs a non-RON lever" AC
 - [2026-10-08] Modified: tests/b4_reservation.rs — bound the whole-script claim: placements must be a script-order prefix, every unplaced opening must satisfy at_tick + grace > end tick (grace derived from RON as the best-case banking time), and at least one strategy must still place more than one opening (non-vacuity)
 - [2026-10-08] Modified: FINDINGS.md — F-046: record the bounded claim, its grace derivation, the no-opening-reservation red proof and the full-gate counts
+- [2026-10-08] Modified: BALANCE_PLAN.md — Tune-only-RON note records the bounded placement claim (F-046)
