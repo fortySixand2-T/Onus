@@ -577,3 +577,4 @@
 - [2026-10-08] Modified: tests/b1_probe_set.rs — stale 19 320 turtle commit-tick comment updated to 21 780 (F-046)
 - [2026-10-08] Modified: tests/critic_b1_ac3.rs — stale 19 320 turtle commit-tick comment updated to 21 780 (F-046)
 - [2026-10-08] Modified: assets/data/strategies.ron — turtle comment records the g1 commit ticks (21 780 vs 21 120); no value change
+- [2026-10-08] Modified: FINDINGS.md — F-046: g1 install, F-032 golden proof (P1/P2/N1/N2), re-pin tables, closure ticks on all three seeds, the g1 gate reading and the full-gate counts

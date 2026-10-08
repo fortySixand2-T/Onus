@@ -4363,3 +4363,241 @@ clippy, release and bench above is from that fresh build.
 
 Rule: after any source mutation on the box, `touch` the restored files
 before the next build in *every* profile, not just the one used next.
+
+## F-046 — g1 ships: the golden proof, the re-pin, the closure on every seed, and what the gate says (B4)
+
+The user chose to keep F-045's best candidate `g1` and to carry the turtle
+forward as a new AC. This entry records:
+- the install;
+- the F-032-standard proof that every moved golden moved because the data
+  moved;
+- the re-pin, old → new;
+- the closure re-measured on all three of its seeds;
+- the gate reading of the shipped content;
+- one F-041 claim that g1 breaks, which is left red for a decision.
+
+### The install
+
+`units.ron` and `strategies.ron` are F-045's g1, number for number: `units.ron`
+is byte-identical to the candidate (md5 `4944484a…`). `strategies.ron` differs
+only in comments, and is code-identical once comments are stripped. The
+comments that quoted the old prices, worker count, line timings and commit
+ticks were brought up to date. DESIGN_BRIEF's roster now reads Bulwark
+95 Alloy and Ravager 80, and a note under the table gives the three timing
+changes. The brief states no script timings, so none were added.
+
+### The precondition: no Rust changed
+
+`git diff 049e9ed ed07d82 -- src benches tests Cargo.toml Cargo.lock` is
+empty. 049e9ed was F-044's test-only unpinning, and everything after it up to
+the install is FINDINGS, BALANCE_PLAN, CHANGELOG and the two RON files. The
+library every test links is the one F-044 shipped, so the only input that can
+move a hash is `assets/data`.
+
+### The proof, both ways, both profiles
+
+Content loads at runtime from `CARGO_MANIFEST_DIR/assets/data`, so the swap is
+a file change, not a rebuild. Every run below was preceded by `touch` on
+`src/**/*.rs`, the tests and the swapped RON. That was deliberate, after
+F-045's stale debug rlib: an `rsync -a`-restored file can look older than the
+last build.
+
+| run | binary | `assets/data` | pins | result |
+|---|---|---|---|---|
+| P1 | current (debug, fresh build) | **pre-g1** | old | **935 passed, 5 failed, 1 ignored** |
+| P2 | current (release, fresh build) | **pre-g1** | old | **935 passed, 5 failed, 1 ignored**, the same five |
+| N1 | current (debug) | g1 | old | 926 passed, 14 failed, 1 ignored |
+| N2 | current (debug and release) | g1 | re-pinned | see the full gate below |
+
+P1 and P2 are F-045's full-gate runs at d50f9a1, whose RON is the pre-g1 RON.
+**No golden is among their five failures.** All five are F-041's reds, each a
+claim about content, not a pin:
+- `b35_tempo` median;
+- `critic_b1_ac3` mass×mass;
+- `critic_b1_ac3` rush/turtle;
+- `critic_b35_closure` turtle;
+- `critic_b3_ac2` crippled.
+
+Every golden-bearing suite passes at its old, unedited pin under this binary.
+
+N1's 14 failures on g1 with the old pins:
+
+| kind | tests |
+|---|---|
+| per-tick `state_hash` / journal goldens (9) | `b1_matchup` default; `b1_strategies` one-barracks default; `b35_parallel` default + single-opening; `b35_queue_depth` default + depth-one; `critic_b2_ac4` probe; `critic_b35_ac0` depth-one tree; `critic_b35_ac0b` shipped matchups |
+| a per-box replay pin under `target/` (1) | `critic_b1_ac2` non-default pair, a file pin written by an earlier process; deleted so the next run re-pins it, as its message says |
+| measured readings pinned so behaviour shows (3) | `b3_gate` shipped reading; `b3_pentagon` real batch; `critic_b35_closure` F-036 ticks |
+| **a claim** (1) | `b4_reservation::every_multi_opening_strategy_places_its_whole_script_in_a_head_to_head`, below |
+
+Four of F-041's five reds are green on g1 with no edit:
+- `b35_tempo` median;
+- `critic_b1_ac3` mass×mass;
+- `critic_b1_ac3` rush/turtle;
+- `critic_b3_ac2` crippled.
+
+### The re-pin, old → new
+
+The values were recomputed on the box under g1, in release; the full gate
+below confirms them in debug. Each hash was read from the failing assertion
+and re-run until green.
+
+**The default matchup at 3 000 ticks** (state in `b1_matchup`,
+`b35_parallel`, `b35_queue_depth`, `critic_b2_ac4`; seeds 4 and 11 in
+`b1_strategies`; journal in the first three):
+
+| seed | state, old → new | journal, old → new |
+|---|---|---|
+| 4 | `0xbd74941fb3cae489` → `0x7bc8e24c34c6b32f` | `0x55675b7844c3d493` → `0x22a11bed2624375f` |
+| 11 | `0x87008a7d696dd45c` → `0x8542718f99cf7112` | `0xb27b6a664addcfd7` → `0xea6b737b371b6c53` |
+| 23 | `0x0fe52558759f6817` → `0x0c79bef6a75d654d` | `0xb86b2ad6d1ed0efa` → `0x31975c1962b79ace` |
+
+**The single-opening fixture** (`b35_parallel` and `b35_queue_depth`):
+
+| match | state, old → new | journal, old → new |
+|---|---|---|
+| ripper vs bulwark, seed 4 | `0xbc761268e37bdfa6` → `0x8eb242d5fdd1d6ac` | `0x501ed9cfa3548f9b` → `0x4e1604bd46e099f6` |
+| bulwark vs ripper, seed 11 | `0x9b7ab550477efe7b` → `0xca63fc4a377554a9` | `0x8bc810501741a3b9` → `0x565da2a66530936a` |
+
+**`critic_b35_ac0`'s depth-one tree** (trace, end state, journal):
+
+| row | trace | end | journal |
+|---|---|---|---|
+| mvp v mvp, 4 | `3fc03b8f…5f9c` → `8d19e60b…f4d5` | `25156a33…d5f5` → `988ac0b0…e4d2` | `55675b78…d493` → `c2d3d58c…75d5` |
+| mass_ripper v mass_arclight, 7 | `cb0d0cef…5cee` → `28b23577…bfdb` | `b52ef814…f447` → `2712cca3…623d` | `8fc66471…ccd4` → `75541b9b…04af` |
+| mass_arclight v mass_ripper, 7 | `3771c881…1d1e` → `ed81f894…04c5` | `21e24911…5397` → `e34df633…de55` | `c96cb7bd…8ccb` → `7b14173f…d987` |
+| rush v turtle, 13 | `06942a84…0db2` → `dbe8948f…d721` | `9d84c955…b380` → `f7c034ea…e631` | unchanged |
+| turtle v rush, 13 | `007df998…9101` → `78316d1b…475d` | `f073adc2…7164` → `7b1744a8…8f92` | `9f41c2f1…59fd` → `69bd3de0…157e` |
+| synth_triad v mass_ravager, 101 | `86b641af…5e6b` → `f9be9ff5…c897` | `53106991…4e5d` → `32502549…c768` | `c624d8e6…d7c8` → `7021b0e7…d4b7` |
+| mass_bulwark v mass_sentinel, 55 | `2b0e2f23…728a` → `82e3cb31…563c` | `5bc08751…65e2` → `8df30a7f…cbb0` | `5979ac90…e069` → `ace7bc94…174a` |
+| mass_sentinel v mass_bulwark, 55 | `64e1c8d4…36ac` → `8d3e9fbc…d682` | `4ecd0c53…157a` → `8035691a…a491` | `a82aa835…a07f` → `eafeec45…59c7` |
+| synth_steel_flesh v rush, 99 | `694a4cc5…e61a` → `d4f44e22…03ae` | `b536edde…a937` → `16f170ed…7b61` | unchanged |
+
+The full values are in the test. Note that `mvp v mvp`'s whole-match journal
+and the default matchup's 3 000-tick journal were one value before
+(`0x5567…d493`) and now differ (`0xc2d3…` against `0x22a1…`). Under g1 the
+mvp match takes a decision after tick 3 000 that it did not take before. The
+two pins are now separate numbers.
+
+**`critic_b35_ac0b`'s shipped matchups:** all eight rows moved. The F-041
+values are kept in the row comments. Rows 5-6 (`mass_arclight` v
+`mass_ripper`, both orientations) land back exactly on their **pre-F-041**
+values. g1 puts a mass probe's second line at tick 9 000, past the probe's
+7 200-tick horizon, so inside that window each side stands one line, as it did
+before the opening reservation. That is an independent check that the move is
+the scripts' timing and nothing else.
+
+**The measured readings:**
+
+| pin | F-041 | g1 (F-046) |
+|---|---|---|
+| `b3_gate` K1 rows (bulwark / sentinel / ripper / ravager / arclight) | 26.0 / 78.1 / 68.8 / 34.4 / 42.7 | 28.1 / 56.3 / 68.8 / 43.8 / 53.1 (arclight now undetermined) |
+| `b3_gate` K2 slot A / left base | 55.0 / 55.0 | 72.5 / 67.5 (undetermined) |
+| `b3_gate` K3 median / band share / timeouts / below / beyond | 6:22 / 55.1% / 2% / 10% / 36% | 7:00 / 41.8% / 2% / 25% / 34% (undetermined) |
+| `b3_gate` overall | undetermined | undetermined |
+| `b3_pentagon` 2-seed links (b>rav / rav>s / s>rip / rip>arc / arc>b) | 87.5 H / 25.0 U / 62.5 U / 75.0 U / 83.3 U | 75.0 U / 50.0 U / 37.5 U / 87.5 H / 100 H |
+| `b3_pentagon` holds / undetermined / fails | 1 / 4 / 0 | 2 / 3 / 0 |
+
+`b3_pentagon`'s claim, that no link reads as broken design, holds unchanged:
+0 fails.
+
+### The closure, on every seed it checks
+
+`critic_b35_closure::the_turtle_commits_last_on_every_seed_with_the_claimed_margin`
+was re-measured in release on all three of its seeds (`seed_at(0x0070_A71E, k)`
+for k = 0, 1, 2). It was not run to the first failure only.
+
+| seed | turtle | latest other | margin |
+|---|---|---|---|
+| `0x11316781aee2febd` | 21 780 | `mass_bulwark` 21 120 | 660 |
+| `0x183b0b169d9d1dd9` | 21 780 | `mass_bulwark` 21 120 | 660 |
+| `0x6682cfae81d28347` | 21 780 | `mass_bulwark` 21 120 | 660 |
+
+The ordering holds on every seed, and the ticks are seed-independent, as
+F-036 claimed. The full commit order is identical on all three seeds:
+
+| strategy | commit tick |
+|---|---|
+| `rush` | 750 |
+| `mvp` | 3 990 |
+| `mass_ripper` | 7 830 |
+| `synth_steel_flesh` | 13 710 |
+| `mass_sentinel` | 13 950 |
+| `synth_triad` | 14 670 |
+| `mass_ravager` | 15 870 |
+| `mass_arclight` | 20 910 |
+| `mass_bulwark` | 21 120 |
+| `turtle` | 21 780 |
+
+The pin moves from (19 320, 18 750) to (21 780, 21 120), and the margin grows
+from 570 to 660 ticks. The assertions are unchanged: turtle strictly last, and
+the exact pair on every seed. The stale "19 320" comments in `b1_probe_set`,
+`critic_b1_ac3` and `strategies.ron` now say 21 780. The F-033 history lines
+that say 18 750 were B3.5 facts and stay.
+
+### The g1 reading (F-045's 4-seed confirmation; the shipped content)
+
+The kill gate is **FAIL, on K1 `turtle` only**:
+
+| reading | g1 (shipped) | F-042 (pre-g1) |
+|---|---|---|
+| K1 | **FAIL, `turtle` 84.0% [75.4, 91.4]** | FAIL, `turtle` 88.2% |
+| K2 | undetermined | undetermined |
+| K3 | undetermined: band share 50.6% [46.5, 54.8], timeouts 1.5%, median 6:23 | undetermined: 48.5% |
+| pentagon | 3 hold / 2 undetermined / **0 fail** | 2 hold / 2 undetermined / 1 fail |
+
+The weak rows:
+- **`rush` is LOSING at 19.4%.** It was 62.5% at F-042. The cause is not
+  isolated. The likely contributors are all in g1:
+  - the rush's own unit, the Ripper, hits less often (cadence 40 → 50);
+  - Bulwark and Ravager are cheaper and quicker to stand, so its one-body
+    waves meet defenders sooner.
+
+  Separating them would take a one-change-at-a-time screen, which was not
+  run.
+- `mass_bulwark` is the next weakest at 35.4%. That is a PASS, not flagged
+  losing; it was 14.0% LOSING at F-042.
+
+### One F-041 claim g1 breaks — left red, for a decision
+
+`b4_reservation::every_multi_opening_strategy_places_its_whole_script_in_a_head_to_head`
+claims that every shipped multi-opening script places **all** its openings
+before the match ends, in its own mirror (seed `seed_at(0, 1)`). That is the
+gating test of BALANCE_PLAN's ticked Multi-barracks box. Under g1:
+- a `mass_sentinel` mirror ends at tick 15 519;
+- its third line came due at tick 15 000;
+- with 519 ticks of slow income the reservation had not yet covered the
+  Foundry's 150 Alloy, so it placed `[1, 1]` of `[1, 1, 1]`.
+
+The reservation still works: the test that pins it on a three-line fixture,
+and the "trains nothing while an opening is due" test, are green. What changed
+is that g1 schedules the third line late enough for a match to end first.
+
+The test was **not** edited. Weakening it to "every opening due early enough"
+would change a claim. The options are:
+- re-time g1's late lines so they come due well inside a match, which is a
+  content change and needs a re-measure;
+- restate the claim, which is a decision about the Multi-barracks AC.
+
+Either way it is for the user.
+
+### The full gate (N2)
+
+Run on the box after `touch` of `src/**/*.rs`, `tests/`, `benches/` and the RON files (mtime
+trap, F-045), with the shipped g1 RON (`units.ron` md5 `4944484a47bb444108db8fa89969d0a8`,
+`strategies.ron` md5 `917704bb96bdb987eab73b9a334965de`):
+
+| step | result |
+|---|---|
+| `cargo clippy --all-targets -- -D warnings` | clean (exit 0) |
+| `cargo test` (debug) | 939 passed, 1 failed, 1 ignored |
+| `cargo test --release` | 939 passed, 1 failed, 1 ignored |
+| `cargo bench --no-run` | builds (exit 0) |
+
+The one failure, in both profiles, is the claim test
+`tests/b4_reservation.rs::every_multi_opening_strategy_places_its_whole_script_in_a_head_to_head`:
+"`mass_sentinel` (A) placed [1, 1] of its scripted [1, 1, 1] by tick 15519 (match over: true)".
+On g1 the mass_sentinel mirror ends at tick 15 519, before the third line (scripted at 15 000)
+is placed. This is a test *claim*, not a golden, so it was not edited: whether the claim
+should hold for a match that ends early, or g1's 15 000 line should move, is the user's call.
+Every golden and every measured pin is green. The expected "0 failed" is therefore not met by
+exactly this one test.
