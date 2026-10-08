@@ -324,8 +324,9 @@
             ],
             // 26, not 15 (F-036): at 15 it committed at tick 13 470, before
             // four other strategies (mass_bulwark last at 18 750), so it was
-            // not the late pole any more. 26 commits at 19 320, the smallest
-            // value measured with a margin (24 clears by only 390 ticks).
+            // not the late pole any more. B4 (F-045/F-046) lowered it to 24 on
+            // the retuned content, where it commits at 21 780, still last, 660
+            // ticks after mass_bulwark (21 120) on every closure seed.
             attack_at_army: 24,
             attack_interval_ticks: 600,
             attack_spread: 80.0,

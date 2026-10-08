@@ -573,3 +573,7 @@
 - [2026-10-08] Modified: tests/critic_b35_ac0b.rs — F-046: eight golden rows re-pinned on g1
 - [2026-10-08] Modified: tests/b3_gate.rs — F-046: shipped pentagon-batch reading re-pinned to g1's measured values
 - [2026-10-08] Modified: tests/b3_pentagon.rs — F-046: real-batch link verdicts re-pinned to g1's measured values
+- [2026-10-08] Modified: tests/critic_b35_closure.rs — F-046: measured commit ticks re-pinned to 21 780 / 21 120 (all three seeds); ordering and margin claims unchanged
+- [2026-10-08] Modified: tests/b1_probe_set.rs — stale 19 320 turtle commit-tick comment updated to 21 780 (F-046)
+- [2026-10-08] Modified: tests/critic_b1_ac3.rs — stale 19 320 turtle commit-tick comment updated to 21 780 (F-046)
+- [2026-10-08] Modified: assets/data/strategies.ron — turtle comment records the g1 commit ticks (21 780 vs 21 120); no value change
