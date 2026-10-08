@@ -4128,3 +4128,200 @@ Results:
     - the five F-041 reds.
 
 The shipped RON was restored afterwards and checked byte for byte.
+
+## F-045 — B4 tuning, phase 3: from d2 with the combat levers freed; budget exhausted, nothing kept (B4)
+
+This entry records the Step B search that followed F-044.
+- It started from F-043's best candidate `d2`.
+- F-044 had freed the combat levers.
+- It ran on the box after hours under `nice 19`.
+
+**No RON is changed by this entry.** The shipped content is still F-042's,
+with F-042's readings and the five F-041 reds.
+
+**Method.**
+- Each candidate is a full RON copy.
+- Each one ran in its own private mount namespace:
+  `unshare -rm` with a bind mount over `assets/data`.
+- So candidates ran in parallel, and the shared tree's RON never changed.
+- Screens were 1-seed rosters (`balance --seeds 1`, 200 matches). That is
+  ±20 points on a row, so they are directional only.
+- The best screen was confirmed on F-042's 4-seed roster.
+
+**Compute.**
+- Exploration: 23 one-seed rosters.
+  - About 3.6 h if each had run alone on the box (≈ 9.5 min each).
+  - The OS billed about 2.2x that, because the box has 4 physical cores and
+    8 hyperthreads and `balance` runs Bevy's thread pools.
+  - Round 1 ran 7 at once and oversubscribed the box; later rounds ran 4 at
+    once.
+- Confirmation: one 4-seed roster (≈ 40 min) and two red-test runs.
+
+**Tags used in the tables.**
+- *band*: matches ending in 5:00–8:00, as a share of all matches (timeouts
+  count as long).
+- *rip*: the `mass_ripper` row.
+- *tur*: the `turtle` row.
+
+### Screens (1 seed)
+
+Reference, `d2` at 1 seed: band 39.5%, rip 75.0, tur 69.4.
+
+**Round 1, single levers on d2:**
+
+| cand | change | band | rip | tur | note |
+|---|---|---|---|---|---|
+| e1 | turtle `worker_target` 9, `attack_at_army` 22 | 45.5 | 72.2 | 80.6 | |
+| e2 | turtle 10 / 24 | **50.5** | 72.2 | 80.6 | 30 of 38 turtle games in band |
+| e3 | ripper 50 Alloy | 33.5 | 58.3 | 77.8 | turtle games go long |
+| e4 | bulwark 95 Alloy / 1 300 ticks | 45.5 | 69.4 | 77.8 | `mass_bulwark` 38.9, no longer losing |
+| e5 | `mvp_gather_ticks` 110 | 37.5 | 69.4 | 55.6 | shifts every match right; a 0-hold pentagon |
+| e6 | mass `attack_at_army` 8 (all five) | 36.0 | 66.7 | 69.4 | `sentinel > ripper` fails |
+| e7 | ripper train 900 | 37.5 | 69.4 | 63.9 | |
+
+**Round 2, combining:**
+
+| cand | change | band | rip | tur |
+|---|---|---|---|---|
+| f1 | e2 + e4 | 54.5 | 72.2 | 80.6 |
+| f2 | f1 + ripper offense 5 | 54.0 | 66.7 | 88.9 |
+| f3 | f1 + turtle army 22 | 54.0 | 69.4 | 83.3 |
+| f4 | f2 + turtle army 22 | 52.0 | 63.9 | 91.7 |
+
+**Round 3, on f1:**
+
+| cand | change | band | rip | tur | note |
+|---|---|---|---|---|---|
+| **g1** | ripper `mvp_attack_ticks` 40 → 50 | **55.5** | 69.4 | 80.6 | |
+| g2 | ripper `mvp_attack_ticks` 55 | 55.5 | 66.7 | 83.3 | |
+| g3 | mass army 12 | 53.0 | 63.9 | 88.9 | |
+| g4 | g3 + ripper 50 ticks | 52.5 | 44.4 | 88.9 | 3 timeouts in `arclight > bulwark` |
+
+**Rounds 4–5, the turtle's script on g1** (`worker_target` / `attack_at_army`
+unless stated):
+
+| cand | turtle | band | tur |
+|---|---|---|---|
+| h1 | 8 / 20 | 50.5 | 83.3 |
+| h2 | 8 / 24 | 46.0 | 80.6 |
+| h3 | 9 / 20 | 54.5 | 77.8 |
+| h4 | 3rd/4th lines at 6 000 / 9 000 | 57.0 | 100.0 |
+| i1 | 7 / 16 | 49.0 | 77.8 |
+| i2 | 7 / 18 | 48.5 | 72.2 |
+| i3 | 8 / 16 | 51.0 | 75.0 |
+| i4 | 8 / 18 | 52.5 | 80.6 |
+
+**Red-test checks on the finalists** (release, private mount):
+- **h3** fails turtle-latest. On the first closure seed the turtle commits at
+  20 730, after `mass_arclight` (20 910) and `mass_bulwark` (21 120).
+- **j1** (turtle 9 / 22) clears `mass_bulwark` by only 270 ticks.
+- **g1** clears it by 660 (21 780 vs 21 120). F-036's margin was 570.
+
+### What the screens show
+
+1. **The ripper's attack rate was the outlier.**
+   - At 40 ticks a 40-Alloy Ripper dealt about 1.1 damage per second per Alloy.
+   - Every other unit dealt 0.12–0.43.
+   - That made `mass_ripper` strong (77.6% in d2) and HQ kills fast (a short
+     tail).
+   - At 50 ticks: mass_ripper 61.1% at 4 seeds, and the HQ siege takes longer.
+   - A cost nerf (e3, and d4 in F-043) also hit `rush`, the synths and the
+     turtle's timing. The attack-rate nerf did not.
+2. **Bulwark at 95 Alloy / 1 300 ticks.**
+   - `mass_bulwark` is no longer the losing row: 35.4% at 4 seeds, down from
+     21.6 losing.
+   - Its matches move into the band: 98 of 152 at 4 seeds.
+3. **Turtle 10 / 24 puts its matches back in the band.**
+   - Under d2 (7 / 20) they ran long: 91 of 152 past 8:00.
+   - Under g1 123 of 152 are in band.
+4. **The turtle's strength does not respond to its own script.**
+   - Every worker/army mix tried landed between 72% and 100%.
+   - It wins one way: a single large wave at 6:15–7:30 into mass probes of
+     10 units, about 4/4 per cell.
+   - It loses only to ripper hits in the first 2–3 minutes, in one seat.
+   - Fewer workers delay it and lengthen its games. A smaller army moves its
+     commit before `mass_bulwark` and breaks turtle-latest.
+   - So on these levers the turtle is a pure trade between K1 and both K3 and
+     the F-036 claim. It needs a lever outside its own script.
+
+### g1 confirmed (4 seeds, 800 matches, ≈ 40 min wall, single process)
+
+Command:
+`balance --seeds 4 --report /tmp/onus_b4_g1.ron`, on the same seeds as F-042.
+
+**The g1 diff against the shipped content:**
+- `bulwark`: 110 → 95 Alloy, train 1 500 → 1 300.
+- `ripper`: `mvp_attack_ticks` 40 → 50.
+- `ravager`: 90 → 80 Alloy, train 1 200 → 1 100 (from d2).
+- All five `mass_*`: 2nd/3rd lines 600 / 900 → 9 000 / 15 000 (from d2; still
+  knob-identical).
+- `synth_steel_flesh`: 3rd/4th lines 1 200 / 1 500 → 3 000 / 6 000 (from d2).
+- `turtle`: `worker_target` 12 → 10, `attack_at_army` 26 → 24.
+
+**Gate: FAIL**, the same as F-042, on K1 `turtle` only.
+
+| reading | g1 | d2 (F-043) | F-042 shipped |
+|---|---|---|---|
+| K1 | **FAIL, `turtle` 84.0% [75.4, 91.4]** | FAIL, `mass_ripper` 77.6% | FAIL, `turtle` 88.2% |
+| `mass_sentinel` | 61.8% undetermined | 66.9% | 66.0% |
+| `mass_ripper` | 61.1% undetermined | 77.6% FAIL | 43.1% |
+| `synth_triad` | 58.2% undetermined | 56.0% | 52.5% |
+| `mass_bulwark` | 35.4% PASS | 21.6% LOSING | 14.0% LOSING |
+| `rush` | 19.4% PASS, LOSING | 23.6% LOSING | 62.5% |
+| `mvp` | 34.7% PASS | 37.5% | 59.7% |
+| K3 band share | **50.6% [46.5, 54.8] undetermined** | 33.9% FAIL | 48.5% undetermined |
+| timeouts | 1.5% PASS | 2.0% | 1.0% |
+| decided median | 6:23 | 6:17 | 5:58 |
+| K2 | undetermined; slot A 58.1%, left 61.9% (n_eff 58) | undetermined | undetermined |
+| bulwark > ravager | 81.2% holds | 57.1% | 86.7% holds |
+| ravager > sentinel | 37.5% undetermined | 37.5% | **25.0% FAILS** |
+| sentinel > ripper | 56.2% undetermined | 37.5% | 56.2% |
+| ripper > arclight | 87.5% holds | 93.8% holds | 62.5% |
+| arclight > bulwark | 100% holds | 93.8% holds | 85.7% holds |
+
+The other g1 rows: `mass_ravager` 50.8, `mass_arclight` 51.3,
+`synth_steel_flesh` 43.2. All PASS.
+
+**The five F-041 red tests under g1** (release, private mount):
+- `b35_tempo` median: green; its density test stays green.
+- rush-earliest / turtle-latest: green.
+- every mass×mass cell resolves: green.
+- the crippled-probe premise: green.
+- The closure: the ordering holds on the first seed (turtle 21 780 vs
+  `mass_bulwark` 21 120, a 660-tick margin). Only F-036's measured pin
+  (19 320 / 18 750) is red, and it moves under F-032's licence.
+  - The test stops at the first seed's pin, so seeds 1 and 2 were not read.
+  - A re-pin would need F-036's "seed-independent" claim re-measured on all
+    three seeds.
+
+### Why it was not kept
+
+The brief's bar was:
+- the five reds green;
+- K1 and K3 not FAIL;
+- no pentagon FAIL.
+
+g1 meets every part except K1: the turtle still FAILs, at 84.0%. It is the
+best reading of B4 so far:
+- K3 no longer FAILs;
+- the pentagon has no FAIL;
+- `mass_ripper` and `mass_bulwark` are fixed;
+- 4 of the 5 reds are green, and the 5th is a measured pin.
+
+The budget ran out with the gate still FAIL, so per the brief it is reported,
+not shipped. The candidate is recorded here number for number, so it can be
+installed as is.
+
+### What is needed next
+
+1. **The turtle needs a lever outside its own script.** Candidates:
+   - give the mass probes more economy (knob-identical `worker_target` 7–8);
+     this changes their strength too;
+   - a defender's advantage, so a single large wave does not roll a base;
+     building HP barely moved length in F-043, but it was never screened for
+     strength;
+   - accept the turtle as the dominant pole and re-ask whether K1 should gate
+     a deliberately extreme probe. That is a gate change, so it is for the
+     human, not B4's loop.
+2. **K3 is now a seed-count question.** 50.6% [46.5, 54.8] needs about four
+   times the sample to resolve.

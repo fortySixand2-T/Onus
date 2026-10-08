@@ -557,3 +557,5 @@
 - [2026-10-07] Modified: tests/critic_b35_ac0b.rs — F-044 one-foundry stock is the shipped Foundry cost + 10
 - [2026-10-07] Modified: tests/critic_b35_armour.rs — F-044 mitigation pin becomes "not the reverted 1"; mass threshold read from probe 0 (two tests renamed)
 - [2026-10-07] Modified: FINDINGS.md — F-044 unpinning table, mutation results, suite proofs
+- [2026-10-08] Modified: FINDINGS.md — F-045 B4 phase-3 RON search from d2 (combat levers freed); best candidate g1 recorded, gate still FAIL on K1 turtle, no RON kept
+- [2026-10-08] Modified: BALANCE_PLAN.md — B4 multi-barracks box ticked (delivered by F-041); tuning and ledger boxes left open

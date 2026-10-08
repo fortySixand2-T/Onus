@@ -217,7 +217,7 @@ all-timeout run is flagged, not reported as balanced.
       criteria; re-run; iterate.
 - [ ] Ledger F-016+: the failing matchup(s), the change made, before/after win rates,
       final kill-criteria status.
-- [ ] **Multi-barracks as a real capability (open, from F-035).** The AI places an opening
+- [x] **Multi-barracks as a real capability (open, from F-035).** The AI places an opening
       only when the stockpile covers its cost, and its army step spends the stockpile on
       anything cheaper first, so under B3.5's economy openings past the first rarely go up
       (only `mass_ripper`'s second does). Add opening reservation — the army step holds back
@@ -226,6 +226,9 @@ all-timeout run is flagged, not reported as balanced.
       five mass probes' opening lists identical again (empty
       `b1_probe_set::MASS_PROBE_OPENING_EXCEPTIONS` and drop the per-probe exceptions in
       `critic_b1_ac3` / `critic_b35_armour`).
+      **Result** (F-041, commit 3c878f7): the army step reserves a due opening's Alloy, every
+      scripted line is built, `MASS_PROBE_OPENING_EXCEPTIONS` is empty and the per-probe
+      exceptions are gone; the five probes are knob-identical in what they script and build.
 
 ## B5 — The human fun gate (not automatable — and required)
 
