@@ -213,10 +213,26 @@ all-timeout run is flagged, not reported as balanced.
       post-reservation build — gate FAIL on K1 `turtle` 88.2%; K3 band share 48.5% undetermined;
       pentagon 2 hold / 2 undetermined / `ravager > sentinel` fails; `mass_arclight` K2 re-read 52.4%
       left base over 126 seeds, undetermined.)*
-- [ ] Tune **only RON** (`mvp_combat`, unit costs, `nemesis_bonus`, timings) toward the
+- [x] Tune **only RON** (`mvp_combat`, unit costs, `nemesis_bonus`, timings) toward the
       criteria; re-run; iterate.
-- [ ] Ledger F-016+: the failing matchup(s), the change made, before/after win rates,
-      final kill-criteria status.
+      *(F-043, F-045, F-046: candidate g1 installed, RON only, goldens re-pinned under the
+      F-032 proof; the kill gate still **FAILs on K1 `turtle`** at 84.0%. Caveat: g1 turns
+      `b4_reservation`'s whole-script placement claim red (a `mass_sentinel` mirror ends at
+      tick 15 519, before its tick-15 000 third line), left unedited for the user's call.)*
+- [x] Ledger F-016+: the failing matchup(s), the change made, before/after win rates,
+      final kill-criteria status. *(F-042 → F-046: baseline, two search phases, the g1
+      install and its reading. Final status: gate FAIL on K1 `turtle` 84.0%, K2/K3
+      undetermined, pentagon 3 hold / 2 undetermined / 0 fail.)*
+- [ ] **Turtle dominance needs a non-RON lever (F-045/F-046).** Three phases of RON
+      search moved the turtle from 88.2% to 84.0% and never below the 65% bar. Its own
+      script knobs are spent, and the mass probes must stay knob-identical. Candidate
+      levers:
+      - a defender's advantage, so one large wave does not roll a base;
+      - attackers that hold until they outnumber a fortified defending army;
+      - re-asking whether K1 should gate a deliberately extreme probe.
+
+      Each of these is a design or gate change, not tuning. **None proceeds without the
+      user's go-ahead.**
 - [x] **Multi-barracks as a real capability (open, from F-035).** The AI places an opening
       only when the stockpile covers its cost, and its army step spends the stockpile on
       anything cheaper first, so under B3.5's economy openings past the first rarely go up
