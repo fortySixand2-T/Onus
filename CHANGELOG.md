@@ -559,3 +559,4 @@
 - [2026-10-07] Modified: FINDINGS.md — F-044 unpinning table, mutation results, suite proofs
 - [2026-10-08] Modified: FINDINGS.md — F-045 B4 phase-3 RON search from d2 (combat levers freed); best candidate g1 recorded, gate still FAIL on K1 turtle, no RON kept
 - [2026-10-08] Modified: BALANCE_PLAN.md — B4 multi-barracks box ticked (delivered by F-041); tuning and ledger boxes left open
+- [2026-10-08] Modified: FINDINGS.md — F-045: full-gate counts on f4e5409 (debug and release 935/5/1, clippy and bench clean) and the stale debug-rlib mtime trap

@@ -4325,3 +4325,41 @@ installed as is.
      human, not B4's loop.
 2. **K3 is now a seed-count question.** 50.6% [46.5, 54.8] needs about four
    times the sample to resolve.
+
+### The full gate on the committed tree (f4e5409, shipped RON)
+
+The shipped RON was verified by md5 before and after every run:
+units `6c288837…`, strategies `28e1eb8a…`.
+
+| step | result |
+|---|---|
+| `cargo clippy --all-targets -- -D warnings` | exit 0 |
+| `cargo test` (debug) | 935 passed, 5 failed, 1 ignored |
+| `cargo test --release` | 935 passed, 5 failed, 1 ignored |
+| `cargo bench --no-run` | exit 0 |
+
+The 5 failures are F-041's reds, the same in both profiles:
+- `b35_tempo` median;
+- `critic_b1_ac3` mass×mass;
+- `critic_b1_ac3` rush/turtle;
+- `critic_b35_closure` turtle;
+- `critic_b3_ac2` crippled.
+
+**A stale-build trap, recorded so it is not repeated.** The first debug run
+read 905 passed and 35 failed (nemesis on every pair, replay writers that never
+decided, moved goldens). A rerun gave the same 35, so the failure was
+deterministic.
+
+The cause was not the code, and not the content:
+- The debug `libonus` rlib had been built at 2026-10-05 20:54:20 from a
+  mutated `src/sim/combat.rs`, during F-044's mutation proof.
+- The restored source came back with an older mtime (rsync `-a` keeps the
+  Mac's mtime), so cargo saw the source as older than the rlib and never
+  rebuilt it.
+- Release had been rebuilt since, which is why only debug showed it.
+
+After `touch` on `src/**/*.rs`, the debug suite read 935 / 5, and the rerun of
+clippy, release and bench above is from that fresh build.
+
+Rule: after any source mutation on the box, `touch` the restored files
+before the next build in *every* profile, not just the one used next.
