@@ -588,3 +588,4 @@
 - [2026-10-08] Modified: assets/data/strategies.ron — comments only: openings are placed when due in time, not always all (critic B4 #1)
 - [2026-10-08] Modified: tests/b4_reservation.rs — grace wording scoped to an empty stockpile; non-vacuity guard requires a mass probe (critic B4 #2, #3)
 - [2026-10-08] Modified: FINDINGS.md — F-046 corrections: grace wording, guard, closure pin is a re-measurement, diff-is-empty precondition (critic B4 #2-#4)
+- [2026-10-09] Modified: BALANCE_PLAN.md — turtle AC: recorded the non-RON lever plan (steps 0-3, fallback)

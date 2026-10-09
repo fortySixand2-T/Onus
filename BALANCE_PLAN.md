@@ -234,6 +234,43 @@ all-timeout run is flagged, not reported as balanced.
 
       Each of these is a design or gate change, not tuning. **None proceeds without the
       user's go-ahead.**
+
+      **Plan (user go-ahead 2026-10-09).** The suspected cause is in the AI code, not the
+      RON. The commander has no defend step: its decision steps are mine, workers,
+      barracks, army and attack (`sim::ai`). Each wave re-sends every armed unit at the
+      enemy HQ, and units on a commander order fight only what is already in reach
+      (`sim::combat`). So a mass probe's army sits in the turtle's base, and the turtle's
+      single 24-unit wave meets an HQ guarded only by fresh units (F-045 point 4).
+      - [ ] **Step 0 — measure, no behaviour change.** A headless diagnostic, kept as a
+            test. At each turtle `Attack`, and again when that wave's first unit comes
+            within engage range of the defender's HQ, record the defender's armed units at
+            home (within a stated radius of its HQ), in the field, and already dead. Also
+            record the unit trade of the fight that follows. The pattern picks the lever,
+            and the reading is recorded as an F-entry:
+            - mostly in the field → home defence;
+            - many trickling in and dying piecemeal → attack cohesion;
+            - at home but still crushed → armed buildings.
+      - [ ] **Step 1 — build the chosen lever,** test-first, behind a cargo feature that
+            restores today's behaviour (as `no-opening-reservation` does).
+            - *Home defence:* if enemies come within a RON `defend_radius` of its HQ, the
+              commander recalls its armed units.
+            - *Attack cohesion:* new units rally, and a wave leaves only as a whole group;
+              units already in the field are not re-ordered.
+            - *Armed buildings:* buildings may attack, with offense and range in the RON.
+            Determinism: no new RNG, stable entity order, no HashMap; the new number lives
+            in the RON.
+      - [ ] **Step 2 — measure.** A 4-seed `balance` report. Pass means:
+            - turtle under 65%, or undetermined;
+            - no new K1 FAIL and no pentagon FAIL;
+            - K3 not FAIL;
+            - the turtle still commits last.
+            At most 3 RON adjustments of the lever's own number; then stop and report the
+            numbers.
+      - [ ] **Step 3 — proof and re-pin.** With the switch on, the current RON reproduces
+            today's goldens. Then re-pin and record an F-entry. Full gate, then the critic,
+            then merge.
+      - **Fallback:** if no lever passes, bring the numbers and the gate question (should
+        K1 gate a deliberately extreme probe?) to the user.
 - [x] **Multi-barracks as a real capability (open, from F-035).** The AI places an opening
       only when the stockpile covers its cost, and its army step spends the stockpile on
       anything cheaper first, so under B3.5's economy openings past the first rarely go up
