@@ -241,7 +241,7 @@ all-timeout run is flagged, not reported as balanced.
       enemy HQ, and units on a commander order fight only what is already in reach
       (`sim::combat`). So a mass probe's army sits in the turtle's base, and the turtle's
       single 24-unit wave meets an HQ guarded only by fresh units (F-045 point 4).
-      - [ ] **Step 0 — measure, no behaviour change.** A headless diagnostic, kept as a
+      - [x] **Step 0 — measure, no behaviour change.** A headless diagnostic, kept as a
             test. At each turtle `Attack`, and again when that wave's first unit comes
             within engage range of the defender's HQ, record the defender's armed units at
             home (within a stated radius of its HQ), in the field, and already dead. Also
@@ -250,6 +250,15 @@ all-timeout run is flagged, not reported as balanced.
             - mostly in the field → home defence;
             - many trickling in and dying piecemeal → attack cohesion;
             - at home but still crushed → armed buildings.
+            **Result** (F-047, `tests/b4_turtle_diag.rs`): none of the three. When the
+            turtle's 24 arrive, the defender's army is already dead (field 0 to 0.8 for
+            8 of 9 opponents; `mass_bulwark`, all in the field, is the one exception). It
+            died attacking the turtle's base at rough parity, losing about 3 units for each
+            1 the turtle lost. Attackers on a commander `MoveTo` do not chase
+            (`sim::combat`, `else if row.engaging || !row.has_move_target`): 18% to 85% of
+            their contact time is spent marching. Their nearest-target hits go to workers
+            and buildings, up to 86%. Recommended lever: attack-move engagement. It is
+            outside the three named levers and needs the user's go-ahead.
       - [ ] **Step 1 — build the chosen lever,** test-first, behind a cargo feature that
             restores today's behaviour (as `no-opening-reservation` does).
             - *Home defence:* if enemies come within a RON `defend_radius` of its HQ, the

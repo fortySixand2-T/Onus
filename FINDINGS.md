@@ -4661,3 +4661,185 @@ The full gate after the change was run on the box. Before it, `touch` was run on
 | `cargo test` (debug) | **940 passed, 0 failed, 1 ignored** |
 | `cargo test --release` | **940 passed, 0 failed, 1 ignored** |
 | `cargo bench --no-run` | builds (exit 0) |
+
+## F-047 — Why the turtle wins: the step-0 measurement (B4)
+
+Step 0 of the turtle plan (BALANCE_PLAN, "Plan (user go-ahead 2026-10-09)"): measure only, with
+no behaviour change. **No `src/`, RON or golden is touched.** The instrument is
+`tests/b4_turtle_diag.rs`. It plays the standard headless match, reads the world after every
+tick (positions, the `AiJournal`, `AttackCooldown`, `Target`, building `Health`) and writes
+nothing back, so every match is the match the balance batch plays.
+
+**Sample.** `turtle` against each of the other 9 shipped strategies, in both seats, on the balance
+report's first two seeds (`seed_at(0, 0)`, `seed_at(0, 1)`), on the normal map. That is 36
+matches, about 115 s in release, so the table test is `#[ignore]`d. Run it with
+`cargo test --release --test b4_turtle_diag -- --ignored --nocapture`. One full match
+(turtle vs `mass_bulwark`) runs un-ignored as the fast structural check. Shipped g1 content.
+
+**Definitions.** T is the turtle and D is its opponent. "Armed" means `offense > 0`.
+- **Home radius** = the farthest barracks `offset` in any shipped script (225) + `engage_range`
+  (220) = **445** world units. Both terms are read from content. The bases are 1 500 apart.
+- **T's first wave**: the units whose `MoveTarget` equals the `dest` of T's first `Attack`.
+  In every match this set equals the journal's `force`, and this is asserted.
+- **Arrival**: the first tick a wave member is within `engage_range` of the enemy HQ.
+- **A hit**: a tick on which a unit's `AttackCooldown` is reset to its `mvp_attack_ticks`. It
+  is classified by the `Target` the unit held. Damage is `damage_per_hit*` for that pair.
+- **D's fight at T's base**: the window from D's first `Attack` to T's first `Attack`.
+  "Contact" counts the ticks a D unit has a T armed unit within `engage_range`. "On order"
+  means the unit holds a `MoveTarget` without `Engaging`, which is a commander's order.
+
+### T's wave at D's base (means per opponent over 2 seeds x 2 seats)
+
+D h/f/d means D's armed units at home / in the field / dead.
+
+| opponent | T wins | wave | D h/f/d at T's commit | D h/f/d at arrival | trade T lost / D lost |
+|---|---|---|---|---|---|
+| mvp | 3/4 | 24 | 2.0 / 0.0 / 20.0 | 1.3 / 0.7 / 20.0 | 1.3 / 1.0 |
+| mass_bulwark | 4/4 | 24 | 0.0 / **10.0** / 0.0 | 0.0 / **9.8** / 0.2 | 1.5 / 0.5 |
+| mass_sentinel | 4/4 | 24 | 6.0 / 0.0 / 10.0 | 6.0 / 0.0 / 10.0 | 10.2 / 0.2 |
+| mass_ripper | 2/4 | 24 | 3.5 / 0.0 / 30.0 | 4.0 / 0.0 / 30.0 | 1.0 / 3.0 |
+| mass_ravager | 4/4 | 24 | 3.5 / 0.0 / 10.0 | 3.8 / 0.0 / 10.0 | 8.2 / 2.8 |
+| mass_arclight | 4/4 | 24 | 0.8 / 0.0 / 10.0 | 0.8 / 0.0 / 10.2 | 0.8 / 0.5 |
+| synth_steel_flesh | 4/4 | 24 | 2.2 / 0.0 / 18.2 | 2.2 / 0.0 / 18.5 | 9.0 / 3.0 |
+| synth_triad | 4/4 | 24 | 2.8 / 1.5 / 16.5 | 2.5 / 0.8 / 17.5 | 10.5 / 2.8 |
+| rush | 1/4 | 24 | 0.0 / 0.0 / 21.0 | 0.0 / 0.0 / 21.0 | 0.0 / 0.0 |
+
+The means cover only the matches in which T committed. In the 6 matches it lost (`mvp` 1,
+`mass_ripper` 2, `rush` 3), all in seat A, it died to an early hit before it had a wave.
+
+**Reading.** When the turtle's 24 arrive, D's army is **already dead, not in the field**. For
+8 of 9 opponents, D's field count at arrival is 0.0 to 0.8. At most 0.8 to 6.0 units are
+home. Nearly every armed unit D ever fielded died before the turtle moved, and the
+before-commit columns below say where. **D sent them at the turtle, and they died within the
+home radius of T's HQ**:
+
+| opponent | D units sent before T's commit | dead by then | died near T's HQ |
+|---|---|---|---|
+| mvp | 17.2 | 15.0 | 14.2 |
+| mass_sentinel / ravager / arclight | 10.0 | 10.0 | 10.0 |
+| mass_ripper | 22.0 | 17.2 | 17.2 |
+| synth_steel_flesh | 18.2 | 18.2 | 18.2 |
+| synth_triad | 18.0 | 16.5 | 16.5 |
+| rush | 11.8 | 9.2 | 8.0 |
+
+The one exception is **`mass_bulwark`**. Its 10 Bulwarks were ordered out at tick 21 121.
+They walk at speed 2, so at the turtle's commit (21 781) and at its arrival they are all still
+on the road, and the turtle's wave meets an empty base: **field, 4 of 4 matches**.
+
+### D's wave at T's base: the decisive fight (means)
+
+Dal / Tal are D's sent units and T's armed units alive at D's arrival, and D HP / T HP are
+their HP pools. D hits are D's sent units' hits on T's army, workers and buildings. The last
+two columns are damage to units.
+
+| opponent | Dal | Tal | D HP | T HP | D lost | T lost | contact on order | D hits army / worker / bldg | T hits | D dmg | T dmg |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| mvp | 3.0 | 1.0 | 380 | 100 | 15.0 | 5.2 | 22% | 29.8 / 30.0 / 118.8 | 134.2 | 605 | 1 918 |
+| mass_sentinel | 9.8 | 10.0 | 975 | 960 | 10.0 | 3.5 | 24% | 27.0 / 11.2 / 14.5 | 67.5 | 878 | 1 208 |
+| mass_ripper | 9.8 | 2.8 | 585 | 205 | 17.2 | 5.2 | 18% | 35.5 / 49.0 / 174.0 | 46.0 | 862 | 1 415 |
+| mass_ravager | 9.8 | 14.0 | 1 560 | 1 360 | 10.0 | 3.5 | 45% | 16.5 / 7.2 / 13.2 | 83.0 | 533 | 1 877 |
+| mass_arclight | 9.0 | 22.0 | 360 | 2 130 | 10.0 | 2.5 | 73% | 13.0 / 0.5 / 0.5 | 52.5 | 583 | 1 778 |
+| synth_steel_flesh | 8.8 | 10.8 | 885 | 1 005 | 18.2 | 3.5 | **85%** | 22.0 / 1.0 / 2.5 | 134.0 | 465 | 2 350 |
+| synth_triad | 8.2 | 13.2 | 555 | 1 315 | 16.5 | 3.0 | 75% | 12.5 / 4.8 / 3.8 | 75.8 | 405 | 1 879 |
+| rush | 1.0 | 0.0 | 60 | 0 | 9.2 | 2.0 | 47% | 8.8 / 14.0 / 150.8 | 19.5 | 199 | 711 |
+
+This is where the turtle wins. **At rough parity the attacker is wiped out and the turtle
+loses about a third as many.**
+- `mass_sentinel`: 10 v 10, 975 v 960 HP. D lost 10, T lost 3.5.
+- `mass_ravager`: D had *more* HP (1 560 v 1 360). D lost 10, T lost 3.5.
+- `synth_steel_flesh`: 9 v 11, about equal HP. D lost 18, T lost 3.5.
+
+Only `mass_arclight` is simply outnumbered: it commits at 20 911, when the turtle already
+stands 22. `mass_ripper` is the reverse case. It *outnumbers* the turtle at arrival, 9.8 to
+2.8, yet across its three groups it loses 17.2 of 22 to the turtle's 5.2. 86% of its hits go
+into buildings and workers. That is enough to raze the HQ only in the two seat-A matches
+(the 4 200 and 9 240 building HP), and those are the cells the turtle loses. Two mechanisms
+show in the hit columns.
+1. **Attackers under a commander order do not fight back.** 18% to 85% of D's contact ticks
+   (a T unit within `engage_range`) are spent on the commander's `MoveTo`. The share is
+   highest for the synths, whose mixed speeds string the wave out on the road. Over the
+   fight D lands 0.16x to 0.77x T's hits on armed targets, and 0.20x to 0.73x its damage.
+2. **The attackers' hits go to the wrong targets.** `mass_sentinel` puts 49% of its hits into
+   workers and buildings, and `mass_ripper` 86%. T's idle defenders have no such choice:
+   their nearest enemy is the attacker.
+
+Trickling (many small attacks) is real only for `mvp` (attack at 3, 6 to 17 orders) and
+`rush` (attack at 1). The turtle already wins those cells least often (3/4 and 1/4). The
+mass probes and synths attack as one group of 9 to 10: 2 or 3 orders, re-sending the same
+units.
+
+### The code responsible
+
+- `src/sim/combat.rs:423`, `else if row.engaging || !row.has_move_target`. A unit holding
+  a commander's `MoveTarget` never chases. It hits only if its nearest enemy is already
+  within its own `mvp_attack_range` (line 411), and otherwise keeps walking to `dest` while
+  being shot. An idle defender acquires anything within `engage_range` (220) and chases it
+  out to `pursue_range` (400). `apply_commands` removes `Engaging` on every `MoveTo`
+  (`src/sim/mod.rs:779`), so each re-send also cancels any chase in progress.
+- `src/sim/combat.rs:345` and `:383`. The target is the **nearest enemy row**, and the
+  layout holds every row: units, unarmed workers and buildings alike. An attacker walking
+  into a base spends hits on the HQ, the barracks and the miners. A defender's nearest
+  enemy is the attacker.
+- `src/sim/ai.rs:589` to `:613`. Every wave sends every armed unit, and there is no defend
+  step. So a side that has attacked has nothing at home, and only the side that has *not*
+  attacked fights from the idle (chasing, well-targeted) posture. F-046 shows the turtle
+  commits last against every opponent, so it is the one strategy that always defends
+  first and attacks second. It collects the defender's exchange every time, and then rolls
+  a base whose army it has already killed.
+
+### Which lever the pattern points at
+
+- **Mostly in the field → home defence.** Only `mass_bulwark` (4 of 36 matches). A recall
+  helps only that cell, and at speed 2 a recalled Bulwark army is slow to get home.
+- **Trickling and dying piecemeal → attack cohesion.** Only `mvp` and `rush`, which are
+  already the turtle's weakest cells. The mass probes and synths already leave as one group.
+- **At home but still crushed → armed buildings.** Not the pattern. D has almost nothing at
+  home when T arrives. Armed buildings would also arm the turtle's base during the decisive
+  fight, which is the fight the turtle already wins.
+- **Something else: the attacker's engagement rule.** The decisive fight is D's wave dying
+  at parity in the turtle's base, before the turtle ever moves.
+
+**Recommendation: an attack-move engagement rule, which is not one of the three
+pre-approved levers.** A unit on an AI attack order would acquire and fight enemy *armed*
+units within `engage_range`, as an idle unit does, and then resume its march to `dest`. The
+nearest-target choice would prefer armed units over workers and buildings. The evidence:
+- the parity exchanges of 10 : 3.5 (`mass_sentinel`, `mass_ravager`) and 18 : 3.5
+  (`synth_steel_flesh`);
+- 18% to 85% of contact time spent marching under an order;
+- up to 86% of attacker hits spent on non-combatants.
+
+The rule is symmetric. It would equally sharpen the turtle's own wave, but that wave
+already meets near-empty bases (the trade table above), so the change removes the edge
+the turtle alone collects.
+
+Implementing it changes `sim::combat` targeting (and possibly an order flag set by
+`sim::ai`). It needs no new RNG, it keeps the snapshot and entity-bits ordering, and any
+new number (e.g. an attack-move acquisition range) goes in the RON. It sits outside step 1's
+named levers, so **it needs the user's go-ahead.** If the user prefers to stay within the
+three, the data rank them home defence (one cell), then cohesion (two already-weak cells),
+then armed buildings (likely counterproductive). None of them addresses the fight that
+decides the matchup.
+
+**Caveats.**
+- 36 matches on the normal map only. These are mechanism readings, not win rates.
+- A hit whose target died on that tick is classified by the target the unit held the
+  previous tick.
+- The D-fight window runs to T's commit, so for `mvp` and `rush` it also takes in later
+  trickles.
+
+### The gate
+
+Run on the box after `touch` of `src`, `tests`, `benches` and the RON files (mtime trap,
+F-045), with the shipped g1 RON unchanged:
+
+| step | result |
+|---|---|
+| `cargo clippy --all-targets -- -D warnings` | clean (exit 0) |
+| `cargo test` (debug) | **945 passed, 0 failed, 2 ignored** |
+| `cargo test --release` | **945 passed, 0 failed, 2 ignored** |
+| `cargo bench --no-run` | builds (exit 0) |
+
+The baseline at 88436a9 is 944 passed / 1 ignored: F-046's 940, plus the four critic
+probes in `critic_b4_probes`. The difference is exactly this entry's two tests:
+- the one-match structural check passes;
+- the 36-match table is the second ignored test.
