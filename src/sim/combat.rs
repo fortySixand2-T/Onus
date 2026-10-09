@@ -490,6 +490,26 @@ mod tests {
             .expect("content loads")
     }
 
+    /// The defending unit's armor, in damage points, written out from the
+    /// content — the test side of the formula, kept apart from the fn under test.
+    fn mitigation(c: &Content, d: usize) -> u32 {
+        c.units[d].armor * c.combat.mitigation_per_armor
+    }
+
+    /// One hit's base damage before armor or nemesis, from the content.
+    fn base(c: &Content, a: usize) -> u32 {
+        c.units[a].offense * c.combat.damage_per_offense
+    }
+
+    fn is_nemesis(c: &Content, a: usize, d: usize) -> bool {
+        c.units[a].nemesis.as_deref() == Some(c.units[d].id.as_str())
+    }
+
+    // F-044: every expectation below is the documented formula evaluated on the
+    // *loaded* RON, so a balance change moves the expected number with it while
+    // a change to the arithmetic (drop mitigation, misapply the nemesis, round
+    // the multiplier differently) still fails here.
+
     #[test]
     fn damage_is_offense_minus_flat_armor() {
         let c = content();
@@ -497,19 +517,38 @@ mod tests {
             c.unit_index("arclight").unwrap(),
             c.unit_index("ravager").unwrap(),
         );
-        // 9 offense * 5 = 45, minus 4 armor * 2 = 8 → 37.
-        assert_eq!(damage_per_hit(&c, arclight, ravager), 37);
+        assert!(!is_nemesis(&c, arclight, ravager), "a plain (non-nemesis) pair");
+        // offense * damage_per_offense, minus armor * mitigation_per_armor.
+        let expect = base(&c, arclight).saturating_sub(mitigation(&c, ravager));
+        assert!(
+            mitigation(&c, ravager) > 0 && expect > 0,
+            "the case must exercise a partial mitigation"
+        );
+        assert_eq!(damage_per_hit(&c, arclight, ravager), expect);
     }
 
     #[test]
     fn armor_can_absorb_a_hit_but_never_heals() {
-        let c = content();
+        let shipped = content();
         let (worker, bulwark) = (
-            c.unit_index("worker").unwrap(),
-            c.unit_index("bulwark").unwrap(),
+            shipped.unit_index("worker").unwrap(),
+            shipped.unit_index("bulwark").unwrap(),
         );
+        // An armed Worker (the shipped one has offense 0, which would make the
+        // floor vacuous) against a Bulwark whose armor out-mitigates the hit by
+        // a clear margin, whatever the shipped stats are: the claim is the
+        // floor at 0, not today's numbers.
+        let mut c = shipped.clone();
+        c.units[worker].offense = c.units[worker].offense.max(1);
+        let per = c.combat.mitigation_per_armor.max(1);
+        c.combat.mitigation_per_armor = per;
+        c.units[bulwark].armor = base(&c, worker) / per + 2;
+        assert!(!is_nemesis(&c, worker, bulwark));
+        assert!(base(&c, worker) > 0, "the hit must be real for the floor to bite");
+        assert!(mitigation(&c, bulwark) > base(&c, worker));
         assert_eq!(damage_per_hit(&c, worker, bulwark), 0);
         assert_eq!(damage_per_hit(&c, 999, bulwark), 0, "unknown ids are inert");
+        assert_eq!(damage_per_hit(&shipped, 999, bulwark), 0);
     }
 
     #[test]
@@ -520,15 +559,29 @@ mod tests {
             c.unit_index("ravager").unwrap(),
             c.unit_index("sentinel").unwrap(),
         );
-        // Bulwark preys on the Ravager: 4 * 5 = 20 base, * 1300 / 1000 = 26,
-        // and the Ravager's 4 armor (8 mitigation) is ignored.
-        assert_eq!(damage_per_hit(&c, bulwark, ravager), 26);
-        // Against anything else the plain armor math applies: 20 - 5 * 2 = 10.
-        assert_eq!(damage_per_hit(&c, bulwark, sentinel), 10);
+        // The pentagon (structure, not balance): Bulwark preys on the Ravager,
+        // the Ravager preys on the Sentinel — not back on the Bulwark.
+        assert!(is_nemesis(&c, bulwark, ravager));
+        assert!(!is_nemesis(&c, bulwark, sentinel));
+        assert!(!is_nemesis(&c, ravager, bulwark));
+        let bonus = c.nemesis_bonus;
+        assert!(bonus.ignore_armor, "the shipped rule skips armor");
+        assert!(
+            mitigation(&c, ravager) > 0,
+            "the prey must have armor for skipping it to be observable"
+        );
+        // Nemesis: floor(base * mult_milli / 1000), the prey's armor ignored.
+        let boosted = base(&c, bulwark) * bonus.mult_milli() / NemesisBonus::MULT_SCALE;
+        assert_eq!(damage_per_hit(&c, bulwark, ravager), boosted);
+        // Against anything else the plain armor math applies.
+        assert_eq!(
+            damage_per_hit(&c, bulwark, sentinel),
+            base(&c, bulwark).saturating_sub(mitigation(&c, sentinel))
+        );
         // The bonus is not symmetric: the prey gets nothing back.
         assert_eq!(
             damage_per_hit(&c, ravager, bulwark),
-            35u32.saturating_sub(18),
+            base(&c, ravager).saturating_sub(mitigation(&c, bulwark)),
             "Ravager preys on the Sentinel, not the Bulwark"
         );
     }
@@ -536,19 +589,33 @@ mod tests {
     #[test]
     fn the_nemesis_multiplier_is_integer_per_mille() {
         let c = content();
-        assert_eq!(c.nemesis_bonus.mult_milli(), 1_300);
-        // floor(base * 1300 / 1000) — stated here so a rounding change is a
-        // test failure, not a silent balance shift.
-        for base in [0u32, 1, 3, 7, 20, 45, 1_000] {
-            let expect = (base as u64 * 1_300 / 1_000) as u32;
-            assert_eq!(base * 13 / 10, expect, "base {base}");
+        let m = c.nemesis_bonus.mult_milli();
+        // round(damage_mult * 1000), computed in f64.
+        assert_eq!(m, (c.nemesis_bonus.damage_mult as f64 * 1_000.0).round() as u32);
+        // floor(base * mult / 1000) — stated here so a rounding change is a
+        // test failure, not a silent balance shift. Driven through the real
+        // fn on an in-memory copy whose Bulwark offense sets `base`.
+        let (bulwark, ravager) = (
+            c.unit_index("bulwark").unwrap(),
+            c.unit_index("ravager").unwrap(),
+        );
+        let mut probe = c.clone();
+        probe.combat.damage_per_offense = 1;
+        probe.nemesis_bonus.ignore_armor = true;
+        for b in [0u32, 1, 3, 7, 20, 45, 1_000] {
+            probe.units[bulwark].offense = b;
+            let expect = (b as u64 * m as u64 / 1_000) as u32;
+            assert_eq!(damage_per_hit(&probe, bulwark, ravager), expect, "base {b}");
         }
     }
 
     #[test]
     fn health_pool_comes_from_defense() {
         let c = content();
-        let h = Health::from_def(&c, c.unit_index("bulwark").unwrap());
-        assert_eq!((h.current, h.max), (180, 180)); // defense 9 * 20
+        let bulwark = c.unit_index("bulwark").unwrap();
+        let h = Health::from_def(&c, bulwark);
+        let max = c.units[bulwark].defense * c.combat.hp_per_defense;
+        assert!(max > 0);
+        assert_eq!((h.current, h.max), (max, max)); // defense * hp_per_defense
     }
 }

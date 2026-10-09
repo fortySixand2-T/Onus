@@ -1154,7 +1154,16 @@ mod tests {
     fn lookups_resolve_by_id_in_ron_order() {
         let c = content();
         assert_eq!(c.unit_index("worker"), Some(0));
-        assert_eq!(c.unit("arclight").unwrap().offense, 9);
+        // F-044: the lookup must land on the Arclight's own entry; its offense
+        // is read off the RON text (not pinned), so a re-tune moves both sides.
+        let text = std::fs::read_to_string(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data/units.ron"),
+        )
+        .unwrap();
+        let entry = &text[text.find("id: \"arclight\"").unwrap()..];
+        let at = entry.find("offense: ").unwrap() + "offense: ".len();
+        let written: u32 = entry[at..].split(',').next().unwrap().trim().parse().unwrap();
+        assert_eq!(c.unit("arclight").unwrap().offense, written);
         assert_eq!(c.building_index("hq"), Some(0));
         assert_eq!(c.unit_index("nonesuch"), None);
         assert_eq!(c.building_index("nonesuch"), None);

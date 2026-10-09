@@ -4,9 +4,11 @@
 //! the structural facts every number in it rests on, plus the content state the
 //! document claims ("the revert is the absence of a diff"):
 //!
-//!   - `mvp_combat.mitigation_per_armor` is **2** in the shipped content, and
-//!     the five mass probes are knob-identical at `attack_at_army: 10` (F-018) —
-//!     if either moves, F-031's tables describe something that is not shipped;
+//!   - `mvp_combat.mitigation_per_armor` is not the reverted **1** in the
+//!     shipped content, and the five mass probes are knob-identical at one
+//!     shipped `attack_at_army` (F-018). F-044 unpinned the exact values (2 and
+//!     10) so a B4 re-tune is a RON edit, not a test edit: what stays asserted
+//!     is the decision (mitigation 1 is reverted) and the identity (F-018);
 //!   - a pentagon link's sample size **is** a seed count: four decided matches
 //!     per seed (two slot orderings x two spawn orientations, pooled by
 //!     `WinMatrix` into one cell). Every CI in F-031's tables assumes this;
@@ -43,14 +45,15 @@ const PROBES: [&str; 5] = [
 
 // ---- the content F-031's tables describe ------------------------------------
 
-/// The headline decision: mitigation 1 is REVERTED, so the shipped scaling is
-/// still 2. The revert is the absence of a diff, and this asserts that absence.
+/// The headline decision: mitigation 1 is REVERTED. F-044: the exact shipped
+/// value (2 at F-031) is a B4 lever and is no longer pinned; what is asserted is
+/// that the rejected value is not what ships.
 #[test]
-fn the_shipped_combat_scaling_keeps_mitigation_per_armor_at_two() {
+fn the_shipped_combat_scaling_keeps_mitigation_per_armor_off_the_reverted_one() {
     let c = shipped();
-    assert_eq!(
-        c.combat.mitigation_per_armor, 2,
-        "F-031 reverts mitigation 1: the shipped value is 2"
+    assert_ne!(
+        c.combat.mitigation_per_armor, 1,
+        "F-031 reverts mitigation 1: the shipped value must not be 1"
     );
 }
 
@@ -59,13 +62,20 @@ fn the_shipped_combat_scaling_keeps_mitigation_per_armor_at_two() {
 /// instead of the units (F-018). Only the barracks building and the massed unit
 /// may differ.
 #[test]
-fn the_five_mass_probes_are_knob_identical_at_attack_at_army_ten() {
+fn the_five_mass_probes_are_knob_identical_at_one_shipped_threshold() {
     let c = shipped();
+    // F-044: the threshold (10 at F-031) is read, not pinned; every probe must
+    // commit at that one shipped value.
+    let first = c.strategy(PROBES[0]).expect("shipped");
+    assert!(first.attack_at_army >= 1, "the probes commit at a real threshold");
     for id in PROBES {
         let s = c.strategy(id).unwrap_or_else(|| panic!("{id} is shipped"));
-        assert_eq!(s.attack_at_army, 10, "{id}: the shipped threshold is 10");
+        assert_eq!(
+            s.attack_at_army, first.attack_at_army,
+            "{id}: the shipped threshold is {}",
+            first.attack_at_army
+        );
     }
-    let first = c.strategy(PROBES[0]).expect("shipped");
     for id in &PROBES[1..] {
         let s = c.strategy(id).expect("shipped");
         assert_eq!(s.think_interval_ticks, first.think_interval_ticks, "{id}");
@@ -74,14 +84,7 @@ fn the_five_mass_probes_are_knob_identical_at_attack_at_army_ten() {
         assert_eq!(s.attack_interval_ticks, first.attack_interval_ticks, "{id}");
         assert_eq!(s.attack_spread, first.attack_spread, "{id}");
         assert_eq!(s.queue_depth, first.queue_depth, "{id}");
-        // Line count is the one knob allowed to differ, and only for F-035's
-        // named exception: `mass_ripper` really places a second Gene-Vats (the
-        // 40-Alloy Ripper is the only probe whose income outruns its spending),
-        // and its script says so. Every other probe opens exactly as many as
-        // the first, and every opening two probes share is still compared.
-        // B4's opening reservation should make the five identical again.
-        let want = if *id == "mass_ripper" { 2 } else { first.barracks.len() };
-        assert_eq!(s.barracks.len(), want, "{id}: line count");
+        assert_eq!(s.barracks.len(), first.barracks.len(), "{id}: line count");
         for (b, b0) in s.barracks.iter().zip(&first.barracks) {
             assert_eq!(b.at_tick, b0.at_tick, "{id}: opening tick");
             assert_eq!(b.offset, b0.offset, "{id}: opening offset");

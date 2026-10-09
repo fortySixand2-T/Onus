@@ -209,12 +209,32 @@ all-timeout run is flagged, not reported as balanced.
 
 ## B4 — First balance pass (the tuning loop)
 
-- [ ] Run the harness; read the matrix + pentagon assertion.
-- [ ] Tune **only RON** (`mvp_combat`, unit costs, `nemesis_bonus`, timings) toward the
+- [x] Run the harness; read the matrix + pentagon assertion. *(F-042: 4-seed baseline on the
+      post-reservation build — gate FAIL on K1 `turtle` 88.2%; K3 band share 48.5% undetermined;
+      pentagon 2 hold / 2 undetermined / `ravager > sentinel` fails; `mass_arclight` K2 re-read 52.4%
+      left base over 126 seeds, undetermined.)*
+- [x] Tune **only RON** (`mvp_combat`, unit costs, `nemesis_bonus`, timings) toward the
       criteria; re-run; iterate.
-- [ ] Ledger F-016+: the failing matchup(s), the change made, before/after win rates,
-      final kill-criteria status.
-- [ ] **Multi-barracks as a real capability (open, from F-035).** The AI places an opening
+      *(F-043, F-045, F-046: candidate g1 installed, RON only, goldens re-pinned under the
+      F-032 proof; the kill gate still **FAILs on K1 `turtle`** at 84.0%. g1 turned
+      `b4_reservation`'s whole-script placement claim red (a `mass_sentinel` mirror ends at
+      tick 15 519, before its tick-15 000 third line); per the user's call the claim is now
+      bounded by a RON-derived grace (F-046), still red without the reservation.)*
+- [x] Ledger F-016+: the failing matchup(s), the change made, before/after win rates,
+      final kill-criteria status. *(F-042 → F-046: baseline, two search phases, the g1
+      install and its reading. Final status: gate FAIL on K1 `turtle` 84.0%, K2/K3
+      undetermined, pentagon 3 hold / 2 undetermined / 0 fail.)*
+- [ ] **Turtle dominance needs a non-RON lever (F-045/F-046).** Three phases of RON
+      search moved the turtle from 88.2% to 84.0% and never below the 65% bar. Its own
+      script knobs are spent, and the mass probes must stay knob-identical. Candidate
+      levers:
+      - a defender's advantage, so one large wave does not roll a base;
+      - attackers that hold until they outnumber a fortified defending army;
+      - re-asking whether K1 should gate a deliberately extreme probe.
+
+      Each of these is a design or gate change, not tuning. **None proceeds without the
+      user's go-ahead.**
+- [x] **Multi-barracks as a real capability (open, from F-035).** The AI places an opening
       only when the stockpile covers its cost, and its army step spends the stockpile on
       anything cheaper first, so under B3.5's economy openings past the first rarely go up
       (only `mass_ripper`'s second does). Add opening reservation — the army step holds back
@@ -223,6 +243,13 @@ all-timeout run is flagged, not reported as balanced.
       five mass probes' opening lists identical again (empty
       `b1_probe_set::MASS_PROBE_OPENING_EXCEPTIONS` and drop the per-probe exceptions in
       `critic_b1_ac3` / `critic_b35_armour`).
+      **Result** (F-041, commit 3c878f7): the army step reserves a due opening's Alloy, every
+      scripted line is built, `MASS_PROBE_OPENING_EXCEPTIONS` is empty and the per-probe
+      exceptions are gone; the five probes are knob-identical in what they script and build.
+      *Under g1 (F-046)* the second and third lines are due at 9 000 / 15 000, so a mirror
+      that ends first builds fewer: on `seed_at(0,1)` `mass_ripper` builds 1 of 3 and
+      `mass_sentinel` 2 of 3; bulwark, ravager and arclight build 3. Scripts stay identical;
+      every opening due early enough to be paid for is built (the bounded claim, F-046).
 
 ## B5 — The human fun gate (not automatable — and required)
 

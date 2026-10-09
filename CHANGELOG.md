@@ -528,3 +528,63 @@
 - [2026-10-04] Modified: FINDINGS.md — F-040 reading confirmed with the committed balance bin (4 seeds, 800 matches)
 - [2026-10-04] Created: tests/critic_b3_gate3.rs — B3 third critic probes: K2 every-reading rule (open mirror, left-base FAIL behind an open mirror, zero/timeout-only mirrors, tolerance edges, interval oracle, printed K2 line)
 - [2026-10-04] Modified: FINDINGS.md — F-038 per-mirror sizing states its independence assumption (conservative by Šidák); match counts = seeds × 20
+- [2026-10-04] Modified: src/sim/ai.rs — B4 opening reservation: the first due, unaffordable opening's Alloy is held back from the army step (F-041)
+- [2026-10-04] Modified: Cargo.toml — `no-opening-reservation` proof-only feature (F-041 golden proof)
+- [2026-10-04] Created: tests/b4_reservation.rs — B4 reservation tests: three lines built in a real match, every multi-opening script placed, army waits while an opening is due, skip rule kept, not-yet-due confinement
+- [2026-10-04] Modified: assets/data/strategies.ron — restored pre-F-035 opening lists (mass probes x3, synth_steel_flesh x4, turtle x4); no stat/cost/threshold change
+- [2026-10-04] Modified: tests/b1_probe_set.rs — MASS_PROBE_BARRACKS 3, MASS_PROBE_OPENING_EXCEPTIONS empty
+- [2026-10-04] Modified: tests/critic_b1_ac3.rs — dropped the per-probe opening cut (lists identical again)
+- [2026-10-04] Modified: tests/critic_b35_armour.rs — dropped the opening-count exception
+- [2026-10-04] Modified: tests/critic_b35_ac0.rs — B4 golden re-pin (F-041)
+- [2026-10-04] Modified: tests/critic_b35_ac0b.rs — B4 golden re-pin of shipped matchups 3-7 (F-041)
+- [2026-10-04] Modified: tests/b3_pentagon.rs — B4 re-pin of the 2-seed pentagon batch reading (F-041)
+- [2026-10-04] Modified: tests/b3_gate.rs — B4 re-pin of the shipped gate reading on the pentagon batch (F-041)
+- [2026-10-04] Modified: FINDINGS.md — F-041 opening reservation: rule, golden proof, old→new goldens, design tests left red
+- [2026-10-04] Modified: FINDINGS.md — F-042 B4 baseline (4-seed roster batch + 126-seed mass_arclight K2 re-read) compared with F-040/F-039
+- [2026-10-04] Modified: BALANCE_PLAN.md — ticked B4 "Run the harness" with the F-042 one-line result
+- [2026-10-04] Modified: FINDINGS.md — F-043 B4 phase-2 RON search: screens, best candidate d2 (4-seed reading), budget exhausted, nothing kept
+- [2026-10-07] Created: tests/support/ron_field.rs — F-044 test helper: read a field's literal text off the shipped RON so mutation anchors track re-tunes
+- [2026-10-07] Modified: src/sim/combat.rs — F-044 unit tests derive damage/HP/per-mille expectations from the loaded RON (test module only)
+- [2026-10-07] Modified: src/sim/content.rs — F-044 lookup test reads arclight offense off the RON text (test module only)
+- [2026-10-07] Modified: tests/critic_m4b.rs — F-044 combat-scaling and nemesis pins derived from the RON; anchors read
+- [2026-10-07] Modified: tests/m4b_combat.rs — F-044 damage/HP/multiplier pins derived from the RON; anchors read
+- [2026-10-07] Modified: tests/critic_m4a.rs — F-044 gather/train/price/starting-alloy anchors read off the RON
+- [2026-10-07] Modified: tests/m4a_economy.rs — F-044 bulwark stats and free-unit anchor read off the RON
+- [2026-10-07] Modified: tests/critic_m4c.rs — F-044 oracle test reads targets with the sim's death rule (fixture no longer assumes no tick-1 deaths)
+- [2026-10-07] Modified: tests/critic_m5.rs — F-044 foundry-twin cost read from content
+- [2026-10-07] Modified: tests/m5_replay.rs — F-044 foundry-twin cost and speed_per_point fingerprint step read from content
+- [2026-10-07] Modified: tests/m4c_ai.rs — F-044 two-victory anchor reads the foundry cost from content
+- [2026-10-07] Modified: tests/critic_b35_ac0b.rs — F-044 one-foundry stock is the shipped Foundry cost + 10
+- [2026-10-07] Modified: tests/critic_b35_armour.rs — F-044 mitigation pin becomes "not the reverted 1"; mass threshold read from probe 0 (two tests renamed)
+- [2026-10-07] Modified: FINDINGS.md — F-044 unpinning table, mutation results, suite proofs
+- [2026-10-08] Modified: FINDINGS.md — F-045 B4 phase-3 RON search from d2 (combat levers freed); best candidate g1 recorded, gate still FAIL on K1 turtle, no RON kept
+- [2026-10-08] Modified: BALANCE_PLAN.md — B4 multi-barracks box ticked (delivered by F-041); tuning and ledger boxes left open
+- [2026-10-08] Modified: FINDINGS.md — F-045: full-gate counts on f4e5409 (debug and release 935/5/1, clippy and bench clean) and the stale debug-rlib mtime trap
+- [2026-10-08] Modified: assets/data/units.ron — install B4 candidate g1 (F-045): bulwark 95 Alloy / train 1300, ravager 80 / train 1100, ripper attack 50
+- [2026-10-08] Modified: assets/data/strategies.ron — install g1: mass_* 2nd/3rd lines at 9000/15000, synth_steel_flesh lines 3/4 at 3000/6000, turtle workers 10 / attack_at_army 24; comments updated
+- [2026-10-08] Modified: DESIGN_BRIEF.md — roster costs (bulwark 95, ravager 80) and a note on the B4 timing changes
+- [2026-10-08] Modified: tests/b4_reservation.rs — comment no longer quotes bulwark's old 110 Alloy
+- [2026-10-08] Modified: tests/b1_matchup.rs — F-046: default-matchup golden hashes re-pinned on g1
+- [2026-10-08] Modified: tests/b1_strategies.rs — F-046: strategy golden hashes re-pinned on g1
+- [2026-10-08] Modified: tests/b35_parallel.rs — F-046: matchup and solo-fixture golden hashes re-pinned on g1
+- [2026-10-08] Modified: tests/b35_queue_depth.rs — F-046: matchup and solo-fixture golden hashes re-pinned on g1
+- [2026-10-08] Modified: tests/critic_b2_ac4.rs — F-046: golden hashes re-pinned on g1
+- [2026-10-08] Modified: tests/critic_b35_ac0.rs — F-046: nine golden rows re-pinned on g1
+- [2026-10-08] Modified: tests/critic_b35_ac0b.rs — F-046: eight golden rows re-pinned on g1
+- [2026-10-08] Modified: tests/b3_gate.rs — F-046: shipped pentagon-batch reading re-pinned to g1's measured values
+- [2026-10-08] Modified: tests/b3_pentagon.rs — F-046: real-batch link verdicts re-pinned to g1's measured values
+- [2026-10-08] Modified: tests/critic_b35_closure.rs — F-046: measured commit ticks re-pinned to 21 780 / 21 120 (all three seeds); ordering and margin claims unchanged
+- [2026-10-08] Modified: tests/b1_probe_set.rs — stale 19 320 turtle commit-tick comment updated to 21 780 (F-046)
+- [2026-10-08] Modified: tests/critic_b1_ac3.rs — stale 19 320 turtle commit-tick comment updated to 21 780 (F-046)
+- [2026-10-08] Modified: assets/data/strategies.ron — turtle comment records the g1 commit ticks (21 780 vs 21 120); no value change
+- [2026-10-08] Modified: FINDINGS.md — F-046: g1 install, F-032 golden proof (P1/P2/N1/N2), re-pin tables, closure ticks on all three seeds, the g1 gate reading and the full-gate counts
+- [2026-10-08] Modified: BALANCE_PLAN.md — tick "Tune only RON" and "Ledger" with their results (gate still FAILs on K1 turtle); add the unticked "Turtle dominance needs a non-RON lever" AC
+- [2026-10-08] Modified: tests/b4_reservation.rs — bound the whole-script claim: placements must be a script-order prefix, every unplaced opening must satisfy at_tick + grace > end tick (grace derived from RON as the best-case banking time), and at least one strategy must still place more than one opening (non-vacuity)
+- [2026-10-08] Modified: FINDINGS.md — F-046: record the bounded claim, its grace derivation, the no-opening-reservation red proof and the full-gate counts
+- [2026-10-08] Modified: BALANCE_PLAN.md — Tune-only-RON note records the bounded placement claim (F-046)
+- [2026-10-08] Created: tests/critic_b4_probes.rs — B4 critic probes: F-032 licence re-run (pre-g1 RON reproduces F-041 pins; pre-B4 RON under no-opening-reservation reproduces pre-B4 pins), workers not held, lost line due again holds the army, stockpile-aware differential for the grace bound
+- [2026-10-08] Created: tests/critic_b4_data/{pre_g1,pre_b4}/*.ron — RON fixtures (d50f9a1 and main assets/data) for the B4 critic golden-licence probes
+- [2026-10-08] Modified: BALANCE_PLAN.md — multi-barracks Result notes which lines g1's mirrors actually build (critic B4 #1)
+- [2026-10-08] Modified: assets/data/strategies.ron — comments only: openings are placed when due in time, not always all (critic B4 #1)
+- [2026-10-08] Modified: tests/b4_reservation.rs — grace wording scoped to an empty stockpile; non-vacuity guard requires a mass probe (critic B4 #2, #3)
+- [2026-10-08] Modified: FINDINGS.md — F-046 corrections: grace wording, guard, closure pin is a re-measurement, diff-is-empty precondition (critic B4 #2-#4)

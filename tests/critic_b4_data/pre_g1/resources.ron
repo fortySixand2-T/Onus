@@ -1,0 +1,36 @@
+// assets/data/resources.ron
+// One resource per domain (single-tier mapping).
+// MVP scope guard: the first playable uses `alloy` only.
+(
+    resources: [
+        (
+            id: "alloy",   name: "Alloy",   domain: "machine",
+            building: "foundry",
+            acquisition: Mined,       // finite deposits; workers harvest and return
+            powers: ["bulwark", "sentinel"],
+        ),
+        (
+            id: "biomass", name: "Biomass", domain: "flesh",
+            building: "gene_vats",
+            acquisition: Grown,       // passive generation, storage-capped
+            powers: ["ripper", "ravager"],
+        ),
+        (
+            id: "aether",  name: "Aether",  domain: "energy",
+            building: "aether_spire",
+            acquisition: Channeled,   // scarce, contested ley-wells you must hold
+            powers: ["arclight"],
+        ),
+    ],
+    mvp_active: ["alloy"],   // first playable uses Alloy only
+
+    // SCHEMA NOTE (M4a): MVP economy tunables the sim reads instead of
+    // hardcoding constants. `currency` is the single MVP resource; the ranges
+    // are world-unit radii for "close enough to harvest / to deposit".
+    mvp_economy: (
+        currency: "alloy",
+        starting_alloy: 300,   // each faction's Alloy at match start
+        gather_range: 40.0,
+        deposit_range: 48.0,
+    ),
+)

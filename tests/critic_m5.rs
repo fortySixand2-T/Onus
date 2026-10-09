@@ -2298,7 +2298,10 @@ fn duplicate_building_id_content() -> Result<Content, onus::sim::content::Conten
             .find(|l| l.contains("id: \"foundry\""))
             .expect("the foundry line")
             .to_string();
-        let twin = original.replace("alloy_cost: 150", "alloy_cost: 999");
+        // F-044: the cost is read off the loaded content, not pinned.
+        let cost = format!("alloy_cost: {}", content().building("foundry").unwrap().alloy_cost);
+        assert_ne!(cost, "alloy_cost: 999", "the twin's cost must differ");
+        let twin = original.replace(&cost, "alloy_cost: 999");
         assert_ne!(twin, original, "the twin is not actually different");
         text.replacen(&original, &format!("{original}\n{twin}"), 1)
     });

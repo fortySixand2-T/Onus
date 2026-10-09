@@ -1893,14 +1893,27 @@ fn targeting_matches_the_oracle_with_half_claims_on_the_field() {
             faction: *f,
         })
         .collect();
+    // F-044: whether anyone dies on this first tick depends on the shipped
+    // stats, so the oracle is read with the sim's own death rule — a unit
+    // whose nearest enemy was killed this tick holds no `Target` (it is never
+    // left pointing at a corpse) — instead of assuming nobody dies.
+    let alive = |e: Entity| app.world().get_entity(e).is_ok();
+    let mut checked = 0;
     for (i, (e, _, _)) in rows.iter().enumerate() {
-        let want = brute_force_nearest_enemy(&layout, i).map(|j| rows[j].0);
+        if !alive(*e) {
+            continue;
+        }
+        let want = brute_force_nearest_enemy(&layout, i)
+            .map(|j| rows[j].0)
+            .filter(|t| alive(*t));
         let got = app.world().get::<Target>(*e).map(|t| t.0);
         assert_eq!(
             got, want,
             "{e:?}: target disagreed with the brute-force oracle after a sweep"
         );
+        checked += 1;
     }
+    assert!(checked * 2 >= rows.len(), "fixture: most of the field must survive the tick");
 }
 
 /// **Two commanders touching the same worker on the same tick.** The sweep now

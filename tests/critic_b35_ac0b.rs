@@ -713,6 +713,21 @@ fn critic_every_order_is_applied_no_budget_is_committed_twice() {
 // 3. An RNG draw happens only when a placement is emitted
 // =============================================================================
 
+/// F-044: "a stockpile that buys exactly one Foundry and no Aether Spire" —
+/// the shipped Foundry's cost plus 10 (160 at F-033's prices), read from the
+/// content so a cost re-tune moves the fixture instead of breaking it.
+fn one_foundry_stock() -> u32 {
+    let c = Content::load_from_dir(&data_dir()).expect("shipped content");
+    let foundry = c.building("foundry").unwrap().alloy_cost;
+    let spire = c.building("aether_spire").unwrap().alloy_cost;
+    let stock = foundry + 10;
+    assert!(
+        stock < 2 * foundry && stock < spire,
+        "fixture: {stock} must buy one Foundry ({foundry}) and no Aether Spire ({spire})"
+    );
+    stock
+}
+
 /// A rich commander and a poor one running the same script must place their
 /// *first* barracks in the same direction: the placements the poor one could
 /// not afford consumed no randomness.
@@ -733,13 +748,14 @@ fn critic_unaffordable_placements_consume_no_randomness() {
     let c_rich = loaded("rng_rich", &text);
     let c_poor = loaded("rng_poor", &text);
     let mut rich = solo(c_rich, 0xABCDEF, "s", 100_000, false);
-    let mut poor = solo(c_poor, 0xABCDEF, "s", 160, false);
+    let stock = one_foundry_stock();
+    let mut poor = solo(c_poor, 0xABCDEF, "s", stock, false);
     tick(&mut rich, 600);
     tick(&mut poor, 600);
     let pr = placements(&rich, Faction::A);
     let pp = placements(&poor, Faction::A);
     assert_eq!(pr.len(), 3, "the rich commander places all three");
-    assert_eq!(pp.len(), 1, "160 Alloy buys exactly one foundry: {pp:?}");
+    assert_eq!(pp.len(), 1, "{stock} Alloy buys exactly one foundry: {pp:?}");
     assert_eq!(
         pp[0].2, pr[0].2,
         "the first placement's direction is the same draw in both runs — the two \
@@ -751,8 +767,10 @@ fn critic_unaffordable_placements_consume_no_randomness() {
 /// unaffordable must not eat the draw the next, cheaper opening takes.
 #[test]
 fn critic_a_skipped_expensive_opening_does_not_eat_the_draw() {
-    // Aether Spire costs 200, Foundry 150. With 160 Alloy the spire is never
-    // affordable at the first decision; the foundry is.
+    // The Aether Spire costs more than the Foundry (200 v 150 at F-033). With
+    // the Foundry's cost + 10 the spire is never affordable at the first
+    // decision; the foundry is (F-044: the stock is read, not pinned).
+    let stock = one_foundry_stock();
     let two = file_of(
         "s",
         &[ok_entry(
@@ -765,8 +783,8 @@ fn critic_a_skipped_expensive_opening_does_not_eat_the_draw() {
         "s",
         &[ok_entry("s", &[("foundry", 0, 100.0)], &[("sentinel", 1)])],
     );
-    let mut a = solo(loaded("rng_skip_two", &two), 0x5EED, "s", 160, false);
-    let mut b = solo(loaded("rng_skip_one", &just_foundry), 0x5EED, "s", 160, false);
+    let mut a = solo(loaded("rng_skip_two", &two), 0x5EED, "s", stock, false);
+    let mut b = solo(loaded("rng_skip_one", &just_foundry), 0x5EED, "s", stock, false);
     tick(&mut a, 120);
     tick(&mut b, 120);
     let pa = placements(&a, Faction::A);
@@ -1007,16 +1025,28 @@ fn critic_shipped_matchups_are_bit_identical() {
     // commit (92626b2), before AC0b — and re-pinned at B3.5 (F-032), when the
     // content re-tune moved every per-tick `state_hash`. F-032 demonstrates the
     // move is content-driven: the pre-tune `assets/data` under this identical
-    // binary passes at the pre-B3.5 numbers.
+    // binary passes at the pre-B3.5 numbers. Rows 3-7 re-pinned again at B4
+    // (F-041), when the opening reservation and the restored multi-barracks
+    // scripts moved every matchup with more than one opening; the pre-B4 rows
+    // are reproduced by this binary built with `--features
+    // no-opening-reservation` on the pre-B4 `strategies.ron` (F-041's proof).
+    // Rows 0-2 (`mvp`, `rush`: one opening each) did not move.
+    // All eight re-pinned once more at B4's tuning (F-046), when the g1 content
+    // (unit costs and timings, later mass/synth lines) moved every matchup; F-046
+    // shows the pre-g1 `assets/data` passing at the F-041 values (kept in the
+    // comments) under this identical binary. Rows 5-6 (`mass_arclight` vs
+    // `mass_ripper`) land back on their pre-F-041 values: g1 puts a mass
+    // probe's second line at tick 9 000, past this probe's 7 200-tick horizon,
+    // so inside it each side stands one line, as before the reservation.
     let expected: [(u64, u64); 8] = [
-        (0x47c76bb871e46efb, 0xbd416bd4be86da11),
-        (0x79c341576e931fc4, 0x2a25c84bba78866a),
-        (0xba80ea4ba6cacdea, 0x74973f97c60a686b),
-        (0xe94d2708dca81c49, 0x4666a3b3563b8890),
-        (0xb7d0e39bdfb0757c, 0x926206a7e2150e39),
-        (0x283fcec8bb5ebf41, 0xc7328be1b0e09085),
-        (0x1bc7d81e51c54e99, 0x90d87cb290ad3f58),
-        (0x478a4be3e491483e, 0xc9f9d38ba031b30b),
+        (0xd9fc20717a9c7a09, 0x77fbd21abf3a658e), // F-046; F-041 (0x47c76bb871e46efb, 0xbd416bd4be86da11)
+        (0x5fe3253c75fdb8b9, 0x9a5d49efafe5ae11), // F-046; F-041 (0x79c341576e931fc4, 0x2a25c84bba78866a)
+        (0xc608429484e3d26b, 0x67f981b6e54827e4), // F-046; F-041 (0xba80ea4ba6cacdea, 0x74973f97c60a686b)
+        (0x8f2794062a59e1c8, 0xf3b6fdb1d901298c), // F-046; F-041 (0x622c06205abf7772, 0x65f9917da21d98f2), pre-B4 (0xe94d2708dca81c49, 0x4666a3b3563b8890)
+        (0x53537967a9552cf9, 0x545bcce9611fcab0), // F-046; F-041 (0x1aa33ab2d6a04527, 0xa6552ff89996a930), pre-B4 (0xb7d0e39bdfb0757c, 0x926206a7e2150e39)
+        (0x283fcec8bb5ebf41, 0xc7328be1b0e09085), // F-046; F-041 (0x54b9d0fd2c5779be, 0x2dbb7d71846b917e), pre-B4 the same as F-046
+        (0x1bc7d81e51c54e99, 0x90d87cb290ad3f58), // F-046; F-041 (0x241e74a2e363c562, 0xf6546287f161a392), pre-B4 the same as F-046
+        (0xb2b7f6a5a8309eb1, 0x3df823464ecb4d3f), // F-046; F-041 (0x3835febbbac676e3, 0xb54435b778763907), pre-B4 (0x478a4be3e491483e, 0xc9f9d38ba031b30b)
     ];
     assert_eq!(
         got.to_vec(),

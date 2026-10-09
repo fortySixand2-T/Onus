@@ -792,10 +792,12 @@ fn an_unrunnable_ai_script_is_refused_at_load() {
 #[test]
 fn the_victory_target_must_be_exactly_one_building() {
     assert!(load_mutated("novictory", "dropoff: true, victory: true", "dropoff: true").is_err());
+    // F-044: the Foundry's cost is read off the loaded content, not pinned.
+    let cost = content().building("foundry").unwrap().alloy_cost;
     assert!(load_mutated(
         "twovictory",
-        "alloy_cost: 150, produces: [\"bulwark\"",
-        "alloy_cost: 150, victory: true, produces: [\"bulwark\""
+        &format!("alloy_cost: {cost}, produces: [\"bulwark\""),
+        &format!("alloy_cost: {cost}, victory: true, produces: [\"bulwark\"")
     )
     .is_err());
 }

@@ -27,6 +27,24 @@ use onus::sim::{
 
 // ---- harness ----------------------------------------------------------------
 
+#[path = "support/ron_field.rs"]
+mod ron_field;
+use ron_field::{field, field_after, shipped};
+
+/// A shipped `units.ron` field (F-044: anchors are read, not pinned).
+fn unit_field(key: &str) -> ron_field::Field {
+    field(&shipped("units.ron"), key)
+}
+
+/// The nemesis armor rule applied to an already-boosted hit, from the content.
+fn nemesis_hit(c: &Content, boosted: u32, prey: usize) -> u32 {
+    if c.nemesis_bonus.ignore_armor {
+        boosted
+    } else {
+        boosted.saturating_sub(c.units[prey].armor * c.combat.mitigation_per_armor)
+    }
+}
+
 fn data_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data")
 }
@@ -111,14 +129,24 @@ fn dmg(app: &App, attacker: &str, defender: &str) -> u32 {
 fn a_unit_attacks_the_enemy_in_range_until_it_dies_and_despawns() {
     let mut app = sim_app();
     // Bulwark's nemesis is the Ravager, so vs a Ripper this is plain math:
-    // offense 4 -> 20 damage, Ripper armor 1 -> 2 mitigation, 18 per hit.
+    // offense * damage_per_offense, minus Ripper armor * mitigation_per_armor
+    // (F-044: evaluated on the loaded RON rather than pinned).
     let attacker = spawn_unit(&mut app, "bulwark", Faction::A, Vec2::new(0.0, 0.0));
     let victim = spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(10.0, 0.0));
 
+    let c = content();
+    let (b, r) = (c.unit("bulwark").unwrap(), c.unit("ripper").unwrap());
+    assert_ne!(b.nemesis.as_deref(), Some("ripper"), "a plain pair");
     let per_hit = dmg(&app, "bulwark", "ripper");
-    assert_eq!(per_hit, 18, "20 offense damage - 2 armor mitigation");
+    let want = (b.offense * c.combat.damage_per_offense)
+        .saturating_sub(r.armor * c.combat.mitigation_per_armor);
+    assert_eq!(per_hit, want, "offense damage - armor mitigation");
     let full = hp(&app, victim).expect("victim has an HP pool");
-    assert_eq!(full, 60, "Ripper defense 3 -> 60 HP");
+    assert_eq!(full, r.defense * c.combat.hp_per_defense, "Ripper defense -> HP");
+    assert!(
+        per_hit > 0 && full.div_ceil(per_hit) >= 3,
+        "fixture: the kill must take at least three hits to time the cadence"
+    );
 
     let attack_ticks = {
         let c = app.world().resource::<Content>();
@@ -195,10 +223,13 @@ fn an_enemy_outside_engage_range_is_ignored() {
         Vec2::new(engage + 50.0, 0.0),
     );
 
+    // F-044: the Worker's full pool, from the loaded RON.
+    let c = content();
+    let full = c.unit("worker").unwrap().defense * c.combat.hp_per_defense;
     tick(&mut app, 30);
     assert!(app.world().get::<MoveTarget>(hunter).is_none(), "no chase");
     assert!(app.world().get::<Target>(hunter).is_none(), "no target");
-    assert_eq!(hp(&app, far), Some(60), "and no damage at that distance");
+    assert_eq!(hp(&app, far), Some(full), "and no damage at that distance");
 }
 
 /// The engaged target is the M2 nearest enemy — differential against the
@@ -452,7 +483,10 @@ fn movement_speed_comes_from_the_units_ron() {
 fn nemesis_adds_30_percent_and_ignores_armor() {
     let c = content();
     let milli = c.nemesis_bonus.mult_milli();
-    assert_eq!(milli, 1300, "+30% held as integer per-mille");
+    // F-044: the per-mille is the RON's decimal as written, scaled in f64.
+    let written = (unit_field("damage_mult").num::<f64>() * 1_000.0).round() as u32;
+    assert_eq!(milli, written, "the bonus held as integer per-mille");
+    assert!(milli > 1_000, "a nemesis bonus is a bonus");
     assert!(c.nemesis_bonus.ignore_armor);
 
     for u in &c.units {
@@ -508,9 +542,12 @@ fn the_nemesis_bonus_applies_in_a_live_fight() {
     let dealt = full - hp(&app, prey).unwrap();
     let c = content();
     let base = c.unit("bulwark").unwrap().offense * c.combat.damage_per_offense;
-    assert_eq!(dealt, base * 13 / 10, "nemesis damage, armor ignored");
+    // F-044: floor(base * mult_milli / 1000) on the loaded RON, armor rule applied.
+    let boosted = (base as u64 * c.nemesis_bonus.mult_milli() as u64 / 1_000) as u32;
+    let ravager = c.unit_index("ravager").unwrap();
+    assert_eq!(dealt, nemesis_hit(&c, boosted, ravager), "nemesis damage, armor ignored");
     assert!(
-        dealt > base - c.unit("ravager").unwrap().armor * c.combat.mitigation_per_armor,
+        dealt > base.saturating_sub(c.units[ravager].armor * c.combat.mitigation_per_armor),
         "and it beats the armored hit"
     );
 }
@@ -566,9 +603,10 @@ fn out_of_scale_stats_are_rejected_and_the_bonus_never_wraps() {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/m4b_scale_content");
     std::fs::create_dir_all(&dir).unwrap();
     let units = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
+    let offense = field_after(&units, "id: \"bulwark\"", "offense");
     std::fs::write(
         dir.join("units.ron"),
-        units.replace("speed: 2, offense: 4,", "speed: 2, offense: 4000000000,"),
+        units.replace(&offense.from, &offense.with(4000000000u32)),
     )
     .unwrap();
     // B1: the content set is three files.
@@ -646,11 +684,14 @@ fn a_scale_the_validator_cannot_multiply_is_an_error_not_a_panic() {
     };
 
     // Overflows u64 outright: must be Err, never an arithmetic panic.
+    // F-044: anchors read off the shipped RON; the degenerate values are fixed.
+    let (max, dpo) = (unit_field("max_stat"), unit_field("damage_per_offense"));
+    let (mult, hp) = (unit_field("damage_mult"), unit_field("hp_per_defense"));
     assert!(load(
         "u64_overflow",
         &[
-            ("max_stat: 10,", "max_stat: 4000000000,"),
-            ("damage_per_offense: 5,", "damage_per_offense: 4000000000,"),
+            (&max.from, &max.with(4000000000u32)),
+            (&dpo.from, &dpo.with(4000000000u32)),
         ],
     )
     .is_err());
@@ -660,10 +701,10 @@ fn a_scale_the_validator_cannot_multiply_is_an_error_not_a_panic() {
     assert!(load(
         "wrap_to_zero",
         &[
-            ("max_stat: 10,", "max_stat: 134217728,"),
-            ("damage_per_offense: 5,", "damage_per_offense: 67108864,"),
-            ("damage_mult: 1.3,", "damage_mult: 2.048,"),
-            ("hp_per_defense: 20,", "hp_per_defense: 1,"),
+            (&max.from, &max.with(134217728)),
+            (&dpo.from, &dpo.with(67108864)),
+            (&mult.from, &mult.with("2.048")),
+            (&hp.from, &hp.with(1)),
         ],
     )
     .is_err());
@@ -671,7 +712,10 @@ fn a_scale_the_validator_cannot_multiply_is_an_error_not_a_panic() {
     // A non-finite tunable is not "positive", it is unusable.
     assert!(load(
         "inf_speed",
-        &[("speed_per_point: 36.0,", "speed_per_point: inf,")]
+        &[(
+            &unit_field("speed_per_point").from,
+            &unit_field("speed_per_point").with("inf")
+        )]
     )
     .is_err());
 
@@ -879,17 +923,21 @@ fn a_nemesis_multiplier_is_exact_or_refused() {
         Content::load_from_dir(&dir)
     };
 
+    // F-044: the anchor is the shipped field, read; "shipped" is its own text.
+    let f = unit_field("damage_mult");
+    let shipped_milli = (f.num::<f64>() * 1_000.0).round() as u32;
     // Too large to hold as an integer per-mille: refused, not truncated.
-    assert!(load("huge", "damage_mult: 1.3,", "damage_mult: 5000000.0,").is_err());
+    assert!(load("huge", &f.from, &f.with("5000000.0")).is_err());
 
     // Anything the loader accepts is applied exactly as `round(mult * 1000)`.
     for (name, mult, milli) in [
-        ("shipped", "1.3", 1_300u32),
+        ("shipped", f.value.as_str(), shipped_milli),
+        ("m13", "1.3", 1_300u32),
         ("m115", "1.15", 1_150),
         ("m2", "2.0", 2_000),
         ("m1", "1.0", 1_000),
     ] {
-        let c = load(name, "damage_mult: 1.3,", &format!("damage_mult: {mult},"))
+        let c = load(name, &f.from, &f.with(mult))
             .unwrap_or_else(|e| panic!("{name} should load: {e}"));
         assert_eq!(c.nemesis_bonus.milli_exact(), Some(milli), "{name}");
         assert_eq!(c.nemesis_bonus.mult_milli(), milli, "{name}");
@@ -901,7 +949,7 @@ fn a_nemesis_multiplier_is_exact_or_refused() {
         let base = c.units[b].offense * c.combat.damage_per_offense;
         assert_eq!(
             onus::sim::combat::damage_per_hit(&c, b, r),
-            (base as u64 * milli as u64 / 1_000) as u32,
+            nemesis_hit(&c, (base as u64 * milli as u64 / 1_000) as u32, r),
             "{name}: the documented formula holds as written"
         );
     }

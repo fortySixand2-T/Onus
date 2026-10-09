@@ -2373,7 +2373,13 @@ fn the_fingerprint_covers_the_whole_content_exactly() {
     // A name, which nothing at all reads.
     assert_ne!(base, moved("name", "name: \"Worker\"", "name: \"Labourer\""));
     // A float, changed by one representable step.
-    assert_ne!(base, moved("float", "speed_per_point: 36.0", "speed_per_point: 36.000004"));
+    // F-044: the shipped value, read, and its next representable f32.
+    let spp = content().combat.speed_per_point;
+    let (from, to) = (
+        format!("speed_per_point: {spp:?}"),
+        format!("speed_per_point: {:?}", f32::from_bits(spp.to_bits() + 1)),
+    );
+    assert_ne!(base, moved("float", &from, &to));
     // Order: same set of definitions, different RON order.
     let reordered = reordered_roster();
     assert_ne!(
@@ -2509,7 +2515,10 @@ fn a_version_one_log_is_refused_rather_than_upgraded() {
 #[test]
 fn a_duplicated_content_id_is_impossible_to_load() {
     // A building id twice — the critic's repro: same line, different price.
-    let foundry = duplicated_definition("dupe", "foundry", ("alloy_cost: 150", "alloy_cost: 999"));
+    // F-044: the cost is read off the loaded content, not pinned.
+    let cost = format!("alloy_cost: {}", content().building("foundry").unwrap().alloy_cost);
+    assert_ne!(cost, "alloy_cost: 999", "the twin's cost must differ");
+    let foundry = duplicated_definition("dupe", "foundry", (&cost, "alloy_cost: 999"));
     let one_line = std::fs::read_to_string(data_dir().join("units.ron"))
         .expect("units.ron")
         .lines()

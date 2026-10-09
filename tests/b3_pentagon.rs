@@ -509,32 +509,37 @@ fn the_real_batch_reports_what_the_sim_actually_does() {
         );
     }
 
-    // The measurement as of B3.5, and what eight matches can honestly say about
-    // it. F-025's reading — four links holding and `bulwark > ravager` losing
-    // outright at 0.0% — is gone: the armour re-tune (F-031) turned that link
-    // into the pentagon's strongest resolved hold but a run this small cannot
-    // resolve all five. Eight decided matches put ~±28 points of 95% interval
-    // around every rate, so a link only reads `Holds` or `Fails` here when it is
-    // lopsided enough to clear 50% with that interval; otherwise it reads
-    // `Undetermined`, which is a statement about the sample, not the design.
-    // F-031's 100-match run is the design verdict; this test pins what *this*
-    // batch does, link by link, so a behavioural regression still shows.
+    // The measurement as of B4 (F-041), and what eight matches can honestly
+    // say about it. F-025's reading — four links holding and `bulwark >
+    // ravager` losing outright at 0.0% — is gone: the armour re-tune (F-031)
+    // turned that link into the pentagon's strongest resolved hold. B3.5 pinned
+    // three holds here with each mass probe standing one line (F-035); B4's
+    // opening reservation stands all three scripted lines, the matches run
+    // faster and four links drop to `Undetermined` — `ravager > sentinel` is now
+    // 2 of 8, under a half but not resolvably so. Eight decided matches put
+    // ~±28 points of 95% interval around every rate, so a link only reads
+    // `Holds` or `Fails` here when it is lopsided enough to clear 50% with that
+    // interval; otherwise it reads `Undetermined`, which is a statement about the
+    // sample, not the design. The B4 baseline batch (F-042) is the design
+    // reading; this test pins what *this* batch does, link by link, so a
+    // behavioural regression still shows.
     //
-    // Three hold, two are undetermined, and **nothing fails** — the first time
-    // in the project's history the pentagon has no link read as broken.
+    // B4's tuned content (g1, F-046) moves it again: `arclight > bulwark` and
+    // `ripper > arclight` resolve as holds, the other three stay undetermined,
+    // and nothing fails. (F-041: one hold, four undetermined.)
     assert_eq!(report.failing(), 0, "no link reads as broken design:\n{report}");
-    assert_eq!(report.holding(), 3, "three links resolve as holds:\n{report}");
-    assert_eq!(report.undetermined(), 2, "two links the sample cannot call:\n{report}");
+    assert_eq!(report.holding(), 2, "two links resolve as holds:\n{report}");
+    assert_eq!(report.undetermined(), 3, "three links the sample cannot call:\n{report}");
     assert_eq!(report.undefined(), 0, "every link has decided matches");
 
     // Link by link: the rate, and whether eight matches can resolve it.
     #[rustfmt::skip]
     let expected: &[(&str, f64, Verdict)] = &[
-        ("bulwark",  0.875, Verdict::Holds),         // > ravager  — was 0.0% at B3
-        ("ravager",  0.625, Verdict::Undetermined),  // > sentinel — F-031's coin flip
-        ("sentinel", 0.500, Verdict::Undetermined),  // > ripper
-        ("ripper",   1.000, Verdict::Holds),         // > arclight
-        ("arclight", 1.000, Verdict::Holds),         // > bulwark
+        ("bulwark",  0.750,     Verdict::Undetermined),  // > ravager  — 0.875 holds at F-041; 0.0% at B3
+        ("ravager",  0.500,     Verdict::Undetermined),  // > sentinel — 0.250 at F-041; 0.625 at B3.5
+        ("sentinel", 0.375,     Verdict::Undetermined),  // > ripper   — 0.625 at F-041; 0.500 at B3.5
+        ("ripper",   0.875,     Verdict::Holds),         // > arclight — 0.750 at F-041; 1.000 at B3.5
+        ("arclight", 1.000,     Verdict::Holds),         // > bulwark  — 5/6 at F-041 (2 timeouts); 1.000 at B3.5
     ];
     for (predator, rate, verdict) in expected {
         let l = link(&report, predator);

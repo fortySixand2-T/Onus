@@ -224,8 +224,9 @@ fn the_mass_probes_are_identical_in_every_field_of_the_struct() {
             // The masking below replaces one building name and one unit name, so
             // it is only sound if the probe opens exactly one *kind* of barracks
             // and masses exactly one unit. B3.5 gave each mass probe three
-            // openings of the same building (F-030; trimmed to what the sim
-            // places, F-035), which the masking handles — but openings of two
+            // openings of the same building (F-030; trimmed in F-035, restored
+            // with B4's opening reservation, F-041), which the masking handles —
+            // and the whole opening list, count included, is compared. Openings of two
             // different buildings it would not.
             assert!(
                 s.barracks.iter().all(|b| b.building == s.barracks[0].building),
@@ -233,19 +234,6 @@ fn the_mass_probes_are_identical_in_every_field_of_the_struct() {
                  masking cannot normalise it"
             );
             assert_eq!(s.army.len(), 1, "`{id}` is not a single-entry build order");
-            // F-035's one exception: `mass_ripper` really places a second
-            // Gene-Vats (its 40-Alloy Ripper is the only probe whose income
-            // outruns its spending) and its script says so, so the *count* of
-            // openings is the one thing the five may not share. Only that is
-            // masked: the struct is compared with every probe cut to its
-            // **first** opening — the opening all five place — and every other
-            // field, that opening's tick and offset included, still has to
-            // match. Which probes may carry extra openings, and how many, is
-            // pinned by name in `b1_probe_set::MASS_PROBE_OPENING_EXCEPTIONS`.
-            // B4's opening reservation should make the five identical again,
-            // and then this cut should go.
-            let mut s: StrategyDef = s.clone();
-            s.barracks.truncate(1);
             let text = format!("{s:?}")
                 .replace(&format!("\"{}\"", s.id), "\"<ID>\"")
                 .replace(&format!("\"{}\"", s.barracks[0].building), "\"<BARRACKS>\"")
@@ -388,8 +376,9 @@ fn the_realised_composition_is_the_build_orders_own_ratio() {
 #[test]
 fn the_rush_is_the_earliest_and_the_turtle_the_latest_of_the_whole_set() {
     // The match cap, so every probe gets the whole match to commit in; the old
-    // 12 000 ticks no longer reaches the turtle's first wave (tick 19 320 since
-    // F-036 raised its threshold to 26; 13 470 before).
+    // 12 000 ticks no longer reaches the turtle's first wave (tick 21 780 on
+    // B4's content, F-046; 19 320 when F-036 raised its threshold to 26;
+    // 13 470 before).
     const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
     let c = content();
     let mut commits: Vec<(String, u32, u32)> = Vec::new();

@@ -456,6 +456,27 @@ fn think(
     //
     // Per opened def: (def, how many the commander has, how many openings of it
     // this loop has already walked). A `Vec` keyed by def, never a map.
+    //
+    // **Opening reservation (B4, F-041).** An opening is *due* once `tick >=
+    // at_tick` and it is not standing (counted as above, so a barracks that was
+    // lost is due again). The first due opening this walk cannot pay for, in
+    // RON order, has its Alloy **reserved**, held back from the army step
+    // below: **while an opening is due, the army waits**, and the stockpile
+    // climbs to the opening's price instead of being spent on cheaper bodies
+    // (F-035). The tech walk itself is unchanged — a later, cheaper opening
+    // that is due and affordable still goes up past an unaffordable one, and
+    // still takes the only RNG draw, as before (B3.5 AC0b). The worker step
+    // (above) is not held: workers are the income that pays for the opening.
+    // An opening whose `at_tick` is still ahead reserves nothing, so a
+    // one-opening script, and any script once all its openings stand, plays
+    // exactly as it did before B4.
+    //
+    // The proof switch: built with `--features no-opening-reservation`
+    // nothing is ever reserved, which is the pre-B4 commander exactly. It
+    // exists so "the reservation is the only behavioural change" can be re-run,
+    // not taken on trust (F-041); no shipped build turns it on.
+    const RESERVING: bool = !cfg!(feature = "no-opening-reservation");
+    let mut reserve: Option<u32> = None;
     let mut tech: Vec<(usize, usize, usize)> = Vec::new();
     for opening in &script.barracks {
         let Some(def) = content.building_index(&opening.building) else {
@@ -499,8 +520,11 @@ fn think(
                     pos,
                 },
             );
+        } else if RESERVING && tick >= opening.at_tick && reserve.is_none() {
+            reserve = Some(cost);
         }
     }
+    let reserve = reserve.unwrap_or(0);
 
     // ---- 4. army: the repeating build order --------------------------------
     // The next unit of the cursor is trained at one of *its own* barracks that
@@ -521,6 +545,11 @@ fn think(
     // a Rust constant, and two sides in one match may run different depths.
     // Still **one order per decision** — one line is topped up by one, so the
     // per-decision `budget` commits at most one unit's Alloy.
+    //
+    // It pays only out of what the tech step's `reserve` leaves (B4): the
+    // Alloy of a due, unplaced opening is not the army's to spend. Units
+    // already queued keep building; the hold only stops new orders, whatever
+    // `queue_depth` allows.
     if let Some(unit) = script
         .army_at(c.army_cursor)
         .and_then(|id| content.unit_index(id))
@@ -536,7 +565,7 @@ fn think(
         if let Some(b) = target {
             if (b.queued as u32) < script.queue_depth {
                 let cost = content.units[unit].mvp_alloy_cost;
-                if budget >= cost {
+                if budget >= cost.saturating_add(reserve) {
                     budget -= cost;
                     c.army_cursor = c.army_cursor.wrapping_add(1);
                     order(

@@ -33,8 +33,7 @@
 //                           standing) the army step holds its Alloy back, so
 //                           the army trains nothing until it goes up. A
 //                           scripted line is therefore a real line: every
-//                           opening that falls due while the match has time
-//                           to pay for it is placed (F-046). The tech walk is
+//                           opening below is placed. The tech walk is
 //                           unchanged, so a cheaper opening that falls due
 //                           later can still go up first. (Before B4 the army spent the
 //                           stockpile first and most extra openings never went
@@ -67,11 +66,8 @@
 //     the barracks they open and the unit they mass differ. Each opens its one
 //     barracks **three times** — three production lines (F-028, F-030). Under
 //     B3.5's economy only the first (and `mass_ripper`'s second) ever went up
-//     (F-035); B4's opening reservation (F-041) builds every line that falls
-//     due in time. B4 (F-046) moved the second and third lines late (ticks
-//     9 000 and 15 000), identically for all five, so a mass probe fights on
-//     one line for most of a match, and a short match ends before its later
-//     lines (they are scripted identically; not always all built). If those knobs ever
+//     (F-035); since B4's opening reservation (F-041) all three do, so the
+//     five are identical again in what they script *and* what they build. If those knobs ever
 //     diverge, B3's pentagon assertion measures the knobs instead of the units and the
 //     whole instrument is void (F-018). The one asymmetry that stays is a real
 //     one from the design: an Aether Spire costs 200 Alloy where a Foundry or
@@ -89,7 +85,7 @@
 //
 // Everything here is priced in the Alloy-only MVP economy (300 starting Alloy;
 // Foundry 150, Gene-Vats 150, Aether Spire 200; worker 10, ripper 40,
-// sentinel 70, arclight 80, ravager 80, bulwark 95).
+// sentinel 70, arclight 80, ravager 90, bulwark 110).
 //
 // TEMPO (B3.5, F-029) — these scripts carry the match-length tuning. The arc
 // the brief asks for (5-8 minutes of real fighting) is bought with two knobs
@@ -144,8 +140,8 @@
             worker_target: 6,
             barracks: [
                 (building: "foundry", at_tick: 300, offset: 130.0),
-                (building: "foundry", at_tick: 9000, offset: 165.0),
-                (building: "foundry", at_tick: 15000, offset: 200.0),
+                (building: "foundry", at_tick: 600, offset: 165.0),
+                (building: "foundry", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "bulwark", count: 1),
@@ -162,8 +158,8 @@
             worker_target: 6,
             barracks: [
                 (building: "foundry", at_tick: 300, offset: 130.0),
-                (building: "foundry", at_tick: 9000, offset: 165.0),
-                (building: "foundry", at_tick: 15000, offset: 200.0),
+                (building: "foundry", at_tick: 600, offset: 165.0),
+                (building: "foundry", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "sentinel", count: 1),
@@ -180,8 +176,8 @@
             worker_target: 6,
             barracks: [
                 (building: "gene_vats", at_tick: 300, offset: 130.0),
-                (building: "gene_vats", at_tick: 9000, offset: 165.0),
-                (building: "gene_vats", at_tick: 15000, offset: 200.0),
+                (building: "gene_vats", at_tick: 600, offset: 165.0),
+                (building: "gene_vats", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "ripper", count: 1),
@@ -198,8 +194,8 @@
             worker_target: 6,
             barracks: [
                 (building: "gene_vats", at_tick: 300, offset: 130.0),
-                (building: "gene_vats", at_tick: 9000, offset: 165.0),
-                (building: "gene_vats", at_tick: 15000, offset: 200.0),
+                (building: "gene_vats", at_tick: 600, offset: 165.0),
+                (building: "gene_vats", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "ravager", count: 1),
@@ -218,8 +214,8 @@
             worker_target: 6,
             barracks: [
                 (building: "aether_spire", at_tick: 300, offset: 130.0),
-                (building: "aether_spire", at_tick: 9000, offset: 165.0),
-                (building: "aether_spire", at_tick: 15000, offset: 200.0),
+                (building: "aether_spire", at_tick: 600, offset: 165.0),
+                (building: "aether_spire", at_tick: 900, offset: 200.0),
             ],
             army: [
                 (unit: "arclight", count: 1),
@@ -235,8 +231,7 @@
         // Two domains: Machine + Flesh. Cheap Flesh bodies screening a Machine
         // core — the army a single barracks could never field. Two Foundries
         // and two Gene-Vats: four lines across two domains (trimmed to two in
-        // F-035, restored with B4's opening reservation, F-041; the third and
-        // fourth moved later, to ticks 3 000 and 6 000, in F-046).
+        // F-035, restored with B4's opening reservation, F-041).
         (
             id: "synth_steel_flesh",
             think_interval_ticks: 30,
@@ -244,8 +239,8 @@
             barracks: [
                 (building: "foundry",   at_tick: 300,  offset: 130.0),
                 (building: "gene_vats", at_tick: 900,  offset: 160.0),
-                (building: "foundry",   at_tick: 3000, offset: 195.0),
-                (building: "gene_vats", at_tick: 6000, offset: 225.0),
+                (building: "foundry",   at_tick: 1200, offset: 195.0),
+                (building: "gene_vats", at_tick: 1500, offset: 225.0),
             ],
             army: [
                 (unit: "sentinel", count: 1),
@@ -305,13 +300,13 @@
             attack_spread: 40.0,
             queue_depth: 1,
         ),
-        // The opposite pole: ten workers (twelve until F-046), late tech on four lines (trimmed to
+        // The opposite pole: twelve workers, late tech on four lines (trimmed to
         // three in F-035, restored with B4's opening reservation, F-041), and
         // nothing leaves home until the biggest force in the set exists.
         (
             id: "turtle",
             think_interval_ticks: 30,
-            worker_target: 10,
+            worker_target: 12,
             barracks: [
                 (building: "foundry",   at_tick: 600,  offset: 110.0),
                 (building: "gene_vats", at_tick: 1200, offset: 140.0),
@@ -325,10 +320,9 @@
             ],
             // 26, not 15 (F-036): at 15 it committed at tick 13 470, before
             // four other strategies (mass_bulwark last at 18 750), so it was
-            // not the late pole any more. B4 (F-045/F-046) lowered it to 24 on
-            // the retuned content, where it commits at 21 780, still last, 660
-            // ticks after mass_bulwark (21 120) on every closure seed.
-            attack_at_army: 24,
+            // not the late pole any more. 26 commits at 19 320, the smallest
+            // value measured with a margin (24 clears by only 390 ticks).
+            attack_at_army: 26,
             attack_interval_ticks: 600,
             attack_spread: 80.0,
             queue_depth: 1,

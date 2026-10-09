@@ -40,25 +40,20 @@ use onus::sim::{
 // ---- harness ----------------------------------------------------------------
 
 /// How many production lines a `mass_*` probe opens. One before B3.5; the
-/// tempo tuning scripted three (F-029), but under its economy no probe ever
-/// affords a third and only `mass_ripper` a second (F-035), so the scripts were
-/// trimmed to the barracks the sim really places. The five must carry the same
-/// number or they stop being comparable (F-018), so it is written once, here —
-/// with the one measured exception spelled out by name in
-/// [`MASS_PROBE_OPENING_EXCEPTIONS`], not tolerated generically.
-const MASS_PROBE_BARRACKS: usize = 1;
+/// tempo tuning scripted three (F-029, F-030). Under B3.5's economy no probe
+/// afforded a third and only `mass_ripper` a second (F-035), so the scripts
+/// were trimmed to what the sim placed; B4's opening reservation (F-041) builds
+/// every scripted line, so the five are back at F-030's three. The five must
+/// carry the same number or they stop being comparable (F-018), so it is
+/// written once, here.
+const MASS_PROBE_BARRACKS: usize = 3;
 
-/// **The one knob the five mass probes do not share (F-035).** `mass_ripper`'s
-/// Ripper costs 40 Alloy, the cheapest body in the game, so it is the only probe
-/// whose income outruns its spending: its stockpile reaches a second Gene-Vats'
-/// 150 at tick ~9 330 in every head-to-head that lasts that long, and B3.5's
-/// Ripper readings were taken on that two-line army. Its script says so. Only
-/// the *count* of openings may differ: every opening the probes share must
-/// still match tick for tick and offset for offset, and every other knob is
-/// asserted identical. B4's opening reservation (the army step holding Alloy
-/// back for a due opening) should make the five identical again — at which
-/// point this list must go empty.
-const MASS_PROBE_OPENING_EXCEPTIONS: &[(&str, usize)] = &[("mass_ripper", 2)];
+/// Probes allowed an opening count other than [`MASS_PROBE_BARRACKS`], by name.
+/// **Empty since B4** (F-041): F-035 named `mass_ripper` here (two lines, the
+/// only probe whose stockpile reached a second Gene-Vats), and the opening
+/// reservation made the five identical again. Kept as the one place an
+/// exception would have to be spelled out, never tolerated generically.
+const MASS_PROBE_OPENING_EXCEPTIONS: &[(&str, usize)] = &[];
 
 /// The opening count `id` must carry: [`MASS_PROBE_BARRACKS`] unless F-035's
 /// named exception says otherwise.
@@ -283,8 +278,8 @@ fn every_combat_unit_is_massed_by_exactly_one_probe() {
     }
     // And each probe commits to a real combat unit out of its own production
     // lines — `mass_probe_openings(id)` openings of the *one* building that
-    // makes its unit (B3.5 scripted three, F-029; only `mass_ripper`'s second
-    // ever goes up, so the scripts are back to one, two for it, F-035).
+    // makes its unit (three: scripted by B3.5, F-029; trimmed in F-035; built
+    // since B4's opening reservation, F-041).
     for (id, unit) in &probes {
         assert!(roster.contains(unit), "`{id}` masses non-combatant `{unit}`");
         let s = c.strategy(id).unwrap();
@@ -365,10 +360,9 @@ fn the_mass_probes_are_knob_identical() {
         // ticks late, would out-produce the others and B3 would read the
         // schedule instead of the unit (F-018).
         //
-        // The count is pinned per probe, not compared between them, because of
-        // F-035's one named exception (`mass_ripper` really places two); see
-        // [`MASS_PROBE_OPENING_EXCEPTIONS`]. Every opening two probes share is
-        // still compared below.
+        // The count is pinned per probe through [`mass_probe_openings`], which
+        // is [`MASS_PROBE_BARRACKS`] for all five now that
+        // [`MASS_PROBE_OPENING_EXCEPTIONS`] is empty (F-041).
         assert_eq!(
             s.barracks.len(),
             mass_probe_openings(&s.id),
@@ -479,7 +473,8 @@ fn the_synthesis_builds_span_domains() {
 /// four and `turtle` three of four, and `synth_triad` placed all four but not
 /// in script order. No budget fixed it and the assertion was not weakened; the
 /// scripts were made to list exactly what the sim places, in the order it
-/// places it.
+/// places it. Since B4 (F-041) the opening reservation places every scripted
+/// opening, and the original scripts are back.
 #[test]
 fn every_strategy_places_its_barracks_and_builds_its_own_order() {
     const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
@@ -564,8 +559,8 @@ fn every_strategy_eventually_attacks() {
 #[test]
 fn the_rush_commits_early_and_the_turtle_masses_first() {
     // The match cap, for the same reason as above: the turtle now first
-    // commits at tick 19 320 (F-036; 13 470 before), past the old 12 000-tick
-    // horizon.
+    // commits at tick 21 780 (F-046; 19 320 at F-036, 13 470 before that), past
+    // the old 12 000-tick horizon.
     const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
     let mut rush = solo("rush", 4);
     tick(&mut rush, BUDGET);

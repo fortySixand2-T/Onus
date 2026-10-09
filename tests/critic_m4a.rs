@@ -453,8 +453,22 @@ fn economy_is_deterministic_per_tick() {
 // sim-owned `UnitKind`, RON `starting_alloy`, and the harvest tick boundary.
 // Appended; the six probes above are untouched.
 // =============================================================================
+#[path = "support/ron_field.rs"]
+mod ron_field;
+
 mod pass2 {
     use super::*;
+    use crate::ron_field::{field, field_after, shipped};
+
+    /// A field of the shipped Worker entry (F-044: anchors are read, not pinned).
+    fn worker_field(key: &str) -> crate::ron_field::Field {
+        field_after(&shipped("units.ron"), "id: \"worker\"", key)
+    }
+
+    /// The shipped Foundry's `alloy_cost` field.
+    fn foundry_cost() -> crate::ron_field::Field {
+        field_after(&shipped("units.ron"), "id: \"foundry\"", "alloy_cost")
+    }
     use onus::sim::economy::GatherPhase;
     use onus::sim::{GatherTarget, UnitKind};
     use std::path::PathBuf;
@@ -812,10 +826,8 @@ mod pass2 {
     /// first mining tick and not before.
     #[test]
     fn a_one_tick_gather_lands_on_the_first_mining_tick() {
-        let c = edited(
-            "gather_ticks_1",
-            &[("units.ron", "mvp_gather_ticks: 90,", "mvp_gather_ticks: 1,")],
-        );
+        let g = worker_field("mvp_gather_ticks");
+        let c = edited("gather_ticks_1", &[("units.ron", &g.from, &g.with(1))]);
         let cap = c.unit("worker").unwrap().mvp_carry_capacity as u64;
         let mut app = shipped_app(c, 0);
         spawn_building(&mut app, "hq", Faction::A, Vec2::new(500.0, 0.0));
@@ -836,13 +848,10 @@ mod pass2 {
     #[test]
     fn gather_and_production_honour_the_ron_tick_counts_identically() {
         fn train_delay(n: u32) -> u32 {
+            let t = worker_field("mvp_train_ticks");
             let c = edited(
                 &format!("train_ticks_{n}"),
-                &[(
-                    "units.ron",
-                    "mvp_train_ticks: 600,",
-                    &format!("mvp_train_ticks: {n},"),
-                )],
+                &[("units.ron", &t.from, &t.with(n))],
             );
             assert_eq!(c.unit("worker").unwrap().mvp_train_ticks, n);
             let mut app = shipped_app(c, 1000);
@@ -857,13 +866,10 @@ mod pass2 {
             panic!("the unit never arrived for mvp_train_ticks = {n}");
         }
         fn gather_delay(n: u32) -> u32 {
+            let g = worker_field("mvp_gather_ticks");
             let c = edited(
                 &format!("gather_ticks_{n}"),
-                &[(
-                    "units.ron",
-                    "mvp_gather_ticks: 90,",
-                    &format!("mvp_gather_ticks: {n},"),
-                )],
+                &[("units.ron", &g.from, &g.with(n))],
             );
             let mut app = shipped_app(c, 0);
             spawn_building(&mut app, "hq", Faction::A, Vec2::new(600.0, 0.0));
@@ -927,15 +933,22 @@ mod pass2 {
     #[test]
     fn validation_rejects_every_class_of_unplayable_content() {
         type Case<'a> = (&'a str, Vec<(&'a str, &'a str, &'a str)>, &'a str);
+        // F-044: numeric anchors are read off the shipped RON.
+        let (units, res) = (shipped("units.ron"), shipped("resources.ron"));
+        let foundry = foundry_cost();
+        let train = field_after(&units, "id: \"sentinel\"", "mvp_train_ticks");
+        let (gather, deposit) = (field(&res, "gather_range"), field(&res, "deposit_range"));
+        let (foundry_to, train_to) = (foundry.with(0), train.with(0));
+        let (gather_to, deposit_to) = (gather.with("0.0"), deposit.with("-1.0"));
         let cases: Vec<Case> = vec![
             (
                 "free_building",
-                vec![("units.ron", "alloy_cost: 150, produces: [\"bulwark\"", "alloy_cost: 0, produces: [\"bulwark\"")],
+                vec![("units.ron", &foundry.from, &foundry_to)],
                 "foundry",
             ),
             (
                 "zero_train_ticks",
-                vec![("units.ron", "mvp_train_ticks: 900,", "mvp_train_ticks: 0,")],
+                vec![("units.ron", &train.from, &train_to)],
                 "sentinel",
             ),
             (
@@ -945,12 +958,12 @@ mod pass2 {
             ),
             (
                 "zero_gather_range",
-                vec![("resources.ron", "gather_range: 40.0,", "gather_range: 0.0,")],
+                vec![("resources.ron", &gather.from, &gather_to)],
                 "range",
             ),
             (
                 "zero_deposit_range",
-                vec![("resources.ron", "deposit_range: 48.0,", "deposit_range: -1.0,")],
+                vec![("resources.ron", &deposit.from, &deposit_to)],
                 "range",
             ),
             (
@@ -974,9 +987,10 @@ mod pass2 {
     /// silently default to 0 Alloy.
     #[test]
     fn missing_starting_alloy_is_a_load_error_not_a_silent_zero() {
+        let start = field(&shipped("resources.ron"), "starting_alloy");
         let err = load_edited(
             "no_starting_alloy",
-            &[("resources.ron", "starting_alloy: 300,", "")],
+            &[("resources.ron", &start.from, &start.removed())],
         )
         .expect_err("resources.ron without starting_alloy must not load");
         assert!(err.contains("starting_alloy") || err.contains("parse"), "{err}");
@@ -986,10 +1000,9 @@ mod pass2 {
 
     #[test]
     fn starting_alloy_comes_from_ron_and_is_seeded_once_for_both_factions() {
-        let c = edited(
-            "starting_777",
-            &[("resources.ron", "starting_alloy: 300,", "starting_alloy: 777,")],
-        );
+        let start = field(&shipped("resources.ron"), "starting_alloy");
+        assert_ne!(start.value, "777", "the probe value must differ from the shipped one");
+        let c = edited("starting_777", &[("resources.ron", &start.from, &start.with(777))]);
         assert_eq!(c.economy.starting_alloy, 777);
         let mut app = shipped_app(c, 777);
         assert_eq!(alloy(&app, Faction::A), 777);
@@ -1015,15 +1028,14 @@ mod pass2 {
     /// Costs are read, not compiled in: edit the RON and every charge follows.
     #[test]
     fn every_charge_follows_the_edited_ron_price() {
+        // F-044: both anchors are the shipped fields, read.
+        let (worker, foundry) = (worker_field("mvp_alloy_cost"), foundry_cost());
+        assert!(worker.value != "37" && foundry.value != "137", "probe prices must differ");
         let c = edited(
             "prices",
             &[
-                ("units.ron", "mvp_alloy_cost: 10,", "mvp_alloy_cost: 37,"),
-                (
-                    "units.ron",
-                    "alloy_cost: 150, produces: [\"bulwark\"",
-                    "alloy_cost: 137, produces: [\"bulwark\"",
-                ),
+                ("units.ron", &worker.from, &worker.with(37)),
+                ("units.ron", &foundry.from, &foundry.with(137)),
             ],
         );
         let worker_cost = c.unit("worker").unwrap().mvp_alloy_cost;
