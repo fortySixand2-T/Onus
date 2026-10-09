@@ -147,7 +147,9 @@ fn a_three_line_script_builds_all_three_lines_in_a_real_match() {
 ///     takes at least `ceil(alloy_cost * gather_ticks / (worker_target * carry))`
 ///     ticks.
 ///
-/// It is a **lower bound** on the real banking time — walking, the army and
+/// It is a **lower bound** on banking the cost *from an empty stockpile*
+/// (not on the delay from `at_tick` to placement: starting or banked Alloy can
+/// make that zero) — walking, the army and
 /// worker spending before the opening comes due, and lost workers all slow it
 /// — so it excuses the fewest openings an income model can: the claim it bounds
 /// stays as strict as an honest bound allows. Walking time is left out because
@@ -229,14 +231,18 @@ fn every_multi_opening_strategy_places_its_whole_script_in_a_head_to_head() {
                 );
             }
         }
-        if fewest > 1 {
+        // Only the mass probes count: F-035 showed them stuck on one line
+        // without the reservation, whereas `synth_triad` placed its whole
+        // script even before B4, so it says nothing about the rule.
+        if fewest > 1 && id.starts_with("mass_") {
             placed_more_than_one.push(id.clone());
         }
     }
     assert!(
         !placed_more_than_one.is_empty(),
-        "no multi-opening strategy placed more than one opening on both sides of its mirror: \
-         the grace bound has made the claim vacuous"
+        "no mass probe placed more than one opening on both sides of its mirror: \
+         the grace bound has made the claim vacuous (or the mirrors end too soon \
+         to exercise the reservation)"
     );
 }
 

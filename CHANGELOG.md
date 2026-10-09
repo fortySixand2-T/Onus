@@ -582,3 +582,9 @@
 - [2026-10-08] Modified: tests/b4_reservation.rs — bound the whole-script claim: placements must be a script-order prefix, every unplaced opening must satisfy at_tick + grace > end tick (grace derived from RON as the best-case banking time), and at least one strategy must still place more than one opening (non-vacuity)
 - [2026-10-08] Modified: FINDINGS.md — F-046: record the bounded claim, its grace derivation, the no-opening-reservation red proof and the full-gate counts
 - [2026-10-08] Modified: BALANCE_PLAN.md — Tune-only-RON note records the bounded placement claim (F-046)
+- [2026-10-08] Created: tests/critic_b4_probes.rs — B4 critic probes: F-032 licence re-run (pre-g1 RON reproduces F-041 pins; pre-B4 RON under no-opening-reservation reproduces pre-B4 pins), workers not held, lost line due again holds the army, stockpile-aware differential for the grace bound
+- [2026-10-08] Created: tests/critic_b4_data/{pre_g1,pre_b4}/*.ron — RON fixtures (d50f9a1 and main assets/data) for the B4 critic golden-licence probes
+- [2026-10-08] Modified: BALANCE_PLAN.md — multi-barracks Result notes which lines g1's mirrors actually build (critic B4 #1)
+- [2026-10-08] Modified: assets/data/strategies.ron — comments only: openings are placed when due in time, not always all (critic B4 #1)
+- [2026-10-08] Modified: tests/b4_reservation.rs — grace wording scoped to an empty stockpile; non-vacuity guard requires a mass probe (critic B4 #2, #3)
+- [2026-10-08] Modified: FINDINGS.md — F-046 corrections: grace wording, guard, closure pin is a re-measurement, diff-is-empty precondition (critic B4 #2-#4)

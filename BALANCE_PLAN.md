@@ -246,6 +246,10 @@ all-timeout run is flagged, not reported as balanced.
       **Result** (F-041, commit 3c878f7): the army step reserves a due opening's Alloy, every
       scripted line is built, `MASS_PROBE_OPENING_EXCEPTIONS` is empty and the per-probe
       exceptions are gone; the five probes are knob-identical in what they script and build.
+      *Under g1 (F-046)* the second and third lines are due at 9 000 / 15 000, so a mirror
+      that ends first builds fewer: on `seed_at(0,1)` `mass_ripper` builds 1 of 3 and
+      `mass_sentinel` 2 of 3; bulwark, ravager and arclight build 3. Scripts stay identical;
+      every opening due early enough to be paid for is built (the bounded claim, F-046).
 
 ## B5 — The human fun gate (not automatable — and required)
 

@@ -4388,8 +4388,9 @@ changes. The brief states no script timings, so none were added.
 
 ### The precondition: no Rust changed
 
-`git diff 049e9ed ed07d82 -- src benches tests Cargo.toml Cargo.lock` is
-empty. 049e9ed was F-044's test-only unpinning, and everything after it up to
+`git diff 049e9ed ed07d82 -- src benches Cargo.toml Cargo.lock` is empty, and
+over `tests` the only change is a one-line comment in `tests/b4_reservation.rs`
+(critic, B4). 049e9ed was F-044's test-only unpinning, and everything after it up to
 the install is FINDINGS, BALANCE_PLAN, CHANGELOG and the two RON files. The
 library every test links is the one F-044 shipped, so the only input that can
 move a hash is `assets/data`.
@@ -4528,6 +4529,9 @@ F-036 claimed. The full commit order is identical on all three seeds:
 | `mass_bulwark` | 21 120 |
 | `turtle` | 21 780 |
 
+This pin is a **re-measurement, not an F-032 move**. It was already red under the pre-g1
+RON (one of F-041's reds), so F-032's licence does not cover it. Its design claim (turtle
+strictly last) is still asserted and green (critic, B4).
 The pin moves from (19 320, 18 750) to (21 780, 21 120), and the margin grows
 from 570 to 660 ticks. The assertions are unchanged: turtle strictly last, and
 the exact pair on every seed. The stale "19 320" comments in `b1_probe_set`,
@@ -4622,8 +4626,17 @@ term is read from the loaded `Content`: the building's cost, the strategy's
   most one load per harvest.
 - Walking to the deposit and back is left out, because the deposit distance is fixture
   geometry, not content. Leaving it out only lowers `grace`.
-- So `grace` is a lower bound on the real banking time. It excuses the fewest openings an
-  income model can, which keeps the claim as strict as an honest bound allows.
+- So `grace` is a lower bound on banking the cost *from an empty stockpile*. It is not a
+  bound on the delay from `at_tick` to placement: every first opening goes up at its
+  `at_tick` on starting Alloy. It excuses the fewest openings an income model can, which
+  keeps the claim as strict as an honest bound allows. The critic checked it against a
+  stricter bound (the Alloy each side actually held when the opening came due). That bound
+  excuses exactly the same openings.
+- **Non-vacuity guard (critic, B4).** At first the guard asked only that some strategy place
+  more than one opening. `synth_triad` did that even before B4. It now asks that at least
+  one **mass probe** (the strategies F-035 showed stuck on one line) place more than one
+  opening on both sides of its mirror. So the guard fails if a retune makes the mass mirrors
+  too short for the reservation to be exercised.
 
 On g1 a Foundry's grace with six workers is 1 125 ticks.
 - `mass_sentinel`'s third line is due at 15 000 + 1 125 = 16 125, after its mirror ends
