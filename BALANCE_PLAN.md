@@ -259,6 +259,14 @@ all-timeout run is flagged, not reported as balanced.
             their contact time is spent marching. Their nearest-target hits go to workers
             and buildings, up to 86%. Recommended lever: attack-move engagement. It is
             outside the three named levers and needs the user's go-ahead.
+      - **Lever chosen (user, 2026-10-09, from F-047): attack-move.** The measurement
+        fits none of the three levers. The defender's army is already dead when the turtle
+        arrives: it died attacking the turtle's base, walking through fire under a plain
+        move order. A new `Order::AttackMove` for AI waves engages enemy armed units within
+        `engage_range` (armed units before workers and buildings), then resumes the march.
+        Plain `MoveTo` stays a pure move. The switch is content: a per-strategy RON choice
+        of the wave order. With it set to `move` everywhere, the binary must reproduce
+        today's goldens.
       - [ ] **Step 1 — build the chosen lever,** test-first, behind a cargo feature that
             restores today's behaviour (as `no-opening-reservation` does).
             - *Home defence:* if enemies come within a RON `defend_radius` of its HQ, the

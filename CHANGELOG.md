@@ -592,3 +592,4 @@
 - [2026-10-09] Created: tests/b4_turtle_diag.rs — B4 turtle step 0: read-only headless diagnostic (defender home/field/dead at the turtle's commit and arrival, trades, the defender's fight at the turtle's base); table test ignored, one-match structural test un-ignored
 - [2026-10-09] Modified: FINDINGS.md — F-047: why the turtle wins (step-0 measurement, code cited, attack-move engagement recommended)
 - [2026-10-09] Modified: BALANCE_PLAN.md — turtle AC step 0 ticked with its result (F-047)
+- [2026-10-09] Modified: BALANCE_PLAN.md — turtle AC: user chose the attack-move lever (F-047)
