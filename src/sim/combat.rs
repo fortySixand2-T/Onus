@@ -42,7 +42,7 @@ use crate::sim::content::{Content, NemesisBonus};
 use crate::sim::economy::{Building, UnitDefIdx};
 use crate::sim::pathfind::{astar, TileGrid};
 use crate::sim::spatial::{Faction, SpatialGrid, Unit};
-use crate::sim::{GatherTarget, MoveTarget, Position};
+use crate::sim::{AttackMoveDest, GatherTarget, MoveTarget, Position, STOP_EPS};
 
 // ---- components ------------------------------------------------------------
 
@@ -106,6 +106,11 @@ pub struct Target(pub Entity);
 /// `MoveTo`/`Gather` order arrives. So an order always wins — including on the
 /// tick it is issued, since orders are applied before the combat pass — and a
 /// unit is auto-chased only while it has no orders of its own.
+///
+/// **The one exception is an attack-move** ([`crate::sim::Order::AttackMove`],
+/// B4, F-048), which is the commander *asking* for the chase: a unit carrying
+/// [`AttackMoveDest`] engages on the way like an idle unit, and when the
+/// fight ends combat sends it back on its march to that same destination.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Engaging;
 
@@ -272,6 +277,11 @@ struct Row {
     cooldown: u32,
     engaging: bool,
     has_move_target: bool,
+    /// Under an attack-move: the destination it marches back to (B4, F-048).
+    attack_move: Option<Vec2>,
+    /// An **armed** unit, as attack-move's target priority reads it: a unit
+    /// whose definition has `offense > 0`. Buildings and workers are not.
+    armed_target: bool,
     /// On a gather job: the economy owns this unit's movement until the
     /// commander says otherwise.
     gathering: bool,
@@ -298,6 +308,7 @@ pub fn combat(
         Option<&Engaging>,
         Option<&MoveTarget>,
         Option<&GatherTarget>,
+        Option<&AttackMoveDest>,
     )>,
     mut commands: Commands,
 ) {
@@ -307,7 +318,7 @@ pub fn combat(
     let mut rows: Vec<Row> = units
         .iter()
         .filter_map(
-            |(entity, pos, def, building, faction, health, cd, engaging, mt, gather)| {
+            |(entity, pos, def, building, faction, health, cd, engaging, mt, gather, am)| {
                 // A unit if it has a definition, else a building if it is one;
                 // anything that is neither takes no part in combat at all.
                 let (kind, full) = match (def, building) {
@@ -331,6 +342,11 @@ pub fn combat(
                     cooldown: cd.map(|c| c.0).unwrap_or(0),
                     engaging: engaging.is_some(),
                     has_move_target: mt.is_some(),
+                    attack_move: am.map(|d| d.0),
+                    armed_target: match kind {
+                        RowKind::Unit(u) => content.units.get(u).is_some_and(|d| d.offense > 0),
+                        RowKind::Building(_) => false,
+                    },
                     gathering: gather.is_some(),
                 })
             },
@@ -378,12 +394,6 @@ pub fn combat(
         // the guard; the stat is a coincidence.
         let armed = def.offense > 0 && def.mvp_attack_range > 0.0 && !row.gathering;
 
-        // Non-combatants (the Worker) never engage: no target, no chase.
-        let engaged = if armed {
-            grid.nearest_enemy(&layout, i)
-        } else {
-            None
-        };
         // Acquire inside `engage_range`; once chasing, hold on out to the
         // `pursue_range` leash so a detour around a wall does not drop the
         // target (which would leave the unit oscillating at the obstacle).
@@ -392,14 +402,52 @@ pub fn combat(
         } else {
             engage_range
         };
-        let Some(j) = engaged.filter(|&j| row.pos.distance(rows[j].pos) <= reach) else {
+        // Non-combatants (the Worker) never engage: no target, no chase.
+        //
+        // Everyone else takes the nearest enemy in reach — except an
+        // attack-mover (B4, F-048), which takes the nearest **armed** enemy in
+        // reach first and falls back to the nearest of anything (a worker, a
+        // building) only when no armed unit is in reach. Both answers come from
+        // the same snapshot grid with the same tie-break (smallest row index,
+        // i.e. ascending entity bits), so no new order enters the outcome.
+        let engaged = if !armed {
+            None
+        } else if row.attack_move.is_some() {
+            grid.nearest_enemy_within(&layout, i, reach, |j| rows[j].armed_target)
+                .or_else(|| {
+                    grid.nearest_enemy(&layout, i)
+                        .filter(|&j| row.pos.distance(rows[j].pos) <= reach)
+                })
+        } else {
+            grid.nearest_enemy(&layout, i)
+                .filter(|&j| row.pos.distance(rows[j].pos) <= reach)
+        };
+        let Some(j) = engaged else {
             if row.cooldown != next_cd {
                 commands.entity(row.entity).insert(AttackCooldown(next_cd));
             }
             let mut e = commands.entity(row.entity);
-            if row.engaging {
+            match row.attack_move {
                 // Nothing left to chase: drop the order combat itself issued.
-                e.remove::<MoveTarget>().remove::<Engaging>();
+                None => {
+                    if row.engaging {
+                        e.remove::<MoveTarget>().remove::<Engaging>();
+                    }
+                }
+                // An attack-mover with nothing to fight resumes its march to
+                // the same destination — after a chase, or after standing to
+                // fight — and its order is complete once it stands there.
+                Some(dest) => {
+                    if row.engaging {
+                        e.insert(MoveTarget(dest)).remove::<Engaging>();
+                    } else if !row.has_move_target {
+                        if row.pos.distance(dest) <= STOP_EPS {
+                            e.remove::<AttackMoveDest>();
+                        } else {
+                            e.insert(MoveTarget(dest));
+                        }
+                    }
+                }
             }
             continue;
         };
@@ -409,8 +457,10 @@ pub fn combat(
 
         let mut cooldown = next_cd;
         if row.pos.distance(rows[j].pos) <= def.mvp_attack_range {
-            if row.engaging {
-                // In reach: stand and fight (only cancels combat's own order).
+            if row.engaging || (row.attack_move.is_some() && row.has_move_target) {
+                // In reach: stand and fight. This cancels only combat's own
+                // order, or an attack-mover's march (whose destination is kept
+                // in `AttackMoveDest`, to resume when the fight is over).
                 e.remove::<MoveTarget>().remove::<Engaging>();
             }
             if cooldown == 0 {
@@ -420,7 +470,7 @@ pub fn combat(
                 };
                 cooldown = def.mvp_attack_ticks;
             }
-        } else if row.engaging || !row.has_move_target {
+        } else if row.engaging || !row.has_move_target || row.attack_move.is_some() {
             // Out of reach but worth chasing — and the commander has not said
             // otherwise. M3 picks the step so walls are walked around.
             let waypoint = approach_waypoint(tiles.as_deref(), row.pos, rows[j].pos);
@@ -449,7 +499,7 @@ pub fn combat(
             continue;
         }
         if row.has_health {
-            if let Ok((.., Some(mut h), _, _, _, _)) = units.get_mut(row.entity) {
+            if let Ok((.., Some(mut h), _, _, _, _, _)) = units.get_mut(row.entity) {
                 h.current = current;
             }
         } else {

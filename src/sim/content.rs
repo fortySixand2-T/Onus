@@ -167,6 +167,40 @@ pub struct StrategyDef {
     /// error, not a silent `0` — which would mean "never train", content the
     /// sim cannot run. `Content::validate` refuses `0` for the same reason.
     pub queue_depth: u32,
+    /// The order this strategy's attack waves go out on (B4, F-048): a plain
+    /// [`WaveOrder::Move`] or an [`WaveOrder::AttackMove`] that fights armed
+    /// enemies on the way and then resumes its march.
+    ///
+    /// Deliberately **not** `#[serde(default)]`, like `queue_depth`: a missing
+    /// wave order is a load error, so no strategy can play a wave order nobody
+    /// chose.
+    pub wave_order: WaveOrder,
+}
+
+/// Which order an AI attack wave is sent on (B4, F-048). Content, not code:
+/// the switch between the two lives in `strategies.ron` (`move` /
+/// `attack_move`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WaveOrder {
+    /// `Order::MoveTo`: a pure move. The wave fights only what is already in
+    /// a unit's own reach as it walks, and never chases. Every match before
+    /// B4's attack-move lever played this.
+    Move,
+    /// `Order::AttackMove`: march to the destination, engaging enemy armed
+    /// units inside `engage_range` on the way (armed units before workers and
+    /// buildings), then resume the march.
+    AttackMove,
+}
+
+impl WaveOrder {
+    /// The RON spelling, for fingerprints and reports.
+    pub fn label(self) -> &'static str {
+        match self {
+            WaveOrder::Move => "move",
+            WaveOrder::AttackMove => "attack_move",
+        }
+    }
 }
 
 impl StrategyDef {
@@ -560,6 +594,7 @@ impl Content {
                 attack_interval_ticks: 0,
                 attack_spread: 0.0,
                 queue_depth: 0,
+                wave_order: WaveOrder::Move,
             },
             resources: resources_file.resources,
             mvp_active: resources_file.mvp_active,
@@ -1043,6 +1078,7 @@ impl Content {
                 .u32(s.attack_interval_ticks)
                 .f32(s.attack_spread)
                 .u32(s.queue_depth)
+                .str(s.wave_order.label())
                 .u64(s.barracks.len() as u64);
             for o in &s.barracks {
                 h.str(&o.building).u32(o.at_tick).f32(o.offset);

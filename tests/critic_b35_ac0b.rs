@@ -64,6 +64,7 @@ fn entry(
     s.push_str(&format!("            attack_interval_ticks: {attack_interval},\n"));
     s.push_str(&format!("            attack_spread: {spread:?},\n"));
     s.push_str(&format!("            queue_depth: {queue_depth},\n"));
+    s.push_str("            wave_order: move,\n");
     s.push_str("        ),");
     s
 }

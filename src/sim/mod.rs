@@ -84,6 +84,17 @@ pub struct ResourceNode {
 #[derive(Component)]
 pub struct MoveTarget(pub Vec2);
 
+/// The destination of an **attack-move** ([`Order::AttackMove`], B4, F-048).
+///
+/// Sim state that outlives the unit's [`MoveTarget`]: an attack-mover's move
+/// target is re-aimed by combat while it chases and dropped while it stands to
+/// fight, and this is what it marches back to when the fight is over. Present
+/// only on a unit under an attack-move; combat removes it once the unit stands
+/// at `dest` with nothing to fight, and any explicit `MoveTo`/`Gather` order
+/// removes it (an order always replaces the last one).
+#[derive(Component, Clone, Copy, Debug, PartialEq)]
+pub struct AttackMoveDest(pub Vec2);
+
 /// The deposit a unit is assigned to gather from. Read by `economy::gather`.
 ///
 /// **Half of a pair (F-008).** `GatherTarget` and [`GatherPhase`] together are
@@ -528,6 +539,14 @@ pub enum Order {
         units: Vec<Entity>,
         dest: Vec2,
     },
+    /// March to `dest`, fighting on the way (B4, F-048): engage enemy armed
+    /// units inside `engage_range` (chasing to the `pursue_range` leash, armed
+    /// units before workers and buildings), then resume the march. A plain
+    /// [`Order::MoveTo`] stays a pure move.
+    AttackMove {
+        units: Vec<Entity>,
+        dest: Vec2,
+    },
     Gather {
         units: Vec<Entity>,
         node: Entity,
@@ -776,7 +795,28 @@ pub fn apply_commands(
                     // tick's combat pass overwrite the commander's destination.
                     // Orders come from the commander; the sim only ever
                     // auto-chases a unit that has none.
-                    ent.try_insert(MoveTarget(dest)).remove::<Engaging>();
+                    ent.try_insert(MoveTarget(dest))
+                        .remove::<(Engaging, AttackMoveDest)>();
+                    economy::release_gather_job(&mut ent);
+                }
+            }
+            Order::AttackMove { units, dest } => {
+                // The same ownership and existence guards as `MoveTo`, and the
+                // same effect on gathering and on any chase in progress. The
+                // difference is the `AttackMoveDest` it leaves behind, which is
+                // what lets `combat` engage on the way and march on after.
+                let Some(issuer) = subject_issuer(&owners, attribution, &units) else {
+                    continue;
+                };
+                for e in units {
+                    if !commandable(&owners, issuer, e) {
+                        continue;
+                    }
+                    let Ok(mut ent) = commands.get_entity(e) else {
+                        continue;
+                    };
+                    ent.try_insert((MoveTarget(dest), AttackMoveDest(dest)))
+                        .remove::<Engaging>();
                     economy::release_gather_job(&mut ent);
                 }
             }
@@ -811,7 +851,8 @@ pub fn apply_commands(
                     };
                     // The move half of the order applies to everyone in the
                     // selection, and — being an explicit order — ends any chase.
-                    ent.try_insert(MoveTarget(node_pos)).remove::<Engaging>();
+                    ent.try_insert(MoveTarget(node_pos))
+                        .remove::<(Engaging, AttackMoveDest)>();
                     if gathers {
                         // `insert_if_new` on `Carrying` so re-tasking a worker
                         // that is already holding a load never zeroes it. The
@@ -873,7 +914,7 @@ pub fn apply_commands(
 /// registry does not know is something the sim has never had in its world — a
 /// bare fixture entity, say — so:
 ///
-/// - in a list order (`MoveTo`, `Gather`) the unnameable entries are **dropped**
+/// - in a list order (`MoveTo`, `AttackMove`, `Gather`) the unnameable entries are **dropped**
 ///   and the rest of the order stands, exactly as a signed order naming another
 ///   faction's units still commands the issuer's own (F-009);
 /// - an order whose single subject is unnameable (`Gather`'s node, `Train`'s
@@ -902,6 +943,10 @@ fn nameable(
     };
     Some(match order {
         Order::MoveTo { units, dest } => Order::MoveTo {
+            units: keep(units, dropped),
+            dest,
+        },
+        Order::AttackMove { units, dest } => Order::AttackMove {
             units: keep(units, dropped),
             dest,
         },

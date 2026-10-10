@@ -127,6 +127,7 @@
             attack_interval_ticks: 600,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: move,
         ),
 
         // ---- the five mass-unit probes -------------------------------------
@@ -148,6 +149,7 @@
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: move,
         ),
         // Machine / skirmish. Fast, mid-range, nemesis Ripper.
         (
@@ -164,6 +166,7 @@
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: move,
         ),
         // Flesh / swarm. The cheapest body in the game, nemesis Arclight.
         (
@@ -188,6 +191,7 @@
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: move,
         ),
         // Flesh / bruiser. Heavy hitter, nemesis Sentinel.
         (
@@ -204,6 +208,7 @@
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: move,
         ),
         // Energy / artillery. Glass cannon at 120 range, nemesis Bulwark. Pays
         // 200 for its Aether Spire where the other four pay 150 — a designed
@@ -222,6 +227,7 @@
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: move,
         ),
 
         // ---- the synthesis builds ------------------------------------------
@@ -247,6 +253,7 @@
             attack_interval_ticks: 300,
             attack_spread: 70.0,
             queue_depth: 1,
+            wave_order: move,
         ),
         // All three domains: a Ripper screen, a Sentinel, an Arclight behind.
         // The widest opening in the set — 650 Alloy of tech before a shot is
@@ -274,6 +281,7 @@
             attack_interval_ticks: 300,
             attack_spread: 70.0,
             queue_depth: 1,
+            wave_order: move,
         ),
 
         // ---- the two poles --------------------------------------------------
@@ -295,6 +303,7 @@
             attack_interval_ticks: 120,
             attack_spread: 40.0,
             queue_depth: 1,
+            wave_order: move,
         ),
         // The opposite pole: twelve workers, late tech on three lines (a fourth
         // was scripted in B3.5 and never went up, F-035), and
@@ -321,6 +330,7 @@
             attack_interval_ticks: 600,
             attack_spread: 80.0,
             queue_depth: 1,
+            wave_order: move,
         ),
     ],
 )

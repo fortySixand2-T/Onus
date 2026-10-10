@@ -56,6 +56,23 @@
 //                           unit popping and the next decision, not parallel
 //                           production. `1` is the behaviour every match before
 //                           B3.5 played, when this cap was a Rust constant.
+//   wave_order            — the order its attack waves go out on (B4, F-048).
+//                           Required (no default). One of:
+//                             move        — a pure move (`Order::MoveTo`): the
+//                                           wave walks to the enemy HQ, hits
+//                                           only what is already in a unit's
+//                                           own reach, and never chases;
+//                             attack_move — `Order::AttackMove`: the wave
+//                                           marches to the same point but
+//                                           engages enemy *armed* units inside
+//                                           `engage_range` on the way (chasing
+//                                           to the `pursue_range` leash, armed
+//                                           units before workers and
+//                                           buildings), then resumes its march.
+//                           Every strategy ships `move`: the attack-move lever
+//                           (F-047) is built and measured (F-048) but not
+//                           shipped. `move` is the behaviour of every match
+//                           before it.
 //
 // THE PROBE SET (B1 AC3) — what these entries are *for*. B3 measures the
 // counter pentagon with them, so the set is an instrument, not a roster of
@@ -131,6 +148,7 @@
             attack_interval_ticks: 600,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: move,
         ),
 
         // ---- the five mass-unit probes -------------------------------------
@@ -154,6 +172,7 @@
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: move,
         ),
         // Machine / skirmish. Fast, mid-range, nemesis Ripper.
         (
@@ -172,6 +191,7 @@
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: move,
         ),
         // Flesh / swarm. The cheapest body in the game, nemesis Arclight.
         (
@@ -190,6 +210,7 @@
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: move,
         ),
         // Flesh / bruiser. Heavy hitter, nemesis Sentinel.
         (
@@ -208,6 +229,7 @@
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: move,
         ),
         // Energy / artillery. Glass cannon at 120 range, nemesis Bulwark. Pays
         // 200 for its Aether Spire where the other four pay 150 — a designed
@@ -228,6 +250,7 @@
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: move,
         ),
 
         // ---- the synthesis builds ------------------------------------------
@@ -256,6 +279,7 @@
             attack_interval_ticks: 300,
             attack_spread: 70.0,
             queue_depth: 1,
+            wave_order: move,
         ),
         // All three domains: a Ripper screen, a Sentinel, an Arclight behind.
         // The widest opening in the set — 650 Alloy of tech before a shot is
@@ -283,6 +307,7 @@
             attack_interval_ticks: 300,
             attack_spread: 70.0,
             queue_depth: 1,
+            wave_order: move,
         ),
 
         // ---- the two poles --------------------------------------------------
@@ -304,6 +329,7 @@
             attack_interval_ticks: 120,
             attack_spread: 40.0,
             queue_depth: 1,
+            wave_order: move,
         ),
         // The opposite pole: ten workers (twelve until F-046), late tech on four lines (trimmed to
         // three in F-035, restored with B4's opening reservation, F-041), and
@@ -332,6 +358,7 @@
             attack_interval_ticks: 600,
             attack_spread: 80.0,
             queue_depth: 1,
+            wave_order: move,
         ),
     ],
 )

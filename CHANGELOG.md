@@ -593,3 +593,12 @@
 - [2026-10-09] Modified: FINDINGS.md — F-047: why the turtle wins (step-0 measurement, code cited, attack-move engagement recommended)
 - [2026-10-09] Modified: BALANCE_PLAN.md — turtle AC step 0 ticked with its result (F-047)
 - [2026-10-09] Modified: BALANCE_PLAN.md — turtle AC: user chose the attack-move lever (F-047)
+- [2026-10-09] Modified: src/sim/mod.rs — B4 step 1: `Order::AttackMove { units, dest }` and the `AttackMoveDest` component; MoveTo/Gather end an attack-move
+- [2026-10-09] Modified: src/sim/combat.rs — B4 step 1: attack-movers prefer armed enemies in engage range, chase to the leash, resume the march to dest; idle units and MoveTo unchanged
+- [2026-10-09] Modified: src/sim/spatial.rs — B4 step 1: `SpatialGrid::nearest_enemy_within` (filtered, range-bounded, smallest-index tie-break) with brute-force L1 tests
+- [2026-10-09] Modified: src/sim/content.rs — B4 step 1: required per-strategy `wave_order` (`move` | `attack_move`), in the fingerprint
+- [2026-10-09] Modified: src/sim/ai.rs — B4 step 1: the attack step issues the wave as the strategy's `wave_order`
+- [2026-10-09] Modified: src/sim/replay.rs — B4 step 1: `LoggedOrder::AttackMove`; `AttackMoveDest` in the state hash (absent under `move`, so hashes unchanged)
+- [2026-10-09] Modified: assets/data/strategies.ron — B4 step 1: `wave_order: move` on every strategy, documented in the header
+- [2026-10-09] Created: tests/b4_attack_move.rs — B4 step 1: attack-move harness (engage, resume, priority, idle rule, HQ kill, MoveTo unchanged, RON field, AI order, determinism + replay)
+- [2026-10-09] Modified: tests/b1_matchup.rs, tests/b1_strategies.rs, tests/b35_queue_depth.rs, tests/b35_parallel.rs, tests/critic_b1.rs, tests/critic_b1_ac2.rs, tests/critic_b35_ac0.rs, tests/critic_b35_ac0b.rs, tests/critic_b4_data/{pre_g1,pre_b4}/strategies.ron — fixture strategy text gains the required `wave_order: move` line (no assertion or golden touched)

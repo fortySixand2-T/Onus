@@ -72,7 +72,7 @@ fn strategy(
         "        (\n            id: \"{id}\",\n            think_interval_ticks: {think},\n            \
          worker_target: {worker_target},\n            barracks: [\n{}\n            ],\n            army: [\n{}\n            ],\n            \
          attack_at_army: {attack_at_army},\n            attack_interval_ticks: 600,\n            attack_spread: 60.0,\n            \
-         queue_depth: {queue_depth},\n        ),",
+         queue_depth: {queue_depth},\n            wave_order: move,\n        ),",
         openings.join("\n"),
         army.join("\n"),
     )

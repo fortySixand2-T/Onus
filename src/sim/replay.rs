@@ -32,8 +32,8 @@ use crate::sim::content::{Content, ContentFingerprint};
 use crate::sim::spatial::Faction;
 use crate::sim::victory::MatchState;
 use crate::sim::{
-    Attribution, CommandQueue, CommandTick, GatherTarget, MoveTarget, Order, Position,
-    ResourceNode, SignedOrder, UnitKind,
+    AttackMoveDest, Attribution, CommandQueue, CommandTick, GatherTarget, MoveTarget, Order,
+    Position, ResourceNode, SignedOrder, UnitKind,
 };
 
 /// Format version of a persisted [`MatchLog`]. Bumped when the on-disk shape
@@ -58,6 +58,10 @@ use crate::sim::{
 /// the log was recorded against — and inventing it is precisely the silent
 /// wrong replay the fingerprint exists to prevent. Old logs are re-recordable
 /// (the seed and the starting world are all a recording needs); a guess is not.
+///
+/// B4's [`LoggedOrder::AttackMove`] (F-048) did not bump it either, by the same
+/// judgement: a new variant, so every version-2 log still reads and means what
+/// it meant.
 pub const LOG_FORMAT_VERSION: u32 = 2;
 
 // ---- stable identity --------------------------------------------------------
@@ -231,6 +235,12 @@ pub enum LoggedOrder {
         units: Vec<u64>,
         dest: (f32, f32),
     },
+    /// B4 (F-048). A variant of its own, so a log written before it existed
+    /// still reads exactly as it did.
+    AttackMove {
+        units: Vec<u64>,
+        dest: (f32, f32),
+    },
     Gather {
         units: Vec<u64>,
         node: u64,
@@ -280,6 +290,10 @@ impl LoggedOrder {
                 units: ids(units, &mut id_of),
                 dest: xy(*dest),
             },
+            Order::AttackMove { units, dest } => LoggedOrder::AttackMove {
+                units: ids(units, &mut id_of),
+                dest: xy(*dest),
+            },
             Order::Gather {
                 units,
                 node,
@@ -316,7 +330,9 @@ impl LoggedOrder {
     /// Every [`SimId`] this order names.
     pub fn sim_ids(&self) -> Vec<SimId> {
         match self {
-            LoggedOrder::MoveTo { units, .. } => units.iter().map(|i| SimId(*i)).collect(),
+            LoggedOrder::MoveTo { units, .. } | LoggedOrder::AttackMove { units, .. } => {
+                units.iter().map(|i| SimId(*i)).collect()
+            }
             LoggedOrder::Gather { units, node, .. } => units
                 .iter()
                 .chain(std::iter::once(node))
@@ -344,6 +360,10 @@ impl LoggedOrder {
         let ents = |all: &[u64]| all.iter().map(|i| ent(*i)).collect::<Result<Vec<_>, _>>();
         Ok(match self {
             LoggedOrder::MoveTo { units, dest } => Order::MoveTo {
+                units: ents(units)?,
+                dest: vec2(*dest),
+            },
+            LoggedOrder::AttackMove { units, dest } => Order::AttackMove {
                 units: ents(units)?,
                 dest: vec2(*dest),
             },
@@ -380,7 +400,9 @@ impl LoggedOrder {
     /// can be checked against a content set before anything tries to replay it.
     pub fn content_ids(&self) -> Vec<(&'static str, &str)> {
         match self {
-            LoggedOrder::MoveTo { .. } | LoggedOrder::Gather { .. } => vec![],
+            LoggedOrder::MoveTo { .. }
+            | LoggedOrder::AttackMove { .. }
+            | LoggedOrder::Gather { .. } => vec![],
             LoggedOrder::Place { building, .. } => vec![("building", building.as_str())],
             LoggedOrder::Train { unit, .. } => vec![("unit", unit.as_str())],
         }
@@ -390,7 +412,9 @@ impl LoggedOrder {
     /// reproduce bit for bit.
     fn floats(&self) -> Vec<f32> {
         match self {
-            LoggedOrder::MoveTo { dest, .. } => vec![dest.0, dest.1],
+            LoggedOrder::MoveTo { dest, .. } | LoggedOrder::AttackMove { dest, .. } => {
+                vec![dest.0, dest.1]
+            }
             LoggedOrder::Gather { node_pos, .. } => vec![node_pos.0, node_pos.1],
             LoggedOrder::Place { pos, .. } => vec![pos.0, pos.1],
             LoggedOrder::Train { .. } => vec![],
@@ -1143,6 +1167,9 @@ mod tag {
     pub const UNIDENTIFIED: u64 = 19;
     pub const PENDING_COMMAND: u64 = 20;
     pub const NEXT_SIM_ID: u64 = 21;
+    /// B4 (F-048). Present only on a unit under an attack-move, so a match
+    /// that never issues one hashes exactly as it did before the tag existed.
+    pub const ATTACK_MOVE_DEST: u64 = 22;
 }
 
 /// A 64-bit digest of one command the sim is holding. Everything about it that
@@ -1229,6 +1256,12 @@ fn command_digest(cmd: &crate::sim::Command, mut id_of: impl FnMut(Entity) -> Si
             mix(4);
             mix(id_of(*building).0);
             mix(*unit as u64);
+        }
+        Order::AttackMove { units, dest } => {
+            mix(5);
+            ids(&mut mix, units, &mut id_of);
+            mix(dest.x.to_bits() as u64);
+            mix(dest.y.to_bits() as u64);
         }
         // Unreachable: the queue peels `Order::By` at the boundary. Hashed as a
         // distinct value rather than skipped, so it could never be a silent
@@ -1342,6 +1375,9 @@ pub fn state_hash(world: &mut World) -> u64 {
     });
     collect!(&MoveTarget, |e, c| {
         [row(e, tag::MOVE_TARGET, c.0.x.to_bits() as u64, c.0.y.to_bits() as u64)]
+    });
+    collect!(&AttackMoveDest, |e, c| {
+        [row(e, tag::ATTACK_MOVE_DEST, c.0.x.to_bits() as u64, c.0.y.to_bits() as u64)]
     });
     collect!(&Building, |e, c| {
         [row(e, tag::BUILDING, c.def as u64, 0)]

@@ -67,6 +67,7 @@ const MVP: &str = r#"(
     attack_interval_ticks: 600,
     attack_spread: 60.0,
     queue_depth: 1,
+    wave_order: move,
 )"#;
 
 /// A second, perfectly good entry. The refusal battery breaks *this* one, so
@@ -81,6 +82,7 @@ const PROBE: &str = r#"(
     attack_interval_ticks: 600,
     attack_spread: 60.0,
     queue_depth: 1,
+    wave_order: move,
 )"#;
 
 fn set(default: &str, entries: &[&str]) -> String {
@@ -209,6 +211,7 @@ const MULTI: &str = r#"(
     attack_interval_ticks: 600,
     attack_spread: 60.0,
     queue_depth: 1,
+    wave_order: move,
 )"#;
 
 // ============================================================================
