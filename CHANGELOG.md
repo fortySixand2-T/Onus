@@ -613,3 +613,4 @@
 - [2026-10-10] Modified: src/sim/mod.rs — `Order::AttackMove` doc names `attack_move_range`
 - [2026-10-10] Modified: FINDINGS.md — F-048: attack-move built (step 1, golden proof) and measured with attack_move everywhere; 4 range values tried (220/170/120/400); bar not met (K1 ripper/sentinel, 2 pentagon FAILs, K3)
 - [2026-10-10] Modified: BALANCE_PLAN.md — B4 turtle step 1 ticked with result; step 2 left unticked with the bar-not-met result (F-048)
+- [2026-10-10] Modified: BALANCE_PLAN.md — turtle AC: user chose to ship attack-move and retune (step 2b)

@@ -301,6 +301,15 @@ all-timeout run is flagged, not reported as balanced.
             The range barely moves anything: the rule flips the tempo, so early committers
             win. Budget spent; nothing ships, and every strategy stays `move`. Fallback
             applies.
+            **User decision (2026-10-10): ship attack-move for every strategy and retune.**
+            Units now fight back while they march, so the remaining reds look like ordinary
+            stat imbalances, not structure. Step 2b below is the retune.
+      - [ ] **Step 2b — retune RON on attack-move.** Every strategy uses
+            `wave_order: attack_move`, the five mass probes stay knob-identical, and only RON
+            changes (unit stats/costs/timings, `mvp_combat`, scripts). The step-2 bar applies
+            in full, and the turtle still commits last. The budget is capped, with every
+            candidate recorded in an F-entry. If the cap is reached without a pass, stop and
+            report.
       - [ ] **Step 3 — proof and re-pin.** With the switch on, the current RON reproduces
             today's goldens. Then re-pin and record an F-entry. Full gate, then the critic,
             then merge.
