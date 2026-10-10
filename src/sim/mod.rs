@@ -540,7 +540,7 @@ pub enum Order {
         dest: Vec2,
     },
     /// March to `dest`, fighting on the way (B4, F-048): engage enemy armed
-    /// units inside `engage_range` (chasing to the `pursue_range` leash, armed
+    /// units inside `CombatDef::attack_move_range` (chasing to the `pursue_range` leash, armed
     /// units before workers and buildings), then resume the march. A plain
     /// [`Order::MoveTo`] stays a pure move.
     AttackMove {

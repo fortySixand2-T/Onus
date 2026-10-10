@@ -188,7 +188,7 @@ pub enum WaveOrder {
     /// B4's attack-move lever played this.
     Move,
     /// `Order::AttackMove`: march to the destination, engaging enemy armed
-    /// units inside `engage_range` on the way (armed units before workers and
+    /// units inside `CombatDef::attack_move_range` on the way (armed units before workers and
     /// buildings), then resume the march.
     AttackMove,
 }
@@ -304,6 +304,14 @@ pub struct CombatDef {
     /// straight-line gap, and a unit that dropped its target there would
     /// oscillate at the wall instead of coming around it.
     pub pursue_range: f32,
+    /// Radius within which a unit under an **attack-move** acquires a target
+    /// (B4, F-048): the attack-move's own number, used by attack-movers only,
+    /// so it cannot move a match in which no strategy's `wave_order` is
+    /// `attack_move`. Once chasing, the `pursue_range` leash applies as for
+    /// every unit. Bounded below by the longest unit `mvp_attack_range` (an
+    /// attack-mover always fights what it can already hit) and above by
+    /// `pursue_range`. Required, like every combat number: no serde default.
+    pub attack_move_range: f32,
 }
 
 /// How a resource enters the economy.
@@ -790,6 +798,20 @@ impl Content {
         if c.pursue_range < c.engage_range {
             return bad("mvp_combat pursue_range must be >= engage_range".to_string());
         }
+        let longest_reach = self
+            .units
+            .iter()
+            .map(|u| u.mvp_attack_range)
+            .fold(0.0_f32, f32::max);
+        if !(c.attack_move_range.is_finite()
+            && c.attack_move_range >= longest_reach
+            && c.attack_move_range <= c.pursue_range)
+        {
+            return bad(format!(
+                "mvp_combat attack_move_range must be finite, >= the longest unit \
+                 mvp_attack_range ({longest_reach}) and <= pursue_range"
+            ));
+        }
         if c.max_stat == 0 {
             return bad("mvp_combat max_stat must be positive".to_string());
         }
@@ -1058,7 +1080,8 @@ impl Content {
             .u32(self.combat.mitigation_per_armor);
         h.f32(self.combat.speed_per_point)
             .f32(self.combat.engage_range)
-            .f32(self.combat.pursue_range);
+            .f32(self.combat.pursue_range)
+            .f32(self.combat.attack_move_range);
         h.u32(self.combat.max_stat)
             .u32(self.combat.building_hp_per_defense);
 

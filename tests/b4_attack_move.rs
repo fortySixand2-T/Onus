@@ -7,7 +7,8 @@
 //! waves when the strategy's RON says so:
 //!
 //! - a unit under `AttackMove { dest }` marches to `dest`, and on the way
-//!   engages enemy **armed** units (offense > 0) inside `engage_range`, chasing
+//!   engages enemy **armed** units (offense > 0) inside `attack_move_range`
+//!   (shipped equal to `engage_range`; the step-2 tests below vary it), chasing
 //!   to the `pursue_range` leash exactly as an idle unit does;
 //! - armed units come before workers and buildings; the nearest unarmed target
 //!   is the fallback only when no armed unit is in range (so a wave reaching
@@ -542,4 +543,168 @@ fn an_attack_move_match_is_deterministic_and_replays_tick_for_tick() {
     rep.insert_resource(ReplaySource::new(log));
     headless::tick(&mut rep, AM_TICKS);
     assert_eq!(hashes(&rep), ha, "the attack-move log did not replay tick for tick");
+}
+
+// ---- step 2: the mechanism's own number, `mvp_combat.attack_move_range` -----
+//
+// F-048: with every wave on attack-move the turtle drops from 84% to 49%, but
+// the early committers turn dominant. The mechanism needs a number of its
+// own to tune (BALANCE_PLAN step 2, at most 3 adjustments), separate from the
+// idle `engage_range` it borrowed. `attack_move_range` is the radius in which
+// an attack-mover acquires a target. It is used by attack-movers only, so it
+// cannot move a match in which no strategy ships `attack_move`.
+
+fn sim_app_with(c: Content) -> App {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(Time::<Fixed>::from_hz(60.0))
+        .insert_resource(c)
+        .init_resource::<CommandQueue>()
+        .init_resource::<RateReport>()
+        .init_resource::<Casualties>()
+        .insert_resource(Stockpiles::default());
+    onus::add_sim_systems(&mut app, Update);
+    app
+}
+
+/// The shipped data with `units.ron` edited by `edit`.
+fn scratch_units(name: &str, edit: impl Fn(&str) -> String) -> PathBuf {
+    let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target").join(name);
+    std::fs::create_dir_all(&out).expect("scratch dir");
+    for file in ["strategies.ron", "resources.ron"] {
+        std::fs::copy(data_dir().join(file), out.join(file)).expect("copy");
+    }
+    let text = std::fs::read_to_string(data_dir().join("units.ron")).expect("units");
+    std::fs::write(out.join("units.ron"), edit(&text)).expect("write");
+    out
+}
+
+/// Replace the value on the `attack_move_range:` line of `units.ron`.
+fn with_attack_move_range(text: &str, value: &str) -> String {
+    let mut found = false;
+    let s = text
+        .lines()
+        .map(|l| {
+            let t = l.trim_start();
+            if !found && t.starts_with("attack_move_range:") {
+                found = true;
+                let indent = &l[..l.len() - t.len()];
+                format!("{indent}attack_move_range: {value},")
+            } else {
+                l.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(found, "units.ron has no attack_move_range line");
+    s
+}
+
+/// The longest attack reach of any unit: an attack-mover must at least be able
+/// to fight what it can already hit.
+fn longest_reach(c: &Content) -> f32 {
+    c.units.iter().map(|u| u.mvp_attack_range).fold(0.0, f32::max)
+}
+
+#[test]
+fn attack_move_range_is_a_required_combat_number() {
+    let dir = scratch_units("b4_am_missing_range", |t| {
+        let s: String = t
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("attack_move_range:"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert_ne!(s.len(), t.len(), "units.ron has no attack_move_range to strip");
+        s
+    });
+    let err = Content::load_from_dir(&dir).expect_err("no attack_move_range must not load");
+    assert!(
+        format!("{err:?}").contains("attack_move_range"),
+        "the error does not name the field: {err:?}"
+    );
+}
+
+#[test]
+fn attack_move_range_out_of_bounds_is_refused() {
+    let c = content();
+    let below = longest_reach(&c) - 1.0;
+    let above = c.combat.pursue_range + 1.0;
+    for (tag, v) in [
+        ("below_reach", format!("{below:.1}")),
+        ("above_leash", format!("{above:.1}")),
+        ("nan", "NaN".to_string()),
+    ] {
+        let dir = scratch_units(&format!("b4_am_range_{tag}"), |t| with_attack_move_range(t, &v));
+        let err = Content::load_from_dir(&dir)
+            .expect_err(&format!("attack_move_range {v} ({tag}) must not load"));
+        assert!(format!("{err:?}").contains("attack_move_range"), "{tag}: {err:?}");
+    }
+    // Both bounds are inclusive.
+    for (tag, v) in [
+        ("at_reach", format!("{:.1}", longest_reach(&c))),
+        ("at_leash", format!("{:.1}", c.combat.pursue_range)),
+    ] {
+        let dir = scratch_units(&format!("b4_am_range_{tag}"), |t| with_attack_move_range(t, &v));
+        let got = Content::load_from_dir(&dir).unwrap_or_else(|e| panic!("{tag}: {e:?}"));
+        assert_ne!(got.fingerprint().hash(), 0);
+    }
+}
+
+#[test]
+fn attack_move_range_moves_the_fingerprint() {
+    let c = content();
+    let v = format!("{:.1}", longest_reach(&c));
+    let dir = scratch_units("b4_am_range_fp", |t| with_attack_move_range(t, &v));
+    let other = Content::load_from_dir(&dir).expect("a valid range loads");
+    assert_ne!(other.combat.attack_move_range, c.combat.attack_move_range);
+    assert_ne!(other.fingerprint().hash(), c.fingerprint().hash());
+}
+
+/// An attack-mover acquires inside `attack_move_range`, not `engage_range`:
+/// with the range at the longest reach, a sentry beside the march (outside
+/// that range, inside `engage_range`) is walked past; with the range opened to
+/// `engage_range` the same march engages it.
+#[test]
+fn an_attack_mover_acquires_only_inside_attack_move_range() {
+    let shipped = content();
+    let lo = longest_reach(&shipped);
+    let engage = shipped.combat.engage_range;
+    assert!(lo < engage, "the fixture needs longest reach < engage_range");
+    let off = (lo + engage) / 2.0;
+    let dest = Vec2::new(2.0 * shipped.combat.pursue_range + 400.0, 0.0);
+    let sentry_at = Vec2::new(dest.x / 2.0, off);
+
+    let march = |range: f32| -> (bool, bool) {
+        let mut c = content();
+        c.combat.attack_move_range = range;
+        let mut app = sim_app_with(c);
+        let mover = spawn_unit(&mut app, ATTACKER, Faction::A, Vec2::ZERO);
+        let sentry = spawn_unit(&mut app, SENTRY, Faction::B, sentry_at);
+        order(
+            &mut app,
+            Order::AttackMove {
+                units: vec![mover],
+                dest,
+            }
+            .issued_by(Faction::A),
+        );
+        let (mut chased, mut arrived) = (false, false);
+        for _ in 0..20_000 {
+            hold(&mut app, sentry, Faction::B);
+            step(&mut app);
+            let Some(p) = pos(&app, mover) else { break };
+            chased |= engaging(&app, mover);
+            if p == dest {
+                arrived = true;
+                break;
+            }
+        }
+        (chased, arrived)
+    };
+
+    let (chased, arrived) = march(lo);
+    assert!(!chased, "an attack-mover engaged a sentry outside attack_move_range ({lo})");
+    assert!(arrived, "the attack-mover never reached dest");
+    let (chased, _) = march(engage);
+    assert!(chased, "an attack-mover with the range at engage_range did not engage");
 }

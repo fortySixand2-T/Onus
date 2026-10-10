@@ -605,3 +605,9 @@
 - [2026-10-09] Modified: src/bin/balance.rs — B4 step 2: opt-in `--data DIR` (load content from DIR; no fallback)
 - [2026-10-09] Created: tests/b4_balance_data.rs — B4 step 2: `--data` plays the named content, the report carries its fingerprint, a bad dir fails
 - [2026-10-09] Modified: tests/b4_turtle_diag.rs — B4 step 2: opt-in `ONUS_DIAG_DATA`, wave members by `AttackMoveDest`, ignored commit-order reading
+- [2026-10-10] Modified: src/sim/content.rs — B4 step 2: required `mvp_combat.attack_move_range` (attack-movers' acquisition radius; longest unit reach <= it <= pursue_range; in the fingerprint)
+- [2026-10-10] Modified: src/sim/combat.rs — B4 step 2: attack-movers acquire inside `attack_move_range` (idle units keep `engage_range`)
+- [2026-10-10] Modified: assets/data/units.ron — B4 step 2: `attack_move_range: 220.0` (= engage_range; inert while every strategy ships `move`)
+- [2026-10-10] Modified: tests/critic_b4_data/{pre_g1,pre_b4}/units.ron — fixture combat block gains the required `attack_move_range` line
+- [2026-10-10] Modified: tests/b4_attack_move.rs — B4 step 2: `attack_move_range` required, bounded, fingerprinted, and governs acquisition
+- [2026-10-10] Modified: src/sim/mod.rs — `Order::AttackMove` doc names `attack_move_range`

@@ -367,6 +367,7 @@ pub fn combat(
         .collect();
     let engage_range = content.combat.engage_range;
     let pursue_range = content.combat.pursue_range;
+    let attack_move_range = content.combat.attack_move_range;
     let grid = SpatialGrid::build(&layout, engage_range.max(1.0));
 
     // ---- resolve every attacker against the snapshot ------------------------
@@ -394,11 +395,14 @@ pub fn combat(
         // the guard; the stat is a coincidence.
         let armed = def.offense > 0 && def.mvp_attack_range > 0.0 && !row.gathering;
 
-        // Acquire inside `engage_range`; once chasing, hold on out to the
+        // Acquire inside `engage_range` (an attack-mover: inside its own
+        // `attack_move_range`, B4 F-048); once chasing, hold on out to the
         // `pursue_range` leash so a detour around a wall does not drop the
         // target (which would leave the unit oscillating at the obstacle).
         let reach = if row.engaging {
             pursue_range
+        } else if row.attack_move.is_some() {
+            attack_move_range
         } else {
             engage_range
         };
