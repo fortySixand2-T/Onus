@@ -611,3 +611,5 @@
 - [2026-10-10] Modified: tests/critic_b4_data/{pre_g1,pre_b4}/units.ron — fixture combat block gains the required `attack_move_range` line
 - [2026-10-10] Modified: tests/b4_attack_move.rs — B4 step 2: `attack_move_range` required, bounded, fingerprinted, and governs acquisition
 - [2026-10-10] Modified: src/sim/mod.rs — `Order::AttackMove` doc names `attack_move_range`
+- [2026-10-10] Modified: FINDINGS.md — F-048: attack-move built (step 1, golden proof) and measured with attack_move everywhere; 4 range values tried (220/170/120/400); bar not met (K1 ripper/sentinel, 2 pentagon FAILs, K3)
+- [2026-10-10] Modified: BALANCE_PLAN.md — B4 turtle step 1 ticked with result; step 2 left unticked with the bar-not-met result (F-048)

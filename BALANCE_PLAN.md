@@ -267,7 +267,7 @@ all-timeout run is flagged, not reported as balanced.
         Plain `MoveTo` stays a pure move. The switch is content: a per-strategy RON choice
         of the wave order. With it set to `move` everywhere, the binary must reproduce
         today's goldens.
-      - [ ] **Step 1 — build the chosen lever,** test-first, behind a cargo feature that
+      - [x] **Step 1 — build the chosen lever,** test-first, behind a cargo feature that
             restores today's behaviour (as `no-opening-reservation` does).
             - *Home defence:* if enemies come within a RON `defend_radius` of its HQ, the
               commander recalls its armed units.
@@ -276,6 +276,12 @@ all-timeout run is flagged, not reported as balanced.
             - *Armed buildings:* buildings may attack, with offense and range in the RON.
             Determinism: no new RNG, stable entity order, no HashMap; the new number lives
             in the RON.
+            **Result** (F-048, commits ec57cce and 708a8a4): attack-move is built. Per the
+            user's lever choice, the switch is content, not a cargo feature: a required
+            per-strategy `wave_order: move|attack_move`, with every shipped strategy on
+            `move`. Its own number is `mvp_combat.attack_move_range`, shipped at 220 and
+            inert under `move`. The golden proof: the test-tree diff is only the new RON
+            field in fixtures. Gate 967 passed, 0 failed, 3 ignored, in debug and release.
       - [ ] **Step 2 — measure.** A 4-seed `balance` report. Pass means:
             - turtle under 65%, or undetermined;
             - no new K1 FAIL and no pentagon FAIL;
@@ -283,6 +289,18 @@ all-timeout run is flagged, not reported as balanced.
             - the turtle still commits last.
             At most 3 RON adjustments of the lever's own number; then stop and report the
             numbers.
+            **Result** (F-048): **bar not met; left unticked.** Measured with `attack_move`
+            on all 10 strategies (scratch content via `balance --data`). Four
+            `attack_move_range` values were tried: 220, then adjustments 170, 120 and 400.
+            Across all four:
+            - turtle 48.5 to 53.4 (PASS);
+            - turtle still commits last;
+            - new K1 FAILs: mass_ripper 100% (DOMINANT) and mass_sentinel about 78%;
+            - two pentagon FAILs at 0%: bulwark > ravager and sentinel > ripper;
+            - K3 band share about 33% (FAIL).
+            The range barely moves anything: the rule flips the tempo, so early committers
+            win. Budget spent; nothing ships, and every strategy stays `move`. Fallback
+            applies.
       - [ ] **Step 3 — proof and re-pin.** With the switch on, the current RON reproduces
             today's goldens. Then re-pin and record an F-entry. Full gate, then the critic,
             then merge.
