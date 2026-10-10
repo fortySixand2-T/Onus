@@ -602,3 +602,6 @@
 - [2026-10-09] Modified: assets/data/strategies.ron — B4 step 1: `wave_order: move` on every strategy, documented in the header
 - [2026-10-09] Created: tests/b4_attack_move.rs — B4 step 1: attack-move harness (engage, resume, priority, idle rule, HQ kill, MoveTo unchanged, RON field, AI order, determinism + replay)
 - [2026-10-09] Modified: tests/b1_matchup.rs, tests/b1_strategies.rs, tests/b35_queue_depth.rs, tests/b35_parallel.rs, tests/critic_b1.rs, tests/critic_b1_ac2.rs, tests/critic_b35_ac0.rs, tests/critic_b35_ac0b.rs, tests/critic_b4_data/{pre_g1,pre_b4}/strategies.ron — fixture strategy text gains the required `wave_order: move` line (no assertion or golden touched)
+- [2026-10-09] Modified: src/bin/balance.rs — B4 step 2: opt-in `--data DIR` (load content from DIR; no fallback)
+- [2026-10-09] Created: tests/b4_balance_data.rs — B4 step 2: `--data` plays the named content, the report carries its fingerprint, a bad dir fails
+- [2026-10-09] Modified: tests/b4_turtle_diag.rs — B4 step 2: opt-in `ONUS_DIAG_DATA`, wave members by `AttackMoveDest`, ignored commit-order reading

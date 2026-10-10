@@ -11,7 +11,11 @@
 //! ## What it records, per match (turtle = T, the other side = defender D)
 //! - **T's first wave**: the tick of T's first `AiAction::Attack` and its size
 //!   (the journal's `force`). Its members are T's armed units whose
-//!   `MoveTarget` is the order's `dest` right after that tick.
+//!   `MoveTarget` is the order's `dest` right after that tick, or, for a wave
+//!   sent as an attack-move (B4 step 1, `wave_order: attack_move`), whose
+//!   `AttackMoveDest` is (combat may already have turned the `MoveTarget` into
+//!   a chase on the commit tick). Under `wave_order: move` no unit carries an
+//!   `AttackMoveDest`, so the reading is the step-0 one.
 //! - **Arrival**: the first tick any member of that wave is within
 //!   `combat.engage_range` (read from content) of D's HQ.
 //! - At commit and at arrival, D's **armed** units (`offense > 0`):
@@ -53,7 +57,7 @@ use onus::sim::economy::{Building, UnitDefIdx};
 use onus::sim::spatial::Faction;
 use onus::sim::combat::{damage_per_hit, damage_per_hit_to_building};
 use onus::sim::{
-    AiAction, AiJournal, AttackCooldown, Engaging, Health, MatchState, MoveTarget, Position,
+    AiAction, AiJournal, AttackCooldown, AttackMoveDest, Engaging, Health, MatchState, MoveTarget, Position,
     Target,
 };
 
@@ -247,6 +251,7 @@ fn diagnose(content: &Content, opponent: &str, turtle_seat: Faction, seed_k: u32
         Option<&AttackCooldown>,
         Option<&Target>,
         Option<&Engaging>,
+        Option<&AttackMoveDest>,
     )>();
     let mut fight = Fight::default();
     // Building defs by entity bits, every faction (for classifying hits).
@@ -282,9 +287,10 @@ fn diagnose(content: &Content, opponent: &str, turtle_seat: Faction, seed_k: u32
         // (attacker bits, hit target bits, on an order without Engaging)
         let mut hits: Vec<(u64, Option<u64>)> = Vec::new();
         let mut on_order: Vec<u64> = Vec::new();
-        for (e, p, def, f, mt, cd, tgt, eng) in unit_q.iter(app.world()) {
+        for (e, p, def, f, mt, cd, tgt, eng, am) in unit_q.iter(app.world()) {
             let k = e.to_bits();
-            seen.push((k, p.0, mt.map(|m| m.0)));
+            // The order's destination: the attack-move's if there is one, else the move's.
+            seen.push((k, p.0, am.map(|a| a.0).or(mt.map(|m| m.0))));
             if mt.is_some() && eng.is_none() {
                 on_order.push(k);
             }
@@ -756,8 +762,15 @@ fn print_aggregate(rows: &[MatchDiag], opponents: &[String]) {
     }
 }
 
+/// The shipped content, or, opt-in for B4 step 2, the directory named by
+/// `ONUS_DIAG_DATA` (e.g. a scratch copy with `wave_order: attack_move`). The
+/// variable is read only here, by this test file; the sim never sees it.
 fn content() -> Content {
-    headless::content().expect("shipped content loads")
+    match std::env::var_os("ONUS_DIAG_DATA") {
+        Some(dir) => Content::load_from_dir(std::path::Path::new(&dir))
+            .expect("ONUS_DIAG_DATA content loads"),
+        None => headless::content().expect("shipped content loads"),
+    }
 }
 
 /// The fast structural check (un-ignored): one full turtle match, both the
@@ -815,4 +828,40 @@ fn turtle_step0_table() {
     print_rows(&rows);
     print_d_rows(&rows);
     print_aggregate(&rows, &opponents);
+}
+
+/// B4 step 2's "the turtle still commits last" reading, on whatever
+/// [`content`] names (the shipped data, or `ONUS_DIAG_DATA`). The method is
+/// `critic_b35_closure`'s: slot A's first `Attack` in each strategy's mirror,
+/// on the closure's three seeds. Printed, not asserted; the shipped claim is
+/// pinned in `critic_b35_closure`.
+#[test]
+#[ignore = "30 mirrors to first attack; run explicitly in release with --nocapture"]
+fn commit_order_on_the_diag_content() {
+    let c = content();
+    for k in 0..3u32 {
+        let seed = seed_at(0x0070_A71E, k);
+        let mut commits: Vec<(u32, String)> = Vec::new();
+        for s in &c.strategies {
+            let settings = MatchSettings::default()
+                .with_seed(seed)
+                .with_strategies(&s.id, &s.id);
+            let mut app = headless::ai_vs_ai(c.clone(), &settings).expect("known strategy");
+            let mut at = None;
+            for _ in 0..onus::headless::DEFAULT_TICK_CAP {
+                headless::step(&mut app);
+                let j = app.world().resource::<AiJournal>();
+                at = j.for_faction(Faction::A).into_iter().find_map(|(t, a)| match a {
+                    AiAction::Attack { .. } => Some(t),
+                    _ => None,
+                });
+                if at.is_some() || app.world().resource::<MatchState>().is_over() {
+                    break;
+                }
+            }
+            commits.push((at.unwrap_or(u32::MAX), s.id.clone()));
+        }
+        commits.sort();
+        println!("seed {seed:#x}: {commits:?}");
+    }
 }

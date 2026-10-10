@@ -11,7 +11,7 @@
 //! counts next to the balanced aggregate.
 //!
 //! ```text
-//! balance [--seeds K] [--seed-base N] [--tick-cap T] [--minutes M] [--only a,b,c] [--report PATH]
+//! balance [--seeds K] [--seed-base N] [--tick-cap T] [--minutes M] [--only a,b,c] [--report PATH] [--data DIR]
 //! ```
 //!
 //! - `--seeds K`      how many seeds every matchup is played on (default 1)
@@ -22,6 +22,11 @@
 //! - `--report PATH`  also write the machine-readable report there (opt-in;
 //!   the conventional name is `balance_report.ron`, gitignored). Without it
 //!   nothing is written, so a toy run never overwrites a real batch's report.
+//! - `--data DIR`     load the content from DIR instead of the crate's own
+//!   `assets/data` (opt-in, B4 step 2: measure a candidate RON without
+//!   touching the tracked tree). A DIR that does not load fails the run; it
+//!   never falls back to the shipped data. The report carries the content
+//!   fingerprint either way, so a scratch reading cannot pass as the shipped one.
 //! - `--help`         print this usage on stdout and exit successfully
 //!
 //! `--tick-cap` and `--minutes` set the same budget: **the last one on the
@@ -46,13 +51,14 @@ use onus::pentagon::PentagonReport;
 use onus::report::BalanceReport;
 
 fn usage() -> &'static str {
-    "usage: balance [--seeds K] [--seed-base N] [--tick-cap T] [--minutes M] [--only a,b,c] [--report PATH] [--help]\n\
+    "usage: balance [--seeds K] [--seed-base N] [--tick-cap T] [--minutes M] [--only a,b,c] [--report PATH] [--data DIR] [--help]\n\
      \n\
      every matchup is played in both spawn orientations, so the batch is\n\
      N x N x K x 2 matches.\n\
      --tick-cap and --minutes set the same budget: the last one given wins.\n\
      out-of-range values are refused, never truncated.\n\
-     --report PATH also writes the machine-readable report (e.g. --report balance_report.ron; opt-in)."
+     --report PATH also writes the machine-readable report (e.g. --report balance_report.ron; opt-in).\n\
+     --data DIR loads the content from DIR instead of the shipped assets/data (opt-in)."
 }
 
 /// What the command line asked for. `--help` is a *request*, not an error: it
@@ -66,6 +72,8 @@ enum Request {
 struct Run {
     settings: BatchSettings,
     report: Option<std::path::PathBuf>,
+    /// `--data DIR`: the content directory, or `None` for the shipped one.
+    data: Option<std::path::PathBuf>,
 }
 
 /// Parse argv into a [`Request`]. Every flag is refused rather than guessed: a
@@ -75,6 +83,7 @@ struct Run {
 fn parse(args: &[String]) -> Result<Request, String> {
     let mut settings = BatchSettings::default();
     let mut report = None;
+    let mut data = None;
     let mut i = 0;
     while i < args.len() {
         let flag = args[i].as_str();
@@ -118,6 +127,7 @@ fn parse(args: &[String]) -> Result<Request, String> {
                 settings.only = Some(value()?.split(',').map(|s| s.trim().to_string()).collect())
             }
             "--report" => report = Some(value()?.into()),
+            "--data" => data = Some(value()?.into()),
             "--help" | "-h" => return Ok(Request::Help),
             other => return Err(format!("unknown flag `{other}`\n{}", usage())),
         }
@@ -129,7 +139,11 @@ fn parse(args: &[String]) -> Result<Request, String> {
     if settings.tick_cap == 0 {
         return Err("--tick-cap must be at least 1".to_string());
     }
-    Ok(Request::Run(Box::new(Run { settings, report })))
+    Ok(Request::Run(Box::new(Run {
+        settings,
+        report,
+        data,
+    })))
 }
 
 /// A percentage in parentheses, or nothing at all when there is no rate to
@@ -230,11 +244,22 @@ fn main() -> ExitCode {
         }
     };
 
-    let Run { settings, report: report_path } = settings;
-    let content = match headless::content() {
+    let Run {
+        settings,
+        report: report_path,
+        data,
+    } = settings;
+    let loaded = match &data {
+        Some(dir) => onus::sim::content::Content::load_from_dir(dir),
+        None => headless::content(),
+    };
+    let content = match loaded {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("content: {e}");
+            match &data {
+                Some(dir) => eprintln!("content ({}): {e}", dir.display()),
+                None => eprintln!("content: {e}"),
+            }
             return ExitCode::FAILURE;
         }
     };
