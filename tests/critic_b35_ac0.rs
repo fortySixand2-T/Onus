@@ -279,21 +279,28 @@ fn train_army_orders(app: &App, f: Faction) -> usize {
 /// g1: unit costs and timings); every row moved, `mvp` included (it trains a
 /// Bulwark). No Rust changed; F-046 shows the pre-g1 `assets/data` passing at
 /// the F-041 values under this identical binary, and tabulates old -> new.
+///
+/// **B4 re-pin (F-049):** recomputed again on B4's attack-move content (every
+/// strategy on `wave_order: attack_move`, plus F-049's RON retune: unit stats,
+/// costs and timings, building HP, the nemesis bonus). No Rust changed; F-049's
+/// golden licence shows the pre-F-049 `assets/data` passing at the previous
+/// values under this identical binary, and F-049 tabulates old -> new.
 #[test]
 fn depth_one_replays_the_pre_change_tree_tick_for_tick() {
     // (a, b, seed, trace, end, journal) — captured on ca6f9c0; re-pinned at
-    // B3.5 (F-032), B4 (F-041) and B4's tuning (F-046).
+    // B3.5 (F-032), B4 (F-041), B4's tuning (F-046) and B4's attack-move
+    // content (F-049).
     #[rustfmt::skip]
     let goldens: &[(&str, &str, u64, u64, u64, u64)] = &[
-        ("mvp", "mvp", 4, 0x8d19e60bb624f4d5, 0x988ac0b05fb1e4d2, 0xc2d3d58c3ca975d5),
-        ("mass_ripper", "mass_arclight", 7, 0x28b235776567bfdb, 0x2712cca3a3f9623d, 0x75541b9be9a704af),
-        ("mass_arclight", "mass_ripper", 7, 0xed81f894ea6404c5, 0xe34df6330cc3de55, 0x7b14173f43fbd987),
-        ("rush", "turtle", 13, 0xdbe8948f7c95d721, 0xf7c034ea9460e631, 0x4a8a3944ddad8438),
-        ("turtle", "rush", 13, 0x78316d1bd13e475d, 0x7b1744a8507e8f92, 0x69bd3de060a0157e),
-        ("synth_triad", "mass_ravager", 101, 0xf9be9ff5a82fc897, 0x325025491fd4c768, 0x7021b0e774dfd4b7),
-        ("mass_bulwark", "mass_sentinel", 55, 0x82e3cb31e9ff563c, 0x8df30a7f01d1cbb0, 0xace7bc9450c9174a),
-        ("mass_sentinel", "mass_bulwark", 55, 0x8d3e9fbc4067d682, 0x8035691a7f4fa491, 0xeafeec45199159c7),
-        ("synth_steel_flesh", "rush", 99, 0xd4f44e22198203ae, 0x16f170ed047d7b61, 0x086d9db263577fd8),
+        ("mvp", "mvp", 4, 0x122b5699ad122bfc, 0xac5e2292d45ebd4b, 0xc92fdcbe4f9d281d),
+        ("mass_ripper", "mass_arclight", 7, 0xb9472fb5411c6dcc, 0x2138bfe75ff677c7, 0xd7f6485502730ff1),
+        ("mass_arclight", "mass_ripper", 7, 0xa86b0a9df5b1d200, 0x00e56049f19ebdad, 0x4c8e30704eed488d),
+        ("rush", "turtle", 13, 0x407a10d1831301e5, 0x79e54bddf468c58a, 0x86873f0a2a7119cd),
+        ("turtle", "rush", 13, 0xdb7e2f9da1f9ae6f, 0x5bff597baa5baa0f, 0x75d8e6ecf9467ee2),
+        ("synth_triad", "mass_ravager", 101, 0x731e86fcf784b5d0, 0x66f2e19fb4c988fe, 0x801b0fbb0fcff562),
+        ("mass_bulwark", "mass_sentinel", 55, 0x845e0fa011fd5a7e, 0xdcb806b8a64cf47a, 0x1d63eed06c663f9c),
+        ("mass_sentinel", "mass_bulwark", 55, 0xe101367a90e31496, 0x2f5a3438e5fb5c44, 0x39fbe144215ce066),
+        ("synth_steel_flesh", "rush", 99, 0x654ff36574a027e3, 0x1343dc77f4427ffc, 0xd6f9f3cc4535497a),
     ];
     for (a, b, seed, g_trace, g_end, g_journal) in goldens {
         let c = content();

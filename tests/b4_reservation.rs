@@ -184,6 +184,9 @@ fn grace(c: &Content, strategy: &str, building: &str) -> u32 {
 /// allows; the claim is about the reservation, not about the match outlasting
 /// every script. Non-vacuity: at least one strategy must still place more than
 /// one opening on both sides, so the bound cannot excuse the whole claim away.
+/// On F-049's content (probe lines at 18 000 and 24 000, longer mirrors) all
+/// eight multi-opening strategies place their whole script on both sides, so
+/// the bound excuses nothing here (F-049 tabulates the placement ticks).
 #[test]
 fn every_multi_opening_strategy_places_its_whole_script_in_a_head_to_head() {
     let c = content();

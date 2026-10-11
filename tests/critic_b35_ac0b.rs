@@ -1039,15 +1039,20 @@ fn critic_shipped_matchups_are_bit_identical() {
     // `mass_ripper`) land back on their pre-F-041 values: g1 puts a mass
     // probe's second line at tick 9 000, past this probe's 7 200-tick horizon,
     // so inside it each side stands one line, as before the reservation.
+    // All eight re-pinned again on B4's attack-move content (F-049: every
+    // strategy attack-moves, plus the RON retune, building HP included, so
+    // every row moves from tick 1); F-049's golden licence shows the
+    // pre-F-049 `assets/data` passing at the F-046 values (kept in the
+    // comments) under this identical binary.
     let expected: [(u64, u64); 8] = [
-        (0xd9fc20717a9c7a09, 0x77fbd21abf3a658e), // F-046; F-041 (0x47c76bb871e46efb, 0xbd416bd4be86da11)
-        (0x5fe3253c75fdb8b9, 0x9a5d49efafe5ae11), // F-046; F-041 (0x79c341576e931fc4, 0x2a25c84bba78866a)
-        (0xc608429484e3d26b, 0x67f981b6e54827e4), // F-046; F-041 (0xba80ea4ba6cacdea, 0x74973f97c60a686b)
-        (0x8f2794062a59e1c8, 0xf3b6fdb1d901298c), // F-046; F-041 (0x622c06205abf7772, 0x65f9917da21d98f2), pre-B4 (0xe94d2708dca81c49, 0x4666a3b3563b8890)
-        (0x53537967a9552cf9, 0x545bcce9611fcab0), // F-046; F-041 (0x1aa33ab2d6a04527, 0xa6552ff89996a930), pre-B4 (0xb7d0e39bdfb0757c, 0x926206a7e2150e39)
-        (0x283fcec8bb5ebf41, 0xc7328be1b0e09085), // F-046; F-041 (0x54b9d0fd2c5779be, 0x2dbb7d71846b917e), pre-B4 the same as F-046
-        (0x1bc7d81e51c54e99, 0x90d87cb290ad3f58), // F-046; F-041 (0x241e74a2e363c562, 0xf6546287f161a392), pre-B4 the same as F-046
-        (0xb2b7f6a5a8309eb1, 0x3df823464ecb4d3f), // F-046; F-041 (0x3835febbbac676e3, 0xb54435b778763907), pre-B4 (0x478a4be3e491483e, 0xc9f9d38ba031b30b)
+        (0x2b79483c4ed36f08, 0x9264527b032ae3c3), // F-049; F-046 (0xd9fc20717a9c7a09, 0x77fbd21abf3a658e); F-041 (0x47c76bb871e46efb, 0xbd416bd4be86da11)
+        (0x5264d24a0693ef32, 0x6b12056c043b4be6), // F-049; F-046 (0x5fe3253c75fdb8b9, 0x9a5d49efafe5ae11); F-041 (0x79c341576e931fc4, 0x2a25c84bba78866a)
+        (0xcaf1942d0e325f79, 0x16260fc0ec6b4dd0), // F-049; F-046 (0xc608429484e3d26b, 0x67f981b6e54827e4); F-041 (0xba80ea4ba6cacdea, 0x74973f97c60a686b)
+        (0x749cafbf375b1f02, 0xdf870f13d6b9ac40), // F-049; F-046 (0x8f2794062a59e1c8, 0xf3b6fdb1d901298c); F-041 (0x622c06205abf7772, 0x65f9917da21d98f2), pre-B4 (0xe94d2708dca81c49, 0x4666a3b3563b8890)
+        (0xcc391fdfc5334c6c, 0xef1fc0dcee332c8b), // F-049; F-046 (0x53537967a9552cf9, 0x545bcce9611fcab0); F-041 (0x1aa33ab2d6a04527, 0xa6552ff89996a930), pre-B4 (0xb7d0e39bdfb0757c, 0x926206a7e2150e39)
+        (0x1778b8dda92b50f1, 0x16224cd8579b67dd), // F-049; F-046 (0x283fcec8bb5ebf41, 0xc7328be1b0e09085); F-041 (0x54b9d0fd2c5779be, 0x2dbb7d71846b917e), pre-B4 the same as F-046
+        (0x499005a61d854898, 0x5eaf0d9af1cfb640), // F-049; F-046 (0x1bc7d81e51c54e99, 0x90d87cb290ad3f58); F-041 (0x241e74a2e363c562, 0xf6546287f161a392), pre-B4 the same as F-046
+        (0xbc80a2cd27f9d081, 0x790207dcbd5cacf7), // F-049; F-046 (0xb2b7f6a5a8309eb1, 0x3df823464ecb4d3f); F-041 (0x3835febbbac676e3, 0xb54435b778763907), pre-B4 (0x478a4be3e491483e, 0xc9f9d38ba031b30b)
     ];
     assert_eq!(
         got.to_vec(),
@@ -1096,10 +1101,13 @@ fn critic_the_measured_throughput_numbers_reproduce() {
     );
     let one_deep_3 = throughput("tp_1x3", &[("gene_vats", 300, 130.0)], 3);
     println!("throughput 1x1={one_deep_1} 3x1={three_deep_1} 1x3={one_deep_3}");
-    assert_eq!(one_deep_1, 9, "one barracks at depth 1");
-    assert_eq!(three_deep_1, 27, "three barracks at depth 1");
+    // Re-measured on F-049's content, where the Ripper trains in 1 040 ticks
+    // (720 before): 6 / 18 / 6, was 9 / 27 / 9. The table's shape — count
+    // multiplies, depth does not — is unchanged; only the unit got slower.
+    assert_eq!(one_deep_1, 6, "one barracks at depth 1");
+    assert_eq!(three_deep_1, 18, "three barracks at depth 1");
     assert_eq!(
-        one_deep_3, 9,
+        one_deep_3, 6,
         "one barracks at depth 3 — depth is not the lever"
     );
 }

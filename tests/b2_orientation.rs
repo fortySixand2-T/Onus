@@ -167,12 +167,14 @@ fn the_default_orientation_is_normal_and_still_the_pinned_fixture() {
     assert_eq!(MatchSettings::default().orientation, Orientation::Normal);
     // The AC1 pin, re-asserted here: the default fixture's first ticks are the
     // pre-B2 bench fixture's.
-    // Re-pinned at B3.5 with `tests/b2_headless.rs`'s table (F-032).
+    // Re-pinned at B3.5 with `tests/b2_headless.rs`'s table (F-032), and on
+    // B4's attack-move content (F-049; was 0x5add_c3af_c88c_09ee and
+    // 0xe6cf_1895_3a10_0975).
     let mut app = built(&MatchSettings::default().with_seed(4).with_hashing(true));
     headless::tick(&mut app, 10);
     let log = &app.world().resource::<StateHashLog>().0;
-    assert_eq!(log[0], 0x5add_c3af_c88c_09ee);
-    assert_eq!(log[9], 0xe6cf_1895_3a10_0975);
+    assert_eq!(log[0], 0xb129_cc22_e561_8e3e);
+    assert_eq!(log[9], 0x210a_73c9_e342_5e35);
 }
 
 // ---- the batch plays both orientations --------------------------------------
