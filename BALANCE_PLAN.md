@@ -304,15 +304,35 @@ all-timeout run is flagged, not reported as balanced.
             **User decision (2026-10-10): ship attack-move for every strategy and retune.**
             Units now fight back while they march, so the remaining reds look like ordinary
             stat imbalances, not structure. Step 2b below is the retune.
-      - [ ] **Step 2b — retune RON on attack-move.** Every strategy uses
+      - [x] **Step 2b — retune RON on attack-move.** Every strategy uses
             `wave_order: attack_move`, the five mass probes stay knob-identical, and only RON
             changes (unit stats/costs/timings, `mvp_combat`, scripts). The step-2 bar applies
             in full, and the turtle still commits last. The budget is capped, with every
             candidate recorded in an F-entry. If the cap is reached without a pass, stop and
             report.
+            **Result** (F-049): **s56 passes at 4 seeds and is installed.** It was found
+            after 56 screens and 6 of the 10 4-seed confirmations.
+            - K1 undetermined; the highest row is `mass_ripper` 70.8 [60.6, 80.2].
+            - Turtle 32.3% (PASS).
+            - Pentagon: 4 hold, 1 undetermined (`sentinel > ripper`), 0 fail.
+            - K3 undetermined: band 48.8% [44.6, 53.1], timeouts 4.2%.
+            - The turtle commits last at 22 980, 6 900 ticks after `synth_triad`, on all
+              three seeds.
       - [ ] **Step 3 — proof and re-pin.** With the switch on, the current RON reproduces
             today's goldens. Then re-pin and record an F-entry. Full gate, then the critic,
             then merge.
+            **Status** (F-049): **proof and re-pin done; left unticked because the gate is
+            not green.**
+            - The golden licence passes: the pre-F-049 RON gives 967 passed, 0 failed.
+            - The goldens and measured pins are re-pinned: 11 hash tests and 4 measured
+              pins.
+            - 10 tests' claims or premises break on the new content and are left red for
+              a decision. Among them:
+              - M4c's 8-minute claim: the `mvp` mirror runs past 8:00 on 3 of 21 seeds;
+              - `mass_ripper` vs `mass_sentinel` never resolving;
+              - six "decides quickly" fixtures.
+            - The five-probe `b3_gate` batch's K3 reads FAIL.
+            F-049 lists the options.
       - **Fallback:** if no lever passes, bring the numbers and the gate question (should
         K1 gate a deliberately extreme probe?) to the user.
 - [x] **Multi-barracks as a real capability (open, from F-035).** The AI places an opening

@@ -614,3 +614,13 @@
 - [2026-10-10] Modified: FINDINGS.md — F-048: attack-move built (step 1, golden proof) and measured with attack_move everywhere; 4 range values tried (220/170/120/400); bar not met (K1 ripper/sentinel, 2 pentagon FAILs, K3)
 - [2026-10-10] Modified: BALANCE_PLAN.md — B4 turtle step 1 ticked with result; step 2 left unticked with the bar-not-met result (F-048)
 - [2026-10-10] Modified: BALANCE_PLAN.md — turtle AC: user chose to ship attack-move and retune (step 2b)
+- [2026-10-10] Modified: assets/data/units.ron — B4 step 2b (F-049, s56): Ripper train 1040 / attack 70, Sentinel cost 90, Ravager cost 95 armor 3, Arclight cost 65 defense 4, building HP per defense 840, nemesis x2.0; `cost:` synced to `mvp_alloy_cost`
+- [2026-10-10] Modified: assets/data/strategies.ron — B4 step 2b (F-049): `wave_order: attack_move` on all 10 strategies; mass probes' later lines at 18000/24000 and attack at 8; synth_steel_flesh workers 10 / attack 13; synth_triad workers 9 / attack 12
+- [2026-10-10] Modified: DESIGN_BRIEF.md — F-049 roster numbers, nemesis double damage, retune note
+- [2026-10-10] Modified: tests/b4_attack_move.rs — `every_shipped_strategy_ships_wave_order_move` deliberately re-stated as `..._attack_move` (user's step-2b decision); fixtures flip to the all-move scratch copy
+- [2026-10-10] Modified: tests/b4_balance_data.rs — scratch fixture now flips shipped `attack_move` to `move` (only the difference matters)
+- [2026-10-10] Modified: tests/b1_matchup.rs, tests/b1_strategies.rs, tests/b2_headless.rs, tests/b2_orientation.rs, tests/b35_parallel.rs, tests/b35_queue_depth.rs, tests/critic_b2_ac4.rs, tests/critic_b35_ac0.rs, tests/critic_b35_ac0b.rs — F-049 hash/journal golden re-pin (content-driven; golden licence in F-049)
+- [2026-10-10] Modified: tests/b3_gate.rs, tests/b3_pentagon.rs, tests/critic_b35_closure.rs, tests/critic_b35_ac0b.rs — F-049 measured-pin re-measure (old values kept in comments)
+- [2026-10-10] Modified: tests/b1_probe_set.rs, tests/critic_b1_ac3.rs, tests/b4_reservation.rs — comments only: F-049 turtle commit tick and reservation re-check
+- [2026-10-10] Modified: FINDINGS.md — F-049: step 2b candidate table (c0, s1-s56, 6 confirmations), s56 install, golden licence, re-pin list, 10 claim/premise reds left for a decision, closure, reservation and F-047 diagnostic re-runs
+- [2026-10-10] Modified: BALANCE_PLAN.md — step 2b ticked (F-049); step 3 status recorded, left unticked (gate not green)
