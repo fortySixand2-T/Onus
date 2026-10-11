@@ -70,9 +70,9 @@
         ),
         (
             id: "sentinel",  name: "Sentinel",  barracks: "foundry",      // Machine
-            cost: (resource: "alloy",   amount: 70),
+            cost: (resource: "alloy",   amount: 90),
             mvp_kind: Scout,
-            mvp_alloy_cost: 70, mvp_train_ticks: 900,
+            mvp_alloy_cost: 90, mvp_train_ticks: 900,
             mvp_attack_ticks: 60, mvp_attack_range: 60.0,
             speed: 7, offense: 6, defense: 5, armor: 5, nemesis: "ripper",
         ),
@@ -80,25 +80,25 @@
             id: "ripper",    name: "Ripper",    barracks: "gene_vats",    // Flesh
             cost: (resource: "biomass", amount: 40),
             mvp_kind: Scout,
-            mvp_alloy_cost: 40, mvp_train_ticks: 720,
-            mvp_attack_ticks: 50, mvp_attack_range: 40.0,
+            mvp_alloy_cost: 40, mvp_train_ticks: 1040,
+            mvp_attack_ticks: 70, mvp_attack_range: 40.0,
             speed: 9, offense: 6, defense: 3, armor: 1, nemesis: "arclight",
         ),
         (
             id: "ravager",   name: "Ravager",   barracks: "gene_vats",    // Flesh
-            cost: (resource: "biomass", amount: 80),
+            cost: (resource: "biomass", amount: 95),
             mvp_kind: Soldier,
-            mvp_alloy_cost: 80, mvp_train_ticks: 1100,
+            mvp_alloy_cost: 95, mvp_train_ticks: 1100,
             mvp_attack_ticks: 75, mvp_attack_range: 44.0,
-            speed: 4, offense: 7, defense: 8, armor: 4, nemesis: "sentinel",
+            speed: 4, offense: 7, defense: 8, armor: 3, nemesis: "sentinel",
         ),
         (
             id: "arclight",  name: "Arclight",  barracks: "aether_spire", // Energy
-            cost: (resource: "aether",  amount: 80),
+            cost: (resource: "aether",  amount: 65),
             mvp_kind: Soldier,
-            mvp_alloy_cost: 80, mvp_train_ticks: 1080,
+            mvp_alloy_cost: 65, mvp_train_ticks: 1080,
             mvp_attack_ticks: 100, mvp_attack_range: 120.0,   // the ranged one
-            speed: 5, offense: 9, defense: 2, armor: 2, nemesis: "bulwark",
+            speed: 5, offense: 9, defense: 4, armor: 2, nemesis: "bulwark",
         ),
     ],
     // MVP building cost table (Alloy). The HQ exists at match start; the three
@@ -119,7 +119,7 @@
         damage_per_offense: 5,     // Offense -> damage per hit
         mitigation_per_armor: 2,   // Armor  -> flat mitigation per hit
         speed_per_point: 36.0,     // Speed  -> world units per second
-        building_hp_per_defense: 420,   // buildings' Defense -> HP pool (a base
+        building_hp_per_defense: 840,   // buildings' Defense -> HP pool (a base
                                        // outlasts a soldier without leaving the
                                        // 1-10 design scale)
         max_stat: 10,              // the design scale is 1-10; stats above this
@@ -131,14 +131,15 @@
                                    // an obstacle legitimately opens the gap)
         attack_move_range: 220.0,  // radius in which an attack-mover (a wave
                                    // whose strategy's wave_order is attack_move)
-                                   // acquires a target; attack-movers only, so
-                                   // inert while every strategy ships `move`.
+                                   // acquires a target; attack-movers only, and
+                                   // every strategy ships `attack_move` (F-049).
                                    // longest unit reach <= this <= pursue_range
                                    // (B4, F-048)
     ),
     // Applied when attacker.nemesis == defender.id
     nemesis_bonus: (
-        damage_mult: 1.3,   // +30% vs the one prey (held as 1300 per-mille)
+        damage_mult: 2.0,   // double damage vs the one prey (held as 2000
+                            // per-mille; +30% until F-049)
         ignore_armor: true,
     ),
 )

@@ -21,14 +21,16 @@ fn scratch(tag: &str) -> PathBuf {
     dir
 }
 
-/// A copy of the shipped data with every wave sent as an attack-move.
-fn attack_move_everywhere(dir: &Path) {
+/// A copy of the shipped data with every wave sent as a plain move (the shipped
+/// data attack-moves everywhere since F-049; before it, this fixture flipped the
+/// other way). Only the difference from the shipped data matters here.
+fn plain_move_everywhere(dir: &Path) {
     let shipped = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data");
     for f in ["units.ron", "resources.ron", "strategies.ron"] {
         let text = std::fs::read_to_string(shipped.join(f)).unwrap();
         let text = if f == "strategies.ron" {
-            assert!(text.contains("wave_order: move,"));
-            text.replace("wave_order: move,", "wave_order: attack_move,")
+            assert!(text.contains("wave_order: attack_move,"));
+            text.replace("wave_order: attack_move,", "wave_order: move,")
         } else {
             text
         };
@@ -49,7 +51,7 @@ fn run(extra: &[&str], report: &Path) -> std::process::Output {
 #[test]
 fn data_dir_is_the_content_the_report_was_played_on() {
     let dir = scratch("am");
-    attack_move_everywhere(&dir);
+    plain_move_everywhere(&dir);
     let report = dir.join("report.ron");
     let out = run(&["--data", dir.to_str().unwrap()], &report);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));

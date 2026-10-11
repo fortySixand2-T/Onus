@@ -18,8 +18,9 @@
 //! - a plain `MoveTo` is unchanged: a pure move, no chase.
 //!
 //! The switch is content: `StrategyDef::wave_order`, `move` or `attack_move`,
-//! required in `strategies.ron`. Step 1 ships `move` everywhere, so shipped
-//! behaviour is unchanged.
+//! required in `strategies.ron`. Step 1 shipped `move` everywhere, so shipped
+//! behaviour was unchanged; step 2b (F-049) ships `attack_move` everywhere, on
+//! content retuned around it.
 //!
 //! Every distance below is read from the loaded content (F-044): no shipped
 //! balance value is pinned here.
@@ -421,13 +422,17 @@ fn move_to_stays_a_pure_move_beside_an_enemy_in_engage_range() {
 
 // ---- 6. the switch is content; an attack-move match is deterministic --------
 
+/// Re-stated deliberately in B4 step 2b (F-049): step 1 pinned `move`
+/// everywhere (`every_shipped_strategy_ships_wave_order_move`); the user's
+/// call (BALANCE_PLAN step 2b) ships `attack_move` everywhere instead. Still
+/// one pin on the whole shipped set, AI default included.
 #[test]
-fn every_shipped_strategy_ships_wave_order_move() {
+fn every_shipped_strategy_ships_wave_order_attack_move() {
     let c = content();
     for s in &c.strategies {
-        assert_eq!(s.wave_order, WaveOrder::Move, "strategy `{}`: step 1 ships neutral", s.id);
+        assert_eq!(s.wave_order, WaveOrder::AttackMove, "strategy `{}`: step 2b ships attack_move", s.id);
     }
-    assert_eq!(c.ai.wave_order, WaveOrder::Move);
+    assert_eq!(c.ai.wave_order, WaveOrder::AttackMove);
 }
 
 /// A scratch content dir: the shipped files, with `strategies.ron` rewritten.
@@ -445,7 +450,7 @@ fn scratch_content(name: &str, edit: impl Fn(&str) -> String) -> PathBuf {
 #[test]
 fn a_missing_wave_order_is_a_load_error_not_a_default() {
     let dir = scratch_content("b4_am_missing_wave_order", |t| {
-        let s = t.replacen("            wave_order: move,\n", "", 1);
+        let s = t.replacen("            wave_order: attack_move,\n", "", 1);
         assert_ne!(s, t, "the shipped set has no wave_order to strip");
         s
     });
@@ -455,14 +460,20 @@ fn a_missing_wave_order_is_a_load_error_not_a_default() {
 
 #[test]
 fn attack_move_parses_from_the_ron_and_moves_the_fingerprint() {
-    let dir = scratch_content("b4_am_all_attack_move", |t| {
-        t.replace("wave_order: move,", "wave_order: attack_move,")
-    });
-    let am = Content::load_from_dir(&dir).expect("attack_move is a valid wave order");
+    // Since step 2b the shipped file itself is the all-`attack_move` set, so
+    // the parse is read from it and the contrast is a rewrite back to `move`.
+    let am = content();
     assert!(am.strategies.iter().all(|s| s.wave_order == WaveOrder::AttackMove));
+    let dir = scratch_content("b4_am_all_move", |t| {
+        let s = t.replace("wave_order: attack_move,", "wave_order: move,");
+        assert_ne!(s, t, "the shipped set has no attack_move to rewrite");
+        s
+    });
+    let mv = Content::load_from_dir(&dir).expect("move is a valid wave order");
+    assert!(mv.strategies.iter().all(|s| s.wave_order == WaveOrder::Move));
     assert_ne!(
         am.fingerprint().hash(),
-        content().fingerprint().hash(),
+        mv.fingerprint().hash(),
         "the wave order is content the fingerprint must see"
     );
 }

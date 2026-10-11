@@ -62,12 +62,14 @@ Numbers are placeholders for the balance sim to settle.
 | Unit | Barracks (domain) | Role | Spd | Off | Def | Arm | Cost | Bonus vs |
 |------|-------------------|------|:--:|:--:|:--:|:--:|------|----------|
 | **Bulwark**  | Foundry (Machine)     | walking fortress        | 2 | 4 | 9 | 9 | 95 Alloy    | Ravager  |
-| **Sentinel** | Foundry (Machine)     | agile war-frame         | 7 | 6 | 5 | 5 | 70 Alloy    | Ripper   |
+| **Sentinel** | Foundry (Machine)     | agile war-frame         | 7 | 6 | 5 | 5 | 90 Alloy    | Ripper   |
 | **Ripper**   | Gene-Vats (Flesh)     | fragile swarm           | 9 | 6 | 3 | 1 | 40 Biomass  | Arclight |
-| **Ravager**  | Gene-Vats (Flesh)     | regenerating bio-titan  | 4 | 7 | 8 | 4 | 80 Biomass  | Sentinel |
-| **Arclight** | Aether Spire (Energy) | armor-melting channeler | 5 | 9 | 2 | 2 | 80 Aether   | Bulwark  |
+| **Ravager**  | Gene-Vats (Flesh)     | regenerating bio-titan  | 4 | 7 | 8 | 3 | 95 Biomass  | Sentinel |
+| **Arclight** | Aether Spire (Energy) | armor-melting channeler | 5 | 9 | 4 | 2 | 65 Aether   | Bulwark  |
 
 Timings live in `assets/data/units.ron` (`mvp_train_ticks`, `mvp_attack_ticks`, at 60 ticks/s). B4's tuning pass (F-046) set the ones it moved: Bulwark trains in 1300 ticks (was 1500) and Ravager in 1100 (was 1200); Ripper hits every 50 ticks (was 40). The costs above are B4's too (Bulwark 110 -> 95, Ravager 90 -> 80).
+
+B4 step 2b (F-049) retuned the roster around attack-move waves (every strategy's `wave_order` is `attack_move`): Ripper trains in 1040 ticks (was 720) and hits every 70 (was 50); Sentinel costs 90 (was 70); Ravager costs 95 (was 80) with Armor 3 (was 4); Arclight costs 65 (was 80) with Defense 4 (was 2). The table above carries these. A building's HP pool doubled (`building_hp_per_defense` 420 -> 840), and the nemesis bonus is now double damage (was +30%).
 
 Economy unit (from HQ, not a barracks): **Worker** — gathers and builds, cheap, no combat role.
 
@@ -75,7 +77,7 @@ Economy unit (from HQ, not a barracks): **Worker** — gathers and builds, cheap
 
 Each unit deals a bonus against exactly one prey and is prey to exactly one predator — a closed loop, so every counter has its own counter.
 
-**Nemesis bonus:** **+30% damage, *ignoring armor***, vs the one prey.
+**Nemesis bonus:** **double damage (+100%), *ignoring armor***, vs the one prey (+30% until F-049).
 
 Cycle: **Sentinel → Ripper → Arclight → Bulwark → Ravager → Sentinel**
 
