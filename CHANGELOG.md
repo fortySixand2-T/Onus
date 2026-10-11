@@ -624,3 +624,4 @@
 - [2026-10-10] Modified: tests/b1_probe_set.rs, tests/critic_b1_ac3.rs, tests/b4_reservation.rs — comments only: F-049 turtle commit tick and reservation re-check
 - [2026-10-10] Modified: FINDINGS.md — F-049: step 2b candidate table (c0, s1-s56, 6 confirmations), s56 install, golden licence, re-pin list, 10 claim/premise reds left for a decision, closure, reservation and F-047 diagnostic re-runs
 - [2026-10-10] Modified: BALANCE_PLAN.md — step 2b ticked (F-049); step 3 status recorded, left unticked (gate not green)
+- [2026-10-10] Modified: FINDINGS.md — F-050: s56 stalemate diagnosis (rush mirror, mass_ripper vs mass_sentinel, mvp mirror length); verdict legitimate deadlock, no sim change

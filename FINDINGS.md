@@ -5378,3 +5378,133 @@ The expected "0 failed" is **not met**, so step 3 stays unticked until those 10 
 - The bar measured the 10-strategy batch. It did not measure the M4c 8-minute claim or the
   "decides quickly" fixtures of older tests. The install surfaced 10 such reds that no
   screen could see. Next time, add the default-mirror length to the screen.
+
+## F-050 — Why some s56 matches never end: a legitimate deadlock, not an attack-move bug (B4)
+
+**Context.** F-049 installed s56 and left 10 tests red. Three of them involve matches that
+never end. The user's call (2026-10-10) was to diagnose those stalemates before deciding
+anything else. No test, claim or RON value was changed for this entry.
+
+**Method.** A scratch sampler ran on the box in release mode. It was an ignored test, deleted
+afterwards and never committed. It replays each fixture exactly and, every N ticks, prints
+the following for each side:
+- Alloy, workers and every building's HP and queue length;
+- every armed unit's position, HP, `MoveTarget`, `Engaging`, `AttackMoveDest` and `Target`
+  (the distance to the target and whether it is a unit or a building);
+- every `AiAction::Attack` and `TrainArmy` since the last sample.
+
+There were four kinds of runs:
+- full-length runs at 600 or 1 200 ticks per sample;
+- one zoom at 60 ticks over the first `mass_ripper` wave;
+- one zoom at 5 ticks over the first `rush` duel;
+- one control run with `rush` alone switched to `wave_order: move`.
+
+**Verdict: (ii), a legitimate deadlock, in every case.** The units march, acquire, close to
+weapon range, stand and trade exactly as `combat()` specifies. None of the attack-move bug
+patterns appears in any sample. None oscillates at the leash or a wall. None re-acquires
+an unreachable target. Every wave arrives. None loses its order. None stands idle at its
+destination beside a building. The matches stall because of the content's arithmetic and
+the strategies' thresholds. So no fix was made.
+
+### 1. The `rush` mirror (critic_b2_ac2 DECIDER, seed 0; b2_orientation's 6 timeouts)
+
+The full run on seed 0 lasted 54 000 ticks and timed out:
+- Both HQs are at **8 400 / 8 400 in all 90 samples**. No armed unit ever targets a building.
+- Each side has 3 workers. The economy pays for one Ripper (40 Alloy, 1 040 ticks) at a time,
+  so 142 of 180 side-samples show 0 armed units and 38 show 1. There are never 2.
+- Every Ripper meets its mirror at midfield (x from -38 to -76), and the two units kill each
+  other on the same tick.
+
+The 5-tick zoom of the first duel shows the cycle:
+
+| tick | A Ripper | B Ripper |
+|---|---|---|
+| 1 170 | (-165,-52), marching, `am`=(745,-38) | (52,38), marching, `am`=(-788,38) |
+| 1 175 | acquires B at d183, chases (`E`) | acquires A at d183, chases |
+| 1 190 | in range (d32 < 40), stands: hp 60 -> 32 | the same: hp 60 -> 32 |
+| 1 260 | hp 4 | hp 4 |
+| 1 330 | dead | dead |
+
+The arithmetic: Ripper damage is 6×5 − 1×2 = 28 against an HP of 60. That is three hits,
+every 70 ticks, on the same tick for both sides. `combat.rs` resolves both blows from one
+snapshot ("two units that kill each other on one tick both die", lines 22-31). The mirror
+matters here: the same script, the same economy and the same think interval mean both
+Rippers are trained on the same tick and arrive together. The AI re-sends the order every
+120 ticks with a new spread (`ai.rs` 594-608), including once mid-duel at 1 185. That is
+harmless: `apply_commands` drops `Engaging` (`mod.rs` 803-821), and `combat()` re-acquires
+the same target within the same tick from `attack_move_range` (`combat.rs` 417-427). By 1 190
+the two units are standing and trading.
+
+In the orientation runs, `rush` timed out in **6 of 6** (3 seeds × 2 orientations).
+`mass_ripper` decided in 6 of 6.
+
+**Control:** the same s56 RON and binary on seed 0, with only `rush` switched to
+`wave_order: move`, **decides at tick 8 631 (A)**. A plain mover with a `MoveTarget` does not
+stand to fight (`combat.rs` 463-483: only an engaging unit or an attack-mover stands or chases), so the two
+Rippers walk past each other to the HQs. The stalemate is therefore what attack-move means
+for a 1-unit-at-a-time mirror: an even trade, repeated forever.
+
+### 2. `mass_ripper` vs `mass_sentinel` (critic_b1_ac3 fixture, seed 7)
+
+This run also lasted 54 000 ticks and timed out. Sampled every 1 200 ticks:
+- A attacks in **8 waves** of 8 Rippers, at 8 730, 17 130, 22 230, 27 000, 32 430, 37 830,
+  43 170 and 48 570. Every wave dies at B's base.
+- B's armed count peaks at **7**, never reaching its `attack_at_army` of 8. So B never sends
+  a wave at all.
+- B's HQ took **396 damage in the whole match** (8 400 -> 8 004 at about 33 000, the one wave
+  that also killed 2 workers). A's HQ was never touched.
+- B is limited by Alloy (the Sentinel costs 90; B's balance was between 0 and 144 at every
+  sample). A was train-limited until its later Gene-Vats went up: it banked 466 Alloy by
+  18 000, then spent down to 4-40.
+
+The 60-tick zoom of wave 1 shows B 6 v A 8:
+- The Rippers march as a unit and acquire the nearest Sentinel at d290 on the pursue leash.
+- They close to d35, inside the Ripper's 40 range, and stand.
+- From 9 060 to 9 480 they lose one Ripper per Sentinel volley and kill one Sentinel per
+  Ripper volley. **A ends 8 -> 0, B 6 -> 2.**
+
+The cause is the nemesis link:
+- A Sentinel hits a Ripper for 6×5×2.0 = 60, armour ignored, which equals the Ripper's HP:
+  one shot, one kill.
+- A Ripper hits a Sentinel for 6×5 − 5×2 = 20 against 100 HP: five hits.
+
+Both sides focus the nearest target, with ties broken by entity bits (`combat.rs` 355, 417),
+so both overkill. That is the M2/M3 targeting model, not something attack-move introduced.
+
+The cycle is therefore stable:
+- each wave kills 4-5 Sentinels;
+- B rebuilds to 5-7 before the next wave;
+- B never reaches 8 to counter-attack;
+- the HQ is never reached in force.
+
+This is the counter-pentagon doing what it should, plus a threshold that the defender's
+economy cannot reach between waves. It matches F-049's 4 decided and 4 timeouts on this
+link in the pentagon batch.
+
+### 3. Related: the `mvp` mirror (critic_p2 seed 7; M4c seeds 1 and 8)
+
+These matches are long but they do end, so they are context rather than one of the three
+stalemates. On the critic_p2 fixture (default commanders):
+
+| seed | decided at |
+|---|---|
+| 7 | 27 485 (B) |
+| 1 | 30 127 (B) |
+| 8 | 38 621 (A, 10:44) |
+
+On seed 8 the sides trade 2-3-unit waves evenly to about 26 000 (A's HQ 8 048, B's 8 400).
+Then A wins a trade, camps B's Foundry and kills each new Sentinel as it appears. B shows 0
+armed in every sample from 25 800 on, and its Foundry falls by about 32 400. The HQ then
+goes 8 356 -> 0 in about 6 000 ticks. This is again correct attack-move behaviour: it takes
+the nearest armed target, falls back to the nearest building, and stands in range. Here it
+is just slow.
+
+### Consequence
+
+There is no sim fix to make, so no golden moves and nothing is re-measured. The 10 reds and
+options (a)-(d) in F-049 stand as they were. Two of the three stalemates come from content
+and thresholds:
+- the `rush` mirror, a 1-Ripper economy trading 1-for-1 on simultaneous resolution;
+- `mass_ripper` vs `mass_sentinel`, a nemesis wall below `attack_at_army`.
+
+Both are design questions for the user, not defects.
