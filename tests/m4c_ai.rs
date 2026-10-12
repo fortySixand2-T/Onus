@@ -1047,14 +1047,30 @@ fn ai_vs_ai(seed: u64) -> App {
 /// AC2's design target: an AI-vs-AI match reaches a decision inside ~8 minutes
 /// of sim time (8 * 60 * 60 = 28_800 ticks). Measured, not hardcoded — the
 /// budget is the assertion, the length is reported.
+///
+/// **Restated 2026-10-11 by user decision (F-050/F-051).**
+/// - Old: *every* seed is decided inside 8:00.
+/// - New: over the same seeds, three things hold:
+///   1. every match is decided, with a winner, by a dead HQ within the match
+///      cap (`DEFAULT_TICK_CAP`, 15:00);
+///   2. the median decided length is <= 8:00;
+///   3. at most one match in four (rounded up) runs past 8:00.
+///
+/// Why: under attack-move (s56, F-049) the `mvp` mirror is a long trade. The
+/// pooled measurement over the 21 seeds the three M4c tests name is median
+/// 6:47, 3 of 21 (14%) over 8:00, longest 10:44 (F-049/F-050). On these three
+/// seeds it is 1: 30 127, 7: 27 485, 99: 15 924, so the median is 27 485 and
+/// 1 of 3 runs over (the bound here is 1).
 #[test]
 fn an_ai_vs_ai_match_is_decided_within_eight_minutes() {
     const BUDGET: u32 = 8 * 60 * 60;
+    const CAP: u32 = onus::headless::DEFAULT_TICK_CAP;
+    let victory_def = content().building_index("hq").unwrap();
     let mut lengths = Vec::new();
     for seed in [1u64, 7, 99] {
         let mut app = ai_vs_ai(seed);
         let mut decided = None;
-        for _ in 0..BUDGET {
+        for _ in 0..CAP {
             step(&mut app);
             if let Some(o) = outcome(&app) {
                 decided = Some(o);
@@ -1062,17 +1078,36 @@ fn an_ai_vs_ai_match_is_decided_within_eight_minutes() {
             }
         }
         let o = decided.unwrap_or_else(|| {
-            panic!("seed {seed}: no decision in {BUDGET} ticks (~8 min)");
+            panic!("seed {seed}: no decision in {CAP} ticks (the match cap)");
         });
+        let winner = o.winner.expect("a symmetric match ended in a draw");
+        // Strict: decided by a dead HQ. The loser has none left; the winner does.
+        let standing: Vec<Faction> = {
+            let mut q = app.world_mut().query::<(&Building, &Faction)>();
+            q.iter(app.world())
+                .filter(|(b, _)| b.def == victory_def)
+                .map(|(_, f)| *f)
+                .collect()
+        };
+        assert_eq!(standing, vec![winner], "seed {seed}: the win was not a dead HQ");
         lengths.push((seed, o.tick, o.winner));
     }
     println!("match lengths (seed, tick, winner): {lengths:?}");
-    for (seed, ticks, _) in &lengths {
-        assert!(
-            *ticks <= BUDGET,
-            "seed {seed}: {ticks} ticks is over the ~8 min target"
-        );
-    }
+    let mut ticks: Vec<u32> = lengths.iter().map(|(_, t, _)| *t).collect();
+    ticks.sort_unstable();
+    // Upper median: the conservative choice for an even count.
+    let median = ticks[ticks.len() / 2];
+    assert!(
+        median <= BUDGET,
+        "median decided length {median} ticks is over the ~8 min target: {lengths:?}"
+    );
+    let over = ticks.iter().filter(|&&t| t > BUDGET).count();
+    let bound = ticks.len().div_ceil(4);
+    assert!(
+        over <= bound,
+        "{over} of {} matches ran past ~8 min (bound {bound}): {lengths:?}",
+        ticks.len()
+    );
 }
 
 /// The whole match is deterministic given the seed: same seed ⇒ same journal,

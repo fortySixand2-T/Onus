@@ -56,6 +56,23 @@
 //                           unit popping and the next decision, not parallel
 //                           production. `1` is the behaviour every match before
 //                           B3.5 played, when this cap was a Rust constant.
+//   wave_order            — the order its attack waves go out on (B4, F-048).
+//                           Required (no default). One of:
+//                             move        — a pure move (`Order::MoveTo`): the
+//                                           wave walks to the enemy HQ, hits
+//                                           only what is already in a unit's
+//                                           own reach, and never chases;
+//                             attack_move — `Order::AttackMove`: the wave
+//                                           marches to the same point but
+//                                           engages enemy *armed* units inside
+//                                           `attack_move_range` on the way (chasing
+//                                           to the `pursue_range` leash, armed
+//                                           units before workers and
+//                                           buildings), then resumes its march.
+//                           Every strategy ships `attack_move` (B4 step 2b,
+//                           F-049): the lever F-047 built and F-048 measured,
+//                           shipped on the content retuned around it. `move`
+//                           is the behaviour of every match before it.
 //
 // THE PROBE SET (B1 AC3) — what these entries are *for*. B3 measures the
 // counter pentagon with them, so the set is an instrument, not a roster of
@@ -69,7 +86,7 @@
 //     B3.5's economy only the first (and `mass_ripper`'s second) ever went up
 //     (F-035); B4's opening reservation (F-041) builds every line that falls
 //     due in time. B4 (F-046) moved the second and third lines late (ticks
-//     9 000 and 15 000), identically for all five, so a mass probe fights on
+//     9 000 and 15 000; 18 000 and 24 000 since F-049), identically for all five, so a mass probe fights on
 //     one line for most of a match, and a short match ends before its later
 //     lines (they are scripted identically; not always all built). If those knobs ever
 //     diverge, B3's pentagon assertion measures the knobs instead of the units and the
@@ -89,13 +106,14 @@
 //
 // Everything here is priced in the Alloy-only MVP economy (300 starting Alloy;
 // Foundry 150, Gene-Vats 150, Aether Spire 200; worker 10, ripper 40,
-// sentinel 70, arclight 80, ravager 80, bulwark 95).
+// arclight 65, sentinel 90, ravager 95, bulwark 95 — F-049's prices).
 //
 // TEMPO (B3.5, F-029) — these scripts carry the match-length tuning. The arc
 // the brief asks for (5-8 minutes of real fighting) is bought with two knobs
 // here and one in `units.ron`: every strategy opens **several production
 // lines** instead of one (`mvp` excepted — see its note), and commits with a
-// **much larger force** (the mass probes at 10 units rather than 3), while a
+// **much larger force** (the mass probes at 10 units rather than 3; 8
+// since F-049), while a
 // worker's load shrank from 10
 // Alloy to 2 so the army takes minutes to assemble. B3.5's measurements were
 // taken before the extra lines were really built (F-035: they were trimmed
@@ -131,6 +149,7 @@
             attack_interval_ticks: 600,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: attack_move,
         ),
 
         // ---- the five mass-unit probes -------------------------------------
@@ -144,16 +163,17 @@
             worker_target: 6,
             barracks: [
                 (building: "foundry", at_tick: 300, offset: 130.0),
-                (building: "foundry", at_tick: 9000, offset: 165.0),
-                (building: "foundry", at_tick: 15000, offset: 200.0),
+                (building: "foundry", at_tick: 18000, offset: 165.0),
+                (building: "foundry", at_tick: 24000, offset: 200.0),
             ],
             army: [
                 (unit: "bulwark", count: 1),
             ],
-            attack_at_army: 10,
+            attack_at_army: 8,
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: attack_move,
         ),
         // Machine / skirmish. Fast, mid-range, nemesis Ripper.
         (
@@ -162,16 +182,17 @@
             worker_target: 6,
             barracks: [
                 (building: "foundry", at_tick: 300, offset: 130.0),
-                (building: "foundry", at_tick: 9000, offset: 165.0),
-                (building: "foundry", at_tick: 15000, offset: 200.0),
+                (building: "foundry", at_tick: 18000, offset: 165.0),
+                (building: "foundry", at_tick: 24000, offset: 200.0),
             ],
             army: [
                 (unit: "sentinel", count: 1),
             ],
-            attack_at_army: 10,
+            attack_at_army: 8,
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: attack_move,
         ),
         // Flesh / swarm. The cheapest body in the game, nemesis Arclight.
         (
@@ -180,16 +201,17 @@
             worker_target: 6,
             barracks: [
                 (building: "gene_vats", at_tick: 300, offset: 130.0),
-                (building: "gene_vats", at_tick: 9000, offset: 165.0),
-                (building: "gene_vats", at_tick: 15000, offset: 200.0),
+                (building: "gene_vats", at_tick: 18000, offset: 165.0),
+                (building: "gene_vats", at_tick: 24000, offset: 200.0),
             ],
             army: [
                 (unit: "ripper", count: 1),
             ],
-            attack_at_army: 10,
+            attack_at_army: 8,
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: attack_move,
         ),
         // Flesh / bruiser. Heavy hitter, nemesis Sentinel.
         (
@@ -198,16 +220,17 @@
             worker_target: 6,
             barracks: [
                 (building: "gene_vats", at_tick: 300, offset: 130.0),
-                (building: "gene_vats", at_tick: 9000, offset: 165.0),
-                (building: "gene_vats", at_tick: 15000, offset: 200.0),
+                (building: "gene_vats", at_tick: 18000, offset: 165.0),
+                (building: "gene_vats", at_tick: 24000, offset: 200.0),
             ],
             army: [
                 (unit: "ravager", count: 1),
             ],
-            attack_at_army: 10,
+            attack_at_army: 8,
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: attack_move,
         ),
         // Energy / artillery. Glass cannon at 120 range, nemesis Bulwark. Pays
         // 200 for its Aether Spire where the other four pay 150 — a designed
@@ -218,16 +241,17 @@
             worker_target: 6,
             barracks: [
                 (building: "aether_spire", at_tick: 300, offset: 130.0),
-                (building: "aether_spire", at_tick: 9000, offset: 165.0),
-                (building: "aether_spire", at_tick: 15000, offset: 200.0),
+                (building: "aether_spire", at_tick: 18000, offset: 165.0),
+                (building: "aether_spire", at_tick: 24000, offset: 200.0),
             ],
             army: [
                 (unit: "arclight", count: 1),
             ],
-            attack_at_army: 10,
+            attack_at_army: 8,
             attack_interval_ticks: 300,
             attack_spread: 60.0,
             queue_depth: 1,
+            wave_order: attack_move,
         ),
 
         // ---- the synthesis builds ------------------------------------------
@@ -240,7 +264,7 @@
         (
             id: "synth_steel_flesh",
             think_interval_ticks: 30,
-            worker_target: 8,
+            worker_target: 10,
             barracks: [
                 (building: "foundry",   at_tick: 300,  offset: 130.0),
                 (building: "gene_vats", at_tick: 900,  offset: 160.0),
@@ -252,10 +276,11 @@
                 (unit: "ripper",   count: 2),
                 (unit: "bulwark",  count: 1),
             ],
-            attack_at_army: 9,
+            attack_at_army: 13,
             attack_interval_ticks: 300,
             attack_spread: 70.0,
             queue_depth: 1,
+            wave_order: attack_move,
         ),
         // All three domains: a Ripper screen, a Sentinel, an Arclight behind.
         // The widest opening in the set — 650 Alloy of tech before a shot is
@@ -267,7 +292,7 @@
         (
             id: "synth_triad",
             think_interval_ticks: 30,
-            worker_target: 8,
+            worker_target: 9,
             barracks: [
                 (building: "foundry",      at_tick: 300,  offset: 130.0),
                 (building: "gene_vats",    at_tick: 900,  offset: 160.0),
@@ -279,10 +304,11 @@
                 (unit: "ripper",   count: 1),
                 (unit: "arclight", count: 1),
             ],
-            attack_at_army: 9,
+            attack_at_army: 12,
             attack_interval_ticks: 300,
             attack_spread: 70.0,
             queue_depth: 1,
+            wave_order: attack_move,
         ),
 
         // ---- the two poles --------------------------------------------------
@@ -304,6 +330,7 @@
             attack_interval_ticks: 120,
             attack_spread: 40.0,
             queue_depth: 1,
+            wave_order: attack_move,
         ),
         // The opposite pole: ten workers (twelve until F-046), late tech on four lines (trimmed to
         // three in F-035, restored with B4's opening reservation, F-041), and
@@ -327,11 +354,14 @@
             // four other strategies (mass_bulwark last at 18 750), so it was
             // not the late pole any more. B4 (F-045/F-046) lowered it to 24 on
             // the retuned content, where it commits at 21 780, still last, 660
-            // ticks after mass_bulwark (21 120) on every closure seed.
+            // ticks after mass_bulwark (21 120) on every closure seed. On
+            // F-049's attack-move content it commits at 22 980, still last,
+            // 6 900 ticks after synth_triad (16 080) on every closure seed.
             attack_at_army: 24,
             attack_interval_ticks: 600,
             attack_spread: 80.0,
             queue_depth: 1,
+            wave_order: attack_move,
         ),
     ],
 )

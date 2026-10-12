@@ -129,6 +129,12 @@
         pursue_range: 400.0,       // leash: how far it will chase before giving
                                    // up (>= engage_range, because walking around
                                    // an obstacle legitimately opens the gap)
+        attack_move_range: 220.0,  // radius in which an attack-mover (a wave
+                                   // whose strategy's wave_order is attack_move)
+                                   // acquires a target; attack-movers only, so
+                                   // inert while every strategy ships `move`.
+                                   // longest unit reach <= this <= pursue_range
+                                   // (B4, F-048)
     ),
     // Applied when attacker.nemesis == defender.id
     nemesis_bonus: (

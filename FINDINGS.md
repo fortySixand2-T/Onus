@@ -4661,3 +4661,1000 @@ The full gate after the change was run on the box. Before it, `touch` was run on
 | `cargo test` (debug) | **940 passed, 0 failed, 1 ignored** |
 | `cargo test --release` | **940 passed, 0 failed, 1 ignored** |
 | `cargo bench --no-run` | builds (exit 0) |
+
+## F-047 — Why the turtle wins: the step-0 measurement (B4)
+
+Step 0 of the turtle plan (BALANCE_PLAN, "Plan (user go-ahead 2026-10-09)"): measure only, with
+no behaviour change. **No `src/`, RON or golden is touched.** The instrument is
+`tests/b4_turtle_diag.rs`. It plays the standard headless match, reads the world after every
+tick (positions, the `AiJournal`, `AttackCooldown`, `Target`, building `Health`) and writes
+nothing back, so every match is the match the balance batch plays.
+
+**Sample.** `turtle` against each of the other 9 shipped strategies, in both seats, on the balance
+report's first two seeds (`seed_at(0, 0)`, `seed_at(0, 1)`), on the normal map. That is 36
+matches, about 115 s in release, so the table test is `#[ignore]`d. Run it with
+`cargo test --release --test b4_turtle_diag -- --ignored --nocapture`. One full match
+(turtle vs `mass_bulwark`) runs un-ignored as the fast structural check. Shipped g1 content.
+
+**Definitions.** T is the turtle and D is its opponent. "Armed" means `offense > 0`.
+- **Home radius** = the farthest barracks `offset` in any shipped script (225) + `engage_range`
+  (220) = **445** world units. Both terms are read from content. The bases are 1 500 apart.
+- **T's first wave**: the units whose `MoveTarget` equals the `dest` of T's first `Attack`.
+  In every match this set equals the journal's `force`, and this is asserted.
+- **Arrival**: the first tick a wave member is within `engage_range` of the enemy HQ.
+- **A hit**: a tick on which a unit's `AttackCooldown` is reset to its `mvp_attack_ticks`. It
+  is classified by the `Target` the unit held. Damage is `damage_per_hit*` for that pair.
+- **D's fight at T's base**: the window from D's first `Attack` to T's first `Attack`.
+  "Contact" counts the ticks a D unit has a T armed unit within `engage_range`. "On order"
+  means the unit holds a `MoveTarget` without `Engaging`, which is a commander's order.
+
+### T's wave at D's base (means per opponent over 2 seeds x 2 seats)
+
+D h/f/d means D's armed units at home / in the field / dead.
+
+| opponent | T wins | wave | D h/f/d at T's commit | D h/f/d at arrival | trade T lost / D lost |
+|---|---|---|---|---|---|
+| mvp | 3/4 | 24 | 2.0 / 0.0 / 20.0 | 1.3 / 0.7 / 20.0 | 1.3 / 1.0 |
+| mass_bulwark | 4/4 | 24 | 0.0 / **10.0** / 0.0 | 0.0 / **9.8** / 0.2 | 1.5 / 0.5 |
+| mass_sentinel | 4/4 | 24 | 6.0 / 0.0 / 10.0 | 6.0 / 0.0 / 10.0 | 10.2 / 0.2 |
+| mass_ripper | 2/4 | 24 | 3.5 / 0.0 / 30.0 | 4.0 / 0.0 / 30.0 | 1.0 / 3.0 |
+| mass_ravager | 4/4 | 24 | 3.5 / 0.0 / 10.0 | 3.8 / 0.0 / 10.0 | 8.2 / 2.8 |
+| mass_arclight | 4/4 | 24 | 0.8 / 0.0 / 10.0 | 0.8 / 0.0 / 10.2 | 0.8 / 0.5 |
+| synth_steel_flesh | 4/4 | 24 | 2.2 / 0.0 / 18.2 | 2.2 / 0.0 / 18.5 | 9.0 / 3.0 |
+| synth_triad | 4/4 | 24 | 2.8 / 1.5 / 16.5 | 2.5 / 0.8 / 17.5 | 10.5 / 2.8 |
+| rush | 1/4 | 24 | 0.0 / 0.0 / 21.0 | 0.0 / 0.0 / 21.0 | 0.0 / 0.0 |
+
+The means cover only the matches in which T committed. In the 6 matches it lost (`mvp` 1,
+`mass_ripper` 2, `rush` 3), all in seat A, it died to an early hit before it had a wave.
+
+**Reading.** When the turtle's 24 arrive, D's army is **already dead, not in the field**. For
+8 of 9 opponents, D's field count at arrival is 0.0 to 0.8. At most 0.8 to 6.0 units are
+home. Nearly every armed unit D ever fielded died before the turtle moved, and the
+before-commit columns below say where. **D sent them at the turtle, and they died within the
+home radius of T's HQ**:
+
+| opponent | D units sent before T's commit | dead by then | died near T's HQ |
+|---|---|---|---|
+| mvp | 17.2 | 15.0 | 14.2 |
+| mass_sentinel / ravager / arclight | 10.0 | 10.0 | 10.0 |
+| mass_ripper | 22.0 | 17.2 | 17.2 |
+| synth_steel_flesh | 18.2 | 18.2 | 18.2 |
+| synth_triad | 18.0 | 16.5 | 16.5 |
+| rush | 11.8 | 9.2 | 8.0 |
+
+The one exception is **`mass_bulwark`**. Its 10 Bulwarks were ordered out at tick 21 121.
+They walk at speed 2, so at the turtle's commit (21 781) and at its arrival they are all still
+on the road, and the turtle's wave meets an empty base: **field, 4 of 4 matches**.
+
+### D's wave at T's base: the decisive fight (means)
+
+Dal / Tal are D's sent units and T's armed units alive at D's arrival, and D HP / T HP are
+their HP pools. D hits are D's sent units' hits on T's army, workers and buildings. The last
+two columns are damage to units.
+
+| opponent | Dal | Tal | D HP | T HP | D lost | T lost | contact on order | D hits army / worker / bldg | T hits | D dmg | T dmg |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| mvp | 3.0 | 1.0 | 380 | 100 | 15.0 | 5.2 | 22% | 29.8 / 30.0 / 118.8 | 134.2 | 605 | 1 918 |
+| mass_sentinel | 9.8 | 10.0 | 975 | 960 | 10.0 | 3.5 | 24% | 27.0 / 11.2 / 14.5 | 67.5 | 878 | 1 208 |
+| mass_ripper | 9.8 | 2.8 | 585 | 205 | 17.2 | 5.2 | 18% | 35.5 / 49.0 / 174.0 | 46.0 | 862 | 1 415 |
+| mass_ravager | 9.8 | 14.0 | 1 560 | 1 360 | 10.0 | 3.5 | 45% | 16.5 / 7.2 / 13.2 | 83.0 | 533 | 1 877 |
+| mass_arclight | 9.0 | 22.0 | 360 | 2 130 | 10.0 | 2.5 | 73% | 13.0 / 0.5 / 0.5 | 52.5 | 583 | 1 778 |
+| synth_steel_flesh | 8.8 | 10.8 | 885 | 1 005 | 18.2 | 3.5 | **85%** | 22.0 / 1.0 / 2.5 | 134.0 | 465 | 2 350 |
+| synth_triad | 8.2 | 13.2 | 555 | 1 315 | 16.5 | 3.0 | 75% | 12.5 / 4.8 / 3.8 | 75.8 | 405 | 1 879 |
+| rush | 1.0 | 0.0 | 60 | 0 | 9.2 | 2.0 | 47% | 8.8 / 14.0 / 150.8 | 19.5 | 199 | 711 |
+
+This is where the turtle wins. **At rough parity the attacker is wiped out and the turtle
+loses about a third as many.**
+- `mass_sentinel`: 10 v 10, 975 v 960 HP. D lost 10, T lost 3.5.
+- `mass_ravager`: D had *more* HP (1 560 v 1 360). D lost 10, T lost 3.5.
+- `synth_steel_flesh`: 9 v 11, about equal HP. D lost 18, T lost 3.5.
+
+Only `mass_arclight` is simply outnumbered: it commits at 20 911, when the turtle already
+stands 22. `mass_ripper` is the reverse case. It *outnumbers* the turtle at arrival, 9.8 to
+2.8, yet across its three groups it loses 17.2 of 22 to the turtle's 5.2. 86% of its hits go
+into buildings and workers. That is enough to raze the HQ only in the two seat-A matches
+(the 4 200 and 9 240 building HP), and those are the cells the turtle loses. Two mechanisms
+show in the hit columns.
+1. **Attackers under a commander order do not fight back.** 18% to 85% of D's contact ticks
+   (a T unit within `engage_range`) are spent on the commander's `MoveTo`. The share is
+   highest for the synths, whose mixed speeds string the wave out on the road. Over the
+   fight D lands 0.16x to 0.77x T's hits on armed targets, and 0.20x to 0.73x its damage.
+2. **The attackers' hits go to the wrong targets.** `mass_sentinel` puts 49% of its hits into
+   workers and buildings, and `mass_ripper` 86%. T's idle defenders have no such choice:
+   their nearest enemy is the attacker.
+
+Trickling (many small attacks) is real only for `mvp` (attack at 3, 6 to 17 orders) and
+`rush` (attack at 1). The turtle already wins those cells least often (3/4 and 1/4). The
+mass probes and synths attack as one group of 9 to 10: 2 or 3 orders, re-sending the same
+units.
+
+### The code responsible
+
+- `src/sim/combat.rs:423`, `else if row.engaging || !row.has_move_target`. A unit holding
+  a commander's `MoveTarget` never chases. It hits only if its nearest enemy is already
+  within its own `mvp_attack_range` (line 411), and otherwise keeps walking to `dest` while
+  being shot. An idle defender acquires anything within `engage_range` (220) and chases it
+  out to `pursue_range` (400). `apply_commands` removes `Engaging` on every `MoveTo`
+  (`src/sim/mod.rs:779`), so each re-send also cancels any chase in progress.
+- `src/sim/combat.rs:345` and `:383`. The target is the **nearest enemy row**, and the
+  layout holds every row: units, unarmed workers and buildings alike. An attacker walking
+  into a base spends hits on the HQ, the barracks and the miners. A defender's nearest
+  enemy is the attacker.
+- `src/sim/ai.rs:589` to `:613`. Every wave sends every armed unit, and there is no defend
+  step. So a side that has attacked has nothing at home, and only the side that has *not*
+  attacked fights from the idle (chasing, well-targeted) posture. F-046 shows the turtle
+  commits last against every opponent, so it is the one strategy that always defends
+  first and attacks second. It collects the defender's exchange every time, and then rolls
+  a base whose army it has already killed.
+
+### Which lever the pattern points at
+
+- **Mostly in the field → home defence.** Only `mass_bulwark` (4 of 36 matches). A recall
+  helps only that cell, and at speed 2 a recalled Bulwark army is slow to get home.
+- **Trickling and dying piecemeal → attack cohesion.** Only `mvp` and `rush`, which are
+  already the turtle's weakest cells. The mass probes and synths already leave as one group.
+- **At home but still crushed → armed buildings.** Not the pattern. D has almost nothing at
+  home when T arrives. Armed buildings would also arm the turtle's base during the decisive
+  fight, which is the fight the turtle already wins.
+- **Something else: the attacker's engagement rule.** The decisive fight is D's wave dying
+  at parity in the turtle's base, before the turtle ever moves.
+
+**Recommendation: an attack-move engagement rule, which is not one of the three
+pre-approved levers.** A unit on an AI attack order would acquire and fight enemy *armed*
+units within `engage_range`, as an idle unit does, and then resume its march to `dest`. The
+nearest-target choice would prefer armed units over workers and buildings. The evidence:
+- the parity exchanges of 10 : 3.5 (`mass_sentinel`, `mass_ravager`) and 18 : 3.5
+  (`synth_steel_flesh`);
+- 18% to 85% of contact time spent marching under an order;
+- up to 86% of attacker hits spent on non-combatants.
+
+The rule is symmetric. It would equally sharpen the turtle's own wave, but that wave
+already meets near-empty bases (the trade table above), so the change removes the edge
+the turtle alone collects.
+
+Implementing it changes `sim::combat` targeting (and possibly an order flag set by
+`sim::ai`). It needs no new RNG, it keeps the snapshot and entity-bits ordering, and any
+new number (e.g. an attack-move acquisition range) goes in the RON. It sits outside step 1's
+named levers, so **it needs the user's go-ahead.** If the user prefers to stay within the
+three, the data rank them home defence (one cell), then cohesion (two already-weak cells),
+then armed buildings (likely counterproductive). None of them addresses the fight that
+decides the matchup.
+
+**Caveats.**
+- 36 matches on the normal map only. These are mechanism readings, not win rates.
+- A hit whose target died on that tick is classified by the target the unit held the
+  previous tick.
+- The D-fight window runs to T's commit, so for `mvp` and `rush` it also takes in later
+  trickles.
+
+### The gate
+
+Run on the box after `touch` of `src`, `tests`, `benches` and the RON files (mtime trap,
+F-045), with the shipped g1 RON unchanged:
+
+| step | result |
+|---|---|
+| `cargo clippy --all-targets -- -D warnings` | clean (exit 0) |
+| `cargo test` (debug) | **945 passed, 0 failed, 2 ignored** |
+| `cargo test --release` | **945 passed, 0 failed, 2 ignored** |
+| `cargo bench --no-run` | builds (exit 0) |
+
+The baseline at 88436a9 is 944 passed / 1 ignored: F-046's 940, plus the four critic
+probes in `critic_b4_probes`. The difference is exactly this entry's two tests:
+- the one-match structural check passes;
+- the 36-match table is the second ignored test.
+
+## F-048 — Attack-move built (step 1); measured with `attack_move` everywhere, bar not met (B4)
+
+**Context.** The user chose attack-move (2026-10-09, from F-047). Step 1 builds it behind a
+content switch with every shipped strategy on `move`, which must reproduce today's goldens.
+Step 2 measures it with `attack_move` on every strategy, in scratch content outside the
+tracked tree, against the B4 turtle bar:
+- turtle under 65% or undetermined;
+- no new K1 FAIL and no pentagon FAIL;
+- K3 not FAIL;
+- the turtle still commits last.
+
+It allows at most 3 adjustments of the mechanism's own number.
+
+### What was built (step 1, ec57cce; its own number, 708a8a4)
+
+- **`Order::AttackMove { units, dest }`** (`sim::mod`, `sim::combat`). Each unit gets
+  `AttackMoveDest(dest)` and a move target. While marching, it acquires enemy *armed* units
+  within `mvp_combat.attack_move_range`, preferring them over workers and buildings. The
+  tie-break is the existing one: nearest, then smallest snapshot index, ordered by entity
+  bits. It chases on the `pursue_range` leash (`Engaging`). When the target dies or the
+  leash breaks, it resumes the march to `dest`.
+- **Unchanged:**
+  - idle units keep the nearest-target rule;
+  - `MoveTo` is unchanged (a pure move);
+  - no new RNG and no HashMap.
+- **State hash.** Rows for `AttackMoveDest` and `Engaging` are added only when those
+  components are present, so `move` content hashes exactly as before.
+- **Replay.** `LoggedOrder::AttackMove` is in the command log and replays.
+- **Journal.** The AI journal's `AiAction::Attack` is deliberately unchanged, because its
+  Debug text is in the goldens. The command log records which order a wave got.
+- **`wave_order: move | attack_move`.** A required per-strategy field in `strategies.ron`.
+  The AI issues each wave per the field. Every shipped strategy is `move`. The field is in
+  the content fingerprint.
+- **`mvp_combat.attack_move_range`** (708a8a4). A required RON number in the
+  fingerprint. Validation requires it to be finite, at least the longest unit
+  `mvp_attack_range` (120, the arclight), and at most `pursue_range` (400). Shipped at 220,
+  equal to `engage_range`. It is used only by attack-movers.
+- **Step 1 tests.**
+  - `tests/b4_attack_move.rs` (16 tests):
+    - an attack-mover engages an armed enemy that a `MoveTo` unit walks past;
+    - it resumes its march and reaches `dest` after the fight;
+    - it prefers an armed unit over a nearer worker or building;
+    - idle units keep the pure nearest-target rule;
+    - an attack-moving wave still razes the HQ when nothing armed is left;
+    - a `MoveTo`/`Gather` order ends an attack-move;
+    - `MoveTo` stays a pure move beside an enemy in engage range;
+    - every shipped strategy ships `wave_order: move`;
+    - a missing `wave_order` is a load error, not a default;
+    - `attack_move` parses and moves the fingerprint;
+    - the AI issues the wave order its strategy names;
+    - an attack-move match is deterministic and replays tick for tick;
+    - the four `attack_move_range` tests: required; out of bounds refused (both bounds
+      inclusive, NaN refused); moves the fingerprint; acquires only inside the range (red
+      before combat read the field).
+  - Two spatial L1 tests in `sim::spatial` for the new filtered nearest-enemy query: it
+    matches a filtered brute force, and ties break to the smallest index.
+
+**Golden proof.** With every strategy on `move`, the only test-tree diffs are 30 added
+`wave_order: move` lines in RON fixtures and inline fixture strings (b1_matchup,
+b1_strategies, b35_queue_depth, b35_parallel, critic_b1, critic_b1_ac2, critic_b35_ac0,
+critic_b35_ac0b, and `critic_b4_data/{pre_g1,pre_b4}/strategies.ron`). Six of them are single-line format
+strings re-emitted with the field inserted. The rest of the diff is the commented
+`attack_move_range: 220.0` line in the two `critic_b4_data/*/units.ron` copies, as in
+the shipped `assets/data/units.ron`. No assertion, golden hash, pinned journal or
+expected value was touched, and every existing test passes.
+
+### Tooling (ec1f14d)
+
+- **`balance --data DIR`** is opt-in. It loads the content from DIR, and a DIR that does
+  not load fails the run; it never falls back to the shipped content. The report's
+  `content_hash` is the DIR's. Covered by `tests/b4_balance_data.rs` (4 tests).
+- **`tests/b4_turtle_diag.rs`** reads `ONUS_DIAG_DATA`, follows `AttackMoveDest` as the
+  wave destination, and adds an `#[ignore]` reading, `commit_order_on_the_diag_content`.
+
+### The measurement (box, release, `--seeds 4`, 800 matches each)
+
+Each candidate is the shipped g1 RON with `wave_order: attack_move` on all 10 strategies.
+They differ only in `attack_move_range`:
+- c0 = 220 (the first measurement, no range field; behaviour is identical to 220);
+- a1 = 170;
+- a2 = 120 (the validation floor);
+- a3 = 400 (the ceiling, equal to `pursue_range`).
+
+The scratch directories are `~/onus_scratch/am{,_r170,_r120,_r400}` on the box.
+
+| reading | F-046 g1 (move) | c0 220 | a1 170 | a2 120 | a3 400 |
+|---|---|---|---|---|---|
+| turtle | **84.0 FAIL** [75.4, 91.4] | 49.1 [38.9, 59.2] | 49.7 [39.6, 59.8] | 53.4 [43.4, 63.5] | 48.5 [38.4, 58.6] |
+| mvp | 34.7 | 66.7 U | 66.7 U | 66.7 U | 66.7 U |
+| mass_bulwark | 35.4 | 8.6 LOSING | 7.8 LOSING | 2.2 LOSING | 7.4 LOSING |
+| mass_sentinel | 61.8 | **78.7 FAIL** [69.4, 86.9] | **77.8 FAIL** | **78.5 FAIL** | **79.2 FAIL** [70.0, 87.3] |
+| mass_ripper | 61.1 | **100.0 FAIL, DOMINANT** [96.1, 100] | **100.0 FAIL, DOM.** | **100.0 FAIL, DOM.** | **100.0 FAIL, DOM.** |
+| mass_ravager | 50.8 | 68.2 U | 70.8 U | 68.5 U | 74.4 U [64.3, 83.6] |
+| mass_arclight | 51.3 | 4.6 LOSING | 4.8 LOSING | 11.1 LOSING | 5.1 LOSING |
+| synth_steel_flesh | 43.2 | 42.0 | 40.7 | 39.0 | 37.4 |
+| synth_triad | 58.2 | 27.9 | 27.0 | 25.8 | 27.2 |
+| rush | 19.4 LOSING | 54.2 | 54.9 | 54.9 | 54.2 |
+| **K1** | FAIL (turtle) | **FAIL** (sentinel, ripper) | **FAIL** (same) | **FAIL** (same) | **FAIL** (same) |
+| **K2** | undetermined | undetermined | **FAIL** (sentinel mirror, left base 0.0 [0, 39.9]) | undetermined | **FAIL** (ravager mirror, left base 0.0 [0, 43.1]) |
+| **K3** band share | 50.6 U | **32.2 FAIL** [28.4, 36.3] | **32.5 FAIL** | **32.8 FAIL** | **33.4 FAIL** [29.5, 37.5] |
+| timeouts | — | 3.9% | 3.4% | 3.5% | 4.6% |
+| decided median | — | 5:01 | 5:00 | 4:54 | 5:01 |
+| pentagon (hold / U / fail) | 3 / 2 / 0 | 1 / 2 / **2** | 1 / 2 / **2** | 2 / 1 / **2** | 1 / 2 / **2** |
+| bulwark > ravager | 81.2 H | **0.0 FAILS** | **0.0 FAILS** | **0.0 FAILS** | **0.0 FAILS** |
+| ravager > sentinel | 37.5 U | 66.7 U | 68.8 U | 56.2 U | 62.5 U |
+| sentinel > ripper | 56.2 U | **0.0 FAILS** | **0.0 FAILS** | **0.0 FAILS** | **0.0 FAILS** |
+| ripper > arclight | 87.5 H | 100 H | 100 H | 100 H | 100 H |
+| arclight > bulwark | 100 H | 41.7 U | 42.9 U | 93.3 H | 46.2 U |
+
+U = undetermined. The rush mirror is 0 of 8 decided under attack-move in every candidate
+(all timeouts).
+
+**Against the bar.**
+
+| bar item | c0 | a1 | a2 | a3 |
+|---|---|---|---|---|
+| turtle under 65% or undetermined | pass | pass | pass | pass |
+| no new K1 FAIL | **fail** (sentinel, ripper) | **fail** | **fail** | **fail** |
+| no pentagon FAIL | **fail** (2) | **fail** (2) | **fail** (2) | **fail** (2) |
+| K3 not FAIL | **fail** | **fail** | **fail** | **fail** |
+| turtle commits last | pass | pass | pass | pass |
+
+**No candidate passes.** Step 2 is not met, and the adjustment budget (3) is spent.
+
+**Turtle commits last: holds, and structurally so.** With `commit_order_on_the_diag_content`
+on c0, the slot-A first-`Attack` ticks in each mirror are identical to F-046 on all three
+closure seeds:
+- rush 750, mvp 3990, mass_ripper 7830, synth_steel_flesh 13710, mass_sentinel 13950;
+- synth_triad 14670, mass_ravager 15870, mass_arclight 20910, mass_bulwark 21120;
+- turtle 21780.
+
+This cannot differ for any candidate. Attack-move acts only after a side's first `Attack`,
+and in a mirror nothing interacts before the first wave.
+
+### The F-047 diagnostic re-run under c0 (36 matches)
+
+**Turtle wins 16 of 36** (F-047: 30 of 36). By opponent:
+- 0 of 4: mvp, mass_ripper, rush;
+- 1 of 4: mass_sentinel, mass_ravager;
+- 3 of 4: synth_steel_flesh, synth_triad (the fourth triad match is a cap);
+- 4 of 4: mass_bulwark, mass_arclight.
+
+The defender's wave no longer walks through fire: its "order%" (contact time spent
+marching) drops to 0 for most opponents. The trade at the turtle's base, as mean armed
+lost (D lost vs turtle lost):
+
+| opponent | F-047 (move) | c0 (attack_move) |
+|---|---|---|
+| mass_sentinel | 10 vs 3.5 | 9.5 vs 20.8 |
+| mass_ravager | 10 vs 3.5 | 9.2 vs 22.2 |
+| synth_steel_flesh | 18.2 vs 3.5 | 29.8 vs 28.8 |
+| synth_triad | 16.5 vs 3.0 | 31.5 vs 29.0 |
+| mass_ripper | 17.2 vs 5.2 | 1.2 vs 3.5 |
+
+`mass_bulwark`'s 10 still never reach the turtle's base. They meet the turtle's wave on
+the road and lose 11 to the turtle's 5.2, so bulwark (speed 2, the latest non-turtle
+committer) is still crushed.
+
+### Reading
+
+- **Attack-move fixes the turtle, the cell it was chosen for.** Turtle 84.0 FAIL becomes
+  roughly 49 to 53 PASS, and the parity exchanges in F-047 invert.
+- **It flips the tempo of the whole field.** Under `move`, committing last won, because
+  the defender collected the exchange. Under `attack_move` the attacker collects it, so
+  early committers win:
+  - mass_ripper reaches 100%, and mass_sentinel and mvp land around 67 to 79%;
+  - rush reaches 54% and is no longer LOSING;
+  - the late committers collapse: bulwark 2 to 9%, arclight 5 to 11%.
+
+  That flip breaks two pentagon edges. Bulwark > ravager and sentinel > ripper go to 0%,
+  because the prey commits first and wins the exchange. Matches also end before the band:
+  about 47% of all matches end before 5:00, and K3 FAILs.
+- **The range is not the lever.** From the floor (120) to the leash (400), every gated
+  reading moves within its interval, and no FAIL changes status. The effect comes from the
+  engagement rule itself (fight while marching, armed first), not from how far an
+  attack-mover looks.
+- **The F-047 recommendation was right about the mechanism and wrong about the outcome.**
+  It predicted that a symmetric rule would remove only the turtle's edge. Instead it
+  moved the edge to the earliest committers. Fixing this would take levers outside this
+  step's budget: unit numbers, commit timing per strategy, or a mixed `wave_order` per
+  strategy. Each is a content decision the user owns.
+
+**Fallback (per BALANCE_PLAN):** bring these numbers and the gate question to the user.
+Nothing ships. Every shipped strategy stays `wave_order: move`, so shipped behaviour and
+every golden are unchanged, and step 3 (re-pin) is not started. The open question: should
+K1 gate a deliberately extreme probe? Should attack-move ship for some strategies only?
+Or should the turtle be addressed another way?
+
+### The gate
+
+Run on the box after `touch` of `src`, `tests`, `benches` and the RON files (mtime trap,
+F-045):
+
+| step | result |
+|---|---|
+| `cargo clippy --all-targets -- -D warnings` | clean (exit 0) |
+| `cargo test` (debug) | **967 passed, 0 failed, 3 ignored** |
+| `cargo test --release` | **967 passed, 0 failed, 3 ignored** |
+| `cargo bench --no-run` | builds (exit 0) |
+
+The count against F-047 (945 / 2) is +22 passed and +1 ignored:
+- 16 in `b4_attack_move`;
+- 2 spatial L1;
+- 4 in `b4_balance_data`;
+- the extra ignored test is `commit_order_on_the_diag_content`.
+
+## F-049 — Attack-move ships everywhere, on retuned RON: step 2b passes at 4 seeds with s56 (B4)
+
+**Context.** The user's call (2026-10-10, BALANCE_PLAN step 2b, 757498a): ship
+`wave_order: attack_move` on all 10 strategies and retune the RON around it, starting
+from F-048's c0 (g1 plus attack_move everywhere, `attack_move_range` 220). The step-2
+bar applies in full:
+- turtle under 65% or undetermined;
+- no K1 FAIL and no pentagon FAIL;
+- K3 not FAIL;
+- the turtle still commits last.
+
+Only RON may change. The five mass probes stay knob-identical. The budget is at most 10
+candidates confirmed at 4 seeds, screened cheaply first (1 or 2 seeds). If no candidate
+passes by the cap: stop, install nothing, report the best.
+
+**Outcome.** **s56 passes at 4 seeds**: K1 undetermined (highest row `mass_ripper`
+70.8 [60.6, 80.2]); turtle 32.3% PASS; pentagon 4 hold / 1 undetermined / 0 fail; K3
+undetermined (band share 48.8% [44.6, 53.1], timeouts 4.2%); the turtle commits last
+(22 980, 6 900 ticks after `synth_triad`, on all three closure seeds). s55 passes too.
+Six of the ten 4-seed confirmations were used. s56 is installed, and its goldens and
+measured pins are re-pinned. **It breaks 10 tests' claims or premises**, left red for a
+decision. Among them is M4c's 8-minute claim: the `mvp` mirror now runs past 8:00 on 3 of 21
+seeds. The five-probe `b3_gate` batch's K3 also reads FAIL. Both are set out below.
+
+### How the screen was run
+
+- Every candidate is a scratch content directory on the box (`~/onus_scratch/sN`),
+  read by `balance --data DIR` (F-048's tooling). No tracked file changed until install.
+- Screens are 1 seed (200 matches) or 2 seeds (400); confirmations are `--seeds 4`
+  (800 matches), release. 2-seed runs use the first two seeds of the 4-seed runs.
+- Each candidate is its parent plus the listed change; `b0` is F-048's c0 (shipped g1
+  RON, all 10 strategies on `attack_move`, `attack_move_range` 220).
+- Under 4 seeds (n_eff about 90-95 per row) a K1 row FAILs from about 74.5% and K3's
+  band share FAILs below about 46%. 1-seed screens can show FAIL at 1 seed for rows
+  that only reach "undetermined" at 4.
+
+### The candidates (row %, 1 seed unless marked)
+
+Columns: mvp, mass_bulwark, mass_sentinel, mass_ripper, mass_ravager, mass_arclight,
+synth_steel_flesh, synth_triad, rush, turtle; then K3 band share and timeouts.
+F = the row FAILs K1. The pentagon column lists only links that do not hold.
+"nem" = nemesis `damage_mult`; "bhp" = `building_hp_per_defense`; "probe lines" = the
+probes' second and third openings; "probe atk" = the probes' `attack_at_army`.
+
+| cand | change (on its parent) | mvp | bul | sen | rip | rav | arc | stl | tri | rsh | TUR | K3 | TO | pentagon not holding |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| F-048 c0 (4 s) | — | 66.7 | 8.6 | **78.7F** | **100F** | 68.2 | 4.6 | 42.0 | 27.9 | 54.2 | 49.1 | **32.2F** | 3.9 | bul>rav 0 F, sen>rip 0 F |
+| s1 | b0 + nem 2.0, ripper train 720→1000, bhp 420→630 | 77.8 | 13.9 | 72.2 | **88.9F** | 61.1 | 11.1 | 47.2 | 41.7 | 13.9 | 72.2 | **35.1F** | 3.0 | bul>rav 50 U, sen>rip 0 F |
+| s2 | b0 + nem 2.0, ripper train 1000 | 77.8 | 13.9 | 75.0 | **88.9F** | 61.1 | 11.1 | 47.2 | 41.7 | 13.9 | 69.4 | **35.1F** | 3.0 | bul>rav 50 U, sen>rip 0 F |
+| s3 | s2 + ripper attack_ticks 50→70 | 77.8 | 16.7 | 77.8 | **88.9F** | 66.7 | 11.1 | 47.2 | 41.7 | 11.1 | 61.1 | **41.5F** | 2.5 | bul>rav 50 U, sen>rip 0 F |
+| s4 | s3 + probe lines 9000/15000→18000/24000 | 77.8 | 29.6 | **88.9F** | 69.4 | 75.0 | 13.9 | 28.7 | 38.9 | 11.1 | 66.7 | **35.9F** | 4.0 | — |
+| s5 | s4 + bhp 1260 | 77.8 | 29.6 | **86.1F** | 58.3 | 71.3 | 11.1 | 40.7 | 41.7 | 11.1 | 72.2 | 47.3 | 6.0 | — (K2 FAIL) |
+| s6 | s5 + sentinel cost 70→85 | 66.7 | 33.3 | 71.3 | 75.0 | 75.0 | 25.0 | 27.8 | 41.7 | 11.1 | 73.1 | 44.6 | 8.0 | sen>rip 0 U (K2 FAIL) |
+| s7 | s4 + bhp 840, sentinel 77, ravager cost 80→85 | 77.8 | 30.6 | 75.0 | 75.0 | 69.4 | 13.9 | 33.3 | 38.9 | 11.1 | 75.0 | 45.7 | 6.0 | sen>rip 0 U |
+| s8 | s7 + turtle workers 10→9 | 77.8 | 33.3 | 75.0 | 77.8 | 75.0 | 13.9 | 33.3 | 38.9 | 11.1 | 63.9 | 44.6 | 7.0 | sen>rip 0 U |
+| s9 | s7 + bhp 1050, arclight defense 2→3 | 66.7 | 30.6 | 75.0 | 75.0 | 66.7 | 22.2 | 33.3 | 41.7 | 11.1 | 77.8 | 47.9 | 6.0 | sen>rip 0 U (K2 FAIL) |
+| s10 | s7 + arclight cost 80→70, defense 3 | 66.7 | 30.6 | 75.0 | 75.0 | 69.4 | 36.1 | 25.0 | 38.9 | 11.1 | 72.2 | 46.3 | 6.0 | sen>rip 0 U |
+| s11 | s10 + turtle workers 9, steel attack_at 9→13 | 66.7 | 25.0 | 75.0 | 77.8 | 72.2 | 36.1 | 42.6 | 44.4 | 11.1 | 49.1 | 46.8 | 5.0 | sen>rip 0 U |
+| s12 | s11 + triad attack_at 9→12 | 66.7 | 25.0 | 75.0 | 77.8 | 72.2 | 36.1 | 48.1 | 33.3 | 11.1 | 54.6 | 50.0 | 5.0 | sen>rip 0 U |
+| **s12 (4 s)** | confirmation 1 | 66.7 | 26.5 | **83.4F** | **75.9F** | **77.1F** | 37.6 | 38.3 | 38.6 | 11.1 | 44.7 | 51.1 | 6.4 | sen>rip 57.1 U |
+| s13 | s12 + ripper train 1150 | 66.7 | 25.0 | 82.4 | 59.3 | 75.0 | 36.1 | 42.6 | 41.7 | 11.1 | 60.2 | 45.3 | 4.0 | sen>rip 66.7 U |
+| s14 | s13 + sentinel 80, steel/triad workers 8→9 | 66.7 | 25.0 | 72.2 | 58.3 | 72.2 | 33.3 | 59.3 | 50.0 | 11.1 | 51.9 | 44.3 | 4.0 | sen>rip 0 F |
+| s15 | s13 + sentinel attack_ticks 60→66, steel/triad workers 9, bhp 735 | 66.7 | 22.2 | 79.6 | 50.9 | 72.2 | 33.3 | 59.3 | 50.0 | 11.1 | 54.6 | 43.7 | 5.0 | sen>rip 66.7 U |
+| s16 | s14 + bulwark offense 4→5 | 55.6 | 56.5 | 72.2 | 44.4 | 72.2 | 33.3 | 54.6 | 50.0 | 11.1 | 50.0 | **38.4F** | 5.0 | sen>rip 0 F |
+| s17 | s16 + ripper offense 6→5 | 55.6 | 61.1 | 83.3 | 22.2 | 83.3 | 38.9 | 47.2 | 50.0 | 11.1 | 47.2 | **40.6F** | 6.5 | sen>rip 100 U |
+| s18 | s16 + arclight attack_ticks 100→85, bhp 700 | 55.6 | 56.5 | 72.2 | 44.4 | 72.2 | 41.7 | 49.1 | 50.0 | 11.1 | 47.2 | **33.5F** | 4.5 | sen>rip 0 F |
+| s19 | s18 + sentinel 77 | 55.6 | 63.9 | 79.6 | 39.8 | 72.2 | 41.7 | 38.9 | 50.0 | 11.1 | 47.2 | **39.8F** | 4.5 | sen>rip 66.7 U |
+| s20 | s19 + probe workers 6→7, ravager 90 | 55.6 | 69.4 | **88.9F** | 36.1 | 72.2 | 44.4 | 38.9 | 38.9 | 11.1 | 44.4 | 46.9 | 2.0 | — (K2 FAIL) |
+| s21 | s18 + probe workers 7, ravager 90, ripper train 1300 | 55.6 | 72.2 | **88.9F** | 22.2 | **86.1F** | 41.7 | 44.4 | 36.1 | 11.1 | 41.7 | 50.3 | 3.5 | — |
+| s22 | s19 + arclight attack_ticks 100, defense 4 | 55.6 | 63.9 | 79.6 | 39.8 | 72.2 | 41.7 | 38.9 | 47.2 | 11.1 | 50.0 | **36.6F** | 4.5 | sen>rip 66.7 U |
+| s23 | s22 + probe workers 7 | 55.6 | 69.4 | **88.9F** | 27.8 | **88.9F** | 49.1 | 36.1 | 30.6 | 11.1 | 42.6 | 49.7 | 2.5 | — (K2 FAIL) |
+| s24 | s22 + probe atk 10→8 | 55.6 | 72.2 | **88.9F** | 25.0 | **88.9F** | 50.0 | 38.9 | 27.8 | 11.1 | 41.7 | 51.8 | 2.5 | — |
+| s25 | s24 + sentinel 82, ravager 90 | 55.6 | 72.2 | **88.9F** | 33.3 | **86.1F** | 50.0 | 36.1 | 30.6 | 11.1 | 36.1 | 49.5 | 3.0 | — |
+| s26 | s24 + sentinel 90, ravager 95 | 55.6 | 82.4 | 72.2 | 30.6 | 82.4 | 52.8 | 42.6 | 30.6 | 11.1 | 39.8 | 52.6 | 5.0 | — |
+| s27 | s24 + sentinel attack_ticks 70, ravager attack_ticks 85 | 55.6 | 72.2 | **88.9F** | 25.0 | 83.3 | 50.0 | 41.7 | 30.6 | 11.1 | 41.7 | 51.0 | 3.0 | — |
+| s28 | s26 + ripper train 1000 | 55.6 | 82.4 | 66.7 | 72.2 | 68.5 | 50.0 | 36.1 | 22.2 | 11.1 | 35.2 | 46.8 | 7.0 | sen>rip 50 U |
+| s29 | s26 + bulwark train 1300→1500, ravager train 1100→1250 | 55.6 | 82.4 | 72.2 | 36.1 | 77.8 | 52.8 | 41.7 | 30.6 | 11.1 | 39.8 | 49.7 | 4.5 | — |
+| s30 | s28 + bulwark cost 95→110 | 55.6 | 48.1 | 83.3 | 83.3 | 75.0 | 52.8 | 26.9 | 38.9 | 11.1 | 25.0 | 43.0 | 7.0 | sen>rip 50 U |
+| s31 | s28 + bulwark armor 9→8 | 55.6 | 82.4 | 69.4 | 72.2 | 69.4 | 50.0 | 36.1 | 22.2 | 11.1 | 31.5 | 44.9 | 7.5 | sen>rip 50 U |
+| s32 | s28 + bulwark cost 100 | 55.6 | 80.6 | 69.4 | 72.2 | 75.0 | 50.0 | 25.0 | 30.6 | 11.1 | 30.6 | 44.7 | 6.0 | sen>rip 50 U |
+| s33 | s28 + bulwark cost 104 | 55.6 | 61.1 | 80.6 | 79.6 | 72.2 | 52.8 | 25.0 | 34.3 | 11.1 | 27.8 | 43.0 | 7.0 | sen>rip 50 U |
+| s34 | s28 + steel/triad atk back to 9 | 55.6 | 79.6 | 66.7 | 72.2 | 68.5 | 50.0 | 25.0 | 36.1 | 11.1 | 35.2 | 44.9 | 7.5 | sen>rip 50 U |
+| s35 | s32 + steel/triad atk 9 | 55.6 | 75.0 | 66.7 | 72.2 | 75.0 | 50.0 | 19.4 | 44.4 | 11.1 | 30.6 | 44.9 | 6.5 | sen>rip 50 U |
+| s36 | s26 + ripper train 1075, bulwark cost 100 | 55.6 | 80.6 | 75.0 | 44.4 | **86.1F** | 50.0 | 30.6 | 30.6 | 11.1 | 36.1 | 47.9 | 4.0 | — |
+| s37 | s26 + ripper train 1075, bulwark attack_ticks 90→96 | 55.6 | 82.4 | 75.0 | 47.2 | 83.3 | 52.8 | 42.6 | 22.2 | 11.1 | 27.8 | 48.4 | 5.0 | — |
+| s38 | s28 + arclight cost 60 | 55.6 | 82.4 | 55.6 | 72.2 | 60.2 | 75.0 | 25.0 | 30.6 | 11.1 | 32.4 | 43.1 | 6.0 | sen>rip 50 U |
+| s39 | s28 + arclight defense 6 | 55.6 | 79.6 | 55.6 | 72.2 | 57.4 | 77.8 | 33.3 | 25.0 | 11.1 | 32.4 | 43.1 | 6.0 | sen>rip 50 U |
+| s40 | s28 + arclight cost 65 | 55.6 | 82.4 | 55.6 | 69.4 | 68.5 | 66.7 | 25.0 | 33.3 | 11.1 | 32.4 | 44.1 | 6.0 | sen>rip 50 U |
+| s41 | s38 + sentinel 84 | 55.6 | 83.3 | 77.8 | 66.7 | 58.3 | 63.9 | 22.2 | 30.6 | 11.1 | 30.6 | 43.0 | 3.5 | — |
+| s42 | s40 + bulwark speed 2→1 | 55.6 | 77.8 | 61.1 | 69.4 | 74.1 | 66.7 | 23.1 | 41.7 | 11.1 | 19.4 | **40.7F** | 5.5 | sen>rip 50 U |
+| s43 | s40 + bulwark attack_ticks 102 | 55.6 | 80.6 | 61.1 | 69.4 | 69.4 | 66.7 | 25.9 | 33.3 | 11.1 | 26.9 | **40.3F** | 4.5 | sen>rip 50 U |
+| s44 | s40 + probe atk 9 | 55.6 | 77.8 | 50.0 | 75.9 | 62.0 | 68.5 | 25.0 | 30.6 | 11.1 | 43.5 | **40.9F** | 7.0 | sen>rip 0 U |
+| s45 | s44 + bulwark cost 100 | 55.6 | 64.8 | 50.0 | 76.9 | 64.8 | 68.5 | 33.3 | 38.9 | 11.1 | 36.1 | **38.1F** | 5.5 | sen>rip 0 U |
+| s46 | s40 + bulwark offense 5→4 (shipped) | 66.7 | 36.1 | 69.4 | 69.4 | 69.4 | 66.7 | 38.9 | 41.7 | 11.1 | 30.6 | 42.6 | 6.0 | sen>rip 50 U |
+| s47 | s26 + bulwark offense 4, arclight cost 65 | 66.7 | 41.7 | 77.8 | 33.3 | **86.1F** | 66.7 | 34.3 | 47.2 | 11.1 | 35.2 | 49.5 | 3.0 | — |
+| s48 | s46 + bhp 840 | 66.7 | 33.3 | 66.7 | 69.4 | 69.4 | 66.7 | 38.9 | 44.4 | 11.1 | 33.3 | 46.6 | 5.5 | sen>rip 50 U |
+| **s48 (4 s)** | confirmation 2 | 66.7 | 48.1 | 69.9 | 70.4 | **77.7F** | 66.7 | 25.7 | 42.4 | 11.1 | 21.3 | 46.5 | 4.1 | sen>rip 41.7 U |
+| s49 | s46 + bhp 980 | 66.7 | 33.3 | 66.7 | 69.4 | 69.4 | 66.7 | 38.9 | 44.4 | 11.1 | 33.3 | 47.6 | 6.5 | sen>rip 50 U (K2 FAIL) |
+| s50 | s48 + ripper train 1040 | 66.7 | 33.3 | 66.7 | 72.2 | 69.4 | 66.7 | 38.9 | 41.7 | 11.1 | 33.3 | 48.9 | 5.0 | sen>rip 50 U |
+| **s50 (4 s)** | confirmation 3 | 66.7 | 46.0 | 69.4 | 71.0 | **78.3F** | 66.7 | 27.2 | 41.7 | 11.1 | 22.0 | 49.0 | 4.6 | sen>rip 37.5 U |
+| s51 | s50 + sentinel 87 | 66.7 | 36.1 | **88.9F** | 63.9 | 66.7 | 55.6 | 28.7 | 47.2 | 11.1 | 35.2 | 50.5 | 3.0 | — |
+| s52 (2 s) | s50 + ravager train 1100→1200 | 66.7 | 42.1 | 69.4 | 66.7 | 77.8 | 66.7 | 29.2 | 41.7 | 11.1 | 28.8 | 49.7 | 5.0 | sen>rip 50 U |
+| s53 (2 s) | s50 + ravager armor 4→3 | 66.7 | 42.1 | 69.4 | 72.2 | 72.2 | 66.7 | 29.2 | 41.7 | 11.1 | 28.8 | 49.5 | 4.5 | sen>rip 50 U |
+| **s53 (4 s)** | confirmation 4 | 66.7 | 46.0 | 69.4 | 73.6 | **75.0F** | 66.7 | 27.2 | 41.7 | 11.1 | 22.7 | 49.1 | 4.2 | sen>rip 37.5 U |
+| s54 (2 s) | s50 + ravager cost 95→100 | 66.7 | 42.1 | 69.4 | 72.2 | 59.7 | 77.8 | 30.6 | 41.7 | 11.1 | 28.8 | 45.6 | 5.2 | sen>rip 50 U (arclight now beats ravager) |
+| s55 (2 s) | s53 + turtle workers 9→10 | 66.7 | 41.7 | 69.4 | 70.8 | 69.4 | 65.3 | 29.2 | 40.1 | 11.1 | 36.3 | 48.3 | 4.8 | sen>rip 50 U |
+| **s55 (4 s)** | confirmation 5: **passes** | 66.7 | 45.0 | 69.4 | 71.5 | 72.4 | 66.0 | 25.1 | 40.9 | 11.1 | 31.8 | 48.7 | 4.2 | sen>rip 37.5 U |
+| s56 (2 s) | s55 + steel workers 9→10 | 66.7 | 40.3 | 69.4 | 69.4 | 65.3 | 63.9 | 43.1 | 34.5 | 11.1 | 36.3 | 47.8 | 4.8 | sen>rip 50 U |
+| **s56 (4 s)** | confirmation 6: **passes; installed** | 66.7 | 42.1 | 69.4 | 70.8 | 68.3 | 65.3 | 41.5 | 32.5 | 11.1 | 32.3 | 48.8 | 4.2 | sen>rip 37.5 U |
+
+The 4-seed K1 intervals of the rows that decided the screen:
+
+| cand (4 s) | sentinel | ripper | ravager | turtle | K2 |
+|---|---|---|---|---|---|
+| s12 | 83.4 [74.3, 91.3] F | 75.9 [65.9, 84.9] F | 77.1 [67.7, 85.6] F | 44.7 [34.2, 55.1] | U |
+| s48 | 69.9 [60.0, 79.2] | 70.4 [60.4, 79.8] | 77.7 [68.2, 86.2] F | 21.3 [12.9, 30.8] | U |
+| s50 | 69.4 [59.3, 79.0] | 71.0 [60.9, 80.5] | 78.3 [68.9, 86.6] F | 22.0 [13.5, 31.6] | U |
+| s53 | 69.4 [59.3, 79.0] | 73.6 [63.6, 82.8] | 75.0 [65.5, 83.7] F | 22.7 [14.1, 32.3] | U |
+| s55 | 69.4 [59.3, 79.0] | 71.5 [61.4, 80.9] | 72.4 [62.7, 81.4] | 31.8 [22.2, 41.9] | U |
+| s56 | 69.4 [59.3, 79.0] | 70.8 [60.6, 80.2] | 68.3 [58.3, 77.6] | 32.3 [22.7, 42.4] | U |
+
+
+### The install (s56; step 3)
+
+The shipped `assets/data` is now s56, which differs from the scratch directory only in
+comments and in the `cost:` amounts, synced to `mvp_alloy_cost` (Sentinel 90, Ravager 95,
+Arclight 65). `cost:` is read by the content fingerprint only (`src/sim/content.rs`), never
+by play, and the fingerprint reaches only the net handshake, replay checks and reports,
+never the RNG. So every scratch reading above is a reading of the installed content.
+
+Net change against g1, all RON:
+- **every strategy** `wave_order: move` -> `attack_move` (all 10, `mvp` included);
+- **Ripper** `mvp_train_ticks` 720 -> 1 040, `mvp_attack_ticks` 50 -> 70;
+- **Sentinel** cost 70 -> 90;
+- **Ravager** cost 80 -> 95, armor 4 -> 3;
+- **Arclight** cost 80 -> 65, defense 2 -> 4;
+- **`building_hp_per_defense`** 420 -> 840;
+- **nemesis `damage_mult`** 1.3 -> 2.0;
+- **mass probes** (all five, still knob-identical): second and third lines at
+  18 000 / 24 000 (were 9 000 / 15 000), `attack_at_army` 10 -> 8;
+- **`synth_steel_flesh`** `worker_target` 8 -> 10, `attack_at_army` 9 -> 13;
+- **`synth_triad`** `worker_target` 8 -> 9, `attack_at_army` 9 -> 12;
+- `turtle`, `rush`, `mvp`: unchanged apart from `wave_order`.
+
+DESIGN_BRIEF's roster table, nemesis line and timings note carry the new numbers.
+
+**One test re-stated deliberately.** `b4_attack_move::every_shipped_strategy_ships_wave_order_move`
+asserted the step-1 promise that the shipped set stays on `move`. The user's step-2b
+decision reverses that promise, so it is now
+`every_shipped_strategy_ships_wave_order_attack_move`, which asserts `AttackMove` for all 10
+strategies and for the `mvp` commander. This changes what the test claims, on the user's
+decision; it is the only claim this install re-states. Two fixtures in the same file
+followed mechanically: the missing-`wave_order` load error now strips the
+`attack_move` line, and the parse/fingerprint test builds its scratch all-`move` copy by
+rewriting `attack_move` -> `move`. `b4_balance_data`'s scratch copy also flips the other
+way now (shipped is attack-move, the scratch is all-`move`); only the difference matters.
+
+### The golden licence
+
+The shipped (pre-F-049) RON at 757498a, whose `src/` is unchanged since 708a8a4, under a
+fresh release build: `cargo test --release` = **61 binaries, 967 passed, 0 failed,
+3 ignored**. Every golden was green on the data it was pinned on. Swapping in s56 under that
+identical binary turned 27 tests red in release. No Rust changed, so every move below is
+the data's.
+
+### The re-pin (F-046's pattern: what an assertion means is unchanged)
+
+**Hash/journal goldens: 11 tests in 9 files, 60 distinct values.** These were re-pinned with
+F-046's iterative tool: run, read the panic's left/right, substitute, repeat until green.
+Each file's doc comment gains a "B4 re-pin (F-049)" note.
+- `b1_matchup::the_default_matchup_is_byte_for_byte_what_it_was_before_ac2`
+- `b1_strategies::the_one_barracks_default_replays_exactly_as_it_did_before_b1`
+- `b2_headless::default_settings_reproduce_the_bench_fixture_tick_for_tick` (whole table and
+  fold; building HP moves the hash from tick 1)
+- `b2_orientation::the_default_orientation_is_normal_and_still_the_pinned_fixture`
+- `b35_parallel` x2, `b35_queue_depth` x2
+- `critic_b2_ac4::probe_the_state_hash_goldens_are_byte_identical_to_the_pre_ac2_values`
+- `critic_b35_ac0::depth_one_replays_the_pre_change_tree_tick_for_tick`
+- `critic_b35_ac0b::critic_shipped_matchups_are_bit_identical`, with the F-046 values kept in
+  the row comments.
+
+`critic_b1_ac2::a_non_default_pair_replays_bit_identically_across_runs_and_profiles` keeps a
+per-box pin file under `target/`. As its message says, the stale file was deleted so the
+next run re-pins it. That is not a source edit.
+
+Old -> new, per file (the same value can be shared by several files):
+
+| test file | old -> new |
+|---|---|
+| `b1_matchup` | `7bc8e24c34c6b32f` -> `6e9cc8ac0fd0e90c`; `22a11bed2624375f` -> `630d08d298d50b1c`; `8542718f99cf7112` -> `df969b5873d14961`; `ea6b737b371b6c53` -> `ca162e0ed2e77060`; `0c79bef6a75d654d` -> `87076f9e2b7e30aa`; `31975c1962b79ace` -> `7b889d1d8b7ac6dd` |
+| `b1_strategies` | `7bc8e24c34c6b32f` -> `6e9cc8ac0fd0e90c`; `8542718f99cf7112` -> `df969b5873d14961` |
+| `b2_headless` | `5addc3afc88c09ee` -> `b129cc22e5618e3e`; `e6cf18953a100975` -> `210a73c9e3425e35`; `f3869a1a5ddc98c6` -> `974c857030ac9936`; `8bfd07059b1453a0` -> `6a1342e3e1e7df70`; `13edd185edb004f0` -> `b831a73e3a762990`; `2b3039ab98739900` -> `b40f43ef8be65098`; `496070b2de2d41f8` -> `ba727a7eaa140578` |
+| `b2_orientation` | `5addc3afc88c09ee` -> `b129cc22e5618e3e`; `e6cf18953a100975` -> `210a73c9e3425e35` |
+| `b35_parallel` | `7bc8e24c34c6b32f` -> `6e9cc8ac0fd0e90c`; `22a11bed2624375f` -> `630d08d298d50b1c`; `8542718f99cf7112` -> `df969b5873d14961`; `ea6b737b371b6c53` -> `ca162e0ed2e77060`; `0c79bef6a75d654d` -> `87076f9e2b7e30aa`; `31975c1962b79ace` -> `7b889d1d8b7ac6dd`; `8eb242d5fdd1d6ac` -> `cc2096b7f788dc4a`; `4e1604bd46e099f6` -> `08f56bc6de2ab7b4`; `ca63fc4a377554a9` -> `19b94db06baebdf6`; `565da2a66530936a` -> `4f597b34fee19e78` |
+| `b35_queue_depth` | `7bc8e24c34c6b32f` -> `6e9cc8ac0fd0e90c`; `22a11bed2624375f` -> `630d08d298d50b1c`; `8542718f99cf7112` -> `df969b5873d14961`; `ea6b737b371b6c53` -> `ca162e0ed2e77060`; `0c79bef6a75d654d` -> `87076f9e2b7e30aa`; `31975c1962b79ace` -> `7b889d1d8b7ac6dd`; `8eb242d5fdd1d6ac` -> `cc2096b7f788dc4a`; `4e1604bd46e099f6` -> `08f56bc6de2ab7b4`; `ca63fc4a377554a9` -> `19b94db06baebdf6`; `565da2a66530936a` -> `4f597b34fee19e78` |
+| `critic_b2_ac4` | `7bc8e24c34c6b32f` -> `6e9cc8ac0fd0e90c`; `8542718f99cf7112` -> `df969b5873d14961`; `0c79bef6a75d654d` -> `87076f9e2b7e30aa` |
+| `critic_b35_ac0` | `8d19e60bb624f4d5` -> `122b5699ad122bfc`; `988ac0b05fb1e4d2` -> `ac5e2292d45ebd4b`; `c2d3d58c3ca975d5` -> `c92fdcbe4f9d281d`; `28b235776567bfdb` -> `b9472fb5411c6dcc`; `2712cca3a3f9623d` -> `2138bfe75ff677c7`; `75541b9be9a704af` -> `d7f6485502730ff1`; `ed81f894ea6404c5` -> `a86b0a9df5b1d200`; `e34df6330cc3de55` -> `00e56049f19ebdad`; `7b14173f43fbd987` -> `4c8e30704eed488d`; `dbe8948f7c95d721` -> `407a10d1831301e5`; `f7c034ea9460e631` -> `79e54bddf468c58a`; `4a8a3944ddad8438` -> `86873f0a2a7119cd`; `78316d1bd13e475d` -> `db7e2f9da1f9ae6f`; `7b1744a8507e8f92` -> `5bff597baa5baa0f`; `69bd3de060a0157e` -> `75d8e6ecf9467ee2`; `f9be9ff5a82fc897` -> `731e86fcf784b5d0`; `325025491fd4c768` -> `66f2e19fb4c988fe`; `7021b0e774dfd4b7` -> `801b0fbb0fcff562`; `82e3cb31e9ff563c` -> `845e0fa011fd5a7e`; `8df30a7f01d1cbb0` -> `dcb806b8a64cf47a`; `ace7bc9450c9174a` -> `1d63eed06c663f9c`; `8d3e9fbc4067d682` -> `e101367a90e31496`; `8035691a7f4fa491` -> `2f5a3438e5fb5c44`; `eafeec45199159c7` -> `39fbe144215ce066`; `d4f44e22198203ae` -> `654ff36574a027e3`; `16f170ed047d7b61` -> `1343dc77f4427ffc`; `086d9db263577fd8` -> `d6f9f3cc4535497a` |
+| `critic_b35_ac0b` | `d9fc20717a9c7a09` -> `2b79483c4ed36f08`; `77fbd21abf3a658e` -> `9264527b032ae3c3`; `5fe3253c75fdb8b9` -> `5264d24a0693ef32`; `9a5d49efafe5ae11` -> `6b12056c043b4be6`; `c608429484e3d26b` -> `caf1942d0e325f79`; `67f981b6e54827e4` -> `16260fc0ec6b4dd0`; `8f2794062a59e1c8` -> `749cafbf375b1f02`; `f3b6fdb1d901298c` -> `df870f13d6b9ac40`; `53537967a9552cf9` -> `cc391fdfc5334c6c`; `545bcce9611fcab0` -> `ef1fc0dcee332c8b`; `283fcec8bb5ebf41` -> `1778b8dda92b50f1`; `c7328be1b0e09085` -> `16224cd8579b67dd`; `1bc7d81e51c54e99` -> `499005a61d854898`; `90d87cb290ad3f58` -> `5eaf0d9af1cfb640`; `b2b7f6a5a8309eb1` -> `bc80a2cd27f9d081`; `3df823464ecb4d3f` -> `790207dcbd5cacf7` |
+
+**Measured pins (re-measured; the earlier values are kept in the comments):**
+
+| test | was (F-046) | now (F-049) |
+|---|---|---|
+| `b3_pentagon::the_real_batch_reports_what_the_sim_actually_does` | 2 hold / 3 undetermined; bul>rav 0.750 U, rav>sen 0.500 U, sen>rip 0.375 U, rip>arc 0.875 H, arc>bul 1.000 H | **4 hold / 1 undetermined / 0 fail**; bul>rav, rav>sen, rip>arc, arc>bul 1.000 H; sen>rip 0.500 U (4 decided, 4 timeouts) |
+| `b3_gate::the_shipped_reading_on_the_pentagon_batch` K1 | 28.1 P / 56.3 U / 68.8 U / 43.8 P / 53.1 U | 50.0 U / **37.5 P** / 62.5 U / 50.0 U / 50.0 U (bul/sen/rip/rav/arc) |
+| same, K2 | slot A 72.5, left 67.5, n 20 | slot A 56.25, left 43.75, n 16 (4 mirrors time out) |
+| same, K3 | median 7:00; TO 2%; band 41.8% U; below 25 / beyond 34 | median **8:12**; TO 8% U; band **32.6% [22.7, 44.4] FAIL**; below 11 P / beyond 59 U |
+| same, whole gate | Undetermined | **Fail** (K3 band share), as at B3 |
+| `critic_b35_closure::the_turtle_commits_last_on_every_seed_with_the_claimed_margin` | 21 780 vs 21 120 | **22 980 vs 16 080** (`synth_triad`), margin 6 900, on all three seeds |
+| `critic_b35_ac0b::critic_the_measured_throughput_numbers_reproduce` | 9 / 27 / 9 | 6 / 18 / 6 (the Ripper trains in 1 040, not 720; count still multiplies, depth still does not) |
+
+**The `b3_gate` pentagon-batch K3 now reads FAIL.** This is the five-mass-probe batch at
+2 seeds. The bar's batch, all 10 strategies at 4 seeds, reads K3 undetermined (48.8%
+[44.6, 53.1]). The mass-probe mirrors and near-mirrors run long on attack-move content
+(59% end after 8:00). The test pins what the batch does, and it pinned B3's FAIL the same
+way, so re-pinning keeps its meaning. It is still a regression on that batch, flagged
+here for the critic and the user.
+
+Comment-only: `b1_probe_set` and `critic_b1_ac3` quote the turtle's commit tick (now
+22 980). `b4_reservation` records the re-check below.
+
+### Claims and premises the content breaks: left red, for a decision (10 tests)
+
+None of these was edited. They split into one design claim and several fixtures whose
+premise was "this match decides quickly".
+
+**The M4c 8-minute claim (3 tests):**
+- `m4c_ai::an_ai_vs_ai_match_is_decided_within_eight_minutes` (seed 1);
+- `critic_m4c::every_seed_decides_inside_eight_minutes_on_a_dead_hq` (seed 1);
+- `critic_m4c::ai_vs_ai_matches_are_decided_by_a_dead_hq_across_many_seeds` (seed 8).
+
+The default match is the `mvp` mirror. A scratch probe played it on all 21 seeds those
+three tests name, to 54 000 ticks, on three content directories:
+
+| content | min | median | max | over 8:00 |
+|---|---|---|---|---|
+| s56 (installed) | 4:25 | 6:47 | 10:44 | **3 of 21** (seeds 1, 8, 21) |
+| s56, `building_hp_per_defense` 630 | 4:00 | 6:26 | 10:03 | 2 of 21 |
+| s56, `mvp` on `wave_order: move` | 3:08 | 3:19 | 3:36 | 0 of 21 |
+
+On g1 with `move` the mirror decided inside 8:00 on every seed. Attack-move turns it into a
+long trade; doubling building HP adds a little. Putting `mvp` alone back on `move` fixes the
+claim, but it contradicts "every strategy uses attack_move" and moves the `mvp` row.
+
+**`critic_b1_ac3::every_mass_versus_mass_cell_resolves_in_both_orientations`:**
+`mass_ripper` vs `mass_sentinel` never resolves in 54 000 ticks. This is the same link that
+reads 4 decided and 4 timeouts in the pentagon batch. A claim about the content.
+
+**Fixture premises (6 tests).** Each picked a match because it decided quickly, and that
+match no longer does:
+- `critic_b2_ac2::probe_cap_boundary_is_inclusive_of_the_deciding_tick` and
+  `::probe_recorded_ticks_agree_with_the_sims_own_counters`: the DECIDER fixture is the
+  `rush` mirror on seed 0, which never decides on attack-move (one-Ripper streams meet
+  midfield and trade);
+- `critic_p2::no_configuration_of_the_writer_changes_a_single_tick_of_the_sim`: seed 7's
+  fixture never decides inside its tick count;
+- `m5_replay::everything_in_a_live_match_is_identified_and_the_log_resolves`: fewer than 21
+  commands in 1 500 ticks of `ai_vs_ai(4)`;
+- `critic_b2_ac4::probe_b3_metrics_are_computable_from_the_records_alone`: no Ripper inside
+  its 1 200-tick cap (the Ripper now trains in 1 040);
+- `b2_orientation::mirrors_are_side_balanced_across_the_two_orientations`: the `rush`
+  mirror times out 6 times, and the test asserts that every mirror decides.
+
+**Options**, none of them taken:
+- **(a)** Keep the content and restate the M4c target and the critic_b1_ac3 claim. That is
+  a decision about the MVP's definition of done, for the user.
+- **(b)** Put `mvp` back on `move`. This fixes M4c (3:19 median) but moves the `mvp` K1 row
+  and contradicts the 2b decision. It needs a re-measure.
+- **(c)** Re-pick the fixtures of the six premise-only tests: a deciding pair, a longer tick
+  count, a later cap. This changes no claim, but these are critic-authored tests, so the
+  critic should agree.
+- **(d)** Look for another retune that keeps the `mvp` mirror under 8:00. 4 of the 10 4-seed
+  confirmations remain.
+
+### Re-checks
+
+- **Turtle-latest closure, 3 seeds:** the turtle commits at 22 980, last, with
+  `synth_triad` next at 16 080, on all three seeds. The full order is identical on every
+  seed: rush 1 065, mvp 4 650, mass_ripper 8 730, mass_arclight 9 510, mass_sentinel 11 730,
+  mass_ravager 12 660, mass_bulwark 12 870, synth_steel_flesh 15 510, synth_triad 16 080,
+  turtle 22 980.
+- **`b4_reservation`, the bounded claim:** green. All eight multi-opening strategies place
+  their whole script on both sides of their `seed_at(0, 1)` mirror, so the grace bound
+  excuses nothing:
+  - mass probes at 300 / ~18 000-20 430 / 24 000-27 090;
+  - synth_steel_flesh 300 / 3 060 / 5 010 / 6 930;
+  - synth_triad 300 / 3 060 / 4 950 / 7 200;
+  - turtle 600 / 3 060 / 5 010 / 6 510.
+  Non-vacuity holds: all five mass probes place more than one line.
+- **The F-047 diagnostic, re-run** (`b4_turtle_diag`, 36 matches, release, 198 s). The
+  turtle now wins **10 of 36** (F-047, on g1 with `move`: 30 of 36):
+  - rush 4/4, mass_bulwark 3/4, mass_ravager 2/4, synth_steel_flesh 1/4;
+  - mvp, mass_sentinel, mass_ripper, mass_arclight and synth_triad 0/4.
+
+  F-047's mechanism is gone. Then, D's waves walked in on order and died near the
+  turtle's HQ ("contact on order" 18-85%). Now that figure is 0% for every armed opponent
+  (5% for rush), and those waves raze the turtle's buildings: mean building HP lost
+  13 000-32 000 against mvp, sentinel, ripper, ravager, arclight and triad. In all 26 of
+  its losses the turtle never commits its 24.
+
+### Gate
+
+On the box, s56 installed with the re-pins above:
+
+| step | result |
+|---|---|
+| `cargo clippy --all-targets -- -D warnings` | clean |
+| `cargo test --no-fail-fast` (debug) | 61 binaries, **957 passed, 10 failed**, 3 ignored |
+| `cargo test --release --no-fail-fast` | 61 binaries, **957 passed, 10 failed**, 3 ignored |
+| `cargo bench --no-run` | builds |
+
+The 10 failures are the same in both profiles. They are exactly the claim and premise reds
+listed above, and none is a golden or a measured pin. 957 + 10 = 967, the licence run's total.
+The expected "0 failed" is **not met**, so step 3 stays unticked until those 10 are decided.
+
+### Lessons
+
+- Attack-move fixed what F-047 diagnosed: waves fight back on the road. It also moved
+  every other tempo. Early committers stopped dying for free, so the retune had to slow
+  the Ripper, raise the Sentinel's price and push the probes' later lines back. Nearly
+  every lever in the table moved several rows at once.
+- A 1-seed screen is cheap but noisy around 65%. Every 4-seed confirmation that failed
+  (s12, s48, s50, s53) failed on a row the screen had read as only undetermined, at 69 to
+  75% on 1 or 2 seeds. That row then rose 3 to 9 points at 4 seeds (`mass_ravager`
+  69.4 -> 77.7 on s48). The confirmations, not the screens, picked the winner.
+- The bar measured the 10-strategy batch. It did not measure the M4c 8-minute claim or the
+  "decides quickly" fixtures of older tests. The install surfaced 10 such reds that no
+  screen could see. Next time, add the default-mirror length to the screen.
+
+## F-050 — Why some s56 matches never end: a legitimate deadlock, not an attack-move bug (B4)
+
+**Context.** F-049 installed s56 and left 10 tests red. Three of them involve matches that
+never end. The user's call (2026-10-10) was to diagnose those stalemates before deciding
+anything else. No test, claim or RON value was changed for this entry.
+
+**Method.** A scratch sampler ran on the box in release mode. It was an ignored test, deleted
+afterwards and never committed. It replays each fixture exactly and, every N ticks, prints
+the following for each side:
+- Alloy, workers and every building's HP and queue length;
+- every armed unit's position, HP, `MoveTarget`, `Engaging`, `AttackMoveDest` and `Target`
+  (the distance to the target and whether it is a unit or a building);
+- every `AiAction::Attack` and `TrainArmy` since the last sample.
+
+There were four kinds of runs:
+- full-length runs at 600 or 1 200 ticks per sample;
+- one zoom at 60 ticks over the first `mass_ripper` wave;
+- one zoom at 5 ticks over the first `rush` duel;
+- one control run with `rush` alone switched to `wave_order: move`.
+
+**Verdict: (ii), a legitimate deadlock, in every case.** The units march, acquire, close to
+weapon range, stand and trade exactly as `combat()` specifies. None of the attack-move bug
+patterns appears in any sample. None oscillates at the leash or a wall. None re-acquires
+an unreachable target. Every wave arrives. None loses its order. None stands idle at its
+destination beside a building. The matches stall because of the content's arithmetic and
+the strategies' thresholds. So no fix was made.
+
+### 1. The `rush` mirror (critic_b2_ac2 DECIDER, seed 0; b2_orientation's 6 timeouts)
+
+The full run on seed 0 lasted 54 000 ticks and timed out:
+- Both HQs are at **8 400 / 8 400 in all 90 samples**. No armed unit ever targets a building.
+- Each side has 3 workers. The economy pays for one Ripper (40 Alloy, 1 040 ticks) at a time,
+  so 142 of 180 side-samples show 0 armed units and 38 show 1. There are never 2.
+- Every Ripper meets its mirror at midfield (x from -38 to -76), and the two units kill each
+  other on the same tick.
+
+The 5-tick zoom of the first duel shows the cycle:
+
+| tick | A Ripper | B Ripper |
+|---|---|---|
+| 1 170 | (-165,-52), marching, `am`=(745,-38) | (52,38), marching, `am`=(-788,38) |
+| 1 175 | acquires B at d183, chases (`E`) | acquires A at d183, chases |
+| 1 190 | in range (d32 < 40), stands: hp 60 -> 32 | the same: hp 60 -> 32 |
+| 1 260 | hp 4 | hp 4 |
+| 1 330 | dead | dead |
+
+The arithmetic: Ripper damage is 6×5 − 1×2 = 28 against an HP of 60. That is three hits,
+every 70 ticks, on the same tick for both sides. `combat.rs` resolves both blows from one
+snapshot ("two units that kill each other on one tick both die", lines 22-31). The mirror
+matters here: the same script, the same economy and the same think interval mean both
+Rippers are trained on the same tick and arrive together. The AI re-sends the order every
+120 ticks with a new spread (`ai.rs` 594-608), including once mid-duel at 1 185. That is
+harmless: `apply_commands` drops `Engaging` (`mod.rs` 803-821), and `combat()` re-acquires
+the same target within the same tick from `attack_move_range` (`combat.rs` 417-427). By 1 190
+the two units are standing and trading.
+
+In the orientation runs, `rush` timed out in **6 of 6** (3 seeds × 2 orientations).
+`mass_ripper` decided in 6 of 6.
+
+**Control:** the same s56 RON and binary on seed 0, with only `rush` switched to
+`wave_order: move`, **decides at tick 8 631 (A)**. A plain mover with a `MoveTarget` does not
+stand to fight (`combat.rs` 463-483: only an engaging unit or an attack-mover stands or chases), so the two
+Rippers walk past each other to the HQs. The stalemate is therefore what attack-move means
+for a 1-unit-at-a-time mirror: an even trade, repeated forever.
+
+### 2. `mass_ripper` vs `mass_sentinel` (critic_b1_ac3 fixture, seed 7)
+
+This run also lasted 54 000 ticks and timed out. Sampled every 1 200 ticks:
+- A attacks in **8 waves** of 8 Rippers, at 8 730, 17 130, 22 230, 27 000, 32 430, 37 830,
+  43 170 and 48 570. Every wave dies at B's base.
+- B's armed count peaks at **7**, never reaching its `attack_at_army` of 8. So B never sends
+  a wave at all.
+- B's HQ took **396 damage in the whole match** (8 400 -> 8 004 at about 33 000, the one wave
+  that also killed 2 workers). A's HQ was never touched.
+- B is limited by Alloy (the Sentinel costs 90; B's balance was between 0 and 144 at every
+  sample). A was train-limited until its later Gene-Vats went up: it banked 466 Alloy by
+  18 000, then spent down to 4-40.
+
+The 60-tick zoom of wave 1 shows B 6 v A 8:
+- The Rippers march as a unit and acquire the nearest Sentinel at d290 on the pursue leash.
+- They close to d35, inside the Ripper's 40 range, and stand.
+- From 9 060 to 9 480 they lose one Ripper per Sentinel volley and kill one Sentinel per
+  Ripper volley. **A ends 8 -> 0, B 6 -> 2.**
+
+The cause is the nemesis link:
+- A Sentinel hits a Ripper for 6×5×2.0 = 60, armour ignored, which equals the Ripper's HP:
+  one shot, one kill.
+- A Ripper hits a Sentinel for 6×5 − 5×2 = 20 against 100 HP: five hits.
+
+Both sides focus the nearest target, with ties broken by entity bits (`combat.rs` 355, 417),
+so both overkill. That is the M2/M3 targeting model, not something attack-move introduced.
+
+The cycle is therefore stable:
+- each wave kills 4-5 Sentinels;
+- B rebuilds to 5-7 before the next wave;
+- B never reaches 8 to counter-attack;
+- the HQ is never reached in force.
+
+This is the counter-pentagon doing what it should, plus a threshold that the defender's
+economy cannot reach between waves. It matches F-049's 4 decided and 4 timeouts on this
+link in the pentagon batch.
+
+### 3. Related: the `mvp` mirror (critic_p2 seed 7; M4c seeds 1 and 8)
+
+These matches are long but they do end, so they are context rather than one of the three
+stalemates. On the critic_p2 fixture (default commanders):
+
+| seed | decided at |
+|---|---|
+| 7 | 27 485 (B) |
+| 1 | 30 127 (B) |
+| 8 | 38 621 (A, 10:44) |
+
+On seed 8 the sides trade 2-3-unit waves evenly to about 26 000 (A's HQ 8 048, B's 8 400).
+Then A wins a trade, camps B's Foundry and kills each new Sentinel as it appears. B shows 0
+armed in every sample from 25 800 on, and its Foundry falls by about 32 400. The HQ then
+goes 8 356 -> 0 in about 6 000 ticks. This is again correct attack-move behaviour: it takes
+the nearest armed target, falls back to the nearest building, and stands in range. Here it
+is just slow.
+
+### Consequence
+
+There is no sim fix to make, so no golden moves and nothing is re-measured. The 10 reds and
+options (a)-(d) in F-049 stand as they were. Two of the three stalemates come from content
+and thresholds:
+- the `rush` mirror, a 1-Ripper economy trading 1-for-1 on simultaneous resolution;
+- `mass_ripper` vs `mass_sentinel`, a nemesis wall below `attack_at_army`.
+
+Both are design questions for the user, not defects.
+
+## F-051 — The 10 s56 reds resolved: claims restated, fixtures re-picked (B4)
+
+**Context.** F-049 installed s56 and left 10 tests red. F-050 found the stalemates behind
+them to be legitimate deadlocks. The user's decision (2026-10-11) was to restate the claims
+and re-pick the fixtures, with no RON or sim change, so s56 stands as measured. Each
+restated claim is a measured bound that still guards the original intent, and each new
+fixture was chosen by a stated rule. The four restated tests do assert a changed claim,
+recorded old -> new below. The re-picked fixtures keep their assertions' meaning. All measurements were
+release runs on the box, using a scratch probe that was deleted afterwards.
+
+### Claims restated (4 tests)
+
+**M4c's 8-minute claim** (`m4c_ai::an_ai_vs_ai_match_is_decided_within_eight_minutes`,
+`critic_m4c::ai_vs_ai_matches_are_decided_by_a_dead_hq_across_many_seeds`,
+`critic_m4c::every_seed_decides_inside_eight_minutes_on_a_dead_hq`).
+
+- **Old:** every seed is decided inside 8:00 (28 800 ticks).
+- **New**, over the same seeds each test already names:
+  1. every match is decided, with a winner, by a dead HQ (only the winner still has one)
+     within the match cap (`DEFAULT_TICK_CAP`, 54 000 = 15:00);
+  2. the median decided length (upper median) is <= 8:00;
+  3. at most one match in four, rounded up, runs past 8:00.
+- **Strictness:** "decided by a dead HQ" stays strict. `m4c_ai` now also checks the standing
+  HQs, which it did not before.
+
+The measurement is the `mvp` mirror on s56 (F-049/F-050), per test:
+
+| test | seeds | median | over 8:00 | bound |
+|---|---|---|---|---|
+| `m4c_ai` | 1, 7, 99 | 27 485 | 1 (seed 1: 30 127) | 1 |
+| `critic_m4c` many seeds | 9 | 24 446 | 2 (seed 8: 38 621; seed 21: 32 418) | 3 |
+| `critic_m4c` wider sweep | 12 | 25 842 | 1 (seed 1) | 3 |
+
+Pooled over the 21 distinct seeds: median 6:47, 3 of 21 (14%) over 8:00, longest 10:44.
+
+Why one in four:
+- It is about 11 points above the pooled 14%.
+- It is the smallest round share that leaves headroom wherever the seed count allows. At
+  20%, the 9-seed test (measured 2, bound ceil(1.8) = 2) would have none.
+- The 3-seed test has none either way. Its only non-trivial bound is 1 of 3.
+
+The median <= 8:00 is the guard on the design intent. The tail bound catches drift: a
+retune that pushes more of the mirror past 8:00 turns these tests red.
+
+The claim is annotated, not rewritten, at `MVP_PLAN.md` (Win line) and `BUILD_PLAN.md`
+(M4c), as "Restated 2026-10-11 by user decision, F-050/F-051", with old -> new.
+
+**`critic_b1_ac3::every_mass_versus_mass_cell_resolves_in_both_orientations`.**
+
+- **Old:** all 25 ordered mass-vs-mass cells resolve on seed 7.
+- **New:** every cell resolves except those in `MEASURED_DEADLOCK_CELLS`. Each listed cell
+  is asserted to still time out, so if it ever resolves the test goes red and the list
+  must be revisited. The test also asserts that every exception names a real cell.
+- **The list is one ordered cell:** (`mass_ripper` A, `mass_sentinel` B), with F-050's
+  reason in the comment: nemesis one-shot, defender short of Alloy and below
+  `attack_at_army`.
+- **The reverse is not excepted:** (`mass_sentinel` A, `mass_ripper` B) resolves at 48 738.
+
+All 25 cells were measured on s56, seed 7, to the cap. 24 resolve, from 13 937
+(`arclight` v `bulwark`) to 53 978 (the `mass_bulwark` mirror, 22 ticks inside the cap).
+That last one is a fragile green worth knowing about.
+
+### Fixtures re-picked (6 tests)
+
+**`critic_b2_ac2`** (`probe_cap_boundary_is_inclusive_of_the_deciding_tick`,
+`probe_recorded_ticks_agree_with_the_sims_own_counters`).
+
+- **Change:** `DECIDER` goes from (`rush`, `rush`) to (`mass_arclight`, `rush`). The seed
+  stays 0.
+- **Premise:** "a matchup that decides quickly".
+- **Rule:** the ordered pair of shipped strategies that decides fastest on seed 0.
+- **Measured:** all 100 ordered pairs:
+  - (`mass_arclight`, `rush`) decides at 12 291 (B wins);
+  - next are (`mvp`, `rush`) at 13 259 and (`rush`, `mvp`) at 13 301;
+  - 3 pairs time out: `rush` mirror, (`mass_ripper`, `mass_sentinel`),
+    (`mass_ripper`, `synth_triad`).
+- The other `decider()` users in the file (degenerate caps, tick-cap isolation,
+  determinism) take any matchup and stay green.
+
+**`critic_p2::no_configuration_of_the_writer_changes_a_single_tick_of_the_sim`.**
+
+- **Change:** `TICKS` goes from 12 000 to 30 000. The seed stays 7.
+- **Premise:** the horizon clears the decision, so the writers really write (F-033).
+- **Rule:** F-033's rule, unchanged: the first multiple of 6 000 past the decision. It gave
+  12 000 for 9 498 then; seed 7 now decides at 27 485, so it gives 30 000.
+
+**`m5_replay::everything_in_a_live_match_is_identified_and_the_log_resolves`.**
+
+- **Change:** the window goes from 1 500 to 2 000 ticks. The seed stays 4.
+- **Premise:** the window holds a real log, more than 20 commands.
+- **Measured:** 20 commands at 1 500. The count first exceeds 20 at 1 681 and is 24 at 2 000.
+- **Rule:** the first multiple of 500 past the crossing.
+
+**`critic_b2_ac4::probe_b3_metrics_are_computable_from_the_records_alone`.**
+
+- **Change:** the cap goes from 1 200 to 1 800.
+- **Premise:** each mass strategy has produced its unit. The Ripper now trains in 1 040, so
+  there is none at 1 200.
+- **Measured:** the batch (seed 1, 8 rows) at 300-tick steps: 0 Rippers and 0 Sentinels at
+  1 200; 8 of each at 1 500 and 1 800; 16 at 2 700.
+- **Rule:** the first step at which both appear (1 500), plus one step of margin.
+
+**`b2_orientation::mirrors_are_side_balanced_across_the_two_orientations`.**
+
+- **Change:** `MIRRORS` goes from [`rush`, `mass_ripper`] to [`mvp`, `mass_ripper`].
+- **Why `rush` had to go:** it times out in all 6 of the test's matches (3 seeds × 2
+  orientations).
+- **Options considered:**
+  - Excluding timeouts from the balance count would leave `rush` named while contributing
+    zero cells. The sample would silently halve and the name would claim a measurement
+    that never happened.
+  - Using a mirror that decides keeps every named mirror contributing every cell, and keeps
+    `t.timeouts == 0` meaningful. This is the more honest choice, so it was taken.
+- **Rule:** the mirror with zero timeouts on these 6 matches and the lowest median length,
+  `mass_ripper` excepted.
+- **Measured** over all 10 mirrors:
+  - `mvp` 27 562;
+  - `synth_steel_flesh` 28 758;
+  - `synth_triad` 28 778;
+  - `mass_ripper` about 33 100;
+  - `turtle` 33 154;
+  - `mass_ravager` and `mass_arclight` 46 000-49 000;
+  - `rush` (6 of 6), `mass_bulwark` (2 of 6) and `mass_sentinel` (2 of 6) time out.
+
+### Gate
+
+The full gate ran on the box on 2026-10-12, 13:05-14:21 PT, with the box tree equal to
+6937212:
+
+- `cargo clippy --all-targets -- -D warnings`: clean.
+- Debug tests: 967 passed, 0 failed, 3 ignored.
+- Release tests: 967 passed, 0 failed, 3 ignored.
+- `cargo bench --no-run`: builds.
+
+**Run limits (new).** An earlier debug run at 4 test threads crashed the box on
+2026-10-11. s56's longer matches drove load to 20.6, and the box most likely thrashed
+memory, since it has about 1 GB of swap. The journal stops with no OOM line, and the
+reboot needed an ext4 fsck. From now on, gate runs use these limits:
+
+- 2 test threads, `CARGO_BUILD_JOBS=2` and `nice -n 19`;
+- a watchdog that kills the gate's process group if MemAvailable drops below 6 GB or
+  load rises above 8. (Ubuntu 20.04 runs cgroup v1, so a systemd `MemoryMax` is not
+  enforced.)
+
+This run never tripped the watchdog. The lowest MemAvailable was 26 212 MB and the highest
+load was 3.07.
+
+**Resolution.** The 10 reds that F-049 left open are resolved, the gate is green, and B4
+Step 3 is ticked. The critic and the merge follow.

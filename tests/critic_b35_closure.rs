@@ -472,13 +472,14 @@ fn the_turtle_commits_last_on_every_seed_with_the_claimed_margin() {
             latest_other.0,
             latest_other.1
         );
-        // F-046 (B4's g1 content): 21 780 vs 21 120 — a 660-tick margin,
-        // measured on all three seeds and seed-independent. (F-036, B3.5:
+        // F-049 (B4's attack-move content): 22 980 vs 16 080 (`synth_triad`) —
+        // a 6 900-tick margin, measured on all three seeds and seed-independent.
+        // (F-046, g1: 21 780 vs 21 120, a 660-tick margin; F-036, B3.5:
         // 19 320 vs 18 750, a 570-tick margin.)
         assert_eq!(
             (turtle, latest_other.1),
-            (21_780, 21_120),
-            "seed {seed:#x}: F-046's measured ticks are not seed-independent: {commits:?}"
+            (22_980, 16_080),
+            "seed {seed:#x}: F-049's measured ticks are not seed-independent: {commits:?}"
         );
     }
 }

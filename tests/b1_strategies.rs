@@ -77,7 +77,7 @@ fn strategy(id: &str, barracks: &[(&str, u32, f32)], army: &[(&str, u32)]) -> St
     format!(
         "        (\n            id: \"{id}\",\n            think_interval_ticks: 30,\n            \
          worker_target: 6,\n            barracks: [\n{}\n            ],\n            army: [\n{}\n            ],\n            \
-         attack_at_army: 3,\n            attack_interval_ticks: 600,\n            attack_spread: 60.0,\n            queue_depth: 1,\n        ),",
+         attack_at_army: 3,\n            attack_interval_ticks: 600,\n            attack_spread: 60.0,\n            queue_depth: 1,\n            wave_order: move,\n        ),",
         openings.join("\n"),
         army.join("\n"),
     )
@@ -564,9 +564,15 @@ fn the_fingerprint_covers_every_strategy_and_every_field() {
 /// g1: unit costs and timings). No Rust changed; F-046 shows the pre-g1
 /// `assets/data` passing at the previous values under this identical binary,
 /// and tabulates old -> new.
+///
+/// **B4 re-pin (F-049):** recomputed again on B4's attack-move content (every
+/// strategy on `wave_order: attack_move`, plus F-049's RON retune: unit stats,
+/// costs and timings, building HP, the nemesis bonus). No Rust changed; F-049's
+/// golden licence shows the pre-F-049 `assets/data` passing at the previous
+/// values under this identical binary, and F-049 tabulates old -> new.
 #[test]
 fn the_one_barracks_default_replays_exactly_as_it_did_before_b1() {
-    for (seed, golden) in [(4u64, 0x7bc8_e24c_34c6_b32fu64), (11, 0x8542_718f_99cf_7112)] {
+    for (seed, golden) in [(4u64, 0x6e9c_c8ac_0fd0_e90cu64), (11, 0xdf96_9b58_73d1_4961)] {
         let mut app = ai_vs_ai_on(content(), seed);
         tick(&mut app, 3_000);
         let got = onus::sim::state_hash(app.world_mut());

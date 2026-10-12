@@ -588,3 +588,49 @@
 - [2026-10-08] Modified: assets/data/strategies.ron — comments only: openings are placed when due in time, not always all (critic B4 #1)
 - [2026-10-08] Modified: tests/b4_reservation.rs — grace wording scoped to an empty stockpile; non-vacuity guard requires a mass probe (critic B4 #2, #3)
 - [2026-10-08] Modified: FINDINGS.md — F-046 corrections: grace wording, guard, closure pin is a re-measurement, diff-is-empty precondition (critic B4 #2-#4)
+- [2026-10-09] Modified: BALANCE_PLAN.md — turtle AC: recorded the non-RON lever plan (steps 0-3, fallback)
+- [2026-10-09] Created: tests/b4_turtle_diag.rs — B4 turtle step 0: read-only headless diagnostic (defender home/field/dead at the turtle's commit and arrival, trades, the defender's fight at the turtle's base); table test ignored, one-match structural test un-ignored
+- [2026-10-09] Modified: FINDINGS.md — F-047: why the turtle wins (step-0 measurement, code cited, attack-move engagement recommended)
+- [2026-10-09] Modified: BALANCE_PLAN.md — turtle AC step 0 ticked with its result (F-047)
+- [2026-10-09] Modified: BALANCE_PLAN.md — turtle AC: user chose the attack-move lever (F-047)
+- [2026-10-09] Modified: src/sim/mod.rs — B4 step 1: `Order::AttackMove { units, dest }` and the `AttackMoveDest` component; MoveTo/Gather end an attack-move
+- [2026-10-09] Modified: src/sim/combat.rs — B4 step 1: attack-movers prefer armed enemies in engage range, chase to the leash, resume the march to dest; idle units and MoveTo unchanged
+- [2026-10-09] Modified: src/sim/spatial.rs — B4 step 1: `SpatialGrid::nearest_enemy_within` (filtered, range-bounded, smallest-index tie-break) with brute-force L1 tests
+- [2026-10-09] Modified: src/sim/content.rs — B4 step 1: required per-strategy `wave_order` (`move` | `attack_move`), in the fingerprint
+- [2026-10-09] Modified: src/sim/ai.rs — B4 step 1: the attack step issues the wave as the strategy's `wave_order`
+- [2026-10-09] Modified: src/sim/replay.rs — B4 step 1: `LoggedOrder::AttackMove`; `AttackMoveDest` in the state hash (absent under `move`, so hashes unchanged)
+- [2026-10-09] Modified: assets/data/strategies.ron — B4 step 1: `wave_order: move` on every strategy, documented in the header
+- [2026-10-09] Created: tests/b4_attack_move.rs — B4 step 1: attack-move harness (engage, resume, priority, idle rule, HQ kill, MoveTo unchanged, RON field, AI order, determinism + replay)
+- [2026-10-09] Modified: tests/b1_matchup.rs, tests/b1_strategies.rs, tests/b35_queue_depth.rs, tests/b35_parallel.rs, tests/critic_b1.rs, tests/critic_b1_ac2.rs, tests/critic_b35_ac0.rs, tests/critic_b35_ac0b.rs, tests/critic_b4_data/{pre_g1,pre_b4}/strategies.ron — fixture strategy text gains the required `wave_order: move` line (no assertion or golden touched)
+- [2026-10-09] Modified: src/bin/balance.rs — B4 step 2: opt-in `--data DIR` (load content from DIR; no fallback)
+- [2026-10-09] Created: tests/b4_balance_data.rs — B4 step 2: `--data` plays the named content, the report carries its fingerprint, a bad dir fails
+- [2026-10-09] Modified: tests/b4_turtle_diag.rs — B4 step 2: opt-in `ONUS_DIAG_DATA`, wave members by `AttackMoveDest`, ignored commit-order reading
+- [2026-10-10] Modified: src/sim/content.rs — B4 step 2: required `mvp_combat.attack_move_range` (attack-movers' acquisition radius; longest unit reach <= it <= pursue_range; in the fingerprint)
+- [2026-10-10] Modified: src/sim/combat.rs — B4 step 2: attack-movers acquire inside `attack_move_range` (idle units keep `engage_range`)
+- [2026-10-10] Modified: assets/data/units.ron — B4 step 2: `attack_move_range: 220.0` (= engage_range; inert while every strategy ships `move`)
+- [2026-10-10] Modified: tests/critic_b4_data/{pre_g1,pre_b4}/units.ron — fixture combat block gains the required `attack_move_range` line
+- [2026-10-10] Modified: tests/b4_attack_move.rs — B4 step 2: `attack_move_range` required, bounded, fingerprinted, and governs acquisition
+- [2026-10-10] Modified: src/sim/mod.rs — `Order::AttackMove` doc names `attack_move_range`
+- [2026-10-10] Modified: FINDINGS.md — F-048: attack-move built (step 1, golden proof) and measured with attack_move everywhere; 4 range values tried (220/170/120/400); bar not met (K1 ripper/sentinel, 2 pentagon FAILs, K3)
+- [2026-10-10] Modified: BALANCE_PLAN.md — B4 turtle step 1 ticked with result; step 2 left unticked with the bar-not-met result (F-048)
+- [2026-10-10] Modified: BALANCE_PLAN.md — turtle AC: user chose to ship attack-move and retune (step 2b)
+- [2026-10-10] Modified: assets/data/units.ron — B4 step 2b (F-049, s56): Ripper train 1040 / attack 70, Sentinel cost 90, Ravager cost 95 armor 3, Arclight cost 65 defense 4, building HP per defense 840, nemesis x2.0; `cost:` synced to `mvp_alloy_cost`
+- [2026-10-10] Modified: assets/data/strategies.ron — B4 step 2b (F-049): `wave_order: attack_move` on all 10 strategies; mass probes' later lines at 18000/24000 and attack at 8; synth_steel_flesh workers 10 / attack 13; synth_triad workers 9 / attack 12
+- [2026-10-10] Modified: DESIGN_BRIEF.md — F-049 roster numbers, nemesis double damage, retune note
+- [2026-10-10] Modified: tests/b4_attack_move.rs — `every_shipped_strategy_ships_wave_order_move` deliberately re-stated as `..._attack_move` (user's step-2b decision); fixtures flip to the all-move scratch copy
+- [2026-10-10] Modified: tests/b4_balance_data.rs — scratch fixture now flips shipped `attack_move` to `move` (only the difference matters)
+- [2026-10-10] Modified: tests/b1_matchup.rs, tests/b1_strategies.rs, tests/b2_headless.rs, tests/b2_orientation.rs, tests/b35_parallel.rs, tests/b35_queue_depth.rs, tests/critic_b2_ac4.rs, tests/critic_b35_ac0.rs, tests/critic_b35_ac0b.rs — F-049 hash/journal golden re-pin (content-driven; golden licence in F-049)
+- [2026-10-10] Modified: tests/b3_gate.rs, tests/b3_pentagon.rs, tests/critic_b35_closure.rs, tests/critic_b35_ac0b.rs — F-049 measured-pin re-measure (old values kept in comments)
+- [2026-10-10] Modified: tests/b1_probe_set.rs, tests/critic_b1_ac3.rs, tests/b4_reservation.rs — comments only: F-049 turtle commit tick and reservation re-check
+- [2026-10-10] Modified: FINDINGS.md — F-049: step 2b candidate table (c0, s1-s56, 6 confirmations), s56 install, golden licence, re-pin list, 10 claim/premise reds left for a decision, closure, reservation and F-047 diagnostic re-runs
+- [2026-10-10] Modified: BALANCE_PLAN.md — step 2b ticked (F-049); step 3 status recorded, left unticked (gate not green)
+- [2026-10-10] Modified: FINDINGS.md — F-050: s56 stalemate diagnosis (rush mirror, mass_ripper vs mass_sentinel, mvp mirror length); verdict legitimate deadlock, no sim change
+- [2026-10-11] Modified: tests/m4c_ai.rs, tests/critic_m4c.rs — M4c 8-minute claim restated by user decision (F-050/F-051): every match decided by a dead HQ within the match cap, median <= 8:00, at most one in four over 8:00
+- [2026-10-11] Modified: MVP_PLAN.md, BUILD_PLAN.md — dated note on the restated 8-minute target (old -> new), history kept
+- [2026-10-11] Modified: tests/critic_b1_ac3.rs — every mass cell resolves except the measured deadlock (mass_ripper A vs mass_sentinel B, F-050), which must still time out
+- [2026-10-11] Modified: tests/critic_b2_ac2.rs, tests/critic_p2.rs, tests/m5_replay.rs, tests/critic_b2_ac4.rs, tests/b2_orientation.rs — premise fixtures re-picked by stated rules on s56 (F-051); assertions unchanged
+- [2026-10-12] Modified: FINDINGS.md — F-051: the 10 s56 reds resolved (claims restated, fixtures re-picked); full gate green under the new box run limits
+- [2026-10-12] Modified: BALANCE_PLAN.md — B4 turtle Step 3 ticked (gate green)
+- [2026-10-12] Modified: BUILD_PLAN.md, MVP_PLAN.md — M4c restatement says the one-in-four bound is per test, rounded up, not pooled (critic B4 finding 1)
+- [2026-10-12] Modified: FINDINGS.md — F-051 no longer says no assertion's meaning changed; the four restated tests change their claim (critic finding 2)
+- [2026-10-12] Modified: tests/b4_reservation.rs — comment marks the whole-script placement as measured, not asserted (critic finding 3)

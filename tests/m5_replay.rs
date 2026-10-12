@@ -989,10 +989,16 @@ fn sim_ids_and_the_state_hash_survive_a_difference_in_entity_allocation() {
 /// Every thing in the world is identified — before its tick is hashed, and
 /// before the next tick's orders can name it — so a real match's log never
 /// contains an unresolvable command.
+///
+/// Fixture re-picked 2026-10-11 (F-051), by user decision. The premise is that
+/// the window holds a real log, more than 20 commands. Under s56 (F-049),
+/// `ai_vs_ai(4)` logs 20 commands by tick 1 500 and first exceeds 20 at tick
+/// 1 681. The seed is kept. The window is the first multiple of 500 past that
+/// crossing: 2 000 ticks, 24 commands (old 1 500).
 #[test]
 fn everything_in_a_live_match_is_identified_and_the_log_resolves() {
     let mut app = ai_vs_ai(4);
-    for t in 0..1_500u32 {
+    for t in 0..2_000u32 {
         step(&mut app);
         let unidentified = {
             let mut q = app

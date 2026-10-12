@@ -30,7 +30,7 @@
 use bevy::ecs::prelude::*;
 use bevy::math::Vec2;
 
-use crate::sim::content::{Content, StrategyDef};
+use crate::sim::content::{Content, StrategyDef, WaveOrder};
 use crate::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use crate::sim::spatial::{Faction, SplitMix64};
 use crate::sim::{CommandQueue, GatherTarget, Order, Position, ResourceNode};
@@ -585,7 +585,7 @@ fn think(
     // twice); the attack below spends nothing.
     let _ = budget;
 
-    // ---- 5. attack-move at the enemy HQ ------------------------------------
+    // ---- 5. attack: send the wave at the enemy HQ --------------------------
     let force: Vec<Entity> = units
         .iter()
         .filter(|u| u.faction == me && content.units.get(u.def).is_some_and(|d| d.offense > 0))
@@ -607,12 +607,16 @@ fn think(
                 );
             c.next_attack_tick = tick.saturating_add(script.attack_interval_ticks);
             let count = force.len() as u32;
-            order(
-                queue,
-                journal,
-                Order::MoveTo { units: force, dest },
-                AiAction::Attack { dest, force: count },
-            );
+            // The wave's order is content (`wave_order`, B4, F-048). The
+            // journal entry is the same `Attack` either way: the order kind is
+            // a function of the strategy, and the command log records it
+            // exactly (`LoggedOrder::AttackMove`), so the action trace — and
+            // every journal pin taken on it — means what it always meant.
+            let wave = match script.wave_order {
+                WaveOrder::Move => Order::MoveTo { units: force, dest },
+                WaveOrder::AttackMove => Order::AttackMove { units: force, dest },
+            };
+            order(queue, journal, wave, AiAction::Attack { dest, force: count });
         }
     }
 }

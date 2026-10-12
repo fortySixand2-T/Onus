@@ -167,12 +167,14 @@ fn the_default_orientation_is_normal_and_still_the_pinned_fixture() {
     assert_eq!(MatchSettings::default().orientation, Orientation::Normal);
     // The AC1 pin, re-asserted here: the default fixture's first ticks are the
     // pre-B2 bench fixture's.
-    // Re-pinned at B3.5 with `tests/b2_headless.rs`'s table (F-032).
+    // Re-pinned at B3.5 with `tests/b2_headless.rs`'s table (F-032), and on
+    // B4's attack-move content (F-049; was 0x5add_c3af_c88c_09ee and
+    // 0xe6cf_1895_3a10_0975).
     let mut app = built(&MatchSettings::default().with_seed(4).with_hashing(true));
     headless::tick(&mut app, 10);
     let log = &app.world().resource::<StateHashLog>().0;
-    assert_eq!(log[0], 0x5add_c3af_c88c_09ee);
-    assert_eq!(log[9], 0xe6cf_1895_3a10_0975);
+    assert_eq!(log[0], 0xb129_cc22_e561_8e3e);
+    assert_eq!(log[9], 0x210a_73c9_e342_5e35);
 }
 
 // ---- the batch plays both orientations --------------------------------------
@@ -289,9 +291,31 @@ fn the_report_is_reproducible_out_of_process() {
 /// the map — and playing both orientations on the same seed makes a purely
 /// positional edge land once on each slot. Small here (2 mirrors x 3 seeds x 2
 /// orientations = 12 decided matches); the full 10-mirror figure is the bin's.
+///
+/// Fixture re-picked 2026-10-11 (F-051), by user decision. The `rush` mirror
+/// is replaced by the `mvp` mirror (old `["rush", "mass_ripper"]`). Under s56
+/// (attack-move, F-049) the `rush` mirror times out in all 6 of these matches
+/// (F-050: its one-Ripper streams trade 1-for-1 forever), so it measures
+/// nothing. Two fixes were possible:
+/// - Excluding timed-out cells from the count would leave `rush` named here
+///   while contributing zero cells. The sample would silently halve, and the
+///   test would read as if it measured a mirror it does not.
+/// - Using a mirror that decides keeps every listed mirror contributing all of
+///   its cells, and keeps the "an undecided mirror measures nothing" assertion
+///   meaningful.
+///
+/// The second is the more honest, so `rush` is replaced. The rule takes the
+/// mirror with zero timeouts on these 3 seeds x 2 orientations and the lowest
+/// median length, `mass_ripper` excepted. Measured on all 10 mirrors:
+/// - `mvp`: 27 562;
+/// - `synth_steel_flesh`: 28 758;
+/// - `synth_triad`: 28 778;
+/// - `turtle`: 33 154.
+///
+/// `rush`, `mass_bulwark` and `mass_sentinel` time out at least once.
 #[test]
 fn mirrors_are_side_balanced_across_the_two_orientations() {
-    const MIRRORS: [&str; 2] = ["rush", "mass_ripper"];
+    const MIRRORS: [&str; 2] = ["mvp", "mass_ripper"];
     const SEEDS: u32 = 3;
     let c = content();
     let mut records = Vec::new();

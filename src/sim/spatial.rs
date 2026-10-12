@@ -273,6 +273,86 @@ impl SpatialGrid {
     }
 }
 
+impl SpatialGrid {
+    /// The nearest enemy of unit `i` **that `accept` admits and that stands
+    /// within `max_dist`** (B4 attack-move, F-048), or `None`.
+    ///
+    /// The same answer as filtering the brute-force scan: of the enemies `j`
+    /// with `accept(j)` and `pos_i.distance(pos_j) <= max_dist` (exactly the
+    /// expression combat's reach test uses), the nearest by squared distance,
+    /// ties to the **smallest index**, which is how [`Self::nearest_enemy`]
+    /// breaks them. A filter only removes candidates, so the ring-stop rule
+    /// stays valid: once a best is found, nothing in an unexamined ring can beat
+    /// or tie it. And the search is bounded: it stops once every unexamined ring
+    /// lies beyond `max_dist` (with one ring of margin, so float rounding at the
+    /// boundary cannot drop a candidate), so a unit with no admitted enemy in
+    /// range pays for its neighbourhood, not the whole map.
+    pub fn nearest_enemy_within(
+        &self,
+        units: &[Unit],
+        i: usize,
+        max_dist: f32,
+        accept: impl Fn(usize) -> bool,
+    ) -> Option<usize> {
+        let me = units[i];
+        let (c0, r0) = self.cell_of(me.pos);
+        let max_ring = c0
+            .max(self.cols - 1 - c0)
+            .max(r0.max(self.rows - 1 - r0));
+
+        let mut best_d2 = f32::INFINITY;
+        let mut best_idx: Option<usize> = None;
+        let mut r = 0usize;
+        loop {
+            let row_lo = r0.saturating_sub(r);
+            let row_hi = (r0 + r).min(self.rows - 1);
+            let col_lo = c0.saturating_sub(r);
+            let col_hi = (c0 + r).min(self.cols - 1);
+            for row in row_lo..=row_hi {
+                for col in col_lo..=col_hi {
+                    let cheby = (col as isize - c0 as isize)
+                        .unsigned_abs()
+                        .max((row as isize - r0 as isize).unsigned_abs());
+                    if cheby != r {
+                        continue;
+                    }
+                    for &j in &self.cells[row * self.cols + col] {
+                        if units[j].faction == me.faction || !accept(j) {
+                            continue;
+                        }
+                        if me.pos.distance(units[j].pos) > max_dist {
+                            continue;
+                        }
+                        let d2 = me.pos.distance_squared(units[j].pos);
+                        let better = match best_idx {
+                            None => true,
+                            Some(b) => d2 < best_d2 || (d2 == best_d2 && j < b),
+                        };
+                        if better {
+                            best_d2 = d2;
+                            best_idx = Some(j);
+                        }
+                    }
+                }
+            }
+            let reach = r as f32 * self.cell_size;
+            if best_idx.is_some() && reach * reach > best_d2 {
+                break;
+            }
+            // Every unexamined ring is at least `reach` away; one ring of
+            // margin past `max_dist` before giving up.
+            if reach > max_dist + self.cell_size {
+                break;
+            }
+            if r >= max_ring {
+                break;
+            }
+            r += 1;
+        }
+        best_idx
+    }
+}
+
 // ---- L1 unit tests ---------------------------------------------------------
 
 #[cfg(test)]
@@ -464,5 +544,55 @@ mod tests {
             grid_work * 10 < brute_work,
             "grid should evaluate <1/10 the distances of brute (grid={grid_work}, brute={brute_work})"
         );
+    }
+
+    // ---- B4: the filtered, bounded query (attack-move priority) -----------
+
+    fn brute_within(units: &[Unit], i: usize, max: f32, ok: impl Fn(usize) -> bool) -> Option<usize> {
+        let me = units[i];
+        let mut best: Option<(f32, usize)> = None;
+        for (j, u) in units.iter().enumerate() {
+            if u.faction == me.faction || !ok(j) || me.pos.distance(u.pos) > max {
+                continue;
+            }
+            let d2 = me.pos.distance_squared(u.pos);
+            if best.is_none_or(|(bd2, _)| d2 < bd2) {
+                best = Some((d2, j));
+            }
+        }
+        best.map(|(_, j)| j)
+    }
+
+    #[test]
+    fn nearest_enemy_within_matches_the_filtered_brute_force() {
+        for seed in 0..40u64 {
+            let layout = random_layout(300, seed, Vec2::new(-500.0, -500.0), Vec2::new(500.0, 500.0));
+            let grid = SpatialGrid::build(&layout, 120.0);
+            // An arbitrary deterministic filter (every third index refused).
+            let ok = |j: usize| !j.is_multiple_of(3);
+            for max in [0.0f32, 30.0, 120.0, 250.0, 2_000.0] {
+                for i in 0..layout.len() {
+                    assert_eq!(
+                        grid.nearest_enemy_within(&layout, i, max, ok),
+                        brute_within(&layout, i, max, ok),
+                        "seed {seed} unit {i} max {max}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn nearest_enemy_within_breaks_ties_to_the_smallest_index() {
+        let units = [
+            unit(0.0, 0.0, Faction::A),
+            unit(10.0, 0.0, Faction::B),  // 1
+            unit(-10.0, 0.0, Faction::B), // 2 (tie with 1)
+            unit(0.0, 5.0, Faction::B),   // 3 (nearest, refused by the filter)
+        ];
+        let grid = SpatialGrid::build(&units, 4.0);
+        assert_eq!(grid.nearest_enemy_within(&units, 0, 50.0, |j| j != 3), Some(1));
+        assert_eq!(grid.nearest_enemy_within(&units, 0, 50.0, |_| true), Some(3));
+        assert_eq!(grid.nearest_enemy_within(&units, 0, 9.0, |j| j != 3), None);
     }
 }

@@ -50,15 +50,21 @@ fn built(settings: &MatchSettings) -> App {
 /// moves every per-tick `state_hash`; F-032 shows the move is content-driven —
 /// the pre-tune `assets/data`, replayed under this identical binary, passes at
 /// the old numbers. The fixture is still frozen; only the data under it moved.
+///
+/// **B4 re-pin (F-049):** recomputed on B4's attack-move content. F-049's
+/// building-HP change moves the state hash from tick 1; its golden licence
+/// shows the pre-F-049 `assets/data` passing at the previous numbers under this
+/// identical binary (tick 1 was `0x5add_c3af_c88c_09ee`, the fold
+/// `0x4960_70b2_de2d_41f8`; F-049 tabulates the rest).
 const BENCH_FIXTURE_HASHES: [(usize, u64); 6] = [
-    (1, 0x5add_c3af_c88c_09ee),
-    (10, 0xe6cf_1895_3a10_0975),
-    (60, 0xf386_9a1a_5ddc_98c6),
-    (120, 0x8bfd_0705_9b14_53a0),
-    (300, 0x13ed_d185_edb0_04f0),
-    (600, 0x2b30_39ab_9873_9900),
+    (1, 0xb129_cc22_e561_8e3e),
+    (10, 0x210a_73c9_e342_5e35),
+    (60, 0x974c_8570_30ac_9936),
+    (120, 0x6a13_42e3_e1e7_df70),
+    (300, 0xb831_a73e_3a76_2990),
+    (600, 0xb40f_43ef_8be6_5098),
 ];
-const BENCH_FIXTURE_FOLD: u64 = 0x4960_70b2_de2d_41f8;
+const BENCH_FIXTURE_FOLD: u64 = 0xba72_7a7e_aa14_0578;
 
 fn fold(hashes: &[u64]) -> u64 {
     hashes.iter().fold(0xcbf2_9ce4_8422_2325u64, |a, h| {

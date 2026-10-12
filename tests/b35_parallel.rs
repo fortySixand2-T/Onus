@@ -73,7 +73,7 @@ fn strategy(
         "        (\n            id: \"{id}\",\n            think_interval_ticks: {think},\n            \
          worker_target: {worker_target},\n            barracks: [\n{}\n            ],\n            army: [\n{}\n            ],\n            \
          attack_at_army: {attack_at_army},\n            attack_interval_ticks: 600,\n            attack_spread: 60.0,\n            \
-         queue_depth: {queue_depth},\n        ),",
+         queue_depth: {queue_depth},\n            wave_order: move,\n        ),",
         openings.join("\n"),
         army.join("\n"),
     )
@@ -349,12 +349,18 @@ fn ordered_army(app: &App, f: Faction) -> usize {
 /// g1: unit costs and timings). No Rust changed; F-046 shows the pre-g1
 /// `assets/data` passing at the previous values under this identical binary,
 /// and tabulates old -> new.
+///
+/// **B4 re-pin (F-049):** recomputed again on B4's attack-move content (every
+/// strategy on `wave_order: attack_move`, plus F-049's RON retune: unit stats,
+/// costs and timings, building HP, the nemesis bonus). No Rust changed; F-049's
+/// golden licence shows the pre-F-049 `assets/data` passing at the previous
+/// values under this identical binary, and F-049 tabulates old -> new.
 #[test]
 fn the_shipped_default_matchup_is_unmoved_by_parallel_production() {
     for (seed, state_golden, journal_golden) in [
-        (4u64, 0x7bc8_e24c_34c6_b32fu64, 0x22a1_1bed_2624_375fu64),
-        (11, 0x8542_718f_99cf_7112, 0xea6b_737b_371b_6c53),
-        (23, 0x0c79_bef6_a75d_654d, 0x3197_5c19_62b7_9ace),
+        (4u64, 0x6e9c_c8ac_0fd0_e90cu64, 0x630d_08d2_98d5_0b1cu64),
+        (11, 0xdf96_9b58_73d1_4961, 0xca16_2e0e_d2e7_7060),
+        (23, 0x8707_6f9e_2b7e_30aa, 0x7b88_9d1d_8b7a_c6dd),
     ] {
         let c = content();
         let commanders = AiCommanders::new(seed, &[Faction::A, Faction::B]);
@@ -392,6 +398,12 @@ fn the_shipped_default_matchup_is_unmoved_by_parallel_production() {
 /// g1: unit costs and timings). No Rust changed; F-046 shows the pre-g1
 /// `assets/data` passing at the previous values under this identical binary,
 /// and tabulates old -> new.
+///
+/// **B4 re-pin (F-049):** recomputed again on B4's attack-move content (every
+/// strategy on `wave_order: attack_move`, plus F-049's RON retune: unit stats,
+/// costs and timings, building HP, the nemesis bonus). No Rust changed; F-049's
+/// golden licence shows the pre-F-049 `assets/data` passing at the previous
+/// values under this identical binary, and F-049 tabulates old -> new.
 #[test]
 fn a_single_opening_match_replays_the_pre_change_hashes_and_journal() {
     for (name, seed, a, b, trace_golden, journal_golden) in [
@@ -400,16 +412,16 @@ fn a_single_opening_match_replays_the_pre_change_hashes_and_journal() {
             4u64,
             "solo_ripper",
             "solo_bulwark",
-            0x8eb2_42d5_fdd1_d6acu64,
-            0x4e16_04bd_46e0_99f6u64,
+            0xcc20_96b7_f788_dc4au64,
+            0x08f5_6bc6_de2a_b7b4u64,
         ),
         (
             "neutral_b",
             11,
             "solo_bulwark",
             "solo_ripper",
-            0xca63_fc4a_3775_54a9,
-            0x565d_a2a6_6530_936a,
+            0x19b9_4db0_6bae_bdf6,
+            0x4f59_7b34_fee1_9e78,
         ),
     ] {
         let c = neutral_content(name);

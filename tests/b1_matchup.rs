@@ -62,7 +62,7 @@ fn strategy(
     format!(
         "        (\n            id: \"{id}\",\n            think_interval_ticks: {think},\n            \
          worker_target: 6,\n            barracks: [\n{}\n            ],\n            army: [\n{}\n            ],\n            \
-         attack_at_army: {attack_at_army},\n            attack_interval_ticks: 600,\n            attack_spread: 60.0,\n            queue_depth: 1,\n        ),",
+         attack_at_army: {attack_at_army},\n            attack_interval_ticks: 600,\n            attack_spread: 60.0,\n            queue_depth: 1,\n            wave_order: move,\n        ),",
         openings.join("\n"),
         army.join("\n"),
     )
@@ -483,12 +483,18 @@ fn the_same_strategy_pair_and_seed_replays_bit_identically() {
 /// g1: unit costs and timings). No Rust changed; F-046 shows the pre-g1
 /// `assets/data` passing at the previous values under this identical binary,
 /// and tabulates old -> new.
+///
+/// **B4 re-pin (F-049):** recomputed again on B4's attack-move content (every
+/// strategy on `wave_order: attack_move`, plus F-049's RON retune: unit stats,
+/// costs and timings, building HP, the nemesis bonus). No Rust changed; F-049's
+/// golden licence shows the pre-F-049 `assets/data` passing at the previous
+/// values under this identical binary, and F-049 tabulates old -> new.
 #[test]
 fn the_default_matchup_is_byte_for_byte_what_it_was_before_ac2() {
     for (seed, state_golden, journal_golden) in [
-        (4u64, 0x7bc8_e24c_34c6_b32fu64, 0x22a1_1bed_2624_375fu64),
-        (11, 0x8542_718f_99cf_7112, 0xea6b_737b_371b_6c53),
-        (23, 0x0c79_bef6_a75d_654d, 0x3197_5c19_62b7_9ace),
+        (4u64, 0x6e9c_c8ac_0fd0_e90cu64, 0x630d_08d2_98d5_0b1cu64),
+        (11, 0xdf96_9b58_73d1_4961, 0xca16_2e0e_d2e7_7060),
+        (23, 0x8707_6f9e_2b7e_30aa, 0x7b88_9d1d_8b7a_c6dd),
     ] {
         // The implicit default, through the untouched constructor.
         let mut app = ai_vs_ai_with(content(), AiCommanders::new(seed, &[Faction::A, Faction::B]));

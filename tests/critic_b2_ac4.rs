@@ -226,12 +226,18 @@ fn probe_an_unrelated_resource_shifts_entity_ids_and_nothing_else() {
 /// g1: unit costs and timings). No Rust changed; F-046 shows the pre-g1
 /// `assets/data` passing at the previous values under this identical binary,
 /// and tabulates old -> new.
+///
+/// **B4 re-pin (F-049):** recomputed again on B4's attack-move content (every
+/// strategy on `wave_order: attack_move`, plus F-049's RON retune: unit stats,
+/// costs and timings, building HP, the nemesis bonus). No Rust changed; F-049's
+/// golden licence shows the pre-F-049 `assets/data` passing at the previous
+/// values under this identical binary, and F-049 tabulates old -> new.
 #[test]
 fn probe_the_state_hash_goldens_are_byte_identical_to_the_pre_ac2_values() {
     for (seed, state_golden) in [
-        (4u64, 0x7bc8_e24c_34c6_b32fu64),
-        (11, 0x8542_718f_99cf_7112),
-        (23, 0x0c79_bef6_a75d_654d),
+        (4u64, 0x6e9c_c8ac_0fd0_e90cu64),
+        (11, 0xdf96_9b58_73d1_4961),
+        (23, 0x8707_6f9e_2b7e_30aa),
     ] {
         let mut app = golden_fixture(
             content(),
@@ -606,6 +612,13 @@ fn probe_a_record_is_interpretable_without_the_content() {
 
 /// B3 must be computable from these records alone: a win-rate matrix by
 /// strategy, and per-unit production keyed by unit id, with no side table.
+///
+/// Cap re-picked 2026-10-11 (F-051), by user decision. The premise is that the
+/// batch is long enough for each mass strategy to produce its unit. Under s56
+/// (F-049) the Ripper trains in 1 040 ticks, so a 1 200 cap produces none.
+/// Measured on this batch (seed 1, 8 rows) at 300-tick steps: no Ripper or
+/// Sentinel at 1 200; 8 of each at 1 500 and 1 800. The cap is the first
+/// step at which both appear, plus one step of margin: 1 800 (old 1 200).
 #[test]
 fn probe_b3_metrics_are_computable_from_the_records_alone() {
     let c = content();
@@ -616,7 +629,7 @@ fn probe_b3_metrics_are_computable_from_the_records_alone() {
                 .map(|s| s.to_string())
                 .collect(),
         )
-        .with_tick_cap(1_200)
+        .with_tick_cap(1_800)
         .with_seeds(1);
     let rows = batch::run_batch(&c, &settings, &mut |_| {}).expect("shipped");
     assert!(!rows.is_empty());

@@ -167,6 +167,40 @@ pub struct StrategyDef {
     /// error, not a silent `0` — which would mean "never train", content the
     /// sim cannot run. `Content::validate` refuses `0` for the same reason.
     pub queue_depth: u32,
+    /// The order this strategy's attack waves go out on (B4, F-048): a plain
+    /// [`WaveOrder::Move`] or an [`WaveOrder::AttackMove`] that fights armed
+    /// enemies on the way and then resumes its march.
+    ///
+    /// Deliberately **not** `#[serde(default)]`, like `queue_depth`: a missing
+    /// wave order is a load error, so no strategy can play a wave order nobody
+    /// chose.
+    pub wave_order: WaveOrder,
+}
+
+/// Which order an AI attack wave is sent on (B4, F-048). Content, not code:
+/// the switch between the two lives in `strategies.ron` (`move` /
+/// `attack_move`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WaveOrder {
+    /// `Order::MoveTo`: a pure move. The wave fights only what is already in
+    /// a unit's own reach as it walks, and never chases. Every match before
+    /// B4's attack-move lever played this.
+    Move,
+    /// `Order::AttackMove`: march to the destination, engaging enemy armed
+    /// units inside `CombatDef::attack_move_range` on the way (armed units before workers and
+    /// buildings), then resume the march.
+    AttackMove,
+}
+
+impl WaveOrder {
+    /// The RON spelling, for fingerprints and reports.
+    pub fn label(self) -> &'static str {
+        match self {
+            WaveOrder::Move => "move",
+            WaveOrder::AttackMove => "attack_move",
+        }
+    }
 }
 
 impl StrategyDef {
@@ -270,6 +304,14 @@ pub struct CombatDef {
     /// straight-line gap, and a unit that dropped its target there would
     /// oscillate at the wall instead of coming around it.
     pub pursue_range: f32,
+    /// Radius within which a unit under an **attack-move** acquires a target
+    /// (B4, F-048): the attack-move's own number, used by attack-movers only,
+    /// so it cannot move a match in which no strategy's `wave_order` is
+    /// `attack_move`. Once chasing, the `pursue_range` leash applies as for
+    /// every unit. Bounded below by the longest unit `mvp_attack_range` (an
+    /// attack-mover always fights what it can already hit) and above by
+    /// `pursue_range`. Required, like every combat number: no serde default.
+    pub attack_move_range: f32,
 }
 
 /// How a resource enters the economy.
@@ -560,6 +602,7 @@ impl Content {
                 attack_interval_ticks: 0,
                 attack_spread: 0.0,
                 queue_depth: 0,
+                wave_order: WaveOrder::Move,
             },
             resources: resources_file.resources,
             mvp_active: resources_file.mvp_active,
@@ -754,6 +797,20 @@ impl Content {
         }
         if c.pursue_range < c.engage_range {
             return bad("mvp_combat pursue_range must be >= engage_range".to_string());
+        }
+        let longest_reach = self
+            .units
+            .iter()
+            .map(|u| u.mvp_attack_range)
+            .fold(0.0_f32, f32::max);
+        if !(c.attack_move_range.is_finite()
+            && c.attack_move_range >= longest_reach
+            && c.attack_move_range <= c.pursue_range)
+        {
+            return bad(format!(
+                "mvp_combat attack_move_range must be finite, >= the longest unit \
+                 mvp_attack_range ({longest_reach}) and <= pursue_range"
+            ));
         }
         if c.max_stat == 0 {
             return bad("mvp_combat max_stat must be positive".to_string());
@@ -1023,7 +1080,8 @@ impl Content {
             .u32(self.combat.mitigation_per_armor);
         h.f32(self.combat.speed_per_point)
             .f32(self.combat.engage_range)
-            .f32(self.combat.pursue_range);
+            .f32(self.combat.pursue_range)
+            .f32(self.combat.attack_move_range);
         h.u32(self.combat.max_stat)
             .u32(self.combat.building_hp_per_defense);
 
@@ -1043,6 +1101,7 @@ impl Content {
                 .u32(s.attack_interval_ticks)
                 .f32(s.attack_spread)
                 .u32(s.queue_depth)
+                .str(s.wave_order.label())
                 .u64(s.barracks.len() as u64);
             for o in &s.barracks {
                 h.str(&o.building).u32(o.at_tick).f32(o.offset);
