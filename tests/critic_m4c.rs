@@ -563,9 +563,16 @@ fn the_same_seed_replays_tick_for_tick_and_a_different_seed_diverges() {
 /// The ≤ ~8 min target, over seeds the implementer did not name, and a decision
 /// that is *earned*: the loser's HQ is genuinely gone, and it was gone before
 /// the budget ran out.
+///
+/// **Restated 2026-10-11 by user decision (F-050/F-051).** Old: every seed is
+/// decided inside 8:00. New: every seed is decided by a dead HQ within the
+/// match cap (`DEFAULT_TICK_CAP`, 15:00), and the lengths meet
+/// [`assert_restated_length_claim`]. Measured on s56 over these 9 seeds:
+/// median 24 446; seeds 8 (38 621) and 21 (32 418) run past 8:00, 2 of 9 against
+/// a bound of 3.
 #[test]
 fn ai_vs_ai_matches_are_decided_by_a_dead_hq_across_many_seeds() {
-    const BUDGET: u32 = 8 * 60 * 60;
+    const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
     let mut lengths = Vec::new();
     for seed in [2u64, 3, 4, 8, 13, 21, 34, 55, 1234] {
         let mut app = ai_vs_ai(seed);
@@ -596,7 +603,36 @@ fn ai_vs_ai_matches_are_decided_by_a_dead_hq_across_many_seeds() {
         lengths.push((seed, o.tick, winner));
     }
     println!("decided: {lengths:?}");
+    let ticks: Vec<(u64, u32)> = lengths.iter().map(|(s, t, _)| (*s, *t)).collect();
+    assert_restated_length_claim(&ticks);
 }
+
+/// The restated M4c length claim (**2026-10-11, user decision, F-050/F-051**),
+/// checked over the lengths a test measured. Old: every seed is decided inside
+/// 8:00. New: the median decided length (upper median) is <= 8:00, and at most
+/// one match in four (rounded up) runs past 8:00. Each test still requires
+/// every match to be decided by a dead HQ within the match cap; this only
+/// replaces the "every match under 8:00" line. The measurement behind the bound
+/// is the `mvp` mirror under s56 over the 21 seeds the M4c tests name: median
+/// 6:47, 3 of 21 (14%) over 8:00, longest 10:44 (F-049/F-050).
+fn assert_restated_length_claim(lengths: &[(u64, u32)]) {
+    const BUDGET: u32 = 8 * 60 * 60;
+    let mut ticks: Vec<u32> = lengths.iter().map(|(_, t)| *t).collect();
+    ticks.sort_unstable();
+    let median = ticks[ticks.len() / 2];
+    assert!(
+        median <= BUDGET,
+        "median decided length {median} ticks is over ~8 min: {lengths:?}"
+    );
+    let over = ticks.iter().filter(|&&t| t > BUDGET).count();
+    let bound = ticks.len().div_ceil(4);
+    assert!(
+        over <= bound,
+        "{over} of {} matches ran past ~8 min (bound {bound}): {lengths:?}",
+        ticks.len()
+    );
+}
+
 
 /// The AI is a commander with a budget, not a printer: across a long match no
 /// faction's Alloy may go up except through deposits, and the AI must never end
@@ -1731,10 +1767,18 @@ fn training_charges_exactly_once_with_the_sweep_first() {
 
 /// **The ≤8 minute target, over a wider seed sweep than the suite's.** A
 /// scheduling change that starved the economy would show up here first.
+///
+/// **Restated 2026-10-11 by user decision (F-050/F-051).** Old: every seed is
+/// decided by a dead HQ inside 8:00. New: every seed is decided by a dead HQ
+/// within the match cap (`DEFAULT_TICK_CAP`, 15:00), and the lengths meet
+/// [`assert_restated_length_claim`]. Measured on s56 over these 12 seeds:
+/// median 25 842 (upper); only seed 1 (30 127) runs past 8:00, 1 of 12 against
+/// a bound of 3.
 #[test]
 fn every_seed_decides_inside_eight_minutes_on_a_dead_hq() {
-    const BUDGET: u32 = 8 * 60 * 60;
+    const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
     let victory_def = content().building_index("hq").unwrap();
+    let mut lengths = Vec::new();
     for seed in [1u64, 5, 7, 9, 17, 42, 99, 256, 777, 4_242, 31_337, 65_535] {
         let mut app = ai_vs_ai(seed);
         let mut decided = None;
@@ -1756,7 +1800,10 @@ fn every_seed_decides_inside_eight_minutes_on_a_dead_hq() {
         };
         assert_eq!(standing, vec![winner], "seed {seed}: the win was not earned");
         assert!(o.tick <= BUDGET, "seed {seed}: decided at tick {}", o.tick);
+        lengths.push((seed, o.tick));
     }
+    println!("decided: {lengths:?}");
+    assert_restated_length_claim(&lengths);
 }
 
 /// **Determinism, per tick, over a long match, with the sweep in its new slot.**

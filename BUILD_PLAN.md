@@ -163,6 +163,7 @@ Critic probes: damage/armor math matches the spec; nemesis applies iff prey matc
 #### M4c — scripted AI + win condition
 - [x] Scripted AI: gathers, builds a Barracks, trains a mixed force, attack-moves — on a timer, **deterministic given the seed**.
 - [x] Win = destroy the enemy **HQ**; the match then terminates. Target ≤ ~8 min.
+  *Restated 2026-10-11 by user decision, F-050/F-051.* Old: every AI-vs-AI match is decided inside ~8 min. New: over the seeds the M4c tests name, every match is decided by a dead HQ within the match cap (15:00), the median decided length is <= 8:00, and at most one match in four runs past 8:00 (measured on s56: median 6:47, 3 of 21 over 8:00).
 
 Critic probes: AI is deterministic given the seed (same seed ⇒ same actions); the match terminates on HQ destruction; no wall-clock / iteration-order nondeterminism in the AI or end check.
 

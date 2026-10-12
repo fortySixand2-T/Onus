@@ -625,3 +625,5 @@
 - [2026-10-10] Modified: FINDINGS.md — F-049: step 2b candidate table (c0, s1-s56, 6 confirmations), s56 install, golden licence, re-pin list, 10 claim/premise reds left for a decision, closure, reservation and F-047 diagnostic re-runs
 - [2026-10-10] Modified: BALANCE_PLAN.md — step 2b ticked (F-049); step 3 status recorded, left unticked (gate not green)
 - [2026-10-10] Modified: FINDINGS.md — F-050: s56 stalemate diagnosis (rush mirror, mass_ripper vs mass_sentinel, mvp mirror length); verdict legitimate deadlock, no sim change
+- [2026-10-11] Modified: tests/m4c_ai.rs, tests/critic_m4c.rs — M4c 8-minute claim restated by user decision (F-050/F-051): every match decided by a dead HQ within the match cap, median <= 8:00, at most one in four over 8:00
+- [2026-10-11] Modified: MVP_PLAN.md, BUILD_PLAN.md — dated note on the restated 8-minute target (old -> new), history kept
