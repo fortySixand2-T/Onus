@@ -18,7 +18,7 @@ This is the bridge doc; detail lives elsewhere:
 - Movement/pathfinding and unit-scale sufficient for a real fight (the M2 spatial index, M3 pathfinding).
 - **Scripted AI:** gathers, builds a mixed army, attack-moves.
 - **Win:** destroy the enemy **HQ**. Target match ≤ ~8 min.
-  *Restated 2026-10-11 by user decision, F-050/F-051.* Old: every AI-vs-AI match is decided inside ~8 min. New: over the seeds the M4c tests name, every match is decided by a dead HQ within the match cap (15:00), the median decided length is <= 8:00, and at most one match in four runs past 8:00 (measured on s56: median 6:47, 3 of 21 over 8:00).
+  *Restated 2026-10-11 by user decision, F-050/F-051.* Old: every AI-vs-AI match is decided inside ~8 min. New: over the seeds the M4c tests name, every match is decided by a dead HQ within the match cap (15:00), the median decided length is <= 8:00, and each test allows at most a quarter of its own seeds, rounded up, past 8:00 (so a 3-seed test tolerates 1; the pooled 21 seeds are not asserted as one set) (measured on s56: median 6:47, 3 of 21 over 8:00).
 
 **Out (post-MVP):** the entire campaign layer (nations-map, rounds, diplomacy, dominance), the 3-resource economy, bespoke nations, fog of war, replay-hardening + netcode (M5/M6), 3D, audio.
 

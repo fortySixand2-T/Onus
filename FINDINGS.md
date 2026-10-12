@@ -5515,7 +5515,8 @@ Both are design questions for the user, not defects.
 them to be legitimate deadlocks. The user's decision (2026-10-11) was to restate the claims
 and re-pick the fixtures, with no RON or sim change, so s56 stands as measured. Each
 restated claim is a measured bound that still guards the original intent, and each new
-fixture was chosen by a stated rule. No assertion's meaning changed. All measurements were
+fixture was chosen by a stated rule. The four restated tests do assert a changed claim,
+recorded old -> new below. The re-picked fixtures keep their assertions' meaning. All measurements were
 release runs on the box, using a scratch probe that was deleted afterwards.
 
 ### Claims restated (4 tests)

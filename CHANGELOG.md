@@ -631,3 +631,6 @@
 - [2026-10-11] Modified: tests/critic_b2_ac2.rs, tests/critic_p2.rs, tests/m5_replay.rs, tests/critic_b2_ac4.rs, tests/b2_orientation.rs — premise fixtures re-picked by stated rules on s56 (F-051); assertions unchanged
 - [2026-10-12] Modified: FINDINGS.md — F-051: the 10 s56 reds resolved (claims restated, fixtures re-picked); full gate green under the new box run limits
 - [2026-10-12] Modified: BALANCE_PLAN.md — B4 turtle Step 3 ticked (gate green)
+- [2026-10-12] Modified: BUILD_PLAN.md, MVP_PLAN.md — M4c restatement says the one-in-four bound is per test, rounded up, not pooled (critic B4 finding 1)
+- [2026-10-12] Modified: FINDINGS.md — F-051 no longer says no assertion's meaning changed; the four restated tests change their claim (critic finding 2)
+- [2026-10-12] Modified: tests/b4_reservation.rs — comment marks the whole-script placement as measured, not asserted (critic finding 3)
