@@ -318,7 +318,7 @@ all-timeout run is flagged, not reported as balanced.
             - K3 undetermined: band 48.8% [44.6, 53.1], timeouts 4.2%.
             - The turtle commits last at 22 980, 6 900 ticks after `synth_triad`, on all
               three seeds.
-      - [ ] **Step 3 — proof and re-pin.** With the switch on, the current RON reproduces
+      - [x] **Step 3 — proof and re-pin.** With the switch on, the current RON reproduces
             today's goldens. Then re-pin and record an F-entry. Full gate, then the critic,
             then merge.
             **Status** (F-049): **proof and re-pin done; left unticked because the gate is
@@ -333,6 +333,10 @@ all-timeout run is flagged, not reported as balanced.
               - six "decides quickly" fixtures.
             - The five-probe `b3_gate` batch's K3 reads FAIL.
             F-049 lists the options.
+            **Resolved** (F-050, F-051): the stalemates are legitimate deadlocks. The claims
+            were restated and the fixtures re-picked by the user's decision. **Full gate green
+            2026-10-12:** clippy clean; debug and release both 967 passed, 0 failed, 3 ignored;
+            bench builds.
       - **Fallback:** if no lever passes, bring the numbers and the gate question (should
         K1 gate a deliberately extreme probe?) to the user.
 - [x] **Multi-barracks as a real capability (open, from F-035).** The AI places an opening

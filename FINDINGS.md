@@ -5508,3 +5508,152 @@ and thresholds:
 - `mass_ripper` vs `mass_sentinel`, a nemesis wall below `attack_at_army`.
 
 Both are design questions for the user, not defects.
+
+## F-051 — The 10 s56 reds resolved: claims restated, fixtures re-picked (B4)
+
+**Context.** F-049 installed s56 and left 10 tests red. F-050 found the stalemates behind
+them to be legitimate deadlocks. The user's decision (2026-10-11) was to restate the claims
+and re-pick the fixtures, with no RON or sim change, so s56 stands as measured. Each
+restated claim is a measured bound that still guards the original intent, and each new
+fixture was chosen by a stated rule. No assertion's meaning changed. All measurements were
+release runs on the box, using a scratch probe that was deleted afterwards.
+
+### Claims restated (4 tests)
+
+**M4c's 8-minute claim** (`m4c_ai::an_ai_vs_ai_match_is_decided_within_eight_minutes`,
+`critic_m4c::ai_vs_ai_matches_are_decided_by_a_dead_hq_across_many_seeds`,
+`critic_m4c::every_seed_decides_inside_eight_minutes_on_a_dead_hq`).
+
+- **Old:** every seed is decided inside 8:00 (28 800 ticks).
+- **New**, over the same seeds each test already names:
+  1. every match is decided, with a winner, by a dead HQ (only the winner still has one)
+     within the match cap (`DEFAULT_TICK_CAP`, 54 000 = 15:00);
+  2. the median decided length (upper median) is <= 8:00;
+  3. at most one match in four, rounded up, runs past 8:00.
+- **Strictness:** "decided by a dead HQ" stays strict. `m4c_ai` now also checks the standing
+  HQs, which it did not before.
+
+The measurement is the `mvp` mirror on s56 (F-049/F-050), per test:
+
+| test | seeds | median | over 8:00 | bound |
+|---|---|---|---|---|
+| `m4c_ai` | 1, 7, 99 | 27 485 | 1 (seed 1: 30 127) | 1 |
+| `critic_m4c` many seeds | 9 | 24 446 | 2 (seed 8: 38 621; seed 21: 32 418) | 3 |
+| `critic_m4c` wider sweep | 12 | 25 842 | 1 (seed 1) | 3 |
+
+Pooled over the 21 distinct seeds: median 6:47, 3 of 21 (14%) over 8:00, longest 10:44.
+
+Why one in four:
+- It is about 11 points above the pooled 14%.
+- It is the smallest round share that leaves headroom wherever the seed count allows. At
+  20%, the 9-seed test (measured 2, bound ceil(1.8) = 2) would have none.
+- The 3-seed test has none either way. Its only non-trivial bound is 1 of 3.
+
+The median <= 8:00 is the guard on the design intent. The tail bound catches drift: a
+retune that pushes more of the mirror past 8:00 turns these tests red.
+
+The claim is annotated, not rewritten, at `MVP_PLAN.md` (Win line) and `BUILD_PLAN.md`
+(M4c), as "Restated 2026-10-11 by user decision, F-050/F-051", with old -> new.
+
+**`critic_b1_ac3::every_mass_versus_mass_cell_resolves_in_both_orientations`.**
+
+- **Old:** all 25 ordered mass-vs-mass cells resolve on seed 7.
+- **New:** every cell resolves except those in `MEASURED_DEADLOCK_CELLS`. Each listed cell
+  is asserted to still time out, so if it ever resolves the test goes red and the list
+  must be revisited. The test also asserts that every exception names a real cell.
+- **The list is one ordered cell:** (`mass_ripper` A, `mass_sentinel` B), with F-050's
+  reason in the comment: nemesis one-shot, defender short of Alloy and below
+  `attack_at_army`.
+- **The reverse is not excepted:** (`mass_sentinel` A, `mass_ripper` B) resolves at 48 738.
+
+All 25 cells were measured on s56, seed 7, to the cap. 24 resolve, from 13 937
+(`arclight` v `bulwark`) to 53 978 (the `mass_bulwark` mirror, 22 ticks inside the cap).
+That last one is a fragile green worth knowing about.
+
+### Fixtures re-picked (6 tests)
+
+**`critic_b2_ac2`** (`probe_cap_boundary_is_inclusive_of_the_deciding_tick`,
+`probe_recorded_ticks_agree_with_the_sims_own_counters`).
+
+- **Change:** `DECIDER` goes from (`rush`, `rush`) to (`mass_arclight`, `rush`). The seed
+  stays 0.
+- **Premise:** "a matchup that decides quickly".
+- **Rule:** the ordered pair of shipped strategies that decides fastest on seed 0.
+- **Measured:** all 100 ordered pairs:
+  - (`mass_arclight`, `rush`) decides at 12 291 (B wins);
+  - next are (`mvp`, `rush`) at 13 259 and (`rush`, `mvp`) at 13 301;
+  - 3 pairs time out: `rush` mirror, (`mass_ripper`, `mass_sentinel`),
+    (`mass_ripper`, `synth_triad`).
+- The other `decider()` users in the file (degenerate caps, tick-cap isolation,
+  determinism) take any matchup and stay green.
+
+**`critic_p2::no_configuration_of_the_writer_changes_a_single_tick_of_the_sim`.**
+
+- **Change:** `TICKS` goes from 12 000 to 30 000. The seed stays 7.
+- **Premise:** the horizon clears the decision, so the writers really write (F-033).
+- **Rule:** F-033's rule, unchanged: the first multiple of 6 000 past the decision. It gave
+  12 000 for 9 498 then; seed 7 now decides at 27 485, so it gives 30 000.
+
+**`m5_replay::everything_in_a_live_match_is_identified_and_the_log_resolves`.**
+
+- **Change:** the window goes from 1 500 to 2 000 ticks. The seed stays 4.
+- **Premise:** the window holds a real log, more than 20 commands.
+- **Measured:** 20 commands at 1 500. The count first exceeds 20 at 1 681 and is 24 at 2 000.
+- **Rule:** the first multiple of 500 past the crossing.
+
+**`critic_b2_ac4::probe_b3_metrics_are_computable_from_the_records_alone`.**
+
+- **Change:** the cap goes from 1 200 to 1 800.
+- **Premise:** each mass strategy has produced its unit. The Ripper now trains in 1 040, so
+  there is none at 1 200.
+- **Measured:** the batch (seed 1, 8 rows) at 300-tick steps: 0 Rippers and 0 Sentinels at
+  1 200; 8 of each at 1 500 and 1 800; 16 at 2 700.
+- **Rule:** the first step at which both appear (1 500), plus one step of margin.
+
+**`b2_orientation::mirrors_are_side_balanced_across_the_two_orientations`.**
+
+- **Change:** `MIRRORS` goes from [`rush`, `mass_ripper`] to [`mvp`, `mass_ripper`].
+- **Why `rush` had to go:** it times out in all 6 of the test's matches (3 seeds × 2
+  orientations).
+- **Options considered:**
+  - Excluding timeouts from the balance count would leave `rush` named while contributing
+    zero cells. The sample would silently halve and the name would claim a measurement
+    that never happened.
+  - Using a mirror that decides keeps every named mirror contributing every cell, and keeps
+    `t.timeouts == 0` meaningful. This is the more honest choice, so it was taken.
+- **Rule:** the mirror with zero timeouts on these 6 matches and the lowest median length,
+  `mass_ripper` excepted.
+- **Measured** over all 10 mirrors:
+  - `mvp` 27 562;
+  - `synth_steel_flesh` 28 758;
+  - `synth_triad` 28 778;
+  - `mass_ripper` about 33 100;
+  - `turtle` 33 154;
+  - `mass_ravager` and `mass_arclight` 46 000-49 000;
+  - `rush` (6 of 6), `mass_bulwark` (2 of 6) and `mass_sentinel` (2 of 6) time out.
+
+### Gate
+
+The full gate ran on the box on 2026-10-12, 13:05-14:21 PT, with the box tree equal to
+6937212:
+
+- `cargo clippy --all-targets -- -D warnings`: clean.
+- Debug tests: 967 passed, 0 failed, 3 ignored.
+- Release tests: 967 passed, 0 failed, 3 ignored.
+- `cargo bench --no-run`: builds.
+
+**Run limits (new).** An earlier debug run at 4 test threads crashed the box on
+2026-10-11. s56's longer matches drove load to 20.6, and the box most likely thrashed
+memory, since it has about 1 GB of swap. The journal stops with no OOM line, and the
+reboot needed an ext4 fsck. From now on, gate runs use these limits:
+
+- 2 test threads, `CARGO_BUILD_JOBS=2` and `nice -n 19`;
+- a watchdog that kills the gate's process group if MemAvailable drops below 6 GB or
+  load rises above 8. (Ubuntu 20.04 runs cgroup v1, so a systemd `MemoryMax` is not
+  enforced.)
+
+This run never tripped the watchdog. The lowest MemAvailable was 26 212 MB and the highest
+load was 3.07.
+
+**Resolution.** The 10 reds that F-049 left open are resolved, the gate is green, and B4
+Step 3 is ticked. The critic and the merge follow.

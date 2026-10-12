@@ -629,3 +629,5 @@
 - [2026-10-11] Modified: MVP_PLAN.md, BUILD_PLAN.md — dated note on the restated 8-minute target (old -> new), history kept
 - [2026-10-11] Modified: tests/critic_b1_ac3.rs — every mass cell resolves except the measured deadlock (mass_ripper A vs mass_sentinel B, F-050), which must still time out
 - [2026-10-11] Modified: tests/critic_b2_ac2.rs, tests/critic_p2.rs, tests/m5_replay.rs, tests/critic_b2_ac4.rs, tests/b2_orientation.rs — premise fixtures re-picked by stated rules on s56 (F-051); assertions unchanged
+- [2026-10-12] Modified: FINDINGS.md — F-051: the 10 s56 reds resolved (claims restated, fixtures re-picked); full gate green under the new box run limits
+- [2026-10-12] Modified: BALANCE_PLAN.md — B4 turtle Step 3 ticked (gate green)
