@@ -20,7 +20,16 @@ fn content() -> Content {
 
 /// A matchup that decides quickly, so a boundary can be probed either side of
 /// the exact deciding tick without paying for the full cap in sim.
-const DECIDER: (&str, &str) = ("rush", "rush");
+///
+/// Re-picked 2026-10-11 (F-051), by user decision. The old DECIDER was the
+/// `rush` mirror. Under s56 (attack-move, F-049) it never decides: its
+/// one-Ripper streams trade 1-for-1 at midfield forever (F-050). The new rule
+/// keeps the seed and takes the ordered pair of shipped strategies that decides
+/// fastest on it. Measured over all 100 ordered pairs on seed 0, that is
+/// (`mass_arclight`, `rush`), decided at tick 12 291 (B). Next are
+/// (`mvp`, `rush`) at 13 259 and (`rush`, `mvp`) at 13 301. Three pairs time
+/// out.
+const DECIDER: (&str, &str) = ("mass_arclight", "rush");
 const DECIDER_SEED: u64 = 0;
 
 fn decider(cap: u32) -> MatchSettings {

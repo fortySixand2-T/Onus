@@ -612,6 +612,13 @@ fn probe_a_record_is_interpretable_without_the_content() {
 
 /// B3 must be computable from these records alone: a win-rate matrix by
 /// strategy, and per-unit production keyed by unit id, with no side table.
+///
+/// Cap re-picked 2026-10-11 (F-051), by user decision. The premise is that the
+/// batch is long enough for each mass strategy to produce its unit. Under s56
+/// (F-049) the Ripper trains in 1 040 ticks, so a 1 200 cap produces none.
+/// Measured on this batch (seed 1, 8 rows) at 300-tick steps: no Ripper or
+/// Sentinel at 1 200; 8 of each at 1 500 and 1 800. The cap is the first
+/// step at which both appear, plus one step of margin: 1 800 (old 1 200).
 #[test]
 fn probe_b3_metrics_are_computable_from_the_records_alone() {
     let c = content();
@@ -622,7 +629,7 @@ fn probe_b3_metrics_are_computable_from_the_records_alone() {
                 .map(|s| s.to_string())
                 .collect(),
         )
-        .with_tick_cap(1_200)
+        .with_tick_cap(1_800)
         .with_seeds(1);
     let rows = batch::run_batch(&c, &settings, &mut |_| {}).expect("shipped");
     assert!(!rows.is_empty());

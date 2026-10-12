@@ -195,7 +195,12 @@ fn no_configuration_of_the_writer_changes_a_single_tick_of_the_sim() {
     // tick 9 498 (it was inside 4 800 before the economy slowed). The horizon
     // has to clear the decision or the vacuity check below is the thing that
     // fails, and nothing is proved about a writer that wrote (F-033).
-    const TICKS: u32 = 12_000;
+    // Re-picked 2026-10-11 (F-051), by user decision: under s56 (attack-move,
+    // F-049) seed 7 is decided at tick 27 485, so 12 000 no longer clears it.
+    // The seed is kept and the rule is unchanged: the horizon is the first
+    // multiple of 6 000 past the decision. That rule gave 12 000 for 9 498, and
+    // now gives 30 000 (old 12 000).
+    const TICKS: u32 = 30_000;
     let a = Scratch::new("determinism-a");
     let b = Scratch::new("determinism-b");
 

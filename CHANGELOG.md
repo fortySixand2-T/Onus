@@ -628,3 +628,4 @@
 - [2026-10-11] Modified: tests/m4c_ai.rs, tests/critic_m4c.rs — M4c 8-minute claim restated by user decision (F-050/F-051): every match decided by a dead HQ within the match cap, median <= 8:00, at most one in four over 8:00
 - [2026-10-11] Modified: MVP_PLAN.md, BUILD_PLAN.md — dated note on the restated 8-minute target (old -> new), history kept
 - [2026-10-11] Modified: tests/critic_b1_ac3.rs — every mass cell resolves except the measured deadlock (mass_ripper A vs mass_sentinel B, F-050), which must still time out
+- [2026-10-11] Modified: tests/critic_b2_ac2.rs, tests/critic_p2.rs, tests/m5_replay.rs, tests/critic_b2_ac4.rs, tests/b2_orientation.rs — premise fixtures re-picked by stated rules on s56 (F-051); assertions unchanged

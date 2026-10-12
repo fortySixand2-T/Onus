@@ -291,9 +291,31 @@ fn the_report_is_reproducible_out_of_process() {
 /// the map — and playing both orientations on the same seed makes a purely
 /// positional edge land once on each slot. Small here (2 mirrors x 3 seeds x 2
 /// orientations = 12 decided matches); the full 10-mirror figure is the bin's.
+///
+/// Fixture re-picked 2026-10-11 (F-051), by user decision. The `rush` mirror
+/// is replaced by the `mvp` mirror (old `["rush", "mass_ripper"]`). Under s56
+/// (attack-move, F-049) the `rush` mirror times out in all 6 of these matches
+/// (F-050: its one-Ripper streams trade 1-for-1 forever), so it measures
+/// nothing. Two fixes were possible:
+/// - Excluding timed-out cells from the count would leave `rush` named here
+///   while contributing zero cells. The sample would silently halve, and the
+///   test would read as if it measured a mirror it does not.
+/// - Using a mirror that decides keeps every listed mirror contributing all of
+///   its cells, and keeps the "an undecided mirror measures nothing" assertion
+///   meaningful.
+///
+/// The second is the more honest, so `rush` is replaced. The rule takes the
+/// mirror with zero timeouts on these 3 seeds x 2 orientations and the lowest
+/// median length, `mass_ripper` excepted. Measured on all 10 mirrors:
+/// - `mvp`: 27 562;
+/// - `synth_steel_flesh`: 28 758;
+/// - `synth_triad`: 28 778;
+/// - `turtle`: 33 154.
+///
+/// `rush`, `mass_bulwark` and `mass_sentinel` time out at least once.
 #[test]
 fn mirrors_are_side_balanced_across_the_two_orientations() {
-    const MIRRORS: [&str; 2] = ["rush", "mass_ripper"];
+    const MIRRORS: [&str; 2] = ["mvp", "mass_ripper"];
     const SEEDS: u32 = 3;
     let c = content();
     let mut records = Vec::new();
