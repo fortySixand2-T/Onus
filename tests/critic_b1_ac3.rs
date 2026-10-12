@@ -469,11 +469,30 @@ fn a_head_to_head_pair_replays_tick_for_tick_on_the_same_seed() {
 /// This is **one seed**. F-031 measures 14-18% of `mass_arclight` versus
 /// armoured matches reaching the cap across seeds, so a green here is a sample,
 /// not a proof that no hole exists.
+///
+/// **Restated 2026-10-11 by user decision (F-050/F-051).**
+/// - Old: every one of the 25 ordered cells resolves.
+/// - New: every cell resolves except the measured deadlocks in
+///   [`MEASURED_DEADLOCK_CELLS`], and each named exception must really time out.
+///   If one starts resolving, this test goes red and the list must be revisited.
+///   It is never a "may time out" escape hatch.
+///
+/// The list was measured on s56, seed 7, all 25 ordered cells, to the cap. Only
+/// one cell times out, and it is listed. Its reverse orientation
+/// (`mass_sentinel` as A, `mass_ripper` as B) resolves at tick 48 738, so the
+/// reverse is not an exception. The slowest resolving cell is the
+/// `mass_bulwark` mirror, at tick 53 978, 22 ticks inside the cap.
 #[test]
 fn every_mass_versus_mass_cell_resolves_in_both_orientations() {
     const BUDGET: u32 = onus::headless::DEFAULT_TICK_CAP;
     let c = content();
     let mass = mass_ids(&c);
+    for (a, b) in MEASURED_DEADLOCK_CELLS {
+        assert!(
+            mass.iter().any(|m| m == a) && mass.iter().any(|m| m == b),
+            "the exception ({a}, {b}) names a cell that is not in the matrix"
+        );
+    }
     for a in &mass {
         for b in &mass {
             let mut app = fixture(&[(Faction::A, a), (Faction::B, b)], 7);
@@ -485,12 +504,34 @@ fn every_mass_versus_mass_cell_resolves_in_both_orientations() {
                     break;
                 }
             }
+            let excepted = MEASURED_DEADLOCK_CELLS
+                .iter()
+                .any(|(x, y)| x == a && y == b);
+            if excepted {
+                assert_eq!(
+                    outcome, None,
+                    "`{a}` vs `{b}` is listed as a measured deadlock but now resolves; \
+                     revisit MEASURED_DEADLOCK_CELLS (F-051)"
+                );
+                continue;
+            }
             let o = outcome
                 .unwrap_or_else(|| panic!("`{a}` vs `{b}` never resolved in {BUDGET} ticks"));
             assert!(o.winner.is_some(), "`{a}` vs `{b}` ended with no winner");
         }
     }
 }
+
+/// The ordered (A, B) cells measured to deadlock on this fixture (seed 7). Each
+/// one is named with its reason.
+///
+/// - `mass_ripper` (A) vs `mass_sentinel` (B), F-050. The Sentinel is the
+///   Ripper's nemesis and one-shots it (60 damage against 60 HP). A's 8-Ripper
+///   waves die at B's base after killing 4-5 Sentinels each. B is short of
+///   Alloy (90 a Sentinel) and rebuilds to only 5-7, so it never reaches its
+///   `attack_at_army` of 8 and never attacks. Over 54 000 ticks B's HQ lost 396
+///   HP and A's lost none.
+const MEASURED_DEADLOCK_CELLS: [(&str, &str); 1] = [("mass_ripper", "mass_sentinel")];
 
 // ---- audit of the tests/m5_replay.rs edit ------------------------------------
 
