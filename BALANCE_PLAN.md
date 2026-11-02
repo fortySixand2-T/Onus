@@ -368,6 +368,8 @@ The sim proves **balance**, not **fun**. This gate is irreducible; only you can 
 - [ ] **Go / No-Go:** only if the core is *both* balanced and fun does it make sense to
       build nations / the campaign. Balanced-but-not-fun is a *design* fix (loop, tempo),
       not a reason to add features.
+      After Go, the next plan is `CAMPAIGN_PLAN.md`. Its C0 (nation and campaign design on
+      paper) can run before Go.
 
 ---
 
