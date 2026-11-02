@@ -138,6 +138,187 @@ Gated behind: the battle loop proving fun and the pentagon balancing first. None
 
 **Plan:** `CAMPAIGN_PLAN.md` orders this work. C0 designs the nations and campaign rules on paper now, and building waits for the B5 Go.
 
+## Campaign design (C0 draft, 2026-11-02)
+
+> **Decided by the user (2026-11-02):**
+> - Armies persist the way they do in Age of Empires: **units lost are lost, and survivors
+>   carry over** to the next battle.
+> - Nations hold **cities**, and battles are fought over cities.
+> - A battle is won by **killing the enemy General** or **making the enemy retreat**.
+>
+> Everything else in this section is a **recommendation awaiting review**, marked *(rec)*.
+
+### Map: nations made of cities
+
+- A nation is a set of **cities** joined by roads, one of which is its **capital**. A nation's
+  **size** is its number of cities.
+- **The map is fixed and hand-authored** *(rec)*, because the story places the houses. It has
+  16 cities in total. The AI's choices are still seeded and deterministic.
+- **Your house starts with one city.** It is the heir's last holding, at the edge of the
+  Rupture scar, and borders all three great houses.
+
+| Nation | Cities | Capital |
+|---|---|---|
+| Your house | 1 | Cinderhold *(placeholder name)* |
+| Forgeborn | 4 | — |
+| Verdant | 4 | — |
+| Aetherkin | 3 | — |
+| Tollmarch | 2 | — |
+| The Ashen Reach | 2 | — |
+
+```
+              [Forgeborn x4]
+                    |
+   [Tollmarch x2]--( F )--[Aetherkin x3]
+                    |  \      |
+              (Cinderhold)-- RUPTURE SCAR (impassable)
+                    |  /      |
+   [Ashen Reach x2]--( V )----+
+                    |
+               [Verdant x4]
+```
+
+The layout is illustrative only; the exact adjacency is decided in the C4 data.
+
+### Armies and carry-over (decided)
+
+- Each nation has one or more **armies** on the map. An army is a roster: its General, its
+  units, and their current HP *(rec: HP carries too; units do not heal fully between
+  battles)*.
+- After a battle, **survivors return to the army roster, and the dead are gone**.
+- **Reinforcement** *(rec)*: each city a nation holds adds a levy of Alloy, or of units
+  trained at its barracks, every round. Size therefore matters, and lost armies can be
+  rebuilt slowly. Without this, armies only ever shrink.
+- **Healing** *(rec)*: an army that skips a round in one of its own cities recovers some HP.
+
+### Campaign battles (decided: General and retreat)
+
+- **A battle is a siege or field fight over one city.**
+  - The **defender** holds the city: its HQ, any barracks the city has, workers, and the
+    garrison.
+  - The **attacker** arrives with its army roster, its General, and a few workers.
+  - Both sides can still gather and train during the battle *(rec)*. This keeps the RTS core
+    that B1–B4 balanced.
+- **The General** is a unit, one per army, and is always on the field.
+  - **If your General dies, you lose the battle.** The rest of your army survives and
+    withdraws, so it still carries over.
+  - The General fights, but is fragile enough that protecting him is a decision (stats to come
+    from the sim).
+  - *(rec)* A nation whose General dies gets a weaker replacement General after N rounds.
+    **Your own General is the heir**: if he dies, the battle is lost and the heir is wounded
+    for N rounds. The campaign is not lost.
+- **Retreat** is an order you can give at any time.
+  - Your units march for the map edge you came from, and every unit that reaches it carries
+    over.
+  - The city goes to the other side: a retreating attacker fails, and a retreating defender
+    loses the city.
+  - Retreat is how you save an army. A lost battle need not cost you the whole army.
+  - The AI decides when to retreat with a data-driven threshold *(rec)*: the share of its
+    army lost, or the enemy outnumbering it by a set ratio.
+- **Destroying the city's HQ** also wins the battle and takes the city *(rec)*. The skirmish
+  mode keeps today's rule that destroying the HQ wins.
+
+### Rounds *(rec)*
+
+1. **Order.** Each round, every nation acts once, in a seeded order. Its choices:
+   - move an army along a road;
+   - attack an adjacent city;
+   - hold and heal;
+   - a diplomatic action.
+2. **Your battles are played.** Battles between two AI nations are **auto-resolved by the real
+   headless battle sim**, which is deterministic and already built. The survivors it reports
+   carry over exactly as yours do.
+3. **Taking a capital** absorbs the nation: its other cities go to the conqueror. You also gain
+   **its art**, meaning its speciality trait. You start with no art and end as the synthesis.
+   Traits stack, so C0 caps how many.
+
+### Diplomacy *(rec, refines the brief)*
+
+- **Standing.** Each pair of nations has a standing: Hostile, Neutral, Tied or Allied.
+- **Ally.**
+  - At most one ally at a time.
+  - Allies do not attack each other.
+  - An ally can be asked to attack a shared enemy.
+- **Betrayal.** Attacking your ally is possible, but every nation's standing towards you drops
+  one step.
+- **Destabilize.** This answers "2 diplomacy": you need **Tied standing with two nations**, and
+  you can then incite them to war with each other. Both armies bleed in auto-resolved battles.
+- **Notice.** Neighbours' hostility toward you grows with your size. At the start you are too
+  small to be a target, which is the guile fantasy. Once you grow, the map turns on you.
+
+### Win, lose and length *(rec)*
+
+- **Win:** domination. Every neighbour is conquered, allied, or reduced to no cities.
+- **Lose:** you lose your capital, or you have no army and no city able to raise one.
+- **Length:** 15–25 rounds, about 2–3 hours, since you play roughly one battle a round.
+
+### The nations (drafts; traits are intents, numbers come from the balance sim)
+
+Each nation's battle personality maps to a strategy script. Each nation also gets an
+Alloy-only stand-in trait, used until Biomass and Aether exist.
+
+**Your house: the synthesists**
+- **Art:** none. They practise the forbidden mix.
+- **Cities:** 1.
+- **Lean:** none. **Speciality:** **Synthesis**, a small bonus for units fighting beside units
+  of another domain. It rewards the mixed army the pentagon already wants.
+- **Alloy-only stand-in:** the same.
+- **Disposition:** everyone distrusts you, and the Forgeborn hate you.
+- **Look:** ash grey and ember.
+
+**Forgeborn: the zealots of Machine**
+- **Story:** led the condemnation of your house.
+- **Cities:** 4.
+- **Lean:** Foundry units are cheaper. **Speciality:** sturdier buildings and walls.
+- **Battle personality:** Bulwark and Sentinel, slow and defensive, they hold.
+- **Alloy-only stand-in:** Foundry units cost x% less Alloy.
+- **Disposition:** Hostile to you. They never ally with you until you are big enough to fear.
+- **Look:** iron and brass.
+
+**Verdant: the Flesh-shapers**
+- **Story:** took the largest share of your holdings.
+- **Cities:** 4.
+- **Lean:** Biomass grows faster. **Speciality:** Gene-Vats train faster.
+- **Battle personality:** swarms of Ripper and Ravager. They attack early and often.
+- **Alloy-only stand-in:** Gene-Vats train x% faster.
+- **Disposition:** greedy, and can be bought into an alliance.
+- **Look:** green and bone.
+
+**Aetherkin: the wardens of Energy**
+- **Story:** guard the ley-wells and fear another Rupture.
+- **Cities:** 3.
+- **Lean:** Aether is cheaper. **Speciality:** longer Arclight range.
+- **Battle personality:** few, deadly Arclights behind a screen.
+- **Alloy-only stand-in:** Arclight gets +x range.
+- **Disposition:** the most reasonable house. It can be Tied if you avoid the ley-wells.
+- **Look:** violet and white.
+
+**Tollmarch: the merchant city-state (minor, Machine-leaning)**
+- **Cities:** 2.
+- **Lean:** richer Alloy mines. **Speciality:** workers carry more.
+- **Battle personality:** turtle; economy first.
+- **Alloy-only stand-in:** +x worker carry.
+- **Disposition:** neutral to all. They sell alliances, and switch sides for a better offer.
+- **Look:** gold and blue.
+
+**The Ashen Reach: the Rupture remnant (minor)**
+- **Cities:** 2.
+- **Lean:** none. **Speciality:** scarred and defensive, with more building HP.
+- **Battle personality:** defensive.
+- **Alloy-only stand-in:** +x% building HP.
+- **Disposition:** may ally with you if you seek the truth of the Rupture. This is a story
+  thread.
+- **Look:** charcoal and red.
+
+### Still open (C0)
+
+- The names of your house and its capital.
+- **The General's role:** a pure commander, or one who also buffs nearby units (an aura)?
+- **Whether a General carries his own traits** (veteran Generals).
+- **Siege rules:** does the defender's city keep its damaged buildings between rounds?
+- **Trait caps** for absorbed arts.
+- **Data shape:** `nations.ron` and `campaign.ron`, with fields only.
+
 ## Fun hypothesis (what we're actually testing)
 
 **Hypothesis:** <e.g., "The counter pentagon + positioning produces meaningful tactical decisions in matches under 8 minutes, without economy micro dominating.">

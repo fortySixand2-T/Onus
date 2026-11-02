@@ -38,6 +38,12 @@ balanced and fun. B5 needs a human to play, and that hasn't happened yet. So:
 
 ## C0 — Nation and campaign design (paper; starts now)
 
+**Status (2026-11-02):** drafted in `DESIGN_BRIEF.md`, "Campaign design (C0 draft)" (F-052).
+The user decided three things: armies persist (survivors carry over, the dead are lost),
+nations hold cities and battles are fought over them, and a battle is won by killing the enemy
+General or by making the enemy retreat. The rest is a recommendation awaiting review. The
+boxes stay unticked until the user signs off.
+
 The output goes into `DESIGN_BRIEF.md`, the one source of truth. Each item is
 reviewed by the user, not by the critic, since this is design, not code.
 
@@ -47,7 +53,7 @@ reviewed by the user, not by the critic, since this is design, not code.
   - **Size:** what "size" means mechanically (see the map decision below).
   - **Trait package:** a domain lean plus a people speciality. Each is described by intent
     ("Machine units cost less"), with the number left for the balance sim. Each nation also
-    gets an Alloy-only stand-in trait, so C1 can ship before C2.
+    gets an Alloy-only stand-in trait, so C2 can ship before C3.
   - **Battle personality:** which strategy script the nation's AI plays and how it adapts.
     This reuses B1's strategies-as-data, so each nation is a `strategies.ron` entry plus
     traits.
@@ -58,7 +64,7 @@ reviewed by the user, not by the critic, since this is design, not code.
 - [ ] **Trait magnitude bounds.** This settles the brief's open question: how strong can a
   domain lean get before it distorts the pentagon? The proposed rule: no trait may move a
   pentagon link out of "holds", or a nation's cross-nation strength outside 35–65%. The
-  balance sim checks this from C1 on.
+  balance sim checks this from C2 on.
 - [ ] **Campaign map structure:**
   - Is a nation a single node, or a set of **cities or provinces** with a capital?
   - What does size control?
@@ -69,7 +75,7 @@ reviewed by the user, not by the critic, since this is design, not code.
   - Turn order.
   - How battles between two AI neighbours are decided. The proposal is to auto-resolve them
     with the real headless battle sim, which is deterministic and already built.
-- [ ] **What carries between rounds:** nothing, an economy bonus, surviving or veteran units,
+- [x] **What carries between rounds** (decided 2026-11-02: surviving units and their HP carry over; the dead are lost). The options were nothing, an economy bonus, surviving or veteran units,
   or captured cities' traits.
 - [ ] **Diplomacy rules:**
   - The ≤1-ally cap.
@@ -82,7 +88,7 @@ reviewed by the user, not by the critic, since this is design, not code.
   - The target campaign length in rounds and in hours.
 - [ ] **Data shape.** Sketch `assets/data/nations.ron` and `campaign.ron` from the decisions
   above. These are the fields only; no numbers.
-- [ ] Record the decisions in an F-entry, and update this plan's C1–C6 ACs to match.
+- [ ] Record the decisions in an F-entry, and update this plan's C1–C7 ACs to match.
 
 ### Draft roster, for the user to react to (not decided)
 
@@ -104,7 +110,27 @@ This draft follows the brief's fiction:
 
 ---
 
-## C1 — Nations in the 1v1, light traits on Alloy (after B5 Go)
+## C1 — Campaign battle rules in the 1v1 (after B5 Go)
+
+The user's decisions change the battle itself, so they come first. Every item is data-driven.
+A **skirmish** mode keeps today's rules exactly.
+
+- [ ] **The General:** a unit type in `units.ron`, one per side. When a side's General dies,
+  that side loses the battle.
+- [ ] **Retreat:** an `Order`. The side's units head for its entry edge, and the battle ends
+  as a retreat once the withdrawal finishes. The outcome records which units got off the
+  field.
+- [ ] **Battle setup from a roster.** A side can start with a given army (its General, its
+  units and their HP) and given buildings, instead of the skirmish start. The attacker and
+  defender setups are what C4 builds from campaign state.
+- [ ] **The battle outcome reports survivors:** each surviving unit's type and HP, per side.
+  C4 writes this back to the campaign.
+- [ ] **AI:** protects its General, and retreats on a data-driven threshold.
+- [ ] **Golden licence:** skirmish mode reproduces today's pinned results exactly.
+- [ ] **Balance:** the B3 gate runs on campaign-style battles (General plus retreat), and B5
+  is re-read with a human playing them.
+
+## C2 — Nations in the 1v1, light traits on Alloy (after B5 Go)
 
 - [ ] `nations.ron` holds the C0 roster. The sim applies traits as data-driven modifiers
   (costs, stats, times, carry), never as code per nation. Selection works through
@@ -116,7 +142,7 @@ This draft follows the brief's fiction:
   pentagon still holds under every nation pair. Tuning happens in RON only.
 - [ ] **Client:** pick a nation, and see the opponent's nation at a glance (P3).
 
-## C2 — The three-resource economy (Biomass grown, Aether channelled)
+## C3 — The three-resource economy (Biomass grown, Aether channelled)
 
 This is the brief's "first economic expansion after fun":
 - Biomass is passive and capped by storage.
@@ -124,11 +150,13 @@ This is the brief's "first economic expansion after fun":
 - Swap the Alloy-only stand-in traits for the real domain leans.
 - Re-run the balance and nation gates.
 
-## C3 — Campaign core (headless, render-free)
+## C4 — Campaign core (headless, render-free)
 
 - [ ] `src/campaign/` is a deterministic, seeded, render-free campaign state machine that
   owns its own state hash. It holds the map, the nations and their cities, ownership, rounds,
   and conquest.
+- [ ] **Armies persist:** survivors from each battle outcome return to their army, and the dead
+  are removed. Each held city adds a reinforcement levy every round.
 - [ ] A round launches a battle with `MatchSettings` built from campaign state: the nations,
   their traits and size, and the city being fought over.
 - [ ] Battles between two AI nations are auto-resolved by the headless battle sim.
@@ -137,7 +165,7 @@ This is the brief's "first economic expansion after fun":
   sometimes, and length should land on the C0 target. This is balance-as-backtesting, one
   layer up.
 
-## C4 — Diplomacy
+## C5 — Diplomacy
 
 - Alliance with the ≤1 cap.
 - Betrayal and its cost.
@@ -145,12 +173,12 @@ This is the brief's "first economic expansion after fun":
 - Diplomatic AI driven by each nation's disposition.
 - The campaign sim measures whether diplomacy is a choice or a dominant strategy.
 
-## C5 — Campaign client
+## C6 — Campaign client
 
 - The map screen, round flow, diplomacy screen, and the move into and out of battles.
 - Story beats from the hook: the Rupture, and the heir's vengeance, glory or legacy.
 
-## C6 — Campaign fun gate (human; like B5)
+## C7 — Campaign fun gate (human; like B5)
 
 - Play full campaigns.
 - Are the choices about who to fight, ally or turn against each other real?
