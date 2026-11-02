@@ -634,3 +634,5 @@
 - [2026-10-12] Modified: BUILD_PLAN.md, MVP_PLAN.md — M4c restatement says the one-in-four bound is per test, rounded up, not pooled (critic B4 finding 1)
 - [2026-10-12] Modified: FINDINGS.md — F-051 no longer says no assertion's meaning changed; the four restated tests change their claim (critic finding 2)
 - [2026-10-12] Modified: tests/b4_reservation.rs — comment marks the whole-script placement as measured, not asserted (critic finding 3)
+- [2026-11-02] Created: CAMPAIGN_PLAN.md — nations and campaign plan: C0 design on paper now, then C1–C6 (nations in the 1v1, three resources, campaign core, diplomacy, client, fun gate) after the B5 Go
+- [2026-11-02] Modified: DESIGN_BRIEF.md, BALANCE_PLAN.md — pointers to CAMPAIGN_PLAN.md

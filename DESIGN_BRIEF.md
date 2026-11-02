@@ -136,6 +136,8 @@ Design note: the 1-ally cap + destabilize is the intended flavor — you can't b
 
 Gated behind: the battle loop proving fun and the pentagon balancing first. None of this is built until then.
 
+**Plan:** `CAMPAIGN_PLAN.md` orders this work. C0 designs the nations and campaign rules on paper now, and building waits for the B5 Go.
+
 ## Fun hypothesis (what we're actually testing)
 
 **Hypothesis:** <e.g., "The counter pentagon + positioning produces meaningful tactical decisions in matches under 8 minutes, without economy micro dominating.">
