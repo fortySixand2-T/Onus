@@ -5940,3 +5940,33 @@ writes back onto its persistent armies and cities.
 
 **Not yet.** Veteran XP and kills per General are C4. Applying the report to a campaign army
 is C2.
+
+## F-058 — The battle AI: guard the General, retreat on a RON share, fight without a city (C1)
+
+**Context.** C1 AC7 says the AI protects its General and retreats on a data-driven
+threshold. The numbers are in `units.ron` `mvp_general_ai` (`guard_radius: 150.0`,
+`retreat_at_army_lost: 0.6`), as the brief sketches them. They are validated (radius finite
+and > 0, share in (0, 1]) and required wherever there are Generals.
+
+**Decisions.**
+- **Opt-in.** The commander reads `Option<Res<BattleState>>`. In a skirmish every new branch
+  is dead, and the script plays, RNG draws included, exactly as before. Steps 1–4 (mine,
+  workers, tech, army) moved verbatim into `economy()`. The wave step reads the same
+  snapshot as before.
+- **Retreat (step 0).** The commander keeps `peak_army`, the most combat units (roster units
+  with offense > 0; never a General or a gatherer) it has seen at one decision. Once
+  `(peak - now) * 1000 >= peak * retreat_milli` it issues `Order::Retreat` for its own side,
+  journals `AiAction::Retreat`, and from then on decides nothing (the withdrawal commands its
+  units). The comparison is integer, using thousandths rounded once from the RON float. Peak,
+  not the starting roster, is the yardstick: an army that grew and then lost 60% of its best
+  is beaten.
+- **Guard (step 5a).** If an enemy unit with offense > 0 (an enemy General counts; a worker
+  does not) is within `guard_radius` of one of its Generals, the first such General by
+  entity, the commander attack-moves its whole army onto him in place of this decision's
+  wave, and journals `AiAction::Guard { general, force }`.
+- **No city.** In a battle, a side with no HQ still guards and attacks. It cannot grow, so
+  its wave size is `min(attack_at_army, peak_army)`. With no enemy HQ, the wave goes for the
+  enemy's first General. A skirmish commander without an HQ still does nothing, as before.
+
+**Not yet.** The brief's other trigger, the enemy outnumbering it by a set ratio, is not
+built. The share-lost threshold is the one the AC names. A General does not move himself.

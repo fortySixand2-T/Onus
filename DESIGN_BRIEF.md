@@ -465,8 +465,9 @@ generals: [
     (id: "general_endurance", name: "Ash-Keeper",    speed: 4, offense: 4, defense: 7, armor: 4,
      aura: (radius: 200.0, modifiers: [ (stat: Regen, add: 1) ], scaling: Flat)),   // +1 HP per regen interval
 ],
-// Battle layout and the regen clock (C1).
-mvp_battle: (general_front: 80.0, formation_spacing: 30.0, regen_interval_ticks: 60),
+// Battle layout, the regen clock and the retreat edge (C1).
+mvp_battle: (general_front: 80.0, formation_spacing: 30.0, regen_interval_ticks: 60,
+             entry_edge_offset: 150.0, building_spacing: 160.0, formation_rank: 8),
 // Ranks scale the whole aura (C4). A replacement General starts at rank 0.
 general_ranks: [
     (xp: 0,  aura_mult: 1.00),

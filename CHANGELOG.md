@@ -687,3 +687,9 @@
 - [2026-11-02] Modified: src/sim/battle.rs — C1: battle report (SideReport, UnitReport, BuildingReport, GeneralFate), fielded Generals tracked
 - [2026-11-02] Created: tests/c1_report.rs — C1 AC6 tests: the outcome reports survivors
 - [2026-11-02] Modified: FINDINGS.md — F-057 the battle report
+- [2026-11-02] Modified: src/sim/ai.rs — C1: battle AI guards its General, retreats on the RON threshold, attacks without a city
+- [2026-11-02] Modified: src/sim/content.rs — C1: mvp_general_ai (GeneralAiDef) loaded, validated, fingerprinted
+- [2026-11-02] Modified: assets/data/units.ron — C1: mvp_general_ai guard_radius and retreat_at_army_lost
+- [2026-11-02] Modified: DESIGN_BRIEF.md — C1: mvp_battle sketch matches the RON
+- [2026-11-02] Created: tests/c1_ai.rs — C1 AC7 tests: the battle AI
+- [2026-11-02] Modified: FINDINGS.md — F-058 the battle AI

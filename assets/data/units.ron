@@ -184,4 +184,9 @@
         building_spacing: 160.0,   // a roster's buildings, in a line across the base
         formation_rank: 8,         // a roster's units per rank, behind the Generals
     ),
+    // The AI's battle behaviour around its General (C1).
+    mvp_general_ai: (
+        guard_radius: 150.0,       // an enemy fighter this near a General pulls the army onto him
+        retreat_at_army_lost: 0.6, // retreat once 60% of the most fighters it has fielded are lost
+    ),
 )

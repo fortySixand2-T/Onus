@@ -468,6 +468,27 @@ pub struct BattleDef {
     pub formation_rank: u32,
 }
 
+/// The AI's battle behaviour around its General (C1 AC7, `mvp_general_ai`).
+/// Only read in a campaign battle; a skirmish commander never touches it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeneralAiDef {
+    /// An enemy fighter this close to one of its Generals pulls its army
+    /// back onto him.
+    pub guard_radius: f32,
+    /// It retreats once it has lost this fraction, in (0, 1], of the most
+    /// fighters it has had on the field.
+    pub retreat_at_army_lost: f32,
+}
+
+impl GeneralAiDef {
+    /// [`GeneralAiDef::retreat_at_army_lost`] in thousandths, so the AI's
+    /// decision is integer arithmetic.
+    pub fn retreat_milli(&self) -> u32 {
+        (self.retreat_at_army_lost * 1000.0).round() as u32
+    }
+}
+
 // ---- file shapes -----------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -483,6 +504,8 @@ struct UnitsFile {
     generals: Vec<GeneralDef>,
     #[serde(default)]
     mvp_battle: Option<BattleDef>,
+    #[serde(default)]
+    mvp_general_ai: Option<GeneralAiDef>,
 }
 
 #[derive(Deserialize)]
@@ -528,6 +551,8 @@ pub struct Content {
     pub generals: Vec<GeneralDef>,
     /// Campaign-battle layout (C1); `None` in content with no campaign layer.
     pub battle: Option<BattleDef>,
+    /// The battle AI's numbers (C1); `None` in content with no campaign layer.
+    pub general_ai: Option<GeneralAiDef>,
 }
 
 // ---- content fingerprint ----------------------------------------------------
@@ -745,6 +770,7 @@ impl Content {
             economy: resources_file.mvp_economy,
             generals: units_file.generals,
             battle: units_file.mvp_battle,
+            general_ai: units_file.mvp_general_ai,
         };
         content.synthesise_general_units();
         content.validate()?;
@@ -1052,6 +1078,18 @@ impl Content {
             }
             if b.formation_rank == 0 {
                 return bad("mvp_battle formation_rank must be positive".to_string());
+            }
+        }
+        if !self.generals.is_empty() && self.general_ai.is_none() {
+            return bad("generals need an mvp_general_ai block".to_string());
+        }
+        if let Some(ai) = &self.general_ai {
+            if !(ai.guard_radius.is_finite() && ai.guard_radius > 0.0) {
+                return bad("mvp_general_ai guard_radius must be finite and positive".to_string());
+            }
+            let lost = ai.retreat_at_army_lost;
+            if !(lost.is_finite() && lost > 0.0 && lost <= 1.0) || ai.retreat_milli() == 0 {
+                return bad("mvp_general_ai retreat_at_army_lost must be in (0, 1]".to_string());
             }
         }
 
@@ -1451,6 +1489,11 @@ impl Content {
                 .f32(b.entry_edge_offset)
                 .f32(b.building_spacing)
                 .u32(b.formation_rank);
+        }
+        if let Some(ai) = &self.general_ai {
+            h.str("general_ai")
+                .f32(ai.guard_radius)
+                .f32(ai.retreat_at_army_lost);
         }
 
         let ids = |all: &[String]| {

@@ -148,7 +148,7 @@ A **skirmish** mode keeps today's rules exactly.
 - [x] **The battle outcome reports survivors:** each surviving unit's type and HP per side,
   every building's HP (siege damage persists), and whether each General survived.
   C4 writes this back to the campaign.
-- [ ] **AI:** protects its General, and retreats on a data-driven threshold.
+- [x] **AI:** protects its General, and retreats on a data-driven threshold.
 - [ ] **Golden licence:** skirmish mode reproduces today's pinned results exactly.
 - [ ] **Balance:** the B3 gate runs on campaign-style battles (General plus retreat), and B5
   is re-read with a human playing them.
