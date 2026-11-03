@@ -79,6 +79,7 @@ pub fn update_options_panel(
     selected_units: Query<&UnitKind, With<Selected>>,
     selected_buildings: Query<(&Building, &ProductionQueue), With<Selected>>,
     content: Res<Content>,
+    rules: Option<Res<crate::sim::nation::NationRules>>,
     stock: Res<Stockpiles>,
     state: Res<MatchState>,
     fixed: Res<Time<Fixed>>,
@@ -107,6 +108,7 @@ pub fn update_options_panel(
     }
 
     let alloy = format!("Alloy: {}", stock.alloy(PLAYER_FACTION));
+    let defs = crate::sim::nation::Defs::new(&content, rules.as_deref());
 
     // A selected building shows what it can train and its queue.
     if let Some((building, queue)) = selected_buildings.iter().next() {
@@ -116,7 +118,8 @@ pub fn update_options_panel(
                 .iter()
                 .enumerate()
                 .filter_map(|(i, id)| {
-                    let u = content.unit(id)?;
+                    // What the player's nation pays (C2), not the base price.
+                    let u = defs.roster_unit(PLAYER_FACTION, content.unit_index(id)?)?;
                     Some(format!("[{}] {} ({})", i + 1, u.name, u.mvp_alloy_cost))
                 })
                 .collect();
@@ -179,5 +182,84 @@ pub fn report_rates(time: Res<Time>, mut report: ResMut<RateReport>) {
         report.sim_ticks = 0;
         report.frames = 0;
         report.elapsed = 0.0;
+    }
+}
+
+// ---- nations (C2, P3) ---------------------------------------------------------
+
+/// The nation of `faction` as the player should see it: the sim's own
+/// [`NationRules`](crate::sim::nation::NationRules) once the match is playing,
+/// the client's pick before that.
+fn shown_nation(
+    pick: &NationPick,
+    rules: Option<&crate::sim::nation::NationRules>,
+    faction: Faction,
+) -> Option<usize> {
+    if pick.phase == PickPhase::Playing {
+        return rules.and_then(|r| r.nation_of(faction));
+    }
+    if faction == PLAYER_FACTION {
+        pick.player
+    } else {
+        pick.opponent
+    }
+}
+
+/// Write the two nation labels (name in the nation's colour) and the pick
+/// screen, which empties once the match is playing.
+pub fn update_nation_labels(
+    content: Res<Content>,
+    pick: Res<NationPick>,
+    rules: Option<Res<crate::sim::nation::NationRules>>,
+    mut labels: Query<(&NationLabel, &mut Text, &mut TextColor), Without<NationPicker>>,
+    mut picker: Query<&mut Text, With<NationPicker>>,
+) {
+    for (label, mut text, mut colour) in &mut labels {
+        let nation = shown_nation(&pick, rules.as_deref(), label.0);
+        text.0 = nation_label_text(&content, label.0, nation);
+        colour.0 = nation_color(&content, nation);
+    }
+    for mut text in &mut picker {
+        text.0 = if pick.phase == PickPhase::Picking {
+            picker_text(&content, &pick)
+        } else {
+            String::new()
+        };
+    }
+}
+
+/// Every building wears its side's nation colour (no nation: the neutral
+/// building colour, as before C2).
+pub fn tint_buildings(
+    content: Res<Content>,
+    pick: Res<NationPick>,
+    rules: Option<Res<crate::sim::nation::NationRules>>,
+    mut buildings: Query<(&Faction, &mut Sprite), With<Building>>,
+) {
+    for (faction, mut sprite) in &mut buildings {
+        let colour = nation_color(&content, shown_nation(&pick, rules.as_deref(), *faction));
+        if sprite.color != colour {
+            sprite.color = colour;
+        }
+    }
+}
+
+/// A ring in its nation's colour around every unit of a side that has one, so
+/// the opponent's army reads at a glance (units are filled by kind).
+pub fn draw_nation_marks(
+    mut gizmos: Gizmos,
+    content: Res<Content>,
+    rules: Option<Res<crate::sim::nation::NationRules>>,
+    units: Query<(&Position, &Faction, &UnitKind)>,
+) {
+    let Some(rules) = rules else { return };
+    for (pos, faction, kind) in &units {
+        if let Some(nation) = rules.nation_of(*faction) {
+            gizmos.circle_2d(
+                Isometry2d::from_translation(pos.0),
+                unit_size(*kind) * 0.75,
+                nation_color(&content, Some(nation)),
+            );
+        }
     }
 }

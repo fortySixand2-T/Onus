@@ -748,3 +748,11 @@
 - [2026-11-03] Created: tests/c2_batch.rs — C2 AC3: nation-axis fixtures, order, refusals, faithfulness, determinism, the binary
 - [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC3 ticked
 - [2026-11-03] Modified: FINDINGS.md — F-065: the batch runner's nation axis
+- [2026-11-03] Modified: src/client.rs — C2 AC5: NationPick, PickPhase, pick keys, cycle_nation, nation_name/color/label text, picker_text, run conditions, NationLabel/NationPicker markers
+- [2026-11-03] Modified: src/input.rs — C2 AC5: pick_nations (the pre-match nation pick keys)
+- [2026-11-03] Modified: src/setup.rs — C2 AC5: pick screen and labels, tick gate shut until start_match applies the pick
+- [2026-11-03] Modified: src/ui.rs — C2 AC5: nation labels, building tint, unit rings, train price at the player's nation cost
+- [2026-11-03] Modified: src/lib.rs — C2 AC5: add_nation_pick; order emitters wait for the start
+- [2026-11-03] Created: tests/c2_client.rs — C2 AC5: the nation pick and its display, headless
+- [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC5 ticked
+- [2026-11-03] Modified: FINDINGS.md — F-067: the client nation pick

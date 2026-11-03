@@ -6,6 +6,7 @@
 
 use bevy::prelude::*;
 
+use crate::sim::content::Content;
 use crate::sim::spatial::Faction;
 use crate::sim::{MatchOutcome, UnitKind};
 
@@ -104,6 +105,112 @@ pub fn unit_size(kind: UnitKind) -> f32 {
     }
 }
 
+// ---- the nation pick (C2) ----------------------------------------------------
+
+/// Keys of the pre-match nation pick: left/right cycle your nation, up/down
+/// the opponent's, Enter starts the match.
+pub const NATION_PREV_KEY: KeyCode = KeyCode::ArrowLeft;
+pub const NATION_NEXT_KEY: KeyCode = KeyCode::ArrowRight;
+pub const OPPONENT_PREV_KEY: KeyCode = KeyCode::ArrowDown;
+pub const OPPONENT_NEXT_KEY: KeyCode = KeyCode::ArrowUp;
+pub const START_KEY: KeyCode = KeyCode::Enter;
+
+/// What a side with no nation is called on screen.
+pub const NO_NATION: &str = "No nation";
+
+/// Where the pick is: choosing, chosen (Enter pressed, not yet applied), or
+/// playing (applied to the match; the keys do nothing any more).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PickPhase {
+    Picking,
+    Chosen,
+    Playing,
+}
+
+/// The nations the player has picked, as indices into `Content::nations`
+/// (`None`: no nation). **Client state**: the sim never reads it. Starting the
+/// match hands the choice to the sim's own setup (`sim::nation::install`) once,
+/// before the first tick; from then on what is shown is read off the sim.
+#[derive(Resource, Clone, Debug, PartialEq, Eq)]
+pub struct NationPick {
+    pub player: Option<usize>,
+    pub opponent: Option<usize>,
+    pub phase: PickPhase,
+}
+
+impl NationPick {
+    /// The launch pick: the first nation for you, the second for the opponent
+    /// (fewer nations: what there is, then no nation).
+    pub fn for_content(content: &Content) -> Self {
+        let n = content.nations.len();
+        Self {
+            player: (n > 0).then_some(0),
+            opponent: (n > 1).then_some(1),
+            phase: PickPhase::Picking,
+        }
+    }
+}
+
+/// The next (or previous) choice in the pick's cycle: no nation, then every
+/// nation in content order, then round again.
+pub fn cycle_nation(current: Option<usize>, count: usize, forward: bool) -> Option<usize> {
+    if count == 0 {
+        return None;
+    }
+    // Position in the cycle: 0 is no nation, k + 1 is nation k.
+    let len = count + 1;
+    let at = current.map_or(0, |k| k.min(count - 1) + 1);
+    let next = if forward { (at + 1) % len } else { (at + len - 1) % len };
+    next.checked_sub(1)
+}
+
+/// A nation's display name (`None`: [`NO_NATION`]).
+pub fn nation_name(content: &Content, nation: Option<usize>) -> &str {
+    nation
+        .and_then(|k| content.nations.get(k))
+        .map_or(NO_NATION, |n| n.name.as_str())
+}
+
+/// A nation's colour (P3), from `nations.ron`. No nation wears the neutral
+/// building colour, so a no-nation match looks as it did before C2.
+pub fn nation_color(content: &Content, nation: Option<usize>) -> Color {
+    nation
+        .and_then(|k| content.nations.get(k))
+        .map_or(BUILDING_COLOR, |n| {
+            let (r, g, b) = n.colour;
+            Color::linear_rgb(r, g, b)
+        })
+}
+
+/// The label a side wears on screen: who it is, and its nation.
+pub fn nation_label_text(content: &Content, faction: Faction, nation: Option<usize>) -> String {
+    let who = if faction == PLAYER_FACTION { "You" } else { "Opponent" };
+    format!("{who}: {}", nation_name(content, nation))
+}
+
+/// The pick screen's text.
+pub fn picker_text(content: &Content, pick: &NationPick) -> String {
+    format!(
+        "Choose your nation\n\
+         [Left/Right] You: {}\n\
+         [Down/Up] Opponent: {}\n\
+         [Enter] Start the match",
+        nation_name(content, pick.player),
+        nation_name(content, pick.opponent),
+    )
+}
+
+/// Run condition: the match has been started. True when there is no pick at
+/// all (an app without the pick screen plays as it always did).
+pub fn match_started(pick: Option<Res<NationPick>>) -> bool {
+    pick.is_none_or(|p| p.phase == PickPhase::Playing)
+}
+
+/// Run condition: Enter was pressed and the choice is waiting to be applied.
+pub fn nations_chosen(pick: Option<Res<NationPick>>) -> bool {
+    pick.is_some_and(|p| p.phase == PickPhase::Chosen)
+}
+
 // ---- components ------------------------------------------------------------
 
 /// Anything the cursor can pick (units and resource nodes).
@@ -118,6 +225,14 @@ pub struct Selected;
 /// UI marker for the on-screen options/status text.
 #[derive(Component)]
 pub struct OptionsPanel;
+
+/// UI marker: the name label of one side's nation (C2, P3).
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NationLabel(pub Faction);
+
+/// UI marker: the pre-match nation pick text.
+#[derive(Component)]
+pub struct NationPicker;
 
 // ---- resources -------------------------------------------------------------
 

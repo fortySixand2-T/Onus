@@ -6291,3 +6291,59 @@ isolating unit balance, and cross-nation matchups should test faction balance.
   House's 5, and the House mirror trains 5 and 5;
 - the nation matrix is read from relabelled records;
 - the binary plays and refuses as documented.
+
+## F-067 — The client picks the nations before the first tick, and shows them by colour and name (C2)
+
+**Context.** C2 AC5 asks for two things. The player picks a nation, and sees the opponent's
+nation at a glance (pillar P3: a colour plus a name label). The driver must stay thin: no sim
+logic in `src/ui.rs`, `src/input.rs` or `src/setup.rs`.
+
+**Decisions.**
+- **A pre-match pick, behind the sim's own tick gate.** `setup` inserts a client-side
+  `NationPick` and closes the `TickGate` (M6's gate; `may_tick` gates the whole chain). Nothing
+  is played while the player picks, so the match's tick 0 is still the first tick it plays.
+  - Left/Right cycles your nation and Down/Up the opponent's, through "No nation" and every
+    nation in content order.
+  - Enter marks the pick chosen. `input::pick_nations` only ever writes `NationPick`.
+- **Applying the pick is match setup, not an order.** `setup::start_match` is an exclusive
+  system that runs once, when the pick is chosen and before the first tick:
+  - it installs the nations through `sim::nation::install`, the same function a headless match
+    uses, so the start gets its side's HP pools;
+  - when the opponent has a nation, it gives the opponent's commander that nation's personality
+    (`NationDef::strategy`), seeded from `MATCH_SEED` as before;
+  - it opens the gate.
+  After that the pick is `Playing` and the keys do nothing. "No nation" on both sides inserts
+  no `NationRules` and keeps the default AI, which is the match as it was before C2.
+- **What is shown is read off the sim once playing.** The two labels (you top-left, the
+  opponent top-right) and the building tint read `NationRules::nation_of`; before the start they
+  show the pick. Colour is `nations.ron`'s `colour`. No nation wears the old neutral
+  `BUILDING_COLOR`. Units are filled by kind, so each unit of a side with a nation gets a ring in
+  its nation's colour (`ui::draw_nation_marks`, a `Gizmos` system).
+- **The train line prices what the player's nation pays.** It reads `Defs::roster_unit`, so a
+  Forgeborn foundry shows the discounted price.
+- **Order emitters wait for the start** (`client::match_started`). An order clicked during the
+  pick would otherwise queue for tick 1.
+- **One registration.** `add_nation_pick` is shared by `build_app` and the tests (F-004). The
+  pick's entities and resources are spawned **last** in `setup`, so nothing older moves in
+  allocation order (F-011). `critic_p2`'s ordering guard still holds.
+
+**Gates** (`tests/c2_client.rs`, 7 tests, under `MinimalPlugins` through the shipped `setup`,
+`add_nation_pick` and sim chain):
+- the cycle order and its wrap;
+- the match waits on the pick: the gate is shut, 30 frames play no tick, and there are no rules;
+- the picked nations are the match's nations, and the opponent's AI plays its personality;
+- Ashen Reach's HQ gets the traited pool;
+- once playing, the keys change nothing;
+- both labels carry name and nation colour, and the HQs wear it;
+- no nation on both sides is today's match;
+- the panel's train price is Forgeborn's.
+A mutation demo turned the building tint neutral and kept the default AI: two tests went red.
+
+**Needs a human on the Mac.** The layout and legibility of the labels and picker, whether the
+six colours tell the sides apart on the map, and the unit rings (gizmos need the render
+plugins). `cargo run` now opens on the pick screen; press Enter to play.
+
+**Known gap, not fixed here (outside C2 AC5's files).** The command log carries no nations.
+A replay written from a nation match would replay without its traits. The state hash includes
+the nations (tag 25), so a hash check would fail loudly at tick 0 rather than silently
+diverge.
