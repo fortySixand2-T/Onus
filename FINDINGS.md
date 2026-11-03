@@ -5749,3 +5749,21 @@ capital adds both cities and an army. C4 gains an AC for it.
 
 C1 now includes building HP in battle setup and outcome. C4 persists it.
 
+**Update 5 (2026-11-02):** the user made three decisions and rejected one rule.
+- **At most 3 absorbed Generals.**
+- **The rejected rule:** abstract "absorbed traits" (the draft's "gain its art") are dropped,
+  because holding a buff from conquest made no sense. Conquest grants the cities, plus a
+  General who carries the aura onto the field.
+- **More armies mean more Generals.** Several armies can converge on one battle to overwhelm
+  a defender. This replaces the draft's "one army per side".
+- **Moving takes turns, and mobility depends on unit type.** An army's march points per round
+  equal its slowest unit's Speed, the same stat the battle uses (Bulwark 2 to Ripper 9).
+  Roads have lengths. Heavy armies hit hard but arrive late.
+
+Two consequences:
+- A side loses a battle when all its Generals are dead.
+- Auras of different kinds stack, and auras of the same kind do not *(rec)*.
+
+The C0 data shape (`units.ron` additions, `nations.ron`, `campaign.ron`) is drafted in the
+brief, not in `assets/data`, so the shipped content and its fingerprint are untouched.
+

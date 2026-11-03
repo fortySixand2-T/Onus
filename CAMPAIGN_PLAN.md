@@ -87,7 +87,7 @@ reviewed by the user, not by the critic, since this is design, not code.
 - [ ] **Win, lose and length:**
   - Domination is the win condition, and the player's loss condition needs defining.
   - The target campaign length in rounds and in hours.
-- [ ] **Data shape.** Sketch `assets/data/nations.ron` and `campaign.ron` from the decisions
+- [x] **Data shape** (drafted 2026-11-02, `DESIGN_BRIEF.md` "Campaign data shape"). Sketch `assets/data/nations.ron` and `campaign.ron` from the decisions
   above. These are the fields only; no numbers.
 - [ ] Record the decisions in an F-entry, and update this plan's C1–C7 ACs to match.
 
@@ -118,6 +118,8 @@ A **skirmish** mode keeps today's rules exactly.
 
 - [ ] **The General:** a unit type in `units.ron`, one per side. When a side's General dies,
   that side loses the battle.
+- [ ] **Several Generals per side:** a battle can field more than one General per side, and
+  that side loses when **all** its Generals are dead (or it retreats).
 - [ ] **The General's aura:** friendly units within a radius get a bonus. Each General type
   carries its own aura, defined in RON as a radius plus a list of stat modifiers (offense,
   defense, armor, speed, attack interval, HP regeneration). The synthesists add a
@@ -168,7 +170,13 @@ This is the brief's "first economic expansion after fun":
   repair at a RON rate, destroyed buildings need rebuilding, and a conqueror inherits the
   damage.
 - [ ] **Absorbed Generals:** taking a capital gives the conqueror a new General with that
-  nation's aura, leading a new army. One General per army, and one army per side in a battle.
+  nation's aura, leading a new army, up to 3 absorbed Generals. No trait transfers.
+- [ ] **Army movement:** each round an army gets march points equal to its slowest unit's
+  Speed (plus the Logistics bonus). Roads have RON lengths and terrain multipliers, and
+  partial progress carries over.
+- [ ] **Converging armies:** every army that reaches a city in the round its battle starts
+  fights in it, so a battle can have several Generals per side. Auras of different kinds
+  stack; auras of the same kind do not.
 - [ ] **Armies persist:** survivors from each battle outcome return to their army, and the dead
   are removed. Each held city adds a reinforcement levy every round.
 - [ ] A round launches a battle with `MatchSettings` built from campaign state: the nations,
