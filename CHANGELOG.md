@@ -724,3 +724,5 @@
 - [2026-11-03] Modified: src/sim/battle.rs — C1 fix: spawn_roster debug_asserts the validated room for a rank
 - [2026-11-03] Modified: tests/c1_roster.rs — C1 fix: tight layout refused at load; the boundary layout keeps every unit on the field
 - [2026-11-03] Modified: FINDINGS.md — F-061 addendum: the layout guarantee is enforced at load
+- [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 heading: started 2026-11-03 ahead of B5 by user decision; gate section records the override
+- [2026-11-03] Modified: FINDINGS.md — F-062: C2 starts ahead of B5 by the user's decision

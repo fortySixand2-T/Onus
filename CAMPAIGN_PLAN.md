@@ -20,6 +20,8 @@ balanced and fun. B5 needs a human to play, and that hasn't happened yet. So:
 - **Overridden by the user (2026-11-02): "start c1 now, don't wait for b5".** C1 starts
   before the human play test. B5 still runs when the user can play, and its findings can
   revise C1 and later milestones.
+- **Overridden again by the user (2026-11-03): "start c2".** C2 also starts before the human
+  play test, on the same terms as C1 (FINDINGS F-062).
 - ~~**C1 onward waits for B5 Go.**~~ A B5 No-Go sends us back to the battle layer, and C0 is
   revised against what the play test found.
 
@@ -155,7 +157,7 @@ A **skirmish** mode keeps today's rules exactly.
   *(2026-11-02: the B3 half is done and recorded in FINDINGS F-060 (gate Fail on K1 and K3; K2 undetermined after F-061).
   The B5 human re-read is still open, so this box stays unticked.)*
 
-## C2 — Nations in the 1v1, light traits on Alloy (after B5 Go)
+## C2 — Nations in the 1v1, light traits on Alloy (started 2026-11-03, ahead of B5 by user decision)
 
 - [ ] `nations.ron` holds the C0 roster. The sim applies traits as data-driven modifiers
   (costs, stats, times, carry), never as code per nation. Selection works through

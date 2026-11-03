@@ -6159,3 +6159,18 @@ against 2 x 30) are unaffected. Gates in `tests/c1_roster.rs`:
   refused, and so is the near-boundary case 20 + 39.5 < 60.
 - `a_layout_exactly_two_spacings_deep_loads_and_keeps_every_unit_on_the_field`: 20 + 40 ==
   2 x 30 loads, and 1, 8 and 30 units all start at least one spacing inside the edge.
+
+## F-062 — C2 starts ahead of B5, by the user's decision (C2)
+
+**Context.** `CAMPAIGN_PLAN.md` gates C1 onward on B5 Go, the human play test, which has not
+run. The user overrode that gate for C1 on 2026-11-02 (F-052 onward). On 2026-11-03 the user
+said "start c2".
+
+**Decision.** C2 (nations in the 1v1, light traits on Alloy) starts now, on the same terms as
+C1: B5 still runs when the user can play, and its findings can revise C1, C2 and later
+milestones. The C2 heading in `CAMPAIGN_PLAN.md` now says "started 2026-11-03, ahead of B5 by
+user decision", and the plan's gate section records the override.
+
+**What this does not change.** C1's open AC (the B5 human re-read of campaign battles) stays
+open. Nothing in C2 re-pins a golden: the "no nation" default must reproduce today's results
+exactly (C2 AC2).
