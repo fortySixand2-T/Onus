@@ -645,3 +645,4 @@
 - [2026-11-02] Modified: DESIGN_BRIEF.md, CAMPAIGN_PLAN.md, FINDINGS.md — veteran Generals (rank strengthens aura) and persistent siege damage (repair, rebuild, inherited damage); C1/C4 ACs; F-052 update 4
 - [2026-11-02] Modified: DESIGN_BRIEF.md — max 3 absorbed Generals; absorbed traits dropped; several armies and Generals per battle; army march points from slowest unit Speed with road lengths; draft data shape for units.ron Generals, nations.ron and campaign.ron
 - [2026-11-02] Modified: CAMPAIGN_PLAN.md, FINDINGS.md, DESIGN_BRIEF.md — C1 multi-General battles (a side loses when all its Generals die), C4 movement and converging-army ACs, data shape ticked; F-052 update 5
+- [2026-11-02] Modified: DESIGN_BRIEF.md, CAMPAIGN_PLAN.md, FINDINGS.md — extra house Generals can be raised for a levy cost; nation perks apply only to own armies and cities; C4 AC; F-052 update 6

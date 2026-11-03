@@ -171,6 +171,8 @@ This is the brief's "first economic expansion after fun":
   damage.
 - [ ] **Absorbed Generals:** taking a capital gives the conqueror a new General with that
   nation's aura, leading a new army, up to 3 absorbed Generals. No trait transfers.
+- [ ] **Raised Generals:** a nation can raise extra Generals of its own house at a city, for a
+  RON levy cost. Nation perks apply only to the nation's own armies and cities.
 - [ ] **Army movement:** each round an army gets march points equal to its slowest unit's
   Speed (plus the Logistics bonus). Roads have RON lengths and terrain multipliers, and
   partial progress carries over.

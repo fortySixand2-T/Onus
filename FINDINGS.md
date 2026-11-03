@@ -5767,3 +5767,10 @@ Two consequences:
 The C0 data shape (`units.ron` additions, `nations.ron`, `campaign.ron`) is drafted in the
 brief, not in `assets/data`, so the shipped content and its fingerprint are untouched.
 
+**Update 6 (2026-11-02):** the user decided two more questions.
+- **Extra Generals of your own house can be raised** at a city, for a levy cost set in RON.
+- **Nation perks apply only to that nation's own armies and cities.** An absorbed General
+  brings his aura, but not his old nation's perks.
+
+C0's remaining open item is the names of the player's house and its capital.
+

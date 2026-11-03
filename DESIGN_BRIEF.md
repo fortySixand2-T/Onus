@@ -195,8 +195,8 @@ The layout is illustrative only; the exact adjacency is decided in the C4 data.
   2026-11-02)*. A nation's Generals are:
   - its own first General (for you, the heir);
   - up to **3 absorbed Generals** from conquered capitals (decided);
-  - *(rec)* additional Generals of its own house, raised at a city for a levy cost. These
-    carry the house's own aura.
+  - **additional Generals of its own house**, raised at a city for a levy cost *(decided by the
+    user, 2026-11-02; the cost is RON)*. These carry the house's own aura.
 
 ### Army movement on the map (decided: moving takes turns, and mobility depends on type)
 
@@ -353,6 +353,12 @@ The layout is illustrative only; the exact adjacency is decided in the C4 data.
 Each nation's battle personality maps to a strategy script. Each nation also gets an
 Alloy-only stand-in trait, used until Biomass and Aether exist.
 
+**Perks apply only to the nation's own armies** *(decided by the user, 2026-11-02)*. A nation's
+lean and speciality affect only armies that nation fields, and the cities it holds. They never
+transfer through conquest. An absorbed General brings his **aura** to your army, but not his
+old nation's perks: a Forgeborn General leading your army does not make your Foundry units
+cheaper.
+
 **Your house: the synthesists**
 - **Art:** none. They practise the forbidden mix.
 - **Cities:** 1.
@@ -415,11 +421,6 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 ### Still open (C0)
 
 - The names of your house and its capital.
-- Raising extra Generals of your own house: allowed, and at what cost? (The draft recommends
-  yes, for a levy cost.)
-- Do the nation **specialities** (Foundry units cheaper and so on) apply on the campaign map at
-  all, or only to that nation's own battles? (The draft: only to the nation's own armies and
-  cities.)
 
 ## Campaign data shape (C0 draft, 2026-11-02)
 
@@ -526,7 +527,7 @@ rejects one that tries.
     rules: (
         march_points: SlowestUnitSpeed,     // per round; Logistics adds its Speed bonus
         max_absorbed_generals: 3,
-        raise_general_cost: (alloy: 400),   // a house General, if allowed (open question)
+        raise_general_cost: (alloy: 400),   // a house General (decided: allowed)
         ally_cap: 1,
         betrayal_standing_drop: 1,
         destabilize_requires_tied: 2,
