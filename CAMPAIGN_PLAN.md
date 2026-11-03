@@ -161,6 +161,8 @@ This is the brief's "first economic expansion after fun":
 - [ ] `src/campaign/` is a deterministic, seeded, render-free campaign state machine that
   owns its own state hash. It holds the map, the nations and their cities, ownership, rounds,
   and conquest.
+- [ ] **Absorbed Generals:** taking a capital gives the conqueror a new General with that
+  nation's aura, leading a new army. One General per army, and one army per side in a battle.
 - [ ] **Armies persist:** survivors from each battle outcome return to their army, and the dead
   are removed. Each held city adds a reinforcement levy every round.
 - [ ] A round launches a battle with `MatchSettings` built from campaign state: the nations,

@@ -223,6 +223,17 @@ The layout is illustrative only; the exact adjacency is decided in the C4 data.
     | Tollmarch | **Logistics** | + move speed | arrives first, picks fights, gets out; strong for retreats |
     | The Ashen Reach | **Endurance** | slow HP regeneration | outlasts the enemy; survivors carry more HP between battles |
 
+  - **Absorbing an aura** *(decided by the user, 2026-11-02)*. When you take a nation's
+    capital, you gain **a new General carrying that nation's aura**, and he leads a new army
+    of your own. Taking each capital therefore adds a General and an army, so you can field
+    up to six. A Forgeborn General leads your Bulwark army; a Verdant one leads your Frenzy
+    army.
+    - *(rec)* **One General per army, and one army per side in a battle.** Auras never stack,
+      so the choice is which General to send, not how many.
+    - *(rec)* The new General's army starts small, raised from the conquered cities' levy.
+      An absorbed General who dies is replaced after N rounds, like the AI's Generals.
+    - The campaign sim must measure the snowball risk: each capital adds both cities and an
+      army.
     *(rec)* An aura changes stats only. It never touches the nemesis bonus, so the pentagon's
     hard counters stay intact. C2's balance gate checks every aura against the pentagon and
     the 35–65% strength band.
@@ -344,8 +355,6 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 - **Whether a General carries his own traits** (veteran Generals).
 - **Siege rules:** does the defender's city keep its damaged buildings between rounds?
 - **Trait caps** for absorbed arts.
-- **Absorbing an aura:** when you take a capital, do you also gain that nation's General aura?
-  This could come as a second General leading a second army.
 - **Data shape:** `nations.ron` and `campaign.ron`, with fields only.
 
 ## Fun hypothesis (what we're actually testing)

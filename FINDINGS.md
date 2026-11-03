@@ -5735,3 +5735,9 @@ Auras are RON stat-modifier lists and never touch the nemesis bonus, so the pent
 counters survive. The risk is that a strong aura becomes a nation's whole identity in balance
 terms. C2's gate measures each aura against the pentagon and the strength band.
 
+**Update 3 (2026-11-02):** the user decided that **taking a capital absorbs its aura with a
+second General.** The conqueror gains a General carrying that nation's aura, who leads a new
+army, up to six in total. The recommendation is one General per army and one army per side in
+a battle, so auras never stack. The campaign sim must measure the snowball risk, since each
+capital adds both cities and an army. C4 gains an AC for it.
+
