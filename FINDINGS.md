@@ -6250,3 +6250,44 @@ Naming no nation explicitly is the default, hash for hash.
   the mutation; the pinned state-hash goldens are what guard it.
 - `resolve` falls back to the content's second nation (Forgeborn) when none is named. Four of
   the five tests fail: skirmish, named strategies, campaign battle and the decided match.
+
+## F-065 — The batch runner's nation axis: mirror, cross and personality (C2)
+
+**Context.** C2 AC3 asks the batch runner for a nation axis. Mirror matchups should keep
+isolating unit balance, and cross-nation matchups should test faction balance.
+
+**Decisions.**
+- **A nation batch plays fixtures.** A fixture is a nation and a strategy per slot.
+  `batch::run_fixtures` plays each fixture on every seed in both orientations: seed-major, then
+  fixture order, then orientation. It runs sequentially, and checks every name before the first
+  match. `MatchRecord` is unchanged, so every older test and reader still holds. A
+  `NationRecord` carries the record plus the two nation ids.
+  `NationRecord::by_nation` relabels a record's rows by nation, so the nation matrix is read by
+  the same `WinMatrix` and gate arithmetic as the strategy matrix.
+- **Three axes** (`NationAxis`, all lists in content order, filters never reorder):
+  - **mirror**: each nation against itself, on every ordered strategy pair. The traits are
+    the same on both sides and cancel, so this is unit balance under each nation.
+  - **cross**: every ordered pair of different nations, on each strategy played by both
+    sides. The strategy is the control, so this is faction balance from the traits alone.
+  - **personality**: every ordered pair of different nations, each playing its own script
+    (`NationDef::strategy`). This is how a player meets them: traits and script together.
+- **The cross axis, not personality, is faction balance.** Personality strength is mostly
+  strategy strength: F-049's table has the `rush` row at about 11%, and rush is Verdant's
+  script. Trait tuning cannot fix that within C0's bounds, and base stats may not be retuned
+  for C2. Personality is played and reported beside the gate (F-066), but not gated.
+- **The `balance` binary** gains `--nations mirror|cross|personality` and
+  `--only-nations a,b`. It prints the tally, the nation matrix and the strategy matrix of the
+  same records. `--report` is refused with `--nations` (the report file belongs to the strategy
+  batch), and so is `--only-nations` without `--nations`.
+
+**Gates** (`tests/c2_batch.rs`, 12 tests):
+- fixture counts and order for each axis;
+- content order, and filters never reorder;
+- unknown names are refused before any match;
+- every row equals the same match played directly;
+- a re-run is identical;
+- the traitless House mirror equals the plain strategy batch, record for record;
+- traits are visible on the cross axis: Verdant on rush trains 6 rippers by tick 6 000 against
+  House's 5, and the House mirror trains 5 and 5;
+- the nation matrix is read from relabelled records;
+- the binary plays and refuses as documented.

@@ -27,6 +27,14 @@
 //!   touching the tracked tree). A DIR that does not load fails the run; it
 //!   never falls back to the shipped data. The report carries the content
 //!   fingerprint either way, so a scratch reading cannot pass as the shipped one.
+//! - `--nations AXIS` play the C2 nation axis instead: `mirror` (each nation
+//!   against itself, every strategy pair: unit balance under each nation),
+//!   `cross` (every ordered pair of different nations on the same strategy:
+//!   faction balance) or `personality` (every ordered pair of different
+//!   nations, each on its own script). `--only` still selects the strategies.
+//!   Prints the nation matrix beside the strategy matrix; `--report` is
+//!   refused with it (the report file is the strategy batch's).
+//! - `--only-nations a,b` restrict the nations; an unknown id is refused
 //! - `--help`         print this usage on stdout and exit successfully
 //!
 //! `--tick-cap` and `--minutes` set the same budget: **the last one on the
@@ -44,7 +52,7 @@
 
 use std::process::ExitCode;
 
-use onus::batch::{self, BatchSettings, MatchRecord, MatchResult, Tally};
+use onus::batch::{self, BatchSettings, MatchRecord, MatchResult, NationAxis, NationRecord, Tally};
 use onus::headless::{self, Orientation, SIM_HZ};
 use onus::metrics::WinMatrix;
 use onus::pentagon::PentagonReport;
@@ -58,7 +66,8 @@ fn usage() -> &'static str {
      --tick-cap and --minutes set the same budget: the last one given wins.\n\
      out-of-range values are refused, never truncated.\n\
      --report PATH also writes the machine-readable report (e.g. --report balance_report.ron; opt-in).\n\
-     --data DIR loads the content from DIR instead of the shipped assets/data (opt-in)."
+     --data DIR loads the content from DIR instead of the shipped assets/data (opt-in).\n\
+     --nations mirror|cross|personality plays the nation axis (C2); --only-nations a,b restricts it."
 }
 
 /// What the command line asked for. `--help` is a *request*, not an error: it
@@ -74,6 +83,10 @@ struct Run {
     report: Option<std::path::PathBuf>,
     /// `--data DIR`: the content directory, or `None` for the shipped one.
     data: Option<std::path::PathBuf>,
+    /// `--nations AXIS`: play the nation axis instead of the strategy batch.
+    nations: Option<NationAxis>,
+    /// `--only-nations a,b`: the nations it plays.
+    only_nations: Option<Vec<String>>,
 }
 
 /// Parse argv into a [`Request`]. Every flag is refused rather than guessed: a
@@ -84,6 +97,8 @@ fn parse(args: &[String]) -> Result<Request, String> {
     let mut settings = BatchSettings::default();
     let mut report = None;
     let mut data = None;
+    let mut nations = None;
+    let mut only_nations = None;
     let mut i = 0;
     while i < args.len() {
         let flag = args[i].as_str();
@@ -128,6 +143,16 @@ fn parse(args: &[String]) -> Result<Request, String> {
             }
             "--report" => report = Some(value()?.into()),
             "--data" => data = Some(value()?.into()),
+            "--nations" => {
+                let v = value()?;
+                nations = Some(NationAxis::parse(&v).ok_or_else(|| {
+                    format!("--nations: `{v}` is not mirror, cross or personality")
+                })?);
+            }
+            "--only-nations" => {
+                only_nations =
+                    Some(value()?.split(',').map(|s| s.trim().to_string()).collect())
+            }
             "--help" | "-h" => return Ok(Request::Help),
             other => return Err(format!("unknown flag `{other}`\n{}", usage())),
         }
@@ -139,10 +164,18 @@ fn parse(args: &[String]) -> Result<Request, String> {
     if settings.tick_cap == 0 {
         return Err("--tick-cap must be at least 1".to_string());
     }
+    if nations.is_some() && report.is_some() {
+        return Err("--report is the strategy batch's file; it is not written for --nations".to_string());
+    }
+    if nations.is_none() && only_nations.is_some() {
+        return Err("--only-nations needs --nations".to_string());
+    }
     Ok(Request::Run(Box::new(Run {
         settings,
         report,
         data,
+        nations,
+        only_nations,
     })))
 }
 
@@ -248,6 +281,8 @@ fn main() -> ExitCode {
         settings,
         report: report_path,
         data,
+        nations,
+        only_nations,
     } = settings;
     let loaded = match &data {
         Some(dir) => onus::sim::content::Content::load_from_dir(dir),
@@ -263,6 +298,9 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    if let Some(axis) = nations {
+        return run_nations(&content, &settings, axis, only_nations.as_deref());
+    }
     let roster = match batch::roster(&content, settings.only.as_deref()) {
         Ok(r) => r,
         Err(e) => {
@@ -422,5 +460,80 @@ fn main() -> ExitCode {
              balance — no matchup was decided."
         );
     }
+    ExitCode::SUCCESS
+}
+
+/// `--nations AXIS`: the C2 nation axis. Progress on stderr; on stdout the
+/// tally, the nation matrix (records relabelled by nation) and the strategy
+/// matrix of the same records.
+fn run_nations(
+    content: &onus::sim::content::Content,
+    settings: &BatchSettings,
+    axis: NationAxis,
+    only_nations: Option<&[String]>,
+) -> ExitCode {
+    let nations = match batch::nation_roster(content, only_nations) {
+        Ok(n) => n,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let strategies = match batch::roster(content, settings.only.as_deref()) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let fixtures = batch::nation_fixtures(content, axis, &nations, &strategies);
+    let total = fixtures.len() * settings.seeds as usize * Orientation::ALL.len();
+    eprintln!(
+        "balance --nations {}: {} nations, {} fixtures x {} seeds x {} orientations = {total} matches, cap {} ticks ({})",
+        axis.name(),
+        nations.len(),
+        fixtures.len(),
+        settings.seeds,
+        Orientation::ALL.len(),
+        settings.tick_cap,
+        mmss(settings.tick_cap),
+    );
+    let mut done = 0usize;
+    let records = match batch::run_fixtures(content, &fixtures, settings, &mut |r| {
+        done += 1;
+        eprintln!(
+            "[{done}/{total}] {} ({}) vs {} ({}) seed {} [{}] -> {:?} in {} ticks",
+            r.nations[0],
+            r.record.strategies[0],
+            r.nations[1],
+            r.record.strategies[1],
+            r.record.seed,
+            r.record.orientation.name(),
+            r.record.result,
+            r.record.ticks,
+        );
+    }) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let plain: Vec<MatchRecord> = records.iter().map(|r| r.record.clone()).collect();
+    let t = Tally::of(&plain);
+    println!(
+        "nations      axis {}, {} matches, A {} B {} draws {} timeouts {}",
+        axis.name(),
+        t.total,
+        t.wins[0],
+        t.wins[1],
+        t.mutual_losses,
+        t.timeouts
+    );
+    let by_nation: Vec<MatchRecord> = records.iter().map(NationRecord::by_nation).collect();
+    println!("nation matrix (rows and columns are nations)");
+    print_matrix(&WinMatrix::of(&by_nation));
+    println!("strategy matrix (the same records, by strategy)");
+    print_matrix(&WinMatrix::of(&plain));
     ExitCode::SUCCESS
 }

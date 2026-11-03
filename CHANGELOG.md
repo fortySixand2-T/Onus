@@ -743,3 +743,8 @@
 - [2026-11-03] Created: tests/c2_golden.rs — C2 AC2: a no-nation match plays identically with and without nations.ron
 - [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC2 ticked
 - [2026-11-03] Modified: FINDINGS.md — F-064: the C2 golden licence
+- [2026-11-03] Modified: src/batch.rs — C2 AC3: the nation axis (Fixture, NationAxis, NationRecord, nation_roster, nation_fixtures, run_fixtures, run_nation_batch)
+- [2026-11-03] Modified: src/bin/balance.rs — C2 AC3: --nations mirror|cross|personality and --only-nations, printing the nation matrix
+- [2026-11-03] Created: tests/c2_batch.rs — C2 AC3: nation-axis fixtures, order, refusals, faithfulness, determinism, the binary
+- [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC3 ticked
+- [2026-11-03] Modified: FINDINGS.md — F-065: the batch runner's nation axis

@@ -576,6 +576,259 @@ impl Tally {
     }
 }
 
+// ---- C2: the nation axis ----------------------------------------------------
+//
+// A nation batch plays **fixtures**: a nation and a strategy per slot. The
+// three [`NationAxis`] values are the three questions C2 asks of it:
+//
+// - [`NationAxis::Mirror`] — each nation against itself, on every ordered
+//   strategy pair. Both sides carry the same traits, so they cancel and the
+//   strategy matrix still reads **unit balance**, now under each nation.
+// - [`NationAxis::Cross`] — every ordered pair of distinct nations, on each
+//   strategy of the roster played by **both** sides. The strategy is the
+//   control, so what differs is the nations' traits: **faction balance**.
+// - [`NationAxis::Personality`] — every ordered pair of distinct nations,
+//   each playing its own battle personality (`NationDef::strategy`): traits
+//   and script together, as a player meets them.
+//
+// Same rules as [`run_batch`]: names in content (RON) order, `only` filters
+// never reorder, every fixture on every seed in both orientations, seed-major
+// then fixture order then orientation, sequential. A [`MatchRecord`] is
+// unchanged; a [`NationRecord`] carries it with the two nations.
+
+/// One slot of a [`Fixture`]: the nation and the strategy it plays.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Side {
+    pub nation: String,
+    pub strategy: String,
+}
+
+/// Who plays slot A (`[0]`) and slot B (`[1]`) in a nation-axis match.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Fixture {
+    pub sides: [Side; 2],
+}
+
+impl Fixture {
+    pub fn new(a: (&str, &str), b: (&str, &str)) -> Self {
+        let side = |(nation, strategy): (&str, &str)| Side {
+            nation: nation.to_string(),
+            strategy: strategy.to_string(),
+        };
+        Self {
+            sides: [side(a), side(b)],
+        }
+    }
+
+    /// The match this fixture is on `seed` in `orientation`, capped at `cap`.
+    pub fn settings(&self, seed: u64, orientation: Orientation, cap: u32) -> MatchSettings {
+        let [a, b] = &self.sides;
+        MatchSettings::default()
+            .with_seed(seed)
+            .with_strategies(&a.strategy, &b.strategy)
+            .with_nations(Some(&a.nation), Some(&b.nation))
+            .with_tick_cap(cap)
+            .with_orientation(orientation)
+    }
+}
+
+/// Which matchups a nation batch plays; see the section notes above.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NationAxis {
+    Mirror,
+    Cross,
+    Personality,
+}
+
+impl NationAxis {
+    pub const ALL: [NationAxis; 3] = [NationAxis::Mirror, NationAxis::Cross, NationAxis::Personality];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            NationAxis::Mirror => "mirror",
+            NationAxis::Cross => "cross",
+            NationAxis::Personality => "personality",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|a| a.name() == s)
+    }
+}
+
+/// A nation-axis match: the [`MatchRecord`] and who held each slot.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NationRecord {
+    /// Nation ids by faction slot, like [`MatchRecord::strategies`].
+    pub nations: [String; 2],
+    pub record: MatchRecord,
+}
+
+impl NationRecord {
+    /// Both slots hold the same nation.
+    pub fn is_mirror(&self) -> bool {
+        self.nations[0] == self.nations[1]
+    }
+
+    /// The record **labelled by nation**: its `strategies` replaced by the
+    /// nation ids. Every reader of [`MatchRecord`] keys its rows by those
+    /// labels ([`crate::metrics::WinMatrix`], the gate), so this is how a
+    /// nation matrix is read with the same, already-tested arithmetic.
+    pub fn by_nation(&self) -> MatchRecord {
+        MatchRecord {
+            strategies: self.nations.clone(),
+            ..self.record.clone()
+        }
+    }
+}
+
+/// Why a nation batch could not be played: a name the content does not have.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum NationBatchError {
+    Strategy(UnknownStrategy),
+    Nation(String),
+}
+
+impl std::fmt::Display for NationBatchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            NationBatchError::Strategy(e) => write!(f, "{e}"),
+            NationBatchError::Nation(id) => write!(f, "unknown nation `{id}`"),
+        }
+    }
+}
+
+impl std::error::Error for NationBatchError {}
+
+impl From<UnknownStrategy> for NationBatchError {
+    fn from(e: UnknownStrategy) -> Self {
+        NationBatchError::Strategy(e)
+    }
+}
+
+/// The nation ids a batch plays, in content (RON) order. `only` is a filter,
+/// never an ordering; an id the content does not have is refused.
+pub fn nation_roster(
+    content: &Content,
+    only: Option<&[String]>,
+) -> Result<Vec<String>, NationBatchError> {
+    if let Some(only) = only {
+        if let Some(bad) = only.iter().find(|id| !content.nations.iter().any(|n| &n.id == *id)) {
+            return Err(NationBatchError::Nation(bad.clone()));
+        }
+    }
+    Ok(content
+        .nations
+        .iter()
+        .filter(|n| only.is_none_or(|o| o.iter().any(|id| id == &n.id)))
+        .map(|n| n.id.clone())
+        .collect())
+}
+
+/// The fixtures of `axis` over `nations` and `strategies` (both already in
+/// content order, e.g. from [`nation_roster`] and [`roster`]): nation-major,
+/// then strategy. [`NationAxis::Personality`] ignores `strategies`.
+pub fn nation_fixtures(
+    content: &Content,
+    axis: NationAxis,
+    nations: &[String],
+    strategies: &[String],
+) -> Vec<Fixture> {
+    let mut out = Vec::new();
+    match axis {
+        NationAxis::Mirror => {
+            for n in nations {
+                for a in strategies {
+                    for b in strategies {
+                        out.push(Fixture::new((n, a), (n, b)));
+                    }
+                }
+            }
+        }
+        NationAxis::Cross => {
+            for na in nations {
+                for nb in nations.iter().filter(|nb| *nb != na) {
+                    for s in strategies {
+                        out.push(Fixture::new((na, s), (nb, s)));
+                    }
+                }
+            }
+        }
+        NationAxis::Personality => {
+            let personality = |id: &str| {
+                content
+                    .nations
+                    .iter()
+                    .find(|n| n.id == id)
+                    .map(|n| n.strategy.clone())
+                    .unwrap_or_default()
+            };
+            for na in nations {
+                for nb in nations.iter().filter(|nb| *nb != na) {
+                    out.push(Fixture::new((na, &personality(na)), (nb, &personality(nb))));
+                }
+            }
+        }
+    }
+    out
+}
+
+/// Play `fixtures` on each of `settings.seeds` derived seeds, both
+/// orientations: seed-major, then fixture order, then orientation.
+/// `settings.only` is not read here (the fixtures name their strategies).
+/// Every name is checked before the first match is played.
+pub fn run_fixtures(
+    content: &Content,
+    fixtures: &[Fixture],
+    settings: &BatchSettings,
+    progress: &mut dyn FnMut(&NationRecord),
+) -> Result<Vec<NationRecord>, NationBatchError> {
+    for side in fixtures.iter().flat_map(|f| f.sides.iter()) {
+        if !content.nations.iter().any(|n| n.id == side.nation) {
+            return Err(NationBatchError::Nation(side.nation.clone()));
+        }
+        if content.strategy_index(&side.strategy).is_none() {
+            return Err(NationBatchError::Strategy(UnknownStrategy {
+                id: side.strategy.clone(),
+                faction: None,
+            }));
+        }
+    }
+    let mut records =
+        Vec::with_capacity(fixtures.len() * settings.seeds as usize * Orientation::ALL.len());
+    for k in 0..settings.seeds {
+        let seed = seed_at(settings.seed_base, k);
+        for fixture in fixtures {
+            for orientation in Orientation::ALL {
+                let s = fixture.settings(seed, orientation, settings.tick_cap);
+                let record = NationRecord {
+                    nations: [fixture.sides[0].nation.clone(), fixture.sides[1].nation.clone()],
+                    record: run_match(content, &s)?,
+                };
+                progress(&record);
+                records.push(record);
+            }
+        }
+    }
+    Ok(records)
+}
+
+/// A nation batch: [`nation_fixtures`] of `axis` over the nations `nations`
+/// selects and the strategies `settings.only` selects, played by
+/// [`run_fixtures`].
+pub fn run_nation_batch(
+    content: &Content,
+    settings: &BatchSettings,
+    nations: Option<&[String]>,
+    axis: NationAxis,
+    progress: &mut dyn FnMut(&NationRecord),
+) -> Result<Vec<NationRecord>, NationBatchError> {
+    let nations = nation_roster(content, nations)?;
+    let strategies = roster(content, settings.only.as_deref())?;
+    let fixtures = nation_fixtures(content, axis, &nations, &strategies);
+    run_fixtures(content, &fixtures, settings, progress)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
