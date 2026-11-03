@@ -6292,7 +6292,7 @@ isolating unit balance, and cross-nation matchups should test faction balance.
 - the nation matrix is read from relabelled records;
 - the binary plays and refuses as documented.
 
-## F-066 — The nation gate: it runs, and it reads Fail. Tollmarch's +1 carry is +50% income (C2)
+## F-066 — The nation gate: it runs, and it reads Fail. Tollmarch's +1 carry is +50% per trip (C2)
 
 **Context.** C2 AC4 asks for a nation criterion with two parts. Each nation's cross-nation
 strength must be 35–65%, and the pentagon must still hold under every nation pair. Tuning
@@ -6350,15 +6350,16 @@ ashen_reach    54   33   43   41    2   --
 
 *The pentagon under every nation pair* (gated): 2 seeds, 1 440 matches, 68 timeouts, 4 888 s.
 Result: **FAIL**.
-- It fails in exactly the six pairs where **Tollmarch is the prey**. There, rav>sen reads 0%
-  (8/8 decided against the predator) in every pair, and sen>rip reads 0% in five of the six.
-  Out-gathering by half again overturns a hard counter.
-- With Tollmarch as the predator, every link holds.
+- It fails in exactly the five pairs where **Tollmarch is the prey of another nation**. There,
+  rav>sen reads 0% (8/8 decided against the predator) in every pair, and sen>rip reads 0% in
+  four of the five (it holds under Forgeborn). Out-gathering by half again overturns a hard
+  counter.
+- With Tollmarch as the predator, and in the Tollmarch mirror, every link holds.
 - Every other link holds in every other pair, except **sen>rip**. That link is undetermined
-  (4 decided, 4 timeouts; 3/5 with Ashen Reach as predator) in 17 pairs, including the
+  (4 decided, 4 timeouts; 3/5 with Ashen Reach as predator) in 16 pairs, including the
   traitless House/House mirror. This is F-049's baseline sen>rip, which no trait causes and
   no trait can fix.
-- Pairs with every link holding: 13 of 36.
+- Pairs with every link holding: 15 of 36 (5 Fail, 16 undetermined).
 
 *Personality strength* (reported, not gated): 2 seeds, 120 matches, 1 timeout, 316 s.
 - House 37.1%, Forgeborn 80.0%, Verdant 20.0%, Aetherkin 62.5%, Tollmarch 77.5%, Ashen Reach
@@ -6368,7 +6369,7 @@ Result: **FAIL**.
 **Why it cannot pass by magnitudes alone.** No tuning was made, so `nations.ron` is unchanged.
 - **Tollmarch.** The brief fixes its stand-in as "+x worker carry", and `CarryCapacity` is an
   integer `add`. F-029 cut base carry from 10 to 2, so the smallest non-zero x (+1) is a 50%
-  larger load per trip. That is the 94.7% row and the six broken pentagons. The only smaller
+  larger load per trip. That is the 94.7% row and the five broken pentagons. The only smaller
   magnitude is 0, which deletes the perk. Getting under the band needs a decision outside
   "tune the magnitude":
   - express "workers carry more" as a `GatherTicks` `mul` (a fine-grained income lever);
