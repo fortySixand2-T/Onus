@@ -5778,3 +5778,9 @@ capital, and **the Heir of Vael** for its first General. C0 has no open question
 boxes are ticked, and the *(rec)* items stand unless the user changes them. Next is C1
 (campaign battle rules), which waits for the B5 Go.
 
+**Update 8 (2026-11-02): the B5 wait is lifted.** The user said: "start c1 now, don't wait for
+b5". So C1, the campaign battle rules, begins before the human fun check. B5 stays open and
+still runs when the user can play. If it finds the core loop flat, that can revise C1 and
+everything after it. This is a recorded exception to `BALANCE_PLAN.md`'s B5 Go/No-Go, not a
+removal of it.
+

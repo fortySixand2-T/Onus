@@ -17,7 +17,10 @@ Same rules as BUILD_PLAN and BALANCE_PLAN:
 balanced and fun. B5 needs a human to play, and that hasn't happened yet. So:
 
 - **C0 (design on paper) starts now.** It builds nothing.
-- **C1 onward waits for B5 Go.** A B5 No-Go sends us back to the battle layer, and C0 is
+- **Overridden by the user (2026-11-02): "start c1 now, don't wait for b5".** C1 starts
+  before the human play test. B5 still runs when the user can play, and its findings can
+  revise C1 and later milestones.
+- ~~**C1 onward waits for B5 Go.**~~ A B5 No-Go sends us back to the battle layer, and C0 is
   revised against what the play test found.
 
 ## Starting point (2026-11-02)
@@ -53,7 +56,7 @@ plus "Campaign data shape" (F-052, updates 1–7). The user's decisions:
 - perks apply only to a nation's own armies.
 
 The names (House Vael, Cinderhold) were delegated to me. Items marked *(rec)* stand as the
-design unless the user changes them. C1 waits for the B5 Go.
+design unless the user changes them. C1 started 2026-11-02 by the user's decision, ahead of B5.
 
 The output goes into `DESIGN_BRIEF.md`, the one source of truth. Each item is
 reviewed by the user, not by the critic, since this is design, not code.
@@ -122,7 +125,7 @@ This draft follows the brief's fiction:
 
 ---
 
-## C1 — Campaign battle rules in the 1v1 (after B5 Go)
+## C1 — Campaign battle rules in the 1v1 (started 2026-11-02, ahead of B5 by user decision)
 
 The user's decisions change the battle itself, so they come first. Every item is data-driven.
 A **skirmish** mode keeps today's rules exactly.

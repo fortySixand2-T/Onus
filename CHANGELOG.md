@@ -647,3 +647,4 @@
 - [2026-11-02] Modified: CAMPAIGN_PLAN.md, FINDINGS.md, DESIGN_BRIEF.md — C1 multi-General battles (a side loses when all its Generals die), C4 movement and converging-army ACs, data shape ticked; F-052 update 5
 - [2026-11-02] Modified: DESIGN_BRIEF.md, CAMPAIGN_PLAN.md, FINDINGS.md — extra house Generals can be raised for a levy cost; nation perks apply only to own armies and cities; C4 AC; F-052 update 6
 - [2026-11-02] Modified: DESIGN_BRIEF.md, CAMPAIGN_PLAN.md, FINDINGS.md — names chosen (House Vael, Cinderhold, Heir of Vael); C0 closed and ticked; F-052 update 7
+- [2026-11-02] Modified: CAMPAIGN_PLAN.md, FINDINGS.md — user lifts the B5 wait: C1 starts now, and B5 still runs later (F-052 update 8)
