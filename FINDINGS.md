@@ -5821,6 +5821,14 @@ golden licence (AC8) asks that the default skirmish reproduce today's pinned has
 **Not yet.** Replaying a battle from a `CommandLog` is not supported: the log does not carry
 the `BattleSetup` (that belongs to C4's campaign state).
 
+**Addendum (AC2, several Generals per side).** `BattleSetup::with_general` may be called
+more than once per side. The Generals stand in a line across the front, centred on the
+single-General spot and spaced `mvp_battle.formation_spacing` apart, in setup order. A side loses
+on `GeneralsFell` only when **all** of its fielded Generals are gone. Bevy 0.19 entity bits are
+not spawn order, so the sim never relies on spawn order for an outcome (the report's General
+fates are in setup order, and everything else is sorted by `SimId`), and the tests find
+Generals by definition or position, never by entity.
+
 ## F-054 — Auras: a per-tick bonus field, integer rules, kinds stack and one kind does not (C1)
 
 **Context.** C1 AC3: each General type carries a RON aura (a radius plus stat modifiers);
@@ -5956,14 +5964,18 @@ and > 0, share in (0, 1]) and required wherever there are Generals.
 - **Retreat (step 0).** The commander keeps `peak_army`, the most combat units (roster units
   with offense > 0; never a General or a gatherer) it has seen at one decision. Once
   `(peak - now) * 1000 >= peak * retreat_milli` it issues `Order::Retreat` for its own side,
-  journals `AiAction::Retreat`, and from then on decides nothing (the withdrawal commands its
+  journals `BattleAiAction::Retreat`, and from then on decides nothing (the withdrawal commands its
   units). The comparison is integer, using thousandths rounded once from the RON float. Peak,
   not the starting roster, is the yardstick: an army that grew and then lost 60% of its best
   is beaten.
 - **Guard (step 5a).** If an enemy unit with offense > 0 (an enemy General counts; a worker
   does not) is within `guard_radius` of one of its Generals, the first such General by
   entity, the commander attack-moves its whole army onto him in place of this decision's
-  wave, and journals `AiAction::Guard { general, force }`.
+  wave, and journals `BattleAiAction::Guard { general, force }`.
+- **A journal of its own.** Guard and retreat go to `BattleAiJournal` (`BattleAiAction`),
+  inserted only by `battle::install`, not as new `AiAction` variants. The skirmish action
+  trace and every exhaustive match over `AiAction` stay as they were, and a skirmish world
+  holds no extra resource (critic_p2's allocation order).
 - **No city.** In a battle, a side with no HQ still guards and attacks. It cannot grow, so
   its wave size is `min(attack_at_army, peak_army)`. With no enemy HQ, the wave goes for the
   enemy's first General. A skirmish commander without an HQ still does nothing, as before.

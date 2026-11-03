@@ -387,6 +387,7 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
     state.fielded = fielded;
     world.insert_resource(state);
     world.insert_resource(AuraField::default());
+    world.insert_resource(crate::sim::ai::BattleAiJournal::default());
 }
 
 // ---- state -----------------------------------------------------------------
@@ -1011,7 +1012,7 @@ pub fn regen(
     let Some(b) = &content.battle else {
         return;
     };
-    if state.tick() % b.regen_interval_ticks != 0 {
+    if !state.tick().is_multiple_of(b.regen_interval_ticks) {
         return;
     }
     for (e, bonus) in field.iter() {

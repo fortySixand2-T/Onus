@@ -20,7 +20,9 @@ pub mod pathfind;
 pub mod replay;
 pub mod spatial;
 pub mod victory;
-pub use ai::{AiAction, AiCommander, AiCommanders, AiJournal, UnknownStrategy};
+pub use ai::{
+    AiAction, AiCommander, AiCommanders, AiJournal, BattleAiAction, BattleAiJournal, UnknownStrategy,
+};
 pub use combat::{AttackCooldown, Casualties, Engaging, Health, Target};
 pub use content::Content;
 pub use economy::{

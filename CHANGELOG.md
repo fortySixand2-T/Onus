@@ -693,3 +693,13 @@
 - [2026-11-02] Modified: DESIGN_BRIEF.md — C1: mvp_battle sketch matches the RON
 - [2026-11-02] Created: tests/c1_ai.rs — C1 AC7 tests: the battle AI
 - [2026-11-02] Modified: FINDINGS.md — F-058 the battle AI
+- [2026-11-02] Modified: src/sim/ai.rs — C1: guard and retreat journaled in their own BattleAiJournal (BattleAiAction); AiAction unchanged
+- [2026-11-02] Modified: src/sim/mod.rs — C1: export BattleAiAction, BattleAiJournal
+- [2026-11-02] Modified: src/sim/battle.rs — C1: install inserts BattleAiJournal; regen check uses is_multiple_of (clippy)
+- [2026-11-02] Modified: src/sim/content.rs — C1: AuraStat doc lines reworded (clippy doc_lazy_continuation)
+- [2026-11-02] Modified: tests/c1_several_generals.rs — C1: Generals identified by line position, not entity order
+- [2026-11-02] Modified: tests/c1_roster.rs — C1: units and buildings identified by def and position, not entity order
+- [2026-11-02] Modified: tests/c1_report.rs — C1: General fates checked by def; expect_err
+- [2026-11-02] Modified: tests/c1_ai.rs — C1: read the BattleAiJournal; expect_err
+- [2026-11-02] Modified: tests/c1_general.rs — C1: expect_err (clippy)
+- [2026-11-02] Modified: FINDINGS.md — F-053 addendum (several Generals), F-058 BattleAiJournal

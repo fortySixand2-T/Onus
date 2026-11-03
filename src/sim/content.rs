@@ -386,18 +386,18 @@ pub struct GeneralDef {
 /// in the RON is a load error (an unknown variant), not a rule enforced later.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub enum AuraStat {
-    /// + design points of Offense (damage per hit).
+    /// Adds design points of Offense (damage per hit).
     Offense,
-    /// + design points of Defense: incoming damage is scaled by
+    /// Adds design points of Defense: incoming damage is scaled by
     /// `defense / (defense + bonus)` (the HP pool itself never changes).
     Defense,
-    /// + design points of Armor (flat mitigation per hit).
+    /// Adds design points of Armor (flat mitigation per hit).
     Armor,
-    /// + design points of Speed.
+    /// Adds design points of Speed.
     Speed,
     /// × the attack interval (`mul` < 1 attacks faster).
     AttackTicks,
-    /// + HP every `mvp_battle.regen_interval_ticks`.
+    /// Adds HP every `mvp_battle.regen_interval_ticks`.
     Regen,
 }
 

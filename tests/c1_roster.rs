@@ -82,15 +82,17 @@ fn a_roster_side_starts_with_exactly_its_roster_and_no_skirmish_start() {
         .with_general(Faction::B, "general_bulwark");
     let mut app = quiet(setup);
     let a = units_of(&mut app, Faction::A);
-    let ids: Vec<&str> = a.iter().map(|u| c.units[u.1].id.as_str()).collect();
-    assert_eq!(ids, ["ravager", "ripper", "bulwark", "arclight"], "no skirmish workers");
+    let mut ids: Vec<&str> = a.iter().map(|u| c.units[u.1].id.as_str()).collect();
+    ids.sort();
+    assert_eq!(ids, ["arclight", "bulwark", "ravager", "ripper"], "no skirmish workers");
     for (_, d, _, h) in &a {
         let full = Health::from_def(&c, *d).max;
         assert_eq!(h.max, full);
         let want = if c.units[*d].id == "ripper" { 11 } else { full };
         assert_eq!(h.current, want, "{}", c.units[*d].id);
     }
-    let b = buildings_of(&mut app, Faction::A);
+    let mut b = buildings_of(&mut app, Faction::A);
+    b.sort_by_key(|x| c.buildings[x.1].id != "hq");
     let ids: Vec<&str> = b.iter().map(|x| c.buildings[x.1].id.as_str()).collect();
     assert_eq!(ids, ["hq", "foundry"], "the roster's buildings, and no other HQ");
     let hq_pool = Health::from_building_def(&c, b[0].1).max;
@@ -122,28 +124,35 @@ fn a_roster_stands_in_ranks_behind_its_generals_and_its_buildings_in_a_line() {
         .with_roster(Faction::A, roster);
     let mut app = quiet(setup);
     let (_, gpos) = general_of(&mut app, Faction::A);
-    let b = buildings_of(&mut app, Faction::A);
+    // The roster's first building (the HQ) stands on the base.
+    let mut b = buildings_of(&mut app, Faction::A);
+    b.sort_by_key(|x| c.buildings[x.1].id != "hq");
     let base = b[0].2;
     // The front points from A's base towards the General.
     let front = (gpos - base).normalize();
     let u = units_of(&mut app, Faction::A);
     assert_eq!(u.len(), n);
     let depth = |p: Vec2| (p - base).dot(front);
-    let first: Vec<_> = u[..rank].iter().map(|x| x.2).collect();
-    let second: Vec<_> = u[rank..].iter().map(|x| x.2).collect();
-    for p in &first {
-        assert!((depth(*p) - (depth(gpos) - battle.formation_spacing)).abs() < 1e-3);
-    }
-    for p in &second {
-        assert!((depth(*p) - (depth(gpos) - 2.0 * battle.formation_spacing)).abs() < 1e-3);
-    }
+    let across = |p: Vec2| (p - base).perp_dot(front);
+    let in_rank = |r: f32| {
+        let mut row: Vec<Vec2> = u
+            .iter()
+            .map(|x| x.2)
+            .filter(|p| (depth(*p) - (depth(gpos) - r * battle.formation_spacing)).abs() < 1e-3)
+            .collect();
+        row.sort_by(|a, b| across(*a).total_cmp(&across(*b)));
+        row
+    };
+    let (first, second) = (in_rank(1.0), in_rank(2.0));
+    assert_eq!((first.len(), second.len()), (rank, n - rank), "a full rank, then the rest");
     for row in [&first, &second] {
         for w in row.windows(2) {
             assert!((w[0].distance(w[1]) - battle.formation_spacing).abs() < 1e-3);
         }
+        let mid = row.iter().map(|p| across(*p)).sum::<f32>() / row.len() as f32;
+        assert!(mid.abs() < 1e-3, "each rank is centred on the base's axis");
     }
     // Buildings: the first on the base, the rest either side, a spacing apart.
-    let across = |p: Vec2| (p - base).perp_dot(front);
     assert!(depth(b[1].2).abs() < 1e-3 && depth(b[2].2).abs() < 1e-3);
     assert!((across(b[1].2).abs() - battle.building_spacing).abs() < 1e-3);
     assert!((across(b[2].2).abs() - battle.building_spacing).abs() < 1e-3);
@@ -185,8 +194,7 @@ fn a_bad_roster_is_refused_before_anything_spawns() {
     for (roster, want) in cases {
         let setup = BattleSetup::default().with_roster(Faction::B, roster);
         let err = headless::battle(content(), &MatchSettings::default().with_battle(setup))
-            .err()
-            .expect("refused");
+            .expect_err("refused");
         assert_eq!(err, MatchSetupError::Battle(want));
     }
 }

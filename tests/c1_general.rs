@@ -229,8 +229,7 @@ fn a_general_cannot_be_trained() {
 fn a_battle_naming_an_unknown_general_is_refused_before_anything_spawns() {
     let setup = BattleSetup::default().with_general(Faction::B, "general_nobody");
     let err = headless::battle(content(), &MatchSettings::default().with_battle(setup))
-        .err()
-        .expect("refused");
+        .expect_err("refused");
     assert_eq!(
         err,
         MatchSetupError::Battle(BattleSetupError::UnknownGeneral {

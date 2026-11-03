@@ -55,12 +55,35 @@ pub enum AiAction {
     /// Sent `force` combat units at the enemy HQ (in a battle with no enemy
     /// HQ, at the enemy's first General).
     Attack { dest: Vec2, force: u32 },
-    /// Campaign battle (C1): pulled `force` combat units back onto its
-    /// `general`, who had an enemy fighter within `guard_radius`.
+}
+
+/// A decision only a campaign battle's commander takes (C1). Kept out of
+/// [`AiAction`] so the skirmish action trace — and every match over it —
+/// is exactly what it was.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BattleAiAction {
+    /// Pulled `force` combat units back onto its `general`, who had an enemy
+    /// fighter within `guard_radius`.
     Guard { general: Entity, force: u32 },
-    /// Campaign battle (C1): ordered its side off the field, having lost
-    /// `retreat_at_army_lost` of its army.
+    /// Ordered its side off the field, having lost `retreat_at_army_lost` of
+    /// its army.
     Retreat,
+}
+
+/// Every battle decision every commander has taken, in order. Inserted only
+/// by `battle::install`, so a skirmish has none.
+#[derive(Resource, Debug, Default)]
+pub struct BattleAiJournal(pub Vec<(u32, Faction, BattleAiAction)>);
+
+impl BattleAiJournal {
+    /// The battle decisions of one commander, tick-tagged.
+    pub fn for_faction(&self, f: Faction) -> Vec<(u32, BattleAiAction)> {
+        self.0
+            .iter()
+            .filter(|(_, who, _)| *who == f)
+            .map(|(t, _, a)| (*t, *a))
+            .collect()
+    }
 }
 
 /// Every action every AI commander has taken, in order. Sim-owned state (so it
@@ -295,7 +318,7 @@ fn nearest(candidates: &[(Entity, Vec2)], from: Vec2) -> Option<(Entity, Vec2)> 
 /// split gather claim as a live job (F-008). The orders it issues are applied
 /// by `apply_commands` on the same tick — exactly
 /// like a click that lands before the tick boundary.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn ai_commanders(
     content: Res<Content>,
     stock: Res<Stockpiles>,
@@ -305,6 +328,7 @@ pub fn ai_commanders(
     // A campaign battle's state (C1) — absent in a skirmish, where the
     // commander plays exactly the script it always played.
     battle: Option<Res<BattleState>>,
+    mut battle_journal: Option<ResMut<BattleAiJournal>>,
     units: Query<(
         Entity,
         &Position,
@@ -369,6 +393,7 @@ pub fn ai_commanders(
             &building_rows,
             &node_rows,
             battle,
+            battle_journal.as_deref_mut(),
             &mut queue,
             &mut journal,
         );
@@ -387,6 +412,7 @@ fn think(
     buildings: &[BuildingRow],
     nodes: &[(Entity, Vec2)],
     battle: Option<(&BattleState, &GeneralAiDef)>,
+    mut battle_journal: Option<&mut BattleAiJournal>,
     queue: &mut CommandQueue,
     journal: &mut AiJournal,
 ) {
@@ -396,6 +422,12 @@ fn think(
     let order = |queue: &mut CommandQueue, journal: &mut AiJournal, o: Order, a: AiAction| {
         queue.0.push_back(o.issued_by(me));
         journal.0.push((tick, me, a));
+    };
+    let mut battle_order = |queue: &mut CommandQueue, o: Order, a: BattleAiAction| {
+        queue.0.push_back(o.issued_by(me));
+        if let Some(j) = battle_journal.as_deref_mut() {
+            j.0.push((tick, me, a));
+        }
     };
 
     // Its HQ: the victory building it owns (lowest entity index if it somehow
@@ -428,12 +460,7 @@ fn think(
         if c.peak_army > 0
             && u64::from(lost) * 1000 >= u64::from(c.peak_army) * u64::from(ai.retreat_milli())
         {
-            order(
-                queue,
-                journal,
-                Order::Retreat { faction: me },
-                AiAction::Retreat,
-            );
+            battle_order(queue, Order::Retreat { faction: me }, BattleAiAction::Retreat);
             return;
         }
     }
@@ -469,14 +496,13 @@ fn think(
         if let Some(g) = threatened {
             if !force.is_empty() {
                 let count = force.len() as u32;
-                order(
+                battle_order(
                     queue,
-                    journal,
                     Order::AttackMove {
                         units: force,
                         dest: g.pos,
                     },
-                    AiAction::Guard {
+                    BattleAiAction::Guard {
                         general: g.entity,
                         force: count,
                     },

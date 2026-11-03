@@ -14,7 +14,9 @@ use onus::sim::combat::Health;
 use onus::sim::content::Content;
 use onus::sim::economy::{Building, UnitDefIdx};
 use onus::sim::spatial::Faction;
-use onus::sim::{AiAction, AiCommanders, AiJournal, AttackMoveDest, Position};
+use onus::sim::{
+    AiAction, AiCommanders, AiJournal, AttackMoveDest, BattleAiAction, BattleAiJournal, Position,
+};
 
 fn data_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data")
@@ -22,6 +24,10 @@ fn data_dir() -> PathBuf {
 
 fn content() -> Content {
     Content::load_from_dir(&data_dir()).expect("content loads")
+}
+
+fn think() -> u32 {
+    content().ai.think_interval_ticks
 }
 
 fn mutated(name: &str, edit: impl Fn(&str) -> String) -> Result<Content, String> {
@@ -102,6 +108,12 @@ fn journal(app: &App) -> Vec<(u32, AiAction)> {
     app.world().resource::<AiJournal>().for_faction(Faction::A)
 }
 
+/// A's battle decisions (guard, retreat): their own journal, so the skirmish
+/// action trace is untouched.
+fn battle_journal(app: &App) -> Vec<(u32, BattleAiAction)> {
+    app.world().resource::<BattleAiJournal>().for_faction(Faction::A)
+}
+
 fn ravagers(n: usize) -> Roster {
     (0..n).fold(Roster::default().building("hq"), |r, _| r.unit("ravager"))
 }
@@ -127,7 +139,7 @@ fn the_battle_ai_reads_its_numbers_from_ron_and_refuses_bad_ones() {
         ("lost_over", "retreat_at_army_lost: 0.6", "retreat_at_army_lost: 1.5"),
     ];
     for (name, from, to) in cases {
-        let err = mutated(name, |t| t.replacen(from, to, 1)).err().expect(name);
+        let err = mutated(name, |t| t.replacen(from, to, 1)).expect_err(name);
         assert!(err.contains("mvp_general_ai"), "{name}: {err}");
     }
     let err = mutated("no_block", |t| {
@@ -135,8 +147,7 @@ fn the_battle_ai_reads_its_numbers_from_ron_and_refuses_bad_ones() {
         let end = at + t[at..].find("    ),\n").unwrap() + "    ),\n".len();
         format!("{}{}", &t[..at], &t[end..])
     })
-    .err()
-    .expect("generals with no battle AI");
+    .expect_err("generals with no battle AI");
     assert!(err.contains("mvp_general_ai"), "{err}");
 }
 
@@ -149,8 +160,9 @@ fn an_enemy_fighter_near_the_general_pulls_the_army_onto_him() {
     let front = (gpos - hq_of(&mut app, Faction::A)).normalize();
     spawn_unit(&mut app, "ravager", Faction::B, gpos + front * (radius - 10.0));
     headless::step(&mut app);
+    let bj = battle_journal(&app);
+    assert_eq!(bj, [(0, BattleAiAction::Guard { general: g, force: 4 })]);
     let j = journal(&app);
-    assert!(j.contains(&(0, AiAction::Guard { general: g, force: 4 })), "{j:?}");
     assert!(!j.iter().any(|(_, a)| matches!(a, AiAction::Attack { .. })), "a guard, not a wave");
     for e in fighters_of(&mut app, Faction::A) {
         assert_eq!(app.world().get::<AttackMoveDest>(e).map(|d| d.0), Some(gpos));
@@ -167,15 +179,15 @@ fn a_threat_outside_the_radius_or_one_that_cannot_fight_does_not() {
         let front = (gpos - hq_of(&mut app, Faction::A)).normalize();
         spawn_unit(&mut app, id, Faction::B, gpos + front * d);
         headless::step(&mut app);
+        assert!(battle_journal(&app).is_empty(), "{id}: {:?}", battle_journal(&app));
         let j = journal(&app);
-        assert!(!j.iter().any(|(_, a)| matches!(a, AiAction::Guard { .. })), "{id}: {j:?}");
         assert!(j.iter().any(|(_, a)| matches!(a, AiAction::Attack { force: 4, .. })), "{id}");
     }
 }
 
 /// Field `n` fighters, let A decide once, take `lose` of them off, and run
 /// one more decision: did A retreat?
-fn retreats_after_losing(n: usize, lose: usize) -> (bool, Vec<(u32, AiAction)>) {
+fn retreats_after_losing(n: usize, lose: usize) -> (bool, Vec<(u32, BattleAiAction)>) {
     let think = content().ai.think_interval_ticks;
     let mut app = a_plays(guarded(n));
     headless::step(&mut app);
@@ -183,7 +195,7 @@ fn retreats_after_losing(n: usize, lose: usize) -> (bool, Vec<(u32, AiAction)>) 
         app.world_mut().despawn(e);
     }
     headless::tick(&mut app, think);
-    let j = journal(&app);
+    let j = battle_journal(&app);
     (app.world().resource::<BattleState>().retreating(Faction::A), j)
 }
 
@@ -194,10 +206,10 @@ fn it_retreats_once_it_has_lost_the_ron_share_of_its_army_and_not_before() {
     let at = (n * milli).div_ceil(1000); // the fewest losses that reach the threshold
     let (gone, j) = retreats_after_losing(n, at);
     assert!(gone, "{at} of {n} lost: {j:?}");
-    assert_eq!(j.iter().filter(|(_, a)| *a == AiAction::Retreat).count(), 1);
+    assert_eq!(j, [(think(), BattleAiAction::Retreat)], "one retreat, on the next decision");
     let (stays, j) = retreats_after_losing(n, at - 1);
     assert!(!stays, "{} of {n} lost: {j:?}", at - 1);
-    assert!(!j.iter().any(|(_, a)| *a == AiAction::Retreat));
+    assert!(j.is_empty(), "{j:?}");
 }
 
 #[test]
@@ -209,10 +221,11 @@ fn once_retreating_it_issues_nothing_more() {
         app.world_mut().despawn(e);
     }
     headless::tick(&mut app, think);
-    let j = journal(&app);
-    assert_eq!(j.last().map(|(_, a)| *a), Some(AiAction::Retreat), "{j:?}");
+    assert_eq!(battle_journal(&app), [(think, BattleAiAction::Retreat)]);
+    let n = journal(&app).len();
     headless::tick(&mut app, 3 * think);
-    assert_eq!(journal(&app).len(), j.len(), "nothing after the retreat");
+    assert_eq!(journal(&app).len(), n, "nothing after the retreat");
+    assert_eq!(battle_journal(&app).len(), 1);
 }
 
 #[test]

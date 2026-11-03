@@ -23,7 +23,9 @@ fn quiet_battle(setup: BattleSetup) -> App {
     app
 }
 
-/// The side's Generals in spawn order (entity bits are allocated in order).
+/// The side's Generals in line order: along the line across the front
+/// (ascending y on this map, whose fronts run along x). Entity bits are not
+/// spawn order, so the line is read off the field.
 fn generals_of(app: &mut App, side: Faction) -> Vec<(Entity, usize, Vec2)> {
     let mut q = app
         .world_mut()
@@ -33,7 +35,7 @@ fn generals_of(app: &mut App, side: Faction) -> Vec<(Entity, usize, Vec2)> {
         .filter(|(_, f, _, _)| **f == side)
         .map(|(e, _, d, p)| (e, d.0, p.0))
         .collect();
-    v.sort_by_key(|(e, _, _)| e.to_bits());
+    v.sort_by(|a, b| a.2.y.total_cmp(&b.2.y));
     v
 }
 
@@ -120,8 +122,7 @@ fn every_general_in_a_setup_is_checked_not_just_the_first() {
         .with_general(Faction::A, "general_focus")
         .with_general(Faction::A, "general_typo");
     let err = headless::battle(content(), &MatchSettings::default().with_battle(setup))
-        .err()
-        .expect("refused");
+        .expect_err("refused");
     assert_eq!(
         err,
         MatchSetupError::Battle(BattleSetupError::UnknownGeneral {

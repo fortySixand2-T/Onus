@@ -80,8 +80,7 @@ fn the_report_lists_each_sides_survivors_buildings_and_generals() {
     let mut app = quiet(setup);
     headless::step(&mut app);
     // A wound taken in the battle shows in the report.
-    let (_, rav, ..) = field(&mut app, Faction::A)[1];
-    assert_eq!(c.unit_def(rav).unwrap().id, "ravager");
+    let rav = c.unit_index("ravager").unwrap();
     {
         let mut q = app.world_mut().query::<(&UnitDefIdx, &Faction, &mut Health)>();
         for (d, f, mut h) in q.iter_mut(app.world_mut()) {
@@ -107,14 +106,21 @@ fn the_report_lists_each_sides_survivors_buildings_and_generals() {
         .map(|u| (u.sim_id, u.unit, u.hp, u.max_hp, u.general, u.escaped))
         .collect();
     assert_eq!(got, want, "every unit on the field, by sim id, with its HP");
-    let ids: Vec<&str> = a.units.iter().map(|u| c.unit_def(u.unit).unwrap().id.as_str()).collect();
-    assert_eq!(ids, ["general_focus", "ravager", "ripper"]);
-    assert_eq!((a.units[1].hp, a.units[2].hp), (5, 11));
-    let blds: Vec<_> = a
+    let mut ids: Vec<(&str, u32)> = a
+        .units
+        .iter()
+        .map(|u| (c.unit_def(u.unit).unwrap().id.as_str(), u.hp))
+        .collect();
+    ids.sort();
+    let focus_hp = Health::from_def(&c, c.general_index("general_focus").unwrap()).max;
+    assert_eq!(ids, [("general_focus", focus_hp), ("ravager", 5), ("ripper", 11)]);
+    assert!(a.buildings.windows(2).all(|w| w[0].sim_id < w[1].sim_id));
+    let mut blds: Vec<_> = a
         .buildings
         .iter()
         .map(|b| (c.buildings[b.building].id.as_str(), b.hp, b.max_hp))
         .collect();
+    blds.sort_by_key(|b| b.0 != "hq");
     let hq_max = Health::from_building_def(&c, c.building_index("hq").unwrap()).max;
     let f = c.building_index("foundry").unwrap();
     let f_max = Health::from_building_def(&c, f).max;
@@ -140,8 +146,13 @@ fn each_general_has_a_fate_in_setup_order() {
         .with_general(Faction::B, "general_endurance");
     let mut app = quiet(setup);
     headless::step(&mut app);
-    let a = generals_of(&mut app, Faction::A);
-    app.world_mut().despawn(a[0]);
+    // The first General the setup named falls (entity order is not setup order).
+    let synthesis = c.general_index("general_synthesis").unwrap();
+    let a = generals_of(&mut app, Faction::A)
+        .into_iter()
+        .find(|e| app.world().get::<UnitDefIdx>(*e).unwrap().0 == synthesis)
+        .unwrap();
+    app.world_mut().despawn(a);
     let b = generals_of(&mut app, Faction::B);
     app.world_mut().despawn(b[0]);
     headless::step(&mut app);
