@@ -12,6 +12,7 @@ use bevy::time::{Fixed, Time};
 use std::collections::VecDeque;
 
 pub mod ai;
+pub mod battle;
 pub mod combat;
 pub mod content;
 pub mod economy;

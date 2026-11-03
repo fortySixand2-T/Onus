@@ -5784,3 +5784,39 @@ still runs when the user can play. If it finds the core loop flat, that can revi
 everything after it. This is a recorded exception to `BALANCE_PLAN.md`'s B5 Go/No-Go, not a
 removal of it.
 
+
+## F-053 — The General: its own list in `units.ron`, opt-in battle rules, a skirmish untouched (C1)
+
+**Context.** C1 AC1 asks for a General, one per side; a side whose General dies loses. The
+golden licence (AC8) asks that the default skirmish reproduce today's pinned hashes exactly.
+
+**Decisions.**
+- **Generals are their own list** (`units.ron` `generals`), not entries in `combat`. They share
+  the 4-stat model and the per-unit `mvp_attack_ticks` / `mvp_attack_range`, but carry no cost,
+  no barracks and **no nemesis** (`deny_unknown_fields`, so a `nemesis:` on a General is a load
+  error, not a silently ignored key). A General's id may not collide with a roster unit's.
+- **One index space, two lookups.** A General's `UnitDefIdx` is `units.len() + k`.
+  `Content::unit_def(i)` resolves either list and is what combat and movement read (HP, damage,
+  speed, armed-ness). Everything that *buys or commands an army* — `Train`, production, gather,
+  the AI's force list — keeps reading `content.units`, so a General can never be trained, never
+  gathers and never joins a wave. `content.units.len()` stays 6 (rally spokes, the pentagon and
+  `m4a_economy` read it).
+- **Opt-in by resource.** A battle is `MatchSettings::with_battle(BattleSetup)`. It spawns the
+  Generals after the skirmish start (General at `base + front * mvp_battle.general_front`) and
+  inserts `BattleState`; every battle system is `run_if(resource_exists::<BattleState>)`. No
+  resource is `init_resource`d in `build_app`, so the pinned allocation order (critic_p2) holds.
+- **Deciding.** `battle_watch` latches at the start of a tick which losses a side can suffer
+  (fielded a General / held an HQ), mirroring `match_watch` (F-010). `battle_end` runs just
+  before `match_end` and decides from fixed per-side counts: all Generals gone → `GeneralsFell`;
+  else HQ gone → `VictoryBuildingLost`; both sides losing on one tick is a draw. It writes
+  `MatchState` through `conclude` (same tick bookkeeping as `match_end`), so the chain stops
+  exactly as for a skirmish result. A side that never fielded a General cannot lose one.
+- **Hash.** New state-hash tags `GENERAL` (23) and `BATTLE_STATE` (24) emit rows only in a
+  battle, so a skirmish hashes as before.
+- **Refusal.** `headless::battle` returns `MatchSetupError::{Strategy, Battle}`; an unknown
+  General or content with no `mvp_battle` block is refused before anything spawns.
+  `ai_vs_ai` keeps its `UnknownStrategy` error type (every existing caller) and panics on a
+  bad battle setup.
+
+**Not yet.** Replaying a battle from a `CommandLog` is not supported: the log does not carry
+the `BattleSetup` (that belongs to C4's campaign state).

@@ -343,6 +343,53 @@ pub struct EconomyDef {
     pub deposit_range: f32,
 }
 
+/// One General type (C1): a unit that leads an army in a campaign battle and
+/// whose death loses that battle. Its own list in `units.ron` (`generals`), so
+/// it never joins [`Content::units`]: a General is not trained, never mines,
+/// never rides in an AI attack wave, and the roster-sized tables (production
+/// counts, rally spokes, the pentagon) keep their shape.
+///
+/// The sim still addresses a General by a [`crate::sim::economy::UnitDefIdx`]:
+/// the index space runs on past the roster, so `units.len() + k` is
+/// `generals[k]` (see [`Content::unit_def`]). Combat, movement and the HP pool
+/// read that one lookup, so a General fights under exactly the 4-stat model.
+///
+/// `deny_unknown_fields`: a General has **no nemesis** (an aura never touches
+/// the hard counters, and neither does the General himself), so a `nemesis:`
+/// written on one is a load error rather than a field serde quietly drops.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeneralDef {
+    pub id: String,
+    pub name: String,
+    /// Silhouette class, as for every unit.
+    pub mvp_kind: UnitKind,
+    /// Ticks between two hits. A General fights, so this is required and > 0.
+    pub mvp_attack_ticks: u32,
+    /// World-unit reach.
+    pub mvp_attack_range: f32,
+    pub speed: u32,
+    pub offense: u32,
+    pub defense: u32,
+    pub armor: u32,
+    /// The General as a plain unit definition, synthesised at load (never
+    /// written in the RON): no cost, no training time, no nemesis, no gathering.
+    /// What combat and movement read, through [`Content::unit_def`].
+    #[serde(skip)]
+    pub unit: Option<UnitDef>,
+}
+
+/// Campaign-battle layout numbers (C1). Only read when a match is set up as a
+/// battle ([`crate::sim::battle::BattleSetup`]); a skirmish never touches them.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BattleDef {
+    /// How far in front of its base (towards the enemy) a side's Generals stand.
+    pub general_front: f32,
+    /// Spacing between two neighbours in a starting formation (world units).
+    pub formation_spacing: f32,
+}
+
 // ---- file shapes -----------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -352,6 +399,12 @@ struct UnitsFile {
     mvp_buildings: Vec<BuildingDef>,
     mvp_combat: CombatDef,
     nemesis_bonus: NemesisBonus,
+    /// C1. Optional so content with no campaign layer (and every pre-C1 data
+    /// set a test keeps) still loads: no Generals means no campaign battles.
+    #[serde(default)]
+    generals: Vec<GeneralDef>,
+    #[serde(default)]
+    mvp_battle: Option<BattleDef>,
 }
 
 #[derive(Deserialize)]
@@ -392,6 +445,11 @@ pub struct Content {
     pub resources: Vec<ResourceDef>,
     pub mvp_active: Vec<String>,
     pub economy: EconomyDef,
+    /// The General types (C1), in RON order. **Not** part of [`Content::units`]
+    /// — see [`GeneralDef`] for the index space they share.
+    pub generals: Vec<GeneralDef>,
+    /// Campaign-battle layout (C1); `None` in content with no campaign layer.
+    pub battle: Option<BattleDef>,
 }
 
 // ---- content fingerprint ----------------------------------------------------
@@ -607,7 +665,10 @@ impl Content {
             resources: resources_file.resources,
             mvp_active: resources_file.mvp_active,
             economy: resources_file.mvp_economy,
+            generals: units_file.generals,
+            battle: units_file.mvp_battle,
         };
+        content.synthesise_general_units();
         content.validate()?;
         // `validate` has just proved the default names a strategy, so this
         // lookup cannot fail.
@@ -770,6 +831,75 @@ impl Content {
             if let Some(prey) = &u.nemesis {
                 if self.unit_index(prey).is_none() {
                     return bad(format!("unit `{}` names unknown nemesis `{prey}`", u.id));
+                }
+            }
+        }
+
+        // The Generals (C1). A General is a unit the sim addresses by a
+        // `UnitDefIdx` past the roster, so its id must be unique among the
+        // Generals **and** distinct from every roster unit id: the two share
+        // one index space, and a shared id would make "which unit is this"
+        // depend on which list was searched first.
+        for (i, g) in self.generals.iter().enumerate() {
+            if let Some(j) = self.generals[..i].iter().position(|h| h.id == g.id) {
+                return bad(format!(
+                    "duplicate general id `{}` at positions {j} and {i}",
+                    g.id
+                ));
+            }
+            if self.unit_index(&g.id).is_some() {
+                return bad(format!(
+                    "general `{}` shares its id with a roster unit; Generals and \
+                     units share one index space",
+                    g.id
+                ));
+            }
+            for (stat, value) in [
+                ("offense", g.offense),
+                ("defense", g.defense),
+                ("armor", g.armor),
+                ("speed", g.speed),
+            ] {
+                if value > self.combat.max_stat {
+                    return bad(format!(
+                        "general `{}` has {stat} {value}, above the design scale max {}",
+                        g.id, self.combat.max_stat
+                    ));
+                }
+            }
+            if g.defense == 0 {
+                return bad(format!("general `{}` has no HP pool (defense 0)", g.id));
+            }
+            if g.speed == 0 {
+                return bad(format!("general `{}` cannot move (speed 0)", g.id));
+            }
+            // A General fights (the brief: "the General fights, but is fragile
+            // enough that protecting him is a decision").
+            if g.offense == 0 || g.mvp_attack_ticks == 0 {
+                return bad(format!(
+                    "general `{}` must fight: offense and mvp_attack_ticks positive",
+                    g.id
+                ));
+            }
+            if !(g.mvp_attack_range.is_finite()
+                && g.mvp_attack_range > 0.0
+                && g.mvp_attack_range <= self.combat.engage_range
+                && g.mvp_attack_range <= self.combat.attack_move_range)
+            {
+                return bad(format!(
+                    "general `{}` mvp_attack_range must be finite, positive and within \
+                     engage_range and attack_move_range",
+                    g.id
+                ));
+            }
+        }
+        if let Some(b) = &self.battle {
+            for (what, v) in [
+                ("general_front", b.general_front),
+                ("formation_spacing", b.formation_spacing),
+            ] {
+                if !(v.is_finite() && v > 0.0) {
+                    return bad(format!("mvp_battle {what} must be finite and positive"));
                 }
             }
         }
@@ -1135,6 +1265,29 @@ impl Content {
             .f32(self.economy.gather_range)
             .f32(self.economy.deposit_range);
 
+        // C1: the campaign layer. Mixed in **only when present**, so a content
+        // set with no Generals and no battle block fingerprints exactly as it
+        // did before C1 existed (a recorded skirmish log stays replayable
+        // against such content).
+        if !self.generals.is_empty() {
+            h.str("generals").u64(self.generals.len() as u64);
+            for g in &self.generals {
+                h.str(&g.id).str(&g.name);
+                h.u64(match g.mvp_kind {
+                    UnitKind::Worker => 0,
+                    UnitKind::Soldier => 1,
+                    UnitKind::Scout => 2,
+                });
+                h.u32(g.mvp_attack_ticks).f32(g.mvp_attack_range);
+                h.u32(g.speed).u32(g.offense).u32(g.defense).u32(g.armor);
+            }
+        }
+        if let Some(b) = &self.battle {
+            h.str("battle")
+                .f32(b.general_front)
+                .f32(b.formation_spacing);
+        }
+
         let ids = |all: &[String]| {
             if all.is_empty() {
                 "-".to_string()
@@ -1167,6 +1320,65 @@ impl Content {
 
     pub fn unit(&self, id: &str) -> Option<&UnitDef> {
         self.units.iter().find(|u| u.id == id)
+    }
+
+    /// The unit definition behind a [`crate::sim::economy::UnitDefIdx`]: the
+    /// roster for `i < units.len()`, then the Generals (C1). What combat,
+    /// movement and the HP pool read, so a General fights under the same
+    /// 4-stat model as every unit. Anything that must stay roster-only
+    /// (training, gathering, the AI's waves) keeps reading `units` directly.
+    pub fn unit_def(&self, i: usize) -> Option<&UnitDef> {
+        match self.units.get(i) {
+            Some(u) => Some(u),
+            None => self
+                .generals
+                .get(i.checked_sub(self.units.len())?)
+                .and_then(|g| g.unit.as_ref()),
+        }
+    }
+
+    /// The `UnitDefIdx` value of the General `id` (`units.len() + k`).
+    pub fn general_index(&self, id: &str) -> Option<usize> {
+        self.generals
+            .iter()
+            .position(|g| g.id == id)
+            .map(|k| self.units.len() + k)
+    }
+
+    /// The General behind a `UnitDefIdx` value, if it names one.
+    pub fn general_at(&self, i: usize) -> Option<&GeneralDef> {
+        self.generals.get(i.checked_sub(self.units.len())?)
+    }
+
+    /// Fill each [`GeneralDef::unit`] from its RON fields. Called once at load.
+    fn synthesise_general_units(&mut self) {
+        let currency = self.economy.currency.clone();
+        for g in &mut self.generals {
+            g.unit = Some(UnitDef {
+                id: g.id.clone(),
+                name: g.name.clone(),
+                source: None,
+                barracks: None,
+                cost: Cost {
+                    resource: currency.clone(),
+                    amount: 0,
+                },
+                mvp_kind: g.mvp_kind,
+                mvp_alloy_cost: 0,
+                mvp_train_ticks: 0,
+                mvp_carry_capacity: 0,
+                mvp_gather_ticks: 0,
+                mvp_attack_ticks: g.mvp_attack_ticks,
+                mvp_attack_range: g.mvp_attack_range,
+                speed: g.speed,
+                offense: g.offense,
+                defense: g.defense,
+                armor: g.armor,
+                nemesis: None,
+                gathers: false,
+                builds: false,
+            });
+        }
     }
 
     /// Index of a building definition by id (stable: the RON order).

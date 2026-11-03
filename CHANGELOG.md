@@ -648,3 +648,14 @@
 - [2026-11-02] Modified: DESIGN_BRIEF.md, CAMPAIGN_PLAN.md, FINDINGS.md — extra house Generals can be raised for a levy cost; nation perks apply only to own armies and cities; C4 AC; F-052 update 6
 - [2026-11-02] Modified: DESIGN_BRIEF.md, CAMPAIGN_PLAN.md, FINDINGS.md — names chosen (House Vael, Cinderhold, Heir of Vael); C0 closed and ticked; F-052 update 7
 - [2026-11-02] Modified: CAMPAIGN_PLAN.md, FINDINGS.md — user lifts the B5 wait: C1 starts now, and B5 still runs later (F-052 update 8)
+- [2026-11-02] Modified: assets/data/units.ron — C1: six General types (`generals`) and the `mvp_battle` layout block
+- [2026-11-02] Modified: src/sim/content.rs — C1: GeneralDef and BattleDef, loaded and validated; `unit_def` resolves roster units and Generals in one index space
+- [2026-11-02] Modified: src/sim/combat.rs — C1: HP, damage and speed read `Content::unit_def`, so a General fights like any unit
+- [2026-11-02] Modified: src/sim/victory.rs — C1: `MatchState::conclude` for battle-decided outcomes
+- [2026-11-02] Created: src/sim/battle.rs — C1: General marker, BattleSetup, install, BattleState, battle_watch and battle_end
+- [2026-11-02] Modified: src/sim/mod.rs — C1: battle module
+- [2026-11-02] Modified: src/lib.rs — C1: battle systems in the sim chain, gated on BattleState
+- [2026-11-02] Modified: src/headless.rs — C1: MatchSettings::with_battle, headless::battle, MatchSetupError
+- [2026-11-02] Modified: src/sim/replay.rs — C1: battle-only state-hash rows (GENERAL, BATTLE_STATE)
+- [2026-11-02] Created: tests/c1_general.rs — C1 AC1 tests: the General
+- [2026-11-02] Modified: FINDINGS.md — F-053 the General

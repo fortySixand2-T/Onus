@@ -130,7 +130,7 @@ This draft follows the brief's fiction:
 The user's decisions change the battle itself, so they come first. Every item is data-driven.
 A **skirmish** mode keeps today's rules exactly.
 
-- [ ] **The General:** a unit type in `units.ron`, one per side. When a side's General dies,
+- [x] **The General:** a unit type in `units.ron`, one per side. When a side's General dies,
   that side loses the battle.
 - [ ] **Several Generals per side:** a battle can field more than one General per side, and
   that side loses when **all** its Generals are dead (or it retreats).

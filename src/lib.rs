@@ -157,6 +157,10 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
             // Is this a contested match? Observed *before* the tick is played,
             // so an HQ lost on the first tick decides like any other (F-010).
             sim::victory::match_watch,
+            // A campaign battle's own start-of-tick latch (C1). Only in a
+            // battle: a skirmish has no `BattleState`, so this never runs.
+            sim::battle::battle_watch
+                .run_if(resource_exists::<sim::battle::BattleState>),
             // Playing the match — off the moment it is decided, so nothing keeps
             // running that could change the recorded outcome.
             (
@@ -207,6 +211,10 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
             // end holding the same nothing. Ungated and self-latching — it fires
             // on the tick the outcome is written.
             sim::replay::record_unplayed,
+            // A campaign battle's own causes of defeat (C1: a fallen General),
+            // decided just ahead of the skirmish check. Battle-only.
+            sim::battle::battle_end
+                .run_if(resource_exists::<sim::battle::BattleState>),
             // Deciding it: always runs, and writes the outcome exactly once.
             sim::victory::match_end,
             // The tail identification pass: whatever this tick spawned (a

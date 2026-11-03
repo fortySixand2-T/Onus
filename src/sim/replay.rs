@@ -1170,6 +1170,10 @@ mod tag {
     /// B4 (F-048). Present only on a unit under an attack-move, so a match
     /// that never issues one hashes exactly as it did before the tag existed.
     pub const ATTACK_MOVE_DEST: u64 = 22;
+    /// C1. The campaign battle layer: present only in a battle, so a skirmish
+    /// hashes exactly as it did before these tags existed.
+    pub const GENERAL: u64 = 23;
+    pub const BATTLE_STATE: u64 = 24;
 }
 
 /// A 64-bit digest of one command the sim is holding. Everything about it that
@@ -1530,6 +1534,20 @@ pub fn state_hash(world: &mut World) -> u64 {
             state.tick() as u64 | ((state.engaged() as u64) << 32),
             outcome,
         ));
+    }
+
+    // The campaign battle layer (C1). Every row here exists only in a battle:
+    // a skirmish has no `General` and no `BattleState`, so it emits none and
+    // hashes exactly as before.
+    {
+        let mut q = world.query_filtered::<&SimId, With<crate::sim::battle::General>>();
+        let marked: Vec<SimId> = q.iter(world).copied().collect();
+        rows.extend(marked.into_iter().map(|id| row(id, tag::GENERAL, 1, 0)));
+    }
+    if let Some(battle) = world.get_resource::<crate::sim::battle::BattleState>() {
+        for (i, word) in battle.hash_words().into_iter().enumerate() {
+            rows.push((slot, tag::BATTLE_STATE, i as u64, word));
+        }
     }
 
     rows.sort_unstable();

@@ -59,8 +59,7 @@ impl Health {
     /// RON's `mvp_combat.hp_per_defense`.
     pub fn from_def(content: &Content, unit: usize) -> Self {
         let max = content
-            .units
-            .get(unit)
+            .unit_def(unit)
             // Saturating like every other derived stat: `Content::validate`
             // proves this product fits u32 for *loaded* content, so the clamp
             // only ever bites on a `Content` assembled in memory.
@@ -161,7 +160,7 @@ impl Casualties {
 /// Pure and total — no clock, no RNG, no allocation. The sim and the tests read
 /// the same function, and it is the only place damage is decided.
 pub fn damage_per_hit(content: &Content, attacker: usize, defender: usize) -> u32 {
-    let (Some(a), Some(d)) = (content.units.get(attacker), content.units.get(defender)) else {
+    let (Some(a), Some(d)) = (content.unit_def(attacker), content.unit_def(defender)) else {
         return 0;
     };
     let base = a.offense.saturating_mul(content.combat.damage_per_offense);
@@ -193,7 +192,7 @@ pub fn damage_per_hit(content: &Content, attacker: usize, defender: usize) -> u3
 /// definition `defender`: the same integer rule as unit-vs-unit, minus the
 /// nemesis clause (a nemesis names a unit id, and a building is not a unit).
 pub fn damage_per_hit_to_building(content: &Content, attacker: usize, defender: usize) -> u32 {
-    let (Some(a), Some(d)) = (content.units.get(attacker), content.buildings.get(defender)) else {
+    let (Some(a), Some(d)) = (content.unit_def(attacker), content.buildings.get(defender)) else {
         return 0;
     };
     let base = a.offense.saturating_mul(content.combat.damage_per_offense);
@@ -206,8 +205,7 @@ pub fn damage_per_hit_to_building(content: &Content, attacker: usize, defender: 
 /// the old global `sim::SPEED` constant.
 pub fn move_speed(content: &Content, unit: usize) -> f32 {
     content
-        .units
-        .get(unit)
+        .unit_def(unit)
         .map(|u| u.speed as f32 * content.combat.speed_per_point)
         .unwrap_or(0.0)
 }
@@ -344,7 +342,7 @@ pub fn combat(
                     has_move_target: mt.is_some(),
                     attack_move: am.map(|d| d.0),
                     armed_target: match kind {
-                        RowKind::Unit(u) => content.units.get(u).is_some_and(|d| d.offense > 0),
+                        RowKind::Unit(u) => content.unit_def(u).is_some_and(|d| d.offense > 0),
                         RowKind::Building(_) => false,
                     },
                     gathering: gather.is_some(),
@@ -383,7 +381,7 @@ pub fn combat(
         let RowKind::Unit(unit_def) = row.kind else {
             continue;
         };
-        let Some(def) = content.units.get(unit_def) else {
+        let Some(def) = content.unit_def(unit_def) else {
             continue;
         };
         let next_cd = row.cooldown.saturating_sub(1);

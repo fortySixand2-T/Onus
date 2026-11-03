@@ -82,6 +82,21 @@ impl MatchState {
     pub fn is_over(&self) -> bool {
         self.outcome.is_some()
     }
+
+    /// Decide the match with `winner` (`None`: a draw) on the current tick —
+    /// **the same bookkeeping as [`match_end`]**: the outcome is stamped with
+    /// the tick being finished, and the counter then advances past it. Used by
+    /// the campaign battle rules (C1, [`crate::sim::battle`]), which decide a
+    /// battle on causes the skirmish rule does not know (a fallen General, a
+    /// finished retreat). Exactly once: a decided match stays decided.
+    pub(crate) fn conclude(&mut self, winner: Option<Faction>) {
+        if self.is_over() {
+            return;
+        }
+        let tick = self.tick;
+        self.tick = self.tick.saturating_add(1);
+        self.outcome = Some(MatchOutcome { winner, tick });
+    }
 }
 
 /// Run condition for the sim chain: everything except this module's own check
@@ -109,7 +124,7 @@ pub fn match_watch(
 /// Standing victory buildings per faction. A fixed-size array summed over the
 /// query, so the count — and every decision taken from it — is independent of
 /// iteration order.
-fn count_victory_buildings(
+pub(crate) fn count_victory_buildings(
     content: &Content,
     buildings: &Query<(&Building, &Faction)>,
 ) -> [u32; 2] {
