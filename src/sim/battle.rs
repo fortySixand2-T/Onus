@@ -10,9 +10,11 @@
 //!
 //! ## The General
 //! A General is a unit (`units.ron` `generals`), fielded per side by the
-//! setup. **A side whose Generals have all fallen loses the battle.** The rule
-//! only binds a side that has fielded one: a side seen with no General at the
-//! start of every tick so far has nothing to lose that way.
+//! setup — one or several (armies converging on one battle each bring theirs),
+//! standing in a line across the side's front. **A side whose Generals have
+//! all fallen loses the battle**; while any one of them lives, it fights on.
+//! The rule only binds a side that has fielded one: a side seen with no
+//! General at the start of every tick so far has nothing to lose that way.
 //!
 //! ## Deciding a battle
 //! [`battle_watch`] latches, at the **start** of a tick, which losses each side
@@ -56,8 +58,11 @@ pub struct General;
 /// One side's part of a battle setup.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SideSetup {
-    /// The General this side fields (an id from `units.ron` `generals`).
-    pub general: Option<String>,
+    /// The Generals this side fields (ids from `units.ron` `generals`), in
+    /// field order. Several armies converging on one battle bring several
+    /// Generals; the same type may appear more than once (a house raises
+    /// extra Generals of its own kind).
+    pub generals: Vec<String>,
 }
 
 /// How a campaign battle starts. Indexed by faction slot (A, B).
@@ -67,9 +72,9 @@ pub struct BattleSetup {
 }
 
 impl BattleSetup {
-    /// Field the General `id` on `side`.
+    /// Field one more General, `id`, on `side`.
     pub fn with_general(mut self, side: Faction, id: &str) -> Self {
-        self.sides[faction_slot(side)].general = Some(id.to_string());
+        self.sides[faction_slot(side)].generals.push(id.to_string());
         self
     }
 
@@ -80,7 +85,7 @@ impl BattleSetup {
             return Err(BattleSetupError::NoBattleContent);
         }
         for (side, s) in SLOTS.iter().zip(&self.sides) {
-            if let Some(id) = &s.general {
+            for id in &s.generals {
                 if content.general_index(id).is_none() {
                     return Err(BattleSetupError::UnknownGeneral {
                         id: id.clone(),
@@ -126,6 +131,13 @@ pub struct SideGround {
     pub front: Vec2,
 }
 
+/// Where the `j`th of `n` in a line across the front stands, relative to the
+/// line's centre: centred on it, `spacing` apart, perpendicular to `front`.
+fn line_offset(g: SideGround, j: usize, n: usize, spacing: f32) -> Vec2 {
+    let across = Vec2::new(-g.front.y, g.front.x);
+    across * ((j as f32 - (n as f32 - 1.0) / 2.0) * spacing)
+}
+
 /// Field the setup's Generals and install the battle's state. Call after the
 /// skirmish start has been spawned; the setup must already have passed
 /// [`BattleSetup::check`]. Spawns in faction-slot order, so entity allocation
@@ -137,22 +149,25 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
         .as_ref()
         .expect("BattleSetup::check admits only content with a battle block");
     for (slot, side) in SLOTS.iter().enumerate() {
-        let Some(id) = &setup.sides[slot].general else {
-            continue;
-        };
-        let idx = content
-            .general_index(id)
-            .expect("BattleSetup::check admits only known generals");
-        let def = content.unit_def(idx).expect("a general has a unit definition");
         let g = ground[slot];
-        world.spawn((
-            Position(g.base + g.front * battle.general_front),
-            UnitDefIdx(idx),
-            def.mvp_kind,
-            *side,
-            Health::from_def(&content, idx),
-            General,
-        ));
+        let line = setup.sides[slot].generals.len();
+        for (j, id) in setup.sides[slot].generals.iter().enumerate() {
+            let idx = content
+                .general_index(id)
+                .expect("BattleSetup::check admits only known generals");
+            let def = content.unit_def(idx).expect("a general has a unit definition");
+            let at = g.base
+                + g.front * battle.general_front
+                + line_offset(g, j, line, battle.formation_spacing);
+            world.spawn((
+                Position(at),
+                UnitDefIdx(idx),
+                def.mvp_kind,
+                *side,
+                Health::from_def(&content, idx),
+                General,
+            ));
+        }
     }
     world.insert_resource(BattleState::default());
 }

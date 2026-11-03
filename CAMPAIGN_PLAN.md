@@ -132,7 +132,7 @@ A **skirmish** mode keeps today's rules exactly.
 
 - [x] **The General:** a unit type in `units.ron`, one per side. When a side's General dies,
   that side loses the battle.
-- [ ] **Several Generals per side:** a battle can field more than one General per side, and
+- [x] **Several Generals per side:** a battle can field more than one General per side, and
   that side loses when **all** its Generals are dead (or it retreats).
 - [ ] **The General's aura:** friendly units within a radius get a bonus. Each General type
   carries its own aura, defined in RON as a radius plus a list of stat modifiers (offense,

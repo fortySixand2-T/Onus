@@ -659,3 +659,5 @@
 - [2026-11-02] Modified: src/sim/replay.rs — C1: battle-only state-hash rows (GENERAL, BATTLE_STATE)
 - [2026-11-02] Created: tests/c1_general.rs — C1 AC1 tests: the General
 - [2026-11-02] Modified: FINDINGS.md — F-053 the General
+- [2026-11-02] Modified: src/sim/battle.rs — C1: a side fields a list of Generals, in a line across its front; it loses when all have fallen
+- [2026-11-02] Created: tests/c1_several_generals.rs — C1 AC2 tests: several Generals per side
