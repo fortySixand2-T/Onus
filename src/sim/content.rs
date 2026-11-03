@@ -1073,6 +1073,16 @@ impl Content {
                     return bad(format!("mvp_battle {what} must be finite and positive"));
                 }
             }
+            // A roster's first rank stands one spacing behind the Generals and
+            // must stand at least one spacing inside the entry edge.
+            if b.general_front + b.entry_edge_offset < 2.0 * b.formation_spacing {
+                return bad(format!(
+                    "mvp_battle general_front + entry_edge_offset ({} + {}) must be at least \
+                     2 * formation_spacing ({}): a roster's first rank must stand one spacing \
+                     inside the entry edge",
+                    b.general_front, b.entry_edge_offset, b.formation_spacing
+                ));
+            }
             if b.regen_interval_ticks == 0 {
                 return bad("mvp_battle regen_interval_ticks must be positive".to_string());
             }

@@ -320,6 +320,8 @@ fn spawn_roster(
     // off the field.
     let fit = ((battle.general_front + battle.entry_edge_offset) / battle.formation_spacing)
         .floor() as usize;
+    // Content validation guarantees room for at least one such rank.
+    debug_assert!(fit >= 2, "mvp_battle leaves no rank inside the entry edge");
     let ranks = fit.saturating_sub(1).max(1);
     let rank = (battle.formation_rank as usize).max(total.div_ceil(ranks));
     for (k, u) in roster.units.iter().enumerate() {

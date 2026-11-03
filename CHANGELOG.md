@@ -720,3 +720,7 @@
 - [2026-11-02] Modified: FINDINGS.md — F-061 C1 critic fixes
 - [2026-11-02] Modified: FINDINGS.md — F-060 update 1: B3 re-run after the mutual-retreat rule
 - [2026-11-02] Modified: CAMPAIGN_PLAN.md — C1 AC9 note: the current gate reading
+- [2026-11-03] Modified: src/sim/content.rs — C1 fix: refuse mvp_battle when general_front + entry_edge_offset < 2 * formation_spacing
+- [2026-11-03] Modified: src/sim/battle.rs — C1 fix: spawn_roster debug_asserts the validated room for a rank
+- [2026-11-03] Modified: tests/c1_roster.rs — C1 fix: tight layout refused at load; the boundary layout keeps every unit on the field
+- [2026-11-03] Modified: FINDINGS.md — F-061 addendum: the layout guarantee is enforced at load

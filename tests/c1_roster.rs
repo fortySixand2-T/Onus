@@ -279,3 +279,67 @@ fn a_large_roster_starts_entirely_on_the_field() {
         assert_eq!(spots.len(), n, "{n} units: two share a spot");
     }
 }
+
+/// The shipped data with the battle layout's three distances replaced.
+fn tight_content(tag: &str, front: &str, spacing: &str, offset: &str) -> Result<Content, String> {
+    let src = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data");
+    let out = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target/c1_roster")
+        .join(tag);
+    std::fs::create_dir_all(&out).unwrap();
+    for f in ["resources.ron", "strategies.ron"] {
+        std::fs::copy(src.join(f), out.join(f)).unwrap();
+    }
+    let text = std::fs::read_to_string(src.join("units.ron")).unwrap();
+    let edited = text
+        .replacen("general_front: 80.0,", &format!("general_front: {front},"), 1)
+        .replacen("formation_spacing: 30.0,", &format!("formation_spacing: {spacing},"), 1)
+        .replacen("entry_edge_offset: 150.0,", &format!("entry_edge_offset: {offset},"), 1);
+    for (k, v) in [("general_front", front), ("formation_spacing", spacing), ("entry_edge_offset", offset)] {
+        assert!(edited.contains(&format!("{k}: {v},")), "{tag}: {k} not replaced");
+    }
+    std::fs::write(out.join("units.ron"), edited).unwrap();
+    Content::load_from_dir(&out).map_err(|e| e.to_string())
+}
+
+/// A layout with no room for one rank a spacing inside the entry edge
+/// (`general_front + entry_edge_offset < 2 * formation_spacing`) is refused
+/// at load, naming the fields, so no roster can ever start off the field.
+#[test]
+fn a_layout_with_no_room_for_a_rank_is_refused_at_load() {
+    let err = tight_content("tight", "10.0", "30.0", "10.0").expect_err("front 10 + offset 10 < 2 x 30");
+    for field in ["general_front", "entry_edge_offset", "formation_spacing"] {
+        assert!(err.contains(field), "{err}");
+    }
+    // Just short of the boundary is refused too.
+    tight_content("short", "20.0", "30.0", "39.5").expect_err("59.5 < 60");
+}
+
+/// At the boundary (`general_front + entry_edge_offset == 2 * formation_spacing`)
+/// the layout loads, and every roster unit, however many, stands at least one
+/// spacing inside its side's edge.
+#[test]
+fn a_layout_exactly_two_spacings_deep_loads_and_keeps_every_unit_on_the_field() {
+    let c = tight_content("boundary", "20.0", "30.0", "40.0").expect("20 + 40 == 2 x 30 loads");
+    let spacing = c.battle.as_ref().unwrap().formation_spacing;
+    for n in [1usize, 8, 30] {
+        let roster = (0..n).fold(Roster::default().building("hq"), |r, _| r.unit("ravager"));
+        let setup = BattleSetup::default()
+            .with_general(Faction::A, "general_focus")
+            .with_roster(Faction::A, roster)
+            .with_general(Faction::B, "general_bulwark");
+        let mut app = headless::ai_vs_ai(c.clone(), &MatchSettings::default().with_battle(setup))
+            .expect("battle builds");
+        app.insert_resource(AiCommanders::default());
+        let edge = app.world().resource::<BattleState>().edge(Faction::A);
+        let units = units_of(&mut app, Faction::A);
+        assert_eq!(units.len(), n);
+        for (_, _, p, _) in &units {
+            assert!(
+                edge.beyond(*p) <= -spacing + 1e-3,
+                "{n} units: one starts at {p}, {} from the edge",
+                edge.beyond(*p)
+            );
+        }
+    }
+}

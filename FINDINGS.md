@@ -6145,3 +6145,17 @@ non-General units.
 **5c. `BattleSetup` is not in `MatchLog`.** This is left for C4/C6, as F-053's "Not yet" says:
 a battle cannot be replayed from its log until the log carries the setup (Generals, rosters
 and ground). Until then, a battle's log cannot rebuild the battle it recorded.
+
+**Addendum (critic re-review, LOW): the layout is refused when it leaves no room for a rank.**
+The rank count was forced to at least 1, so when `general_front + entry_edge_offset <
+2 * formation_spacing` the first rank, one spacing behind the Generals, stood less than one
+spacing inside the entry edge, or beyond it. With front 10, spacing 30 and offset 10, every
+roster unit spawned 10 past its own edge. **Coordinator's decision:** content validation now
+refuses such an `mvp_battle` block, with an error naming `general_front`, `entry_edge_offset` and
+`formation_spacing`. So "at least one rank, standing at least one spacing inside the edge"
+always holds, and `spawn_roster` keeps a `debug_assert!` on it. The shipped numbers (80 + 150
+against 2 x 30) are unaffected. Gates in `tests/c1_roster.rs`:
+- `a_layout_with_no_room_for_a_rank_is_refused_at_load`: front 10, spacing 30 and offset 10 are
+  refused, and so is the near-boundary case 20 + 39.5 < 60.
+- `a_layout_exactly_two_spacings_deep_loads_and_keeps_every_unit_on_the_field`: 20 + 40 ==
+  2 x 30 loads, and 1, 8 and 30 units all start at least one spacing inside the edge.
