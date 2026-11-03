@@ -223,6 +223,15 @@ The layout is illustrative only; the exact adjacency is decided in the C4 data.
     | Tollmarch | **Logistics** | + move speed | arrives first, picks fights, gets out; strong for retreats |
     | The Ashen Reach | **Endurance** | slow HP regeneration | outlasts the enemy; survivors carry more HP between battles |
 
+  - **Veteran Generals** *(decided by the user, 2026-11-02)*. A General who survives a
+    battle gains experience, and his rank rises.
+    - *(rec)* Each rank strengthens his aura by one step: a larger radius or a larger bonus,
+      as RON data per rank, with a cap on the top rank.
+    - *(rec)* A replacement General starts at rank 0. Losing a veteran is therefore a real
+      loss, which raises the stakes of protecting him and makes **retreating to save him** a
+      real choice.
+    - *(rec)* Winning earns more experience than retreating, and retreating earns more than
+      dying.
   - **Absorbing an aura** *(decided by the user, 2026-11-02)*. When you take a nation's
     capital, you gain **a new General carrying that nation's aura**, and he leads a new army
     of your own. Taking each capital therefore adds a General and an army, so you can field
@@ -250,6 +259,19 @@ The layout is illustrative only; the exact adjacency is decided in the C4 data.
     army lost, or the enemy outnumbering it by a set ratio.
 - **Destroying the city's HQ** also wins the battle and takes the city *(rec)*. The skirmish
   mode keeps today's rule that destroying the HQ wins.
+
+### Siege damage persists *(decided by the user, 2026-11-02)*
+
+- A city's buildings keep their HP between rounds. If the battle ends without the city
+  falling, by retreat or by a General's death, the damage stays. A strong city can therefore
+  be **worn down over several assaults**.
+- *(rec)* **Repair.** A city that is not attacked in a round repairs a set amount of building
+  HP. The repair rate is RON data, and the Forgeborn repair faster as part of their sturdier
+  buildings.
+- *(rec)* **Destroyed buildings stay destroyed** until rebuilt. Rebuilding is paid from the
+  city's levy over rounds, or by workers during a battle.
+- *(rec)* **A conqueror inherits the damage:** a city taken half-ruined stays half-ruined
+  until it is repaired.
 
 ### Rounds *(rec)*
 
@@ -352,8 +374,6 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 ### Still open (C0)
 
 - The names of your house and its capital.
-- **Whether a General carries his own traits** (veteran Generals).
-- **Siege rules:** does the defender's city keep its damaged buildings between rounds?
 - **Trait caps** for absorbed arts.
 - **Data shape:** `nations.ron` and `campaign.ron`, with fields only.
 

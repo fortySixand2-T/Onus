@@ -129,7 +129,8 @@ A **skirmish** mode keeps today's rules exactly.
 - [ ] **Battle setup from a roster.** A side can start with a given army (its General, its
   units and their HP) and given buildings, instead of the skirmish start. The attacker and
   defender setups are what C4 builds from campaign state.
-- [ ] **The battle outcome reports survivors:** each surviving unit's type and HP, per side.
+- [ ] **The battle outcome reports survivors:** each surviving unit's type and HP per side,
+  every building's HP (siege damage persists), and whether each General survived.
   C4 writes this back to the campaign.
 - [ ] **AI:** protects its General, and retreats on a data-driven threshold.
 - [ ] **Golden licence:** skirmish mode reproduces today's pinned results exactly.
@@ -161,6 +162,11 @@ This is the brief's "first economic expansion after fun":
 - [ ] `src/campaign/` is a deterministic, seeded, render-free campaign state machine that
   owns its own state hash. It holds the map, the nations and their cities, ownership, rounds,
   and conquest.
+- [ ] **Veteran Generals:** a surviving General gains experience and rank, and each rank
+  strengthens his aura (RON per rank, with a cap). A replacement General starts at rank 0.
+- [ ] **Siege damage persists:** a city's building HP carries between rounds. Unattacked cities
+  repair at a RON rate, destroyed buildings need rebuilding, and a conqueror inherits the
+  damage.
 - [ ] **Absorbed Generals:** taking a capital gives the conqueror a new General with that
   nation's aura, leading a new army. One General per army, and one army per side in a battle.
 - [ ] **Armies persist:** survivors from each battle outcome return to their army, and the dead

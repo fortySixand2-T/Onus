@@ -5713,8 +5713,6 @@ threshold.
 
 **Open:**
 - The names of your house and its capital.
-- Whether Generals become veterans.
-- Whether siege damage persists between rounds.
 - The trait cap.
 - The `nations.ron` and `campaign.ron` field sketch.
 
@@ -5740,4 +5738,14 @@ second General.** The conqueror gains a General carrying that nation's aura, who
 army, up to six in total. The recommendation is one General per army and one army per side in
 a battle, so auras never stack. The campaign sim must measure the snowball risk, since each
 capital adds both cities and an army. C4 gains an AC for it.
+
+**Update 4 (2026-11-02):** the user decided two more questions.
+- **Generals can be veterans.** Surviving battles raises a General's rank, and each rank
+  strengthens his aura, with a cap on the top rank. A replacement General starts at rank 0,
+  which makes retreating to save a veteran a real choice.
+- **Siege damage persists between rounds.** A city can be worn down over several assaults.
+  The recommendation is that unattacked cities repair a set amount each round, destroyed
+  buildings need rebuilding, and a conqueror inherits the damage.
+
+C1 now includes building HP in battle setup and outcome. C4 persists it.
 
