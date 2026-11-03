@@ -204,6 +204,10 @@ The layout is illustrative only; the exact adjacency is decided in the C4 data.
     withdraws, so it still carries over.
   - The General fights, but is fragile enough that protecting him is a decision (stats to come
     from the sim).
+  - **He buffs nearby units** *(decided by the user, 2026-11-02)*. Friendly units within his
+    aura radius get a bonus. The radius, the stats it touches and its size are RON data, tuned
+    by the sim. Keeping him close to the fight helps the army, and that is exactly what puts
+    him at risk.
   - *(rec)* A nation whose General dies gets a weaker replacement General after N rounds.
     **Your own General is the heir**: if he dies, the battle is lost and the heir is wounded
     for N rounds. The campaign is not lost.
@@ -313,7 +317,6 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 ### Still open (C0)
 
 - The names of your house and its capital.
-- **The General's role:** a pure commander, or one who also buffs nearby units (an aura)?
 - **Whether a General carries his own traits** (veteran Generals).
 - **Siege rules:** does the defender's city keep its damaged buildings between rounds?
 - **Trait caps** for absorbed arts.

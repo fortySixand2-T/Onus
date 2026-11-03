@@ -5713,8 +5713,11 @@ threshold.
 
 **Open:**
 - The names of your house and its capital.
-- The General's role: a pure commander, or one with an aura.
 - Whether Generals become veterans.
 - Whether siege damage persists between rounds.
 - The trait cap.
 - The `nations.ron` and `campaign.ron` field sketch.
+
+**Update (2026-11-02):** the user decided that the General **buffs nearby units** with an aura,
+whose radius and bonus are RON data. That closes the General's-role question. C1 gains an AC
+for it.

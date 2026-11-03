@@ -117,6 +117,8 @@ A **skirmish** mode keeps today's rules exactly.
 
 - [ ] **The General:** a unit type in `units.ron`, one per side. When a side's General dies,
   that side loses the battle.
+- [ ] **The General's aura:** friendly units within a radius get a bonus. The radius and the
+  bonus are RON data.
 - [ ] **Retreat:** an `Order`. The side's units head for its entry edge, and the battle ends
   as a retreat once the withdrawal finishes. The outcome records which units got off the
   field.
