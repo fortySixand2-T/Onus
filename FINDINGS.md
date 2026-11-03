@@ -6174,3 +6174,55 @@ user decision", and the plan's gate section records the override.
 **What this does not change.** C1's open AC (the B5 human re-read of campaign battles) stays
 open. Nothing in C2 re-pins a golden: the "no nation" default must reproduce today's results
 exactly (C2 AC2).
+
+## F-063 — Nations as data: how the traits reach the sim (C2 AC1)
+
+**Context.** C2 AC1 asks for `nations.ron` with C0's roster, traits as data-driven modifiers
+(never code per nation), and selection through `MatchSettings`, one nation per side, default none.
+
+**Decisions.**
+- **Traits rewrite a side's copy of the content.** `nation::SideRules::build` clones the roster
+  `UnitDef`s and `BuildingDef`s and applies the nation's traits in file order. Targets are
+  `Unit(id)`, `Barracks(id)` (everything a building trains), `Workers`, `CombatUnits`,
+  `Building(id)` and `Buildings`. Stats are a `mul` (cost, train, gather and attack ticks,
+  building HP) or an `add` (carry, reach, speed, offense, defense, armor). A `mul` is held as
+  integer per-mille and applied as round-half-up(v * m / 1000), with no float in the sim. The
+  traited copy must pass the same load checks as the base content (max_stat, non-zero
+  cost/train/carry, reach within engage and attack-move range, no combat stat on a
+  non-combatant, no carry on a non-gatherer). Otherwise the file is refused at load.
+- **The layer exists only when it is used.** `NationRules` is an optional resource, inserted
+  by `headless::battle` only when a side names a nation (the C1 pattern; critic_p2's "no
+  init_resource" check still holds). Every per-faction read goes through `nation::Defs`. With
+  no `NationRules`, `Defs` returns exactly the old `Content` lookup, so the golden licence
+  (AC2) holds by construction. The per-tick state hash emits a new row tag (`NATIONS = 25`)
+  only when the resource exists, and the content fingerprint mixes in a "nations" section only
+  when `nations.ron` is present.
+- **Stand-in traits (Alloy only):** House none (its edge is the Synthesis aura); Forgeborn
+  foundry units cost x0.90; Verdant gene-vats units train x0.90; Aetherkin Arclight reach +12;
+  Tollmarch workers carry +1; Ashen Reach building HP x1.15. These are first guesses; the AC4
+  gate tunes them.
+- **Strategies are orthogonal.** A nation names its battle-personality script, but
+  `MatchSettings` keeps nations and strategies separate. A side with no named strategy plays the
+  content default whatever its nation, so a nation axis never silently changes a strategy
+  matchup. The batch (AC3) chooses which pairing to run.
+- **Not modelled:** a RepairRate trait (the sim has no repair) and build time (buildings are
+  instant). Diplomatic disposition is campaign-layer data (C5) and is not in this file yet.
+
+**Known gaps.**
+- `MatchLog` records no nations, the same gap as F-061's `BattleSetup`. A replay of a nation
+  match against the wrong content or settings is caught by the state hash on its first tick
+  (the NATIONS rows), not rebuilt.
+- `BattleSetup::check` validates a roster building's HP against the base pool, so a campaign
+  roster cannot name HP above the base maximum even for Ashen Reach.
+
+**One older test's premise moved, no value re-pinned.** `tests/b1_strategies.rs`
+`the_fingerprint_covers_every_strategy_and_every_field` compared an edited copy of the content
+(units, resources and a strategies file) against the fingerprint of the **full** shipped content.
+The shipped content now also holds `nations.ron`, which the fingerprint sees (a nation match
+depends on it), so the full content and the three-file copy are different content. The copy
+cannot include `nations.ron` either, because a nation names shipped strategies and would not
+load beside an edited set. The test's base is now the shipped strategies through the same
+three-file harness. Its claims are unchanged: every edit moves the hash, and an untouched copy
+hashes the same as the base. This was the only failure in the full debug suite on the AC1 tree.
+
+**Gates:** `tests/c2_nations.rs` (17 tests).

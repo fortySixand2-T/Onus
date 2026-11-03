@@ -16,6 +16,7 @@ pub mod battle;
 pub mod combat;
 pub mod content;
 pub mod economy;
+pub mod nation;
 pub mod pathfind;
 pub mod replay;
 pub mod spatial;
@@ -696,8 +697,11 @@ pub fn apply_commands(
     // path mutating the registry is exactly the desync the replay path cannot
     // reproduce (see the comment in the loop below).
     ids: Option<Res<replay::SimIds>>,
+    // The match's nations (C2): what each side's spending costs.
+    nations: Option<Res<nation::NationRules>>,
     mut commands: Commands,
 ) {
+    let side_defs = nation::Defs::new(&content, nations.as_deref());
     let now = state.map(|s| s.tick()).unwrap_or(0);
     let mut log = log;
     let due = queue.0.take_due(now);
@@ -893,8 +897,8 @@ pub fn apply_commands(
                 if matches!(attribution, Attribution::By(by) if by != faction) {
                     continue;
                 }
-                economy::place_building(
-                    &content,
+                economy::place_building_with(
+                    side_defs,
                     &mut stock,
                     &mut commands,
                     faction,
@@ -910,7 +914,14 @@ pub fn apply_commands(
                     if matches!(attribution, Attribution::By(by) if by != *faction) {
                         continue;
                     }
-                    economy::enqueue_unit(&content, &mut stock, b.def, *faction, &mut queue, unit);
+                    economy::enqueue_unit_with(
+                        side_defs,
+                        &mut stock,
+                        b.def,
+                        *faction,
+                        &mut queue,
+                        unit,
+                    );
                 }
             }
             Order::Retreat { faction } => {
@@ -1079,15 +1090,23 @@ pub fn movement(
     mut report: ResMut<RateReport>,
     // A campaign battle's auras (C1); absent in a skirmish.
     auras: Option<Res<battle::AuraField>>,
-    mut query: Query<(Entity, &mut Position, &MoveTarget, &UnitDefIdx)>,
+    // The match's nations (C2); absent with none.
+    nations: Option<Res<nation::NationRules>>,
+    mut query: Query<(Entity, &mut Position, &MoveTarget, &UnitDefIdx, Option<&Faction>)>,
     mut commands: Commands,
 ) {
     report.sim_ticks += 1;
     let dt = time.delta_secs();
+    let defs = nation::Defs::new(&content, nations.as_deref());
 
-    for (e, mut pos, target, def) in &mut query {
+    for (e, mut pos, target, def, faction) in &mut query {
         let bonus = auras.as_ref().map_or(combat::StatBonus::NONE, |a| a.get(e));
-        let step = combat::move_speed_with(&content, def.0, bonus) * dt;
+        let step = match faction {
+            Some(f) => defs
+                .unit(*f, def.0)
+                .map_or(0.0, |u| combat::speed_of(&content, u, bonus)),
+            None => combat::move_speed_with(&content, def.0, bonus),
+        } * dt;
         let (next, arrived) = step_toward(pos.0, target.0, step);
         pos.0 = next;
         if arrived {

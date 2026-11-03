@@ -159,7 +159,7 @@ A **skirmish** mode keeps today's rules exactly.
 
 ## C2 — Nations in the 1v1, light traits on Alloy (started 2026-11-03, ahead of B5 by user decision)
 
-- [ ] `nations.ron` holds the C0 roster. The sim applies traits as data-driven modifiers
+- [x] `nations.ron` holds the C0 roster. The sim applies traits as data-driven modifiers
   (costs, stats, times, carry), never as code per nation. Selection works through
   `MatchSettings`, the same way strategies do.
 - [ ] **Golden licence:** a "no nation" setting reproduces today's pinned results exactly.

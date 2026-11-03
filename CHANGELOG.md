@@ -726,3 +726,17 @@
 - [2026-11-03] Modified: FINDINGS.md — F-061 addendum: the layout guarantee is enforced at load
 - [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 heading: started 2026-11-03 ahead of B5 by user decision; gate section records the override
 - [2026-11-03] Modified: FINDINGS.md — F-062: C2 starts ahead of B5 by the user's decision
+- [2026-11-03] Created: assets/data/nations.ron — C2: the six nations, Generals, strategies, colours and Alloy stand-in traits
+- [2026-11-03] Created: src/sim/nation.rs — C2: NationDef/TraitDef, per-side traited rules (SideRules, NationRules), Defs lookup, install
+- [2026-11-03] Created: tests/c2_nations.rs — C2 AC1: roster, selection, each trait as data, refusals, hash, determinism
+- [2026-11-03] Modified: src/sim/content.rs — C2: load nations.ron if present, validate it, fingerprint it
+- [2026-11-03] Modified: src/sim/mod.rs — C2: nation module; apply_commands and movement read per-side Defs
+- [2026-11-03] Modified: src/sim/combat.rs — C2: damage/speed take the per-side defs; combat reads them
+- [2026-11-03] Modified: src/sim/economy.rs — C2: placement, training, production and gathering read per-side Defs
+- [2026-11-03] Modified: src/sim/ai.rs — C2: the AI prices units and buildings from its own side's Defs
+- [2026-11-03] Modified: src/sim/battle.rs — C2: rosters, reports and withdrawals read per-side Defs
+- [2026-11-03] Modified: src/sim/replay.rs — C2: NATIONS hash rows when nations are in play
+- [2026-11-03] Modified: src/headless.rs — C2: MatchSettings::nations / with_nations, MatchSetupError::Nation, install
+- [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC1 ticked
+- [2026-11-03] Modified: FINDINGS.md — F-063: nations as data
+- [2026-11-03] Modified: tests/b1_strategies.rs — C2: the fingerprint test's base is the shipped strategies through its own three-file harness (nations.ron is now content)

@@ -22,8 +22,8 @@ use bevy::ecs::prelude::*;
 use bevy::math::Vec2;
 use std::collections::VecDeque;
 
-use crate::sim::combat::Health;
 use crate::sim::content::Content;
+use crate::sim::nation::{Defs, NationRules};
 use crate::sim::spatial::Faction;
 use crate::sim::{GatherTarget, MoveTarget, Position, ResourceNode};
 
@@ -269,6 +269,8 @@ fn nearest_dropoff(
 #[allow(clippy::type_complexity)]
 pub fn gather(
     content: Res<Content>,
+    // The match's nations (C2): each side's carry and harvest time.
+    nations: Option<Res<NationRules>>,
     mut stock: ResMut<Stockpiles>,
     mut nodes: Query<(&Position, &mut ResourceNode)>,
     buildings: Query<(Entity, &Position, &Building, &Faction)>,
@@ -286,6 +288,7 @@ pub fn gather(
     )>,
     mut commands: Commands,
 ) {
+    let defs = Defs::new(&content, nations.as_deref());
     let gather_range = content.economy.gather_range;
     let deposit_range = content.economy.deposit_range;
 
@@ -311,7 +314,7 @@ pub fn gather(
         // never left stale. An entity that cannot gather (no definition, or one
         // with `gathers: false`) is released here rather than skipped past;
         // skipping is what let a soldier keep a marker it could never act on.
-        let Some(def) = content.units.get(def_idx.0).filter(|d| d.gathers) else {
+        let Some(def) = defs.roster_unit(*faction, def_idx.0).filter(|d| d.gathers) else {
             release_gather_job(&mut commands.entity(entity));
             continue;
         };
@@ -418,7 +421,20 @@ pub fn place_building(
     building: usize,
     pos: Vec2,
 ) -> bool {
-    let Some(def) = content.buildings.get(building) else {
+    place_building_with(Defs::plain(content), stock, commands, faction, building, pos)
+}
+
+/// [`place_building`] at the price and HP pool of `faction`'s own
+/// definitions (C2: its nation's traits, when it has one).
+pub fn place_building_with(
+    defs: Defs,
+    stock: &mut Stockpiles,
+    commands: &mut Commands,
+    faction: Faction,
+    building: usize,
+    pos: Vec2,
+) -> bool {
+    let Some(def) = defs.building(faction, building) else {
         return false;
     };
     if !stock.try_spend(faction, def.alloy_cost) {
@@ -431,7 +447,7 @@ pub fn place_building(
         ProductionQueue::default(),
         // Buildings are killable (M4c): a building enters the world with the HP
         // pool its `mvp_defense` buys, exactly as a unit does.
-        Health::from_building_def(content, building),
+        defs.building_health(faction, building),
     ));
     true
 }
@@ -447,10 +463,24 @@ pub fn enqueue_unit(
     queue: &mut ProductionQueue,
     unit: usize,
 ) -> bool {
-    let Some(def) = content.units.get(unit) else {
+    enqueue_unit_with(Defs::plain(content), stock, building_def, faction, queue, unit)
+}
+
+/// [`enqueue_unit`] at the price and training time of `faction`'s own
+/// definitions (C2). What a building can train is the content's, never a
+/// trait's.
+pub fn enqueue_unit_with(
+    defs: Defs,
+    stock: &mut Stockpiles,
+    building_def: usize,
+    faction: Faction,
+    queue: &mut ProductionQueue,
+    unit: usize,
+) -> bool {
+    let Some(def) = defs.roster_unit(faction, unit) else {
         return false;
     };
-    if !content.produces(building_def, unit) {
+    if !defs.content.produces(building_def, unit) {
         return false;
     }
     if !stock.try_spend(faction, def.mvp_alloy_cost) {
@@ -468,6 +498,8 @@ pub fn enqueue_unit(
 /// the item was enqueued, so a unit is paid for exactly once.
 pub fn production(
     content: Res<Content>,
+    // The match's nations (C2): a unit enters with its side's HP pool.
+    nations: Option<Res<NationRules>>,
     mut produced: ResMut<Produced>,
     mut buildings: Query<(Entity, &Position, &Faction, &mut ProductionQueue)>,
     mut commands: Commands,
@@ -503,7 +535,7 @@ pub fn production(
             faction,
             // Every unit enters the world killable, with the HP pool its
             // `defense` stat buys (M4b).
-            Health::from_def(&content, done.unit),
+            Defs::new(&content, nations.as_deref()).unit_health(faction, done.unit),
         ));
         if def.gathers {
             spawned.insert(Carrying(0));

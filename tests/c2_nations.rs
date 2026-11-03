@@ -1,0 +1,537 @@
+//! C2 AC1 — **nations as data**: `assets/data/nations.ron` holds C0's six
+//! nations with their General types, a nation's traits are data-driven
+//! modifiers on the content its side plays with (costs, unit stats, training
+//! time, worker carry, building HP), and a match names one nation per side
+//! through `MatchSettings`, the way it names strategies.
+
+use std::path::PathBuf;
+
+use bevy::prelude::*;
+
+use onus::headless::{self, MatchSettings, MatchSetupError};
+use onus::sim::content::Content;
+use onus::sim::economy::{Building, Produced};
+use onus::sim::nation::{self, Defs, NationRules, UnknownNation};
+use onus::sim::{
+    AiCommanders, Carrying, CommandQueue, Faction, Health, Order, Position, Stockpiles,
+    UnitDefIdx, UnitKind,
+};
+
+fn data_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data")
+}
+
+fn shipped() -> Content {
+    Content::load_from_dir(&data_dir()).expect("content loads")
+}
+
+/// `round(v * mul)` half up, from the RON's own float — the rule the brief
+/// states, written independently of the sim's helper.
+fn traited(v: u32, mul: f32) -> u32 {
+    let milli = (mul * 1000.0).round() as u64;
+    ((v as u64 * milli + 500) / 1000) as u32
+}
+
+fn nation_mul(c: &Content, nation: &str, k: usize) -> f32 {
+    let n = c.nations.iter().find(|n| n.id == nation).unwrap();
+    n.traits[k].mul.expect("a mul trait")
+}
+
+fn nation_add(c: &Content, nation: &str, k: usize) -> i32 {
+    let n = c.nations.iter().find(|n| n.id == nation).unwrap();
+    n.traits[k].add.expect("an add trait")
+}
+
+/// A headless match with the given nations and **no commanders**: the test
+/// drives it by orders alone.
+fn quiet(a: Option<&str>, b: Option<&str>) -> App {
+    let s = MatchSettings::default().with_nations(a, b);
+    let mut app = headless::battle(shipped(), &s).expect("builds");
+    app.insert_resource(AiCommanders::new(0, &[]));
+    app
+}
+
+fn building_of(app: &mut App, f: Faction, def: usize) -> Option<Entity> {
+    let mut q = app.world_mut().query::<(Entity, &Building, &Faction)>();
+    let mut v: Vec<Entity> = q
+        .iter(app.world())
+        .filter(|(_, b, g)| b.def == def && **g == f)
+        .map(|(e, ..)| e)
+        .collect();
+    v.sort_by_key(|e| e.to_bits());
+    v.first().copied()
+}
+
+fn push(app: &mut App, o: Order, by: Faction) {
+    app.world_mut()
+        .resource_mut::<CommandQueue>()
+        .0
+        .push_back(o.issued_by(by));
+}
+
+const BASE: [Vec2; 2] = [Vec2::new(-750.0, 0.0), Vec2::new(750.0, 0.0)];
+
+/// Place `building` for both sides near their bases, step once, and return
+/// the two buildings.
+fn place_both(app: &mut App, building: &str) -> [Entity; 2] {
+    let def = shipped().building_index(building).unwrap();
+    for (i, f) in [Faction::A, Faction::B].into_iter().enumerate() {
+        push(
+            app,
+            Order::Place {
+                faction: f,
+                building: def,
+                pos: BASE[i] + Vec2::new(0.0, -150.0),
+            },
+            f,
+        );
+    }
+    headless::step(app);
+    [
+        building_of(app, Faction::A, def).expect("A placed it"),
+        building_of(app, Faction::B, def).expect("B placed it"),
+    ]
+}
+
+// ---- the roster --------------------------------------------------------------
+
+#[test]
+fn the_shipped_roster_is_c0s_six_nations_with_their_generals() {
+    let c = shipped();
+    let got: Vec<(&str, &str)> = c
+        .nations
+        .iter()
+        .map(|n| (n.id.as_str(), n.general.as_str()))
+        .collect();
+    assert_eq!(
+        got,
+        [
+            ("house", "general_synthesis"),
+            ("forgeborn", "general_bulwark"),
+            ("verdant", "general_frenzy"),
+            ("aetherkin", "general_focus"),
+            ("tollmarch", "general_logistics"),
+            ("ashen_reach", "general_endurance"),
+        ]
+    );
+    let names: Vec<&str> = c.nations.iter().map(|n| n.name.as_str()).collect();
+    assert_eq!(
+        names,
+        ["House Vael", "Forgeborn", "Verdant", "Aetherkin", "Tollmarch", "Ashen Reach"]
+    );
+    for n in &c.nations {
+        assert!(c.general_index(&n.general).is_some(), "{}: general resolves", n.id);
+        assert!(c.strategy(&n.strategy).is_some(), "{}: strategy resolves", n.id);
+    }
+}
+
+#[test]
+fn content_without_a_nations_file_loads_with_no_nations() {
+    let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/c2_nations/none");
+    std::fs::create_dir_all(&out).unwrap();
+    for f in ["units.ron", "resources.ron", "strategies.ron"] {
+        std::fs::copy(data_dir().join(f), out.join(f)).unwrap();
+    }
+    let _ = std::fs::remove_file(out.join("nations.ron"));
+    let c = Content::load_from_dir(&out).expect("loads");
+    assert!(c.nations.is_empty());
+}
+
+// ---- selection through MatchSettings ----------------------------------------
+
+#[test]
+fn the_default_match_names_no_nation_and_installs_nothing() {
+    assert_eq!(MatchSettings::default().nations, [None, None]);
+    let mut app = headless::ai_vs_ai(shipped(), &MatchSettings::default()).unwrap();
+    headless::tick(&mut app, 30);
+    assert!(!app.world().contains_resource::<NationRules>());
+}
+
+#[test]
+fn a_match_names_one_nation_per_side() {
+    let s = MatchSettings::default().with_nations(Some("forgeborn"), Some("verdant"));
+    assert_eq!(
+        s.nations,
+        [Some("forgeborn".to_string()), Some("verdant".to_string())]
+    );
+    let app = headless::battle(shipped(), &s).unwrap();
+    let c = shipped();
+    let r = app.world().resource::<NationRules>();
+    let idx = |id: &str| c.nations.iter().position(|n| n.id == id);
+    assert_eq!(r.nation_of(Faction::A), idx("forgeborn"));
+    assert_eq!(r.nation_of(Faction::B), idx("verdant"));
+
+    let one = MatchSettings::default().with_nations(None, Some("tollmarch"));
+    let app = headless::battle(shipped(), &one).unwrap();
+    let r = app.world().resource::<NationRules>();
+    assert_eq!(r.nation_of(Faction::A), None);
+    assert_eq!(r.nation_of(Faction::B), idx("tollmarch"));
+}
+
+#[test]
+fn an_unknown_nation_is_refused_by_name_and_side() {
+    let s = MatchSettings::default().with_nations(None, Some("atlantis"));
+    let Err(err) = headless::battle(shipped(), &s) else {
+        panic!("an unknown nation must be refused");
+    };
+    assert_eq!(
+        err,
+        MatchSetupError::Nation(UnknownNation {
+            id: "atlantis".to_string(),
+            faction: Faction::B,
+        })
+    );
+}
+
+// ---- the traits, through the sim --------------------------------------------
+
+#[test]
+fn forgeborn_pays_less_for_foundry_units_and_only_forgeborn() {
+    let c = shipped();
+    let mul = nation_mul(&c, "forgeborn", 0);
+    let mut app = quiet(Some("forgeborn"), None);
+    let [fa, fb] = place_both(&mut app, "foundry");
+    let before = {
+        let s = app.world().resource::<Stockpiles>();
+        [s.alloy(Faction::A), s.alloy(Faction::B)]
+    };
+    let bulwark = c.unit_index("bulwark").unwrap();
+    for (b, f) in [(fa, Faction::A), (fb, Faction::B)] {
+        push(&mut app, Order::Train { building: b, unit: bulwark }, f);
+    }
+    headless::step(&mut app);
+    let s = app.world().resource::<Stockpiles>();
+    let base = c.units[bulwark].mvp_alloy_cost;
+    assert_eq!(before[0] - s.alloy(Faction::A), traited(base, mul), "Forgeborn price");
+    assert_eq!(before[1] - s.alloy(Faction::B), base, "no nation pays the RON price");
+    assert!(traited(base, mul) < base);
+
+    // Through the lookup every read site uses: a Gene-Vats unit is untouched.
+    let rules = app.world().resource::<NationRules>();
+    let defs = Defs::new(&c, Some(rules));
+    let ripper = c.unit_index("ripper").unwrap();
+    assert_eq!(
+        defs.roster_unit(Faction::A, ripper).unwrap().mvp_alloy_cost,
+        c.units[ripper].mvp_alloy_cost
+    );
+    let sentinel = c.unit_index("sentinel").unwrap();
+    assert_eq!(
+        defs.roster_unit(Faction::A, sentinel).unwrap().mvp_alloy_cost,
+        traited(c.units[sentinel].mvp_alloy_cost, mul)
+    );
+}
+
+#[test]
+fn verdant_trains_gene_vats_units_faster() {
+    let c = shipped();
+    let mul = nation_mul(&c, "verdant", 0);
+    let ripper = c.unit_index("ripper").unwrap();
+    let base = c.units[ripper].mvp_train_ticks;
+    let fast = traited(base, mul);
+    assert!(fast < base);
+
+    let mut app = quiet(Some("verdant"), None);
+    let [ga, gb] = place_both(&mut app, "gene_vats");
+    for (b, f) in [(ga, Faction::A), (gb, Faction::B)] {
+        push(&mut app, Order::Train { building: b, unit: ripper }, f);
+    }
+    let made = |app: &App| {
+        let p = app.world().resource::<Produced>();
+        [p.count(Faction::A, ripper), p.count(Faction::B, ripper)]
+    };
+    // The first tick applies the order; the queue then counts down.
+    let mut first = [None, None];
+    for t in 1..=base + 5 {
+        headless::step(&mut app);
+        let m = made(&app);
+        for k in 0..2 {
+            if m[k] > 0 && first[k].is_none() {
+                first[k] = Some(t);
+            }
+        }
+    }
+    let (a, b) = (first[0].expect("A trained"), first[1].expect("B trained"));
+    assert_eq!(b - a, base - fast, "Verdant's Ripper arrives {} ticks early", base - fast);
+}
+
+#[test]
+fn tollmarch_workers_carry_more() {
+    let c = shipped();
+    let add = nation_add(&c, "tollmarch", 0) as u32;
+    let worker = c.unit_index("worker").unwrap();
+    let base = c.units[worker].mvp_carry_capacity;
+    // Both sides play the same script; only the nation differs.
+    let s = MatchSettings::default().with_nations(Some("tollmarch"), None);
+    let mut app = headless::battle(shipped(), &s).unwrap();
+    let mut most = [0u32; 2];
+    for _ in 0..900 {
+        headless::step(&mut app);
+        let mut q = app.world_mut().query::<(&Faction, &Carrying)>();
+        for (f, carry) in q.iter(app.world()) {
+            let k = if *f == Faction::A { 0 } else { 1 };
+            most[k] = most[k].max(carry.0);
+        }
+    }
+    assert_eq!(most, [base + add, base], "a full load per side");
+}
+
+#[test]
+fn aetherkin_arclights_reach_further() {
+    let c = shipped();
+    let add = nation_add(&c, "aetherkin", 0) as f32;
+    let arclight = c.unit_index("arclight").unwrap();
+    let reach = c.units[arclight].mvp_attack_range;
+    let gap = reach + add / 2.0; // beyond the RON reach, inside the traited one
+
+    let duel = |a: Option<&str>| {
+        let mut app = quiet(a, None);
+        let mut spawn = |f: Faction, x: f32| {
+            let hp = Defs::new(&c, app.world().get_resource::<NationRules>()).unit_health(f, arclight);
+            app.world_mut()
+                .spawn((Position(Vec2::new(x, 2_000.0)), UnitDefIdx(arclight), UnitKind::Soldier, f, hp))
+                .id()
+        };
+        let ea = spawn(Faction::A, 0.0);
+        let eb = spawn(Faction::B, gap);
+        headless::step(&mut app);
+        let hp = |e: Entity| {
+            let h = app.world().get::<Health>(e).unwrap();
+            (h.current, h.max)
+        };
+        (hp(ea), hp(eb))
+    };
+    let ((a_now, a_max), (b_now, b_max)) = duel(Some("aetherkin"));
+    assert_eq!(a_now, a_max, "B's Arclight is out of reach");
+    assert!(b_now < b_max, "Aetherkin's Arclight hits at {gap}");
+    let ((a_now, a_max), (b_now, b_max)) = duel(None);
+    assert_eq!((a_now, b_now), (a_max, b_max), "with no nation neither reaches");
+}
+
+#[test]
+fn ashen_reach_buildings_have_more_hp() {
+    let c = shipped();
+    let mul = nation_mul(&c, "ashen_reach", 0);
+    let mut app = quiet(Some("ashen_reach"), None);
+    let [fa, fb] = place_both(&mut app, "foundry");
+    let pool = |e: Entity| app.world().get::<Health>(e).unwrap().max;
+    let foundry = c.building("foundry").unwrap();
+    let base = foundry.mvp_defense * c.combat.building_hp_per_defense;
+    assert_eq!(pool(fb), base);
+    assert_eq!(pool(fa), traited(base, mul));
+    assert!(pool(fa) > base);
+}
+
+#[test]
+fn a_starting_unit_takes_its_sides_traited_pool() {
+    // A Defense trait (here, written for the test) must reach the units on the
+    // field at tick 0, not only those trained later.
+    let dir = with_nations(
+        "start_pool",
+        r#"(nations: [(id: "stout", name: "Stout", domain: None, colour: (0.5,0.5,0.5),
+            accent: (0.5,0.5,0.5), general: "general_bulwark", strategy: "mvp",
+            traits: [(applies_to: Workers, stat: Defense, add: 2)])])"#,
+    );
+    let c = Content::load_from_dir(&dir).expect("loads");
+    let worker = c.unit_index("worker").unwrap();
+    let s = MatchSettings::default().with_nations(Some("stout"), None);
+    let mut app = headless::battle(c.clone(), &s).unwrap();
+    let mut q = app.world_mut().query::<(&Faction, &UnitDefIdx, &Health)>();
+    let mut pools = [0u32; 2];
+    for (f, d, h) in q.iter(app.world()) {
+        if d.0 == worker {
+            pools[if *f == Faction::A { 0 } else { 1 }] = h.max;
+            assert_eq!(h.current, h.max);
+        }
+    }
+    let base = c.units[worker].defense * c.combat.hp_per_defense;
+    assert_eq!(pools, [base + 2 * c.combat.hp_per_defense, base]);
+}
+
+// ---- traits are data: any target, any stat, refused when unplayable ---------
+
+/// A copy of the shipped data with `nations.ron` replaced by `text`.
+fn with_nations(name: &str, text: &str) -> PathBuf {
+    let out = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("target/c2_nations")
+        .join(name);
+    std::fs::create_dir_all(&out).unwrap();
+    for f in ["units.ron", "resources.ron", "strategies.ron"] {
+        std::fs::copy(data_dir().join(f), out.join(f)).unwrap();
+    }
+    std::fs::write(out.join("nations.ron"), text).unwrap();
+    out
+}
+
+fn one_trait(name: &str, t: &str) -> Result<Content, String> {
+    let text = format!(
+        r#"(nations: [(id: "x", name: "X", domain: None, colour: (0.1,0.2,0.3),
+            accent: (0.4,0.5,0.6), general: "general_focus", strategy: "mvp",
+            traits: [{t}])])"#
+    );
+    Content::load_from_dir(&with_nations(name, &text)).map_err(|e| e.to_string())
+}
+
+fn x_defs(c: &Content) -> NationRules {
+    NationRules::resolve(c, &[Some("x".to_string()), None])
+        .unwrap()
+        .unwrap()
+}
+
+#[test]
+fn any_stat_on_any_target_is_a_line_of_data() {
+    let c = one_trait(
+        "combat_offense",
+        "(applies_to: CombatUnits, stat: Offense, add: 1)",
+    )
+    .expect("loads");
+    let r = x_defs(&c);
+    let d = Defs::new(&c, Some(&r));
+    for (i, u) in c.units.iter().enumerate() {
+        let want = if u.offense > 0 { u.offense + 1 } else { 0 };
+        assert_eq!(d.unit(Faction::A, i).unwrap().offense, want, "{}", u.id);
+        assert_eq!(d.unit(Faction::B, i).unwrap().offense, u.offense, "B untouched");
+    }
+    // Generals take no trait: a General's definition is the content's.
+    let g = c.general_index("general_focus").unwrap();
+    assert_eq!(
+        d.unit(Faction::A, g).unwrap().offense,
+        c.unit_def(g).unwrap().offense
+    );
+
+    let c = one_trait(
+        "building_armor",
+        "(applies_to: Building(\"hq\"), stat: Armor, add: 1)",
+    )
+    .expect("loads");
+    let r = x_defs(&c);
+    let d = Defs::new(&c, Some(&r));
+    let hq = c.building_index("hq").unwrap();
+    assert_eq!(d.building(Faction::A, hq).unwrap().mvp_armor, c.buildings[hq].mvp_armor + 1);
+
+    let c = one_trait(
+        "attack_ticks",
+        "(applies_to: Unit(\"sentinel\"), stat: AttackTicks, mul: 0.5)",
+    )
+    .expect("loads");
+    let r = x_defs(&c);
+    let d = Defs::new(&c, Some(&r));
+    let s = c.unit_index("sentinel").unwrap();
+    assert_eq!(
+        d.unit(Faction::A, s).unwrap().mvp_attack_ticks,
+        traited(c.units[s].mvp_attack_ticks, 0.5)
+    );
+}
+
+#[test]
+fn several_traits_compose_in_ron_order() {
+    let c = one_trait(
+        "compose",
+        "(applies_to: Unit(\"bulwark\"), stat: AlloyCost, mul: 0.5),
+         (applies_to: CombatUnits, stat: AlloyCost, mul: 0.5)",
+    )
+    .expect("loads");
+    let r = x_defs(&c);
+    let d = Defs::new(&c, Some(&r));
+    let b = c.unit_index("bulwark").unwrap();
+    let base = c.units[b].mvp_alloy_cost;
+    assert_eq!(
+        d.roster_unit(Faction::A, b).unwrap().mvp_alloy_cost,
+        traited(traited(base, 0.5), 0.5)
+    );
+}
+
+#[test]
+fn an_unplayable_trait_is_refused_at_load() {
+    let refused = [
+        ("wrong_form", "(applies_to: CombatUnits, stat: AlloyCost, add: 5)"),
+        ("both_forms", "(applies_to: CombatUnits, stat: AlloyCost, add: 5, mul: 0.9)"),
+        ("zero_mul", "(applies_to: CombatUnits, stat: TrainTicks, mul: 0.0)"),
+        ("over_max", "(applies_to: CombatUnits, stat: Offense, add: 10)"),
+        ("neg_stat", "(applies_to: Unit(\"ripper\"), stat: Armor, add: -5)"),
+        ("unknown_unit", "(applies_to: Unit(\"dragon\"), stat: Speed, add: 1)"),
+        ("unknown_building", "(applies_to: Barracks(\"castle\"), stat: AlloyCost, mul: 0.9)"),
+        ("hp_on_units", "(applies_to: CombatUnits, stat: BuildingHp, mul: 1.1)"),
+        ("speed_on_buildings", "(applies_to: Buildings, stat: Speed, add: 1)"),
+        ("carry_on_soldiers", "(applies_to: CombatUnits, stat: CarryCapacity, add: 1)"),
+        ("reach_past_engage", "(applies_to: Unit(\"arclight\"), stat: AttackRange, add: 500)"),
+        ("arm_a_worker", "(applies_to: Workers, stat: Offense, add: 1)"),
+        ("unknown_field", "(applies_to: Workers, stat: Speed, add: 1, note: \"hi\")"),
+    ];
+    for (name, t) in refused {
+        assert!(one_trait(name, t).is_err(), "{name}: `{t}` must be refused");
+    }
+    // The references a nation makes must resolve, too.
+    for (name, text) in [
+        (
+            "bad_general",
+            r#"(nations: [(id: "x", name: "X", domain: None, colour: (0.1,0.2,0.3),
+                accent: (0.4,0.5,0.6), general: "general_nobody", strategy: "mvp", traits: [])])"#,
+        ),
+        (
+            "bad_strategy",
+            r#"(nations: [(id: "x", name: "X", domain: None, colour: (0.1,0.2,0.3),
+                accent: (0.4,0.5,0.6), general: "general_focus", strategy: "nope", traits: [])])"#,
+        ),
+        (
+            "bad_domain",
+            r#"(nations: [(id: "x", name: "X", domain: "water", colour: (0.1,0.2,0.3),
+                accent: (0.4,0.5,0.6), general: "general_focus", strategy: "mvp", traits: [])])"#,
+        ),
+        (
+            "bad_colour",
+            r#"(nations: [(id: "x", name: "X", domain: None, colour: (1.5,0.2,0.3),
+                accent: (0.4,0.5,0.6), general: "general_focus", strategy: "mvp", traits: [])])"#,
+        ),
+        (
+            "duplicate",
+            r#"(nations: [(id: "x", name: "X", domain: None, colour: (0.1,0.2,0.3),
+                accent: (0.4,0.5,0.6), general: "general_focus", strategy: "mvp", traits: []),
+                (id: "x", name: "Y", domain: None, colour: (0.1,0.2,0.3),
+                accent: (0.4,0.5,0.6), general: "general_focus", strategy: "mvp", traits: [])])"#,
+        ),
+    ] {
+        assert!(
+            Content::load_from_dir(&with_nations(name, text)).is_err(),
+            "{name} must be refused"
+        );
+    }
+}
+
+// ---- determinism and the hash ------------------------------------------------
+
+#[test]
+fn the_state_hash_sees_a_nation_even_one_with_no_traits() {
+    // House Vael's traits are `[]` in a skirmish; the hash must still tell its
+    // match from a no-nation one, or a log could replay without its nations.
+    let hash_at = |a: Option<&str>| {
+        let s = MatchSettings::default()
+            .with_nations(a, None)
+            .with_hashing(true);
+        let mut app = headless::battle(shipped(), &s).unwrap();
+        headless::tick(&mut app, 3);
+        app.world().resource::<onus::sim::StateHashLog>().0.clone()
+    };
+    assert_ne!(hash_at(Some("house")), hash_at(None));
+    assert_eq!(hash_at(Some("house")), hash_at(Some("house")), "deterministic");
+}
+
+#[test]
+fn a_nation_match_is_deterministic() {
+    let run = || {
+        let s = MatchSettings::default()
+            .with_seed(7)
+            .with_nations(Some("tollmarch"), Some("verdant"))
+            .with_hashing(true);
+        let mut app = headless::battle(shipped(), &s).unwrap();
+        headless::tick(&mut app, 2_400);
+        app.world().resource::<onus::sim::StateHashLog>().0.clone()
+    };
+    assert_eq!(run(), run());
+}
+
+#[test]
+fn install_is_a_no_op_with_no_nations() {
+    let mut app = quiet(None, None);
+    nation::install(app.world_mut(), &[None, None]).unwrap();
+    assert!(!app.world().contains_resource::<NationRules>());
+}

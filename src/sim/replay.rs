@@ -1180,6 +1180,9 @@ mod tag {
     /// hashes exactly as it did before these tags existed.
     pub const GENERAL: u64 = 23;
     pub const BATTLE_STATE: u64 = 24;
+    /// C2. Each side's nation: present only when a side has one, so a match
+    /// with no nation hashes exactly as it did before the tag existed.
+    pub const NATIONS: u64 = 25;
 }
 
 /// A 64-bit digest of one command the sim is holding. Everything about it that
@@ -1557,6 +1560,15 @@ pub fn state_hash(world: &mut World) -> u64 {
     if let Some(battle) = world.get_resource::<crate::sim::battle::BattleState>() {
         for (i, word) in battle.hash_words().into_iter().enumerate() {
             rows.push((slot, tag::BATTLE_STATE, i as u64, word));
+        }
+    }
+    // The nations (C2), only when a side has one. Each side's nation index
+    // (`u64::MAX`: none); the traited tables are a function of it and of the
+    // content, which the log's fingerprint already pins.
+    if let Some(n) = world.get_resource::<crate::sim::nation::NationRules>() {
+        for (i, f) in [Faction::A, Faction::B].into_iter().enumerate() {
+            let nation = n.nation_of(f).map_or(u64::MAX, |k| k as u64);
+            rows.push((slot, tag::NATIONS, i as u64, nation));
         }
     }
 

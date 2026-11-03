@@ -212,6 +212,19 @@ pub fn damage_per_hit_with(
     let (Some(a), Some(d)) = (content.unit_def(attacker), content.unit_def(defender)) else {
         return 0;
     };
+    damage_between(content, a, d, atk, dfn)
+}
+
+/// [`damage_per_hit_with`] on the definitions themselves — what a match with
+/// nations (C2) calls, with each side's traited definition. Given the
+/// content's own definitions it **is** `damage_per_hit_with`.
+pub fn damage_between(
+    content: &Content,
+    a: &crate::sim::content::UnitDef,
+    d: &crate::sim::content::UnitDef,
+    atk: StatBonus,
+    dfn: StatBonus,
+) -> u32 {
     let base = a
         .offense
         .saturating_add(atk.offense)
@@ -277,6 +290,16 @@ pub fn damage_per_hit_to_building_with(
     let (Some(a), Some(d)) = (content.unit_def(attacker), content.buildings.get(defender)) else {
         return 0;
     };
+    damage_to_building_between(content, a, d, atk)
+}
+
+/// [`damage_per_hit_to_building_with`] on the definitions themselves (C2).
+pub fn damage_to_building_between(
+    content: &Content,
+    a: &crate::sim::content::UnitDef,
+    d: &crate::sim::content::BuildingDef,
+    atk: StatBonus,
+) -> u32 {
     let base = a
         .offense
         .saturating_add(atk.offense)
@@ -296,8 +319,13 @@ pub fn move_speed(content: &Content, unit: usize) -> f32 {
 pub fn move_speed_with(content: &Content, unit: usize, bonus: StatBonus) -> f32 {
     content
         .unit_def(unit)
-        .map(|u| u.speed.saturating_add(bonus.speed) as f32 * content.combat.speed_per_point)
+        .map(|u| speed_of(content, u, bonus))
         .unwrap_or(0.0)
+}
+
+/// [`move_speed_with`] on the definition itself (C2).
+pub fn speed_of(content: &Content, u: &crate::sim::content::UnitDef, bonus: StatBonus) -> f32 {
+    u.speed.saturating_add(bonus.speed) as f32 * content.combat.speed_per_point
 }
 
 /// A unit's attack interval in ticks under a [`StatBonus`]: `ticks ×
@@ -397,6 +425,9 @@ pub fn combat(
     // A campaign battle's auras (C1) — absent in a skirmish, where every
     // lookup below is `StatBonus::NONE` and the arithmetic is the plain rule.
     auras: Option<Res<crate::sim::battle::AuraField>>,
+    // The match's nations (C2) — absent with none, where every lookup through
+    // `defs` is the plain content lookup.
+    nations: Option<Res<crate::sim::nation::NationRules>>,
     mut units: Query<(
         Entity,
         &Position,
@@ -412,6 +443,7 @@ pub fn combat(
     )>,
     mut commands: Commands,
 ) {
+    let defs = crate::sim::nation::Defs::new(&content, nations.as_deref());
     // ---- snapshot (stable order: ascending entity index) --------------------
     // `iter()` on a mutable query yields read-only items — the snapshot is taken
     // before anything is written, which is the whole point (see module docs).
@@ -422,10 +454,10 @@ pub fn combat(
                 // A unit if it has a definition, else a building if it is one;
                 // anything that is neither takes no part in combat at all.
                 let (kind, full) = match (def, building) {
-                    (Some(d), _) => (RowKind::Unit(d.0), Health::from_def(&content, d.0)),
+                    (Some(d), _) => (RowKind::Unit(d.0), defs.unit_health(*faction, d.0)),
                     (None, Some(b)) => (
                         RowKind::Building(b.def),
-                        Health::from_building_def(&content, b.def),
+                        defs.building_health(*faction, b.def),
                     ),
                     (None, None) => return None,
                 };
@@ -444,7 +476,7 @@ pub fn combat(
                     has_move_target: mt.is_some(),
                     attack_move: am.map(|d| d.0),
                     armed_target: match kind {
-                        RowKind::Unit(u) => content.unit_def(u).is_some_and(|d| d.offense > 0),
+                        RowKind::Unit(u) => defs.unit(*faction, u).is_some_and(|d| d.offense > 0),
                         RowKind::Building(_) => false,
                     },
                     gathering: gather.is_some(),
@@ -483,7 +515,7 @@ pub fn combat(
         let RowKind::Unit(unit_def) = row.kind else {
             continue;
         };
-        let Some(def) = content.unit_def(unit_def) else {
+        let Some(def) = defs.unit(row.faction, unit_def) else {
             continue;
         };
         let next_cd = row.cooldown.saturating_sub(1);
@@ -570,13 +602,16 @@ pub fn combat(
             if cooldown == 0 {
                 let bonus = |e: Entity| auras.as_ref().map_or(StatBonus::NONE, |a| a.get(e));
                 let atk = bonus(row.entity);
+                // Each side's own definitions (C2): the attacker's traited
+                // offense, the defender's traited armor and defense.
+                let prey_side = rows[j].faction;
                 damage[j] += match rows[j].kind {
-                    RowKind::Unit(prey) => {
-                        damage_per_hit_with(&content, unit_def, prey, atk, bonus(rows[j].entity))
-                    }
-                    RowKind::Building(b) => {
-                        damage_per_hit_to_building_with(&content, unit_def, b, atk)
-                    }
+                    RowKind::Unit(prey) => defs.unit(prey_side, prey).map_or(0, |d| {
+                        damage_between(&content, def, d, atk, bonus(rows[j].entity))
+                    }),
+                    RowKind::Building(b) => defs
+                        .building(prey_side, b)
+                        .map_or(0, |d| damage_to_building_between(&content, def, d, atk)),
                 };
                 cooldown = attack_ticks_with(def.mvp_attack_ticks, atk);
             }

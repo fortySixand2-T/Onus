@@ -516,6 +516,12 @@ struct StrategiesFile {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NationsFile {
+    nations: Vec<crate::sim::nation::NationDef>,
+}
+
+#[derive(Deserialize)]
 struct ResourcesFile {
     resources: Vec<ResourceDef>,
     mvp_active: Vec<String>,
@@ -553,6 +559,9 @@ pub struct Content {
     pub battle: Option<BattleDef>,
     /// The battle AI's numbers (C1); `None` in content with no campaign layer.
     pub general_ai: Option<GeneralAiDef>,
+    /// The nations (C2), in RON order, from the optional `nations.ron`. Empty
+    /// in content with no nations: then no match can name one.
+    pub nations: Vec<crate::sim::nation::NationDef>,
 }
 
 // ---- content fingerprint ----------------------------------------------------
@@ -740,6 +749,14 @@ impl Content {
         let units_file: UnitsFile = load_ron(&dir.join("units.ron"))?;
         let resources_file: ResourcesFile = load_ron(&dir.join("resources.ron"))?;
         let strategies_file: StrategiesFile = load_ron(&dir.join("strategies.ron"))?;
+        // C2: optional, so content with no nations (every pre-C2 data set a
+        // test keeps) still loads, and loads exactly as it did.
+        let nations_path = dir.join("nations.ron");
+        let nations = if nations_path.exists() {
+            load_ron::<NationsFile>(&nations_path)?.nations
+        } else {
+            Vec::new()
+        };
 
         let mut units = units_file.workers;
         units.extend(units_file.combat);
@@ -771,6 +788,7 @@ impl Content {
             generals: units_file.generals,
             battle: units_file.mvp_battle,
             general_ai: units_file.mvp_general_ai,
+            nations,
         };
         content.synthesise_general_units();
         content.validate()?;
@@ -1351,6 +1369,8 @@ impl Content {
         {
             return bad("mvp_economy ranges must be finite and positive".to_string());
         }
+        // The nations (C2), last: their traits are checked against the rest.
+        crate::sim::nation::validate(self).map_err(|msg| ContentError::Invalid { msg })?;
         Ok(())
     }
 
@@ -1504,6 +1524,34 @@ impl Content {
             h.str("general_ai")
                 .f32(ai.guard_radius)
                 .f32(ai.retreat_at_army_lost);
+        }
+
+        // C2: the nations, mixed in only when present (as C1's sections are),
+        // so content with no nations fingerprints exactly as before C2.
+        if !self.nations.is_empty() {
+            h.str("nations").u64(self.nations.len() as u64);
+            for n in &self.nations {
+                h.str(&n.id).str(&n.name).opt_str(&n.domain);
+                for (r, g, b) in [n.colour, n.accent] {
+                    h.f32(r).f32(g).f32(b);
+                }
+                h.str(&n.general).str(&n.strategy);
+                h.u64(n.traits.len() as u64);
+                for t in &n.traits {
+                    use crate::sim::nation::TraitTarget as T;
+                    match &t.applies_to {
+                        T::Unit(id) => h.u64(0).str(id),
+                        T::Barracks(id) => h.u64(1).str(id),
+                        T::Workers => h.u64(2),
+                        T::CombatUnits => h.u64(3),
+                        T::Building(id) => h.u64(4).str(id),
+                        T::Buildings => h.u64(5),
+                    };
+                    h.u64(t.stat as u64);
+                    h.bool(t.add.is_some()).u64(t.add.unwrap_or(0) as i64 as u64);
+                    h.bool(t.mul.is_some()).u32(t.mul_milli());
+                }
+            }
         }
 
         let ids = |all: &[String]| {
