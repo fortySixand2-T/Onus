@@ -167,6 +167,10 @@ A **skirmish** mode keeps today's rules exactly.
   cross-nation matchups test faction balance.
 - [ ] **Gate:** a nation criterion. Each nation's cross-nation strength is 35–65%, and the
   pentagon still holds under every nation pair. Tuning happens in RON only.
+  *(2026-11-03: the criterion runs and reads **Fail** (FINDINGS F-066). Tollmarch's
+  minimum carry trait (+1 on a base of 2) is 94.7% cross strength and breaks the pentagon
+  wherever it is prey. That cannot be tuned by magnitude, so this box stays unticked
+  pending the user's decision.)*
 - [x] **Client:** pick a nation, and see the opponent's nation at a glance (P3).
 
 ## C3 — The three-resource economy (Biomass grown, Aether channelled)

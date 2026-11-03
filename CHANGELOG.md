@@ -756,3 +756,8 @@
 - [2026-11-03] Created: tests/c2_client.rs — C2 AC5: the nation pick and its display, headless
 - [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC5 ticked
 - [2026-11-03] Modified: FINDINGS.md — F-067: the client nation pick
+- [2026-11-03] Modified: src/gate.rs — C2 AC4: NationGate, the nation criterion (cross strength 35-65%, the pentagon under every nation pair)
+- [2026-11-03] Modified: src/pentagon.rs — C2 AC4: nation_pentagon_fixtures, every link's probes under every ordered nation pair
+- [2026-11-03] Created: tests/c2_gate.rs — C2 AC4: synthetic gate tests and the shipped nation reading (ignored, release)
+- [2026-11-03] Modified: FINDINGS.md — F-066: the nation gate reading (Fail: Tollmarch's +1 carry), AC4 left unticked
+- [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC4 annotated: gate reads Fail, left unticked (F-066)

@@ -390,3 +390,29 @@ impl Link {
         }
     }
 }
+
+/// C2: the pentagon batch under every ordered nation pair. For each pair
+/// `(p, q)` of `nations` (content order, `p` outer, mirrors included) and each
+/// measurable link in cycle order, the predator's probe is fielded by `p` and
+/// the prey's by `q`, in both slot orders. Played by
+/// [`crate::batch::run_fixtures`]; read by [`crate::gate::NationGate`].
+pub fn nation_pentagon_fixtures(
+    content: &Content,
+    nations: &[String],
+) -> Result<Vec<crate::batch::Fixture>, CycleError> {
+    use crate::batch::Fixture;
+    let report = PentagonReport::of_records(content, &[])?;
+    let mut out = Vec::new();
+    for p in nations {
+        for q in nations {
+            for l in report.links() {
+                let (Some(ps), Some(qs)) = (&l.predator_strategy, &l.prey_strategy) else {
+                    continue;
+                };
+                out.push(Fixture::new((p, ps), (q, qs)));
+                out.push(Fixture::new((q, qs), (p, ps)));
+            }
+        }
+    }
+    Ok(out)
+}

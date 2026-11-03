@@ -6292,6 +6292,107 @@ isolating unit balance, and cross-nation matchups should test faction balance.
 - the nation matrix is read from relabelled records;
 - the binary plays and refuses as documented.
 
+## F-066 — The nation gate: it runs, and it reads Fail. Tollmarch's +1 carry is +50% income (C2)
+
+**Context.** C2 AC4 asks for a nation criterion with two parts. Each nation's cross-nation
+strength must be 35–65%, and the pentagon must still hold under every nation pair. Tuning
+happens in `nations.ron` only, inside the brief's bounds, and base unit stats are never
+retuned.
+
+**Decisions.**
+- **`gate::NationGate`** reads two batches through the B3 arithmetic:
+  - **Strength** comes from the **cross** axis (F-065). The same strategy is on both sides, so
+    a nation's row is what its traits are worth. Mirrors and timeouts are excluded. A row is
+    the mean of its cells (`Reading::mean_of`, Wilson with the F-031 design effect, ICC 0.17),
+    judged `Within` 50% ± 15 points. The clusters are the distinct (strategy, seed) per pair.
+    - **Pass** needs the whole interval inside the band.
+    - **Fail** needs the whole interval outside it.
+    - Anything else is undetermined.
+  - **The pentagon** comes from `pentagon::nation_pentagon_fixtures`: every ordered pair of
+    nations (mirrors included) plays each measurable link's probe pair, predator nation
+    against prey nation, in both slots. Each pair's records go through
+    `PentagonReport::of_records`. Holds is Pass, Fails is Fail, and anything else is
+    undetermined. The pentagon passes only if every link holds under every pair.
+  - The gate is `Status::all` of the two parts.
+- **The probes** are the five mass strategies, one per unit, taken from the derived cycle's
+  predator strategies. A mass strategy is the cleanest control: one unit type, so a trait on
+  that unit or its barracks shows up undiluted.
+- **Personality strength** (each nation on its own script) is played and printed, but not
+  gated (F-065). It is strategy-dominated: Verdant's rush is 20%.
+- `tests/c2_gate.rs` has 8 synthetic tests (Pass, a dominant nation, a weak nation, thin
+  samples, mirrors and timeouts excluded, one broken pair, fixture count and order). The
+  shipped reading is `the_shipped_nation_reading`: ignored, release, with `ONUS_C2_SEEDS` and
+  `ONUS_C2_PART`.
+
+**The reading** (release, on the box, 2026-11-03, shipped stand-in traits).
+
+*Cross strength* (gated): 3 seeds, 900 matches, 64 timeouts, 4 367 s. Result: **FAIL**.
+
+| nation | strength | interval | n / n_eff | status |
+|---|---|---|---|---|
+| house | 31.7% | [25.0, 38.7] | 271 / 187 | undetermined |
+| forgeborn | 50.6% | [43.6, 57.6] | 294 / 196 | PASS |
+| verdant | 45.1% | [38.0, 52.3] | 272 / 187 | PASS |
+| aetherkin | 43.3% | [36.2, 50.5] | 272 / 187 | PASS |
+| tollmarch | 94.7% | [90.6, 97.8] | 300 / 199 | **FAIL** |
+| ashen_reach | 34.6% | [27.7, 41.7] | 263 / 184 | undetermined |
+
+The nation matrix (row against column, %, in the same order):
+
+```
+house          --   32   40   38    2   46
+forgeborn      68   --   59   58    2   67
+verdant        60   41   --   48   20   57
+aetherkin      62   42   52   --    2   59
+tollmarch      98   98   80   98   --   98
+ashen_reach    54   33   43   41    2   --
+```
+
+*The pentagon under every nation pair* (gated): 2 seeds, 1 440 matches, 68 timeouts, 4 888 s.
+Result: **FAIL**.
+- It fails in exactly the six pairs where **Tollmarch is the prey**. There, rav>sen reads 0%
+  (8/8 decided against the predator) in every pair, and sen>rip reads 0% in five of the six.
+  Out-gathering by half again overturns a hard counter.
+- With Tollmarch as the predator, every link holds.
+- Every other link holds in every other pair, except **sen>rip**. That link is undetermined
+  (4 decided, 4 timeouts; 3/5 with Ashen Reach as predator) in 17 pairs, including the
+  traitless House/House mirror. This is F-049's baseline sen>rip, which no trait causes and
+  no trait can fix.
+- Pairs with every link holding: 13 of 36.
+
+*Personality strength* (reported, not gated): 2 seeds, 120 matches, 1 timeout, 316 s.
+- House 37.1%, Forgeborn 80.0%, Verdant 20.0%, Aetherkin 62.5%, Tollmarch 77.5%, Ashen Reach
+  22.9%. All are undetermined.
+- The cells are near 0 or 100: a script pair decides the matchup.
+
+**Why it cannot pass by magnitudes alone.** No tuning was made, so `nations.ron` is unchanged.
+- **Tollmarch.** The brief fixes its stand-in as "+x worker carry", and `CarryCapacity` is an
+  integer `add`. F-029 cut base carry from 10 to 2, so the smallest non-zero x (+1) is a 50%
+  larger load per trip. That is the 94.7% row and the six broken pentagons. The only smaller
+  magnitude is 0, which deletes the perk. Getting under the band needs a decision outside
+  "tune the magnitude":
+  - express "workers carry more" as a `GatherTicks` `mul` (a fine-grained income lever);
+  - pair it with a cost;
+  - or make carry fractional.
+  Any of these is the user's decision.
+- **House Vael.** Its brief stand-in is "Synthesis" (a bonus beside other-domain units). The
+  trait vocabulary cannot express that, so its trait list is `[]` (F-063). Without Tollmarch
+  its row averages about 39% (32, 40, 38, 46 — read off the matrix, unweighted). With
+  intervals near ±7 points that reads undetermined at best. The traitless nation will sit
+  below the traited field until Synthesis exists.
+- **The rest, read off the matrix without the Tollmarch column:**
+  - Forgeborn is about 63%, near the top edge. Its foundry discount (0.90) is the first
+    candidate to soften.
+  - Verdant is about 52% and Aetherkin about 54%.
+  - Ashen Reach is about 43%. Its building HP (1.15) is the candidate to raise.
+  These are the next magnitudes to try once Tollmarch's perk is settled. Tuning them first
+  would be measured against a field Tollmarch distorts.
+- **The pentagon's sen>rip** is undetermined in the traitless mirror. So "holds under every
+  pair" cannot read Pass on today's base content even with every trait at zero. Base stats
+  are out of C2's reach.
+
+AC4 stays **unticked**. The criterion, its tests and the measurement are committed.
+
 ## F-067 — The client picks the nations before the first tick, and shows them by colour and name (C2)
 
 **Context.** C2 AC5 asks for two things. The player picks a nation, and sees the opponent's
