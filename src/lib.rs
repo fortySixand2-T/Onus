@@ -194,7 +194,12 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
                 sim::apply_commands,
                 sim::economy::production,
                 sim::economy::gather,
+                // A campaign battle's auras (C1): this tick's bonuses, from the
+                // positions the fighting starts at. Battle-only.
+                sim::battle::auras.run_if(resource_exists::<sim::battle::AuraField>),
                 sim::combat::combat,
+                // A Regen aura heals the survivors of this tick's fighting.
+                sim::battle::regen.run_if(resource_exists::<sim::battle::AuraField>),
                 sim::movement,
             )
                 .chain()

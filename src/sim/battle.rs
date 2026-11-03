@@ -16,6 +16,20 @@
 //! The rule only binds a side that has fielded one: a side seen with no
 //! General at the start of every tick so far has nothing to lose that way.
 //!
+//! ## Auras
+//! Each General carries an aura (`units.ron`): friendly non-General units
+//! within its radius get its stat modifiers. [`auras`] computes, once per
+//! tick before combat, every unit's total [`StatBonus`] into the
+//! [`AuraField`]; combat (offense, armor, defense, attack interval), movement
+//! (speed) and [`regen`] read it. **Kind** = the General type: different
+//! kinds stack (adds sum, attack factors multiply); of one kind a unit takes
+//! the strongest (the largest scaling factor). The Synthesis rule
+//! (`PerDistinctDomain`) multiplies by the distinct domains among the
+//! friendly units in the radius, capped. An aura never touches the nemesis
+//! bonus: there is no stat for it, and the damage rule applies it unchanged.
+//! Everything is computed from entity-sorted snapshots, so no query order
+//! reaches a bonus.
+//!
 //! ## Deciding a battle
 //! [`battle_watch`] latches, at the **start** of a tick, which losses each side
 //! can suffer (it has fielded a General / it has held a victory building) —
@@ -30,8 +44,8 @@
 use bevy::ecs::prelude::*;
 use bevy::math::Vec2;
 
-use crate::sim::combat::Health;
-use crate::sim::content::Content;
+use crate::sim::combat::{Health, StatBonus};
+use crate::sim::content::{AuraModifier, AuraScaling, AuraStat, Content};
 use crate::sim::economy::{Building, UnitDefIdx};
 use crate::sim::spatial::Faction;
 use crate::sim::victory::count_victory_buildings;
@@ -170,6 +184,7 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
         }
     }
     world.insert_resource(BattleState::default());
+    world.insert_resource(AuraField::default());
 }
 
 // ---- state -----------------------------------------------------------------
@@ -318,4 +333,143 @@ pub fn battle_end(
     let tick = state.tick();
     state.conclude(winner);
     battle.result = Some(BattleResult { winner, tick, lost });
+}
+
+// ---- auras -----------------------------------------------------------------
+
+/// Every unit's aura bonus on this tick (C1 AC3), sorted by entity bits; a
+/// unit not listed carries [`StatBonus::NONE`]. Recomputed by [`auras`] at
+/// the start of each tick's fighting, from positions, so it is derived state
+/// (a function of what the state hash already covers), never truth of its own.
+#[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+pub struct AuraField {
+    bonuses: Vec<(u64, StatBonus)>,
+}
+
+impl AuraField {
+    /// The bonus `e` carries this tick.
+    pub fn get(&self, e: Entity) -> StatBonus {
+        self.bonuses
+            .binary_search_by_key(&e.to_bits(), |(k, _)| *k)
+            .map(|i| self.bonuses[i].1)
+            .unwrap_or(StatBonus::NONE)
+    }
+
+    /// Every unit carrying a bonus, ascending entity bits.
+    pub fn iter(&self) -> impl Iterator<Item = (Entity, StatBonus)> + '_ {
+        self.bonuses.iter().map(|(k, b)| (Entity::from_bits(*k), *b))
+    }
+}
+
+/// One kind's modifiers at strength `factor`, folded into `into`.
+fn apply_modifiers(into: &mut StatBonus, modifiers: &[AuraModifier], factor: u32) {
+    for m in modifiers {
+        let add = m.add.unwrap_or(0).saturating_mul(factor);
+        match m.stat {
+            AuraStat::Offense => into.offense = into.offense.saturating_add(add),
+            AuraStat::Defense => into.defense = into.defense.saturating_add(add),
+            AuraStat::Armor => into.armor = into.armor.saturating_add(add),
+            AuraStat::Speed => into.speed = into.speed.saturating_add(add),
+            AuraStat::Regen => into.regen = into.regen.saturating_add(add),
+            // A factor of n applies the multiplier n times.
+            AuraStat::AttackTicks => {
+                for _ in 0..factor {
+                    into.attack_milli = ((into.attack_milli as u64 * m.mul_milli() as u64)
+                        / AuraModifier::MULT_SCALE as u64)
+                        .max(1) as u32;
+                }
+            }
+        }
+    }
+}
+
+/// Compute the [`AuraField`] for this tick. Runs before combat.
+#[allow(clippy::type_complexity)]
+pub fn auras(
+    content: Res<Content>,
+    mut field: ResMut<AuraField>,
+    generals: Query<(Entity, &Position, &Faction, &UnitDefIdx), With<General>>,
+    units: Query<(Entity, &Position, &Faction, &UnitDefIdx), Without<General>>,
+) {
+    let mut gs: Vec<_> = generals.iter().map(|(e, p, f, d)| (e.to_bits(), p.0, *f, d.0)).collect();
+    gs.sort_unstable_by_key(|g| g.0);
+    let mut us: Vec<_> = units.iter().map(|(e, p, f, d)| (e.to_bits(), p.0, *f, d.0)).collect();
+    us.sort_unstable_by_key(|u| u.0);
+
+    // best[u][k]: the strongest factor of kind k reaching unit u.
+    let kinds = content.generals.len();
+    let mut best: Vec<u32> = vec![0; us.len() * kinds];
+    let mut in_reach: Vec<usize> = Vec::new();
+    for &(_, gpos, gside, gdef) in &gs {
+        let Some(g) = content.general_at(gdef) else {
+            continue;
+        };
+        let kind = gdef - content.units.len();
+        let r2 = g.aura.radius * g.aura.radius;
+        in_reach.clear();
+        in_reach.extend(
+            us.iter()
+                .enumerate()
+                .filter(|(_, u)| u.2 == gside && u.1.distance_squared(gpos) <= r2)
+                .map(|(i, _)| i),
+        );
+        let factor = match g.aura.scaling {
+            AuraScaling::Flat => 1,
+            AuraScaling::PerDistinctDomain { max } => {
+                let mut seen = vec![false; content.resources.len()];
+                for &i in &in_reach {
+                    if let Some(d) = content.domain_of(us[i].3) {
+                        seen[d] = true;
+                    }
+                }
+                (seen.iter().filter(|s| **s).count() as u32).min(max)
+            }
+        };
+        for &i in &in_reach {
+            let b = &mut best[i * kinds + kind];
+            *b = (*b).max(factor);
+        }
+    }
+
+    field.bonuses.clear();
+    for (i, u) in us.iter().enumerate() {
+        let mut bonus = StatBonus::NONE;
+        for (k, g) in content.generals.iter().enumerate() {
+            let factor = best[i * kinds + k];
+            if factor > 0 {
+                apply_modifiers(&mut bonus, &g.aura.modifiers, factor);
+            }
+        }
+        if bonus != StatBonus::NONE {
+            field.bonuses.push((u.0, bonus));
+        }
+    }
+}
+
+/// A `Regen` aura: every `mvp_battle.regen_interval_ticks` ticks, each unit
+/// carrying a regen bonus heals that much, up to its pool. Runs after combat,
+/// so the dead stay dead.
+pub fn regen(
+    content: Res<Content>,
+    state: Res<MatchState>,
+    field: Res<AuraField>,
+    mut health: Query<&mut Health>,
+) {
+    let Some(b) = &content.battle else {
+        return;
+    };
+    if state.tick() % b.regen_interval_ticks != 0 {
+        return;
+    }
+    for (e, bonus) in field.iter() {
+        if bonus.regen == 0 {
+            continue;
+        }
+        if let Ok(mut h) = health.get_mut(e) {
+            let healed = h.current.saturating_add(bonus.regen).min(h.max);
+            if healed != h.current {
+                h.current = healed;
+            }
+        }
+    }
 }

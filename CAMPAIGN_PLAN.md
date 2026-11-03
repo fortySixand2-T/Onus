@@ -134,7 +134,7 @@ A **skirmish** mode keeps today's rules exactly.
   that side loses the battle.
 - [x] **Several Generals per side:** a battle can field more than one General per side, and
   that side loses when **all** its Generals are dead (or it retreats).
-- [ ] **The General's aura:** friendly units within a radius get a bonus. Each General type
+- [x] **The General's aura:** friendly units within a radius get a bonus. Each General type
   carries its own aura, defined in RON as a radius plus a list of stat modifiers (offense,
   defense, armor, speed, attack interval, HP regeneration). The synthesists add a
   domain-count scaling rule. Six aura kinds, one per nation (see the brief). An aura never

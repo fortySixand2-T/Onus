@@ -1055,6 +1055,8 @@ pub fn movement(
     time: Res<Time<Fixed>>,
     content: Res<Content>,
     mut report: ResMut<RateReport>,
+    // A campaign battle's auras (C1); absent in a skirmish.
+    auras: Option<Res<battle::AuraField>>,
     mut query: Query<(Entity, &mut Position, &MoveTarget, &UnitDefIdx)>,
     mut commands: Commands,
 ) {
@@ -1062,7 +1064,8 @@ pub fn movement(
     let dt = time.delta_secs();
 
     for (e, mut pos, target, def) in &mut query {
-        let step = combat::move_speed(&content, def.0) * dt;
+        let bonus = auras.as_ref().map_or(combat::StatBonus::NONE, |a| a.get(e));
+        let step = combat::move_speed_with(&content, def.0, bonus) * dt;
         let (next, arrived) = step_toward(pos.0, target.0, step);
         pos.0 = next;
         if arrived {

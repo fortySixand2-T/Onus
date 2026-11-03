@@ -5820,3 +5820,42 @@ golden licence (AC8) asks that the default skirmish reproduce today's pinned has
 
 **Not yet.** Replaying a battle from a `CommandLog` is not supported: the log does not carry
 the `BattleSetup` (that belongs to C4's campaign state).
+
+## F-054 — Auras: a per-tick bonus field, integer rules, kinds stack and one kind does not (C1)
+
+**Context.** C1 AC3: each General type carries a RON aura (a radius plus stat modifiers);
+the synthesists scale by distinct domains nearby; six kinds; never the nemesis bonus;
+different kinds stack, the same kind does not.
+
+**Decisions.**
+- **Shape (RON).** `aura: (radius, modifiers: [(stat, add | mul)], scaling: Flat |
+  PerDistinctDomain(max))`. Stats: `Offense`, `Defense`, `Armor`, `Speed`, `Regen` take `add`
+  (design points, 1..=max_stat); `AttackTicks` takes `mul` in (0, 1), held as per-mille.
+  There is **no nemesis stat**: `stat: Nemesis` is an unknown variant and a load error, and
+  `deny_unknown_fields` refuses any extra key. Each stat at most once per aura.
+- **Rules (integer only).** Offense and Armor add design points to the per-hit rule. Defense
+  never changes the HP pool (a pool that grows and shrinks as a unit walks in and out of an
+  aura would heal or kill it by walking); it scales what gets through by
+  `defense / (defense + bonus)`, floored. Speed adds design points. AttackTicks: the interval
+  set after a hit is `ticks * milli / 1000`, floored, at least 1. Regen heals `add` HP every
+  `mvp_battle.regen_interval_ticks` (60), on ticks that are a multiple of it, up to the pool.
+  The nemesis multiplier and its armor rule are applied exactly as before; an offense bonus
+  enters the base the multiplier is applied to (the multiplier itself is untouched).
+- **Who.** Friendly units **other than Generals** within the radius. A General's own stats are
+  his kit; an aura is for his army. Workers in range get it too (they carry no domain, so they
+  never raise the Synthesis count).
+- **Kinds.** Kind = General type. Per unit and kind, the strongest scaling factor (all
+  Generals of one type share one aura, so "strongest" is the largest factor); then the kinds
+  fold together: adds sum, AttackTicks factors multiply. A factor `n` applies the modifiers
+  `n` times (adds × n; `mul` to the n-th power).
+- **Synthesis.** Distinct domains (resources.ron `powers` → `domain`) among the friendly
+  non-General units in the radius, capped at `max` (1..=number of domains). An empty or
+  worker-only radius gives ×0, so a pure army gets ×1 and the full mix ×3.
+- **Where.** `battle::auras` builds the `AuraField` (entity-sorted) after gather and before
+  combat; combat (damage, cooldown), movement (speed) and `battle::regen` (after combat) read
+  it. In a skirmish there is no `AuraField`: combat and movement read `StatBonus::NONE`, and
+  the `_with` functions given `NONE` are the plain functions exactly (tested for every pair).
+- **Hash.** `AuraField` is derived from positions each tick, so it is not hashed on its own.
+
+**Not yet.** Ranks (`general_ranks`, `aura_mult`) are C4. The aura is not drawn on the field
+(P3 visibility) — that is client work.

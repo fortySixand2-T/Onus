@@ -661,3 +661,12 @@
 - [2026-11-02] Modified: FINDINGS.md — F-053 the General
 - [2026-11-02] Modified: src/sim/battle.rs — C1: a side fields a list of Generals, in a line across its front; it loses when all have fallen
 - [2026-11-02] Created: tests/c1_several_generals.rs — C1 AC2 tests: several Generals per side
+- [2026-11-02] Modified: src/sim/content.rs — C1: aura definitions (AuraDef, AuraModifier, AuraStat, AuraScaling) with validation; regen_interval_ticks; domain_of
+- [2026-11-02] Modified: assets/data/units.ron — C1: an aura on every General; mvp_battle regen_interval_ticks
+- [2026-11-02] Modified: src/sim/combat.rs — C1: StatBonus and the `_with` damage, speed and attack-interval rules; combat reads the AuraField
+- [2026-11-02] Modified: src/sim/mod.rs — C1: movement reads the AuraField speed bonus
+- [2026-11-02] Modified: src/sim/battle.rs — C1: AuraField, the auras and regen systems
+- [2026-11-02] Modified: src/lib.rs — C1: auras before combat, regen after it, battle-only
+- [2026-11-02] Modified: DESIGN_BRIEF.md — C1: Generals' data sketch matches the RON (attack fields, Regen stat, mvp_battle)
+- [2026-11-02] Created: tests/c1_aura.rs — C1 AC3 tests: auras
+- [2026-11-02] Modified: FINDINGS.md — F-054 auras

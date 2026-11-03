@@ -372,11 +372,80 @@ pub struct GeneralDef {
     pub offense: u32,
     pub defense: u32,
     pub armor: u32,
+    /// What he does for the friendly units around him (C1 AC3).
+    pub aura: AuraDef,
     /// The General as a plain unit definition, synthesised at load (never
     /// written in the RON): no cost, no training time, no nemesis, no gathering.
     /// What combat and movement read, through [`Content::unit_def`].
     #[serde(skip)]
     pub unit: Option<UnitDef>,
+}
+
+/// A stat an aura can change (C1). There is deliberately **no nemesis
+/// variant**: an aura never touches the hard counters, so a `stat: Nemesis`
+/// in the RON is a load error (an unknown variant), not a rule enforced later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum AuraStat {
+    /// + design points of Offense (damage per hit).
+    Offense,
+    /// + design points of Defense: incoming damage is scaled by
+    /// `defense / (defense + bonus)` (the HP pool itself never changes).
+    Defense,
+    /// + design points of Armor (flat mitigation per hit).
+    Armor,
+    /// + design points of Speed.
+    Speed,
+    /// × the attack interval (`mul` < 1 attacks faster).
+    AttackTicks,
+    /// + HP every `mvp_battle.regen_interval_ticks`.
+    Regen,
+}
+
+/// One modifier in an aura: `add` design points to a stat, or (attack
+/// interval only) `mul` it. Exactly one of the two, checked at load.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuraModifier {
+    pub stat: AuraStat,
+    #[serde(default)]
+    pub add: Option<u32>,
+    #[serde(default)]
+    pub mul: Option<f32>,
+}
+
+impl AuraModifier {
+    /// Per-mille scale of `mul`.
+    pub const MULT_SCALE: u32 = 1000;
+
+    /// `mul` as an integer per-mille factor (1000 = unchanged), so no float
+    /// enters the per-tick arithmetic — the same treatment as the nemesis bonus.
+    pub fn mul_milli(&self) -> u32 {
+        self.mul
+            .map(|m| (m * Self::MULT_SCALE as f32).round() as u32)
+            .unwrap_or(Self::MULT_SCALE)
+    }
+}
+
+/// How an aura's strength scales (C1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum AuraScaling {
+    /// The modifiers as written.
+    Flat,
+    /// The Synthesis rule: the modifiers × the number of distinct domains
+    /// among the friendly (non-General) units inside the radius, capped at
+    /// `max`. A pure army gets ×1; no units, ×0.
+    PerDistinctDomain { max: u32 },
+}
+
+/// A General's aura (C1): friendly units within `radius` get `modifiers`,
+/// scaled by `scaling`. The aura's **kind** is its General type: auras of
+/// different kinds stack; of the same kind, a unit takes the strongest.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuraDef {
+    pub radius: f32,
+    pub modifiers: Vec<AuraModifier>,
+    pub scaling: AuraScaling,
 }
 
 /// Campaign-battle layout numbers (C1). Only read when a match is set up as a
@@ -388,6 +457,8 @@ pub struct BattleDef {
     pub general_front: f32,
     /// Spacing between two neighbours in a starting formation (world units).
     pub formation_spacing: f32,
+    /// A `Regen` aura heals once every this many ticks.
+    pub regen_interval_ticks: u32,
 }
 
 // ---- file shapes -----------------------------------------------------------
@@ -893,6 +964,71 @@ impl Content {
                 ));
             }
         }
+        for g in &self.generals {
+            let a = &g.aura;
+            if !(a.radius.is_finite() && a.radius > 0.0) {
+                return bad(format!("general `{}` aura radius must be finite and positive", g.id));
+            }
+            if a.modifiers.is_empty() {
+                return bad(format!("general `{}` aura has no modifiers", g.id));
+            }
+            for (i, m) in a.modifiers.iter().enumerate() {
+                if a.modifiers[..i].iter().any(|n| n.stat == m.stat) {
+                    return bad(format!(
+                        "general `{}` aura lists {:?} twice",
+                        g.id, m.stat
+                    ));
+                }
+                match (m.stat, m.add, m.mul) {
+                    // The attack interval is the one multiplied stat: faster
+                    // attacks, never slower, and never a zero interval.
+                    (AuraStat::AttackTicks, None, Some(mul)) => {
+                        let milli = m.mul_milli();
+                        if !(mul.is_finite()
+                            && mul > 0.0
+                            && (1..AuraModifier::MULT_SCALE).contains(&milli))
+                        {
+                            return bad(format!(
+                                "general `{}` aura AttackTicks mul must be in (0, 1)",
+                                g.id
+                            ));
+                        }
+                    }
+                    (AuraStat::AttackTicks, ..) => {
+                        return bad(format!(
+                            "general `{}` aura AttackTicks takes `mul` only",
+                            g.id
+                        ));
+                    }
+                    (stat, Some(add), None) => {
+                        if add == 0 || add > self.combat.max_stat {
+                            return bad(format!(
+                                "general `{}` aura {stat:?} add must be 1..={}",
+                                g.id, self.combat.max_stat
+                            ));
+                        }
+                    }
+                    (stat, ..) => {
+                        return bad(format!(
+                            "general `{}` aura {stat:?} takes `add` only",
+                            g.id
+                        ));
+                    }
+                }
+            }
+            if let AuraScaling::PerDistinctDomain { max } = a.scaling {
+                if max == 0 || max as usize > self.resources.len() {
+                    return bad(format!(
+                        "general `{}` aura PerDistinctDomain max must be 1..={} (the domains)",
+                        g.id,
+                        self.resources.len()
+                    ));
+                }
+            }
+        }
+        if !self.generals.is_empty() && self.battle.is_none() {
+            return bad("generals need an mvp_battle block".to_string());
+        }
         if let Some(b) = &self.battle {
             for (what, v) in [
                 ("general_front", b.general_front),
@@ -901,6 +1037,9 @@ impl Content {
                 if !(v.is_finite() && v > 0.0) {
                     return bad(format!("mvp_battle {what} must be finite and positive"));
                 }
+            }
+            if b.regen_interval_ticks == 0 {
+                return bad("mvp_battle regen_interval_ticks must be positive".to_string());
             }
         }
 
@@ -1280,12 +1419,23 @@ impl Content {
                 });
                 h.u32(g.mvp_attack_ticks).f32(g.mvp_attack_range);
                 h.u32(g.speed).u32(g.offense).u32(g.defense).u32(g.armor);
+                h.str("aura").f32(g.aura.radius);
+                h.u64(g.aura.modifiers.len() as u64);
+                for m in &g.aura.modifiers {
+                    h.u64(m.stat as u64);
+                    h.u32(m.add.unwrap_or(0)).u32(m.mul_milli());
+                }
+                match g.aura.scaling {
+                    AuraScaling::Flat => h.u64(0),
+                    AuraScaling::PerDistinctDomain { max } => h.u64(1).u32(max),
+                };
             }
         }
         if let Some(b) = &self.battle {
             h.str("battle")
                 .f32(b.general_front)
-                .f32(b.formation_spacing);
+                .f32(b.formation_spacing)
+                .u32(b.regen_interval_ticks);
         }
 
         let ids = |all: &[String]| {
@@ -1343,6 +1493,14 @@ impl Content {
             .iter()
             .position(|g| g.id == id)
             .map(|k| self.units.len() + k)
+    }
+
+    /// The domain (an index into [`Content::resources`]) of the unit behind a
+    /// `UnitDefIdx` value: the resource whose `powers` list it. `None` for a
+    /// unit no resource powers (the Worker, a General).
+    pub fn domain_of(&self, i: usize) -> Option<usize> {
+        let id = &self.units.get(i)?.id;
+        self.resources.iter().position(|r| r.powers.iter().any(|p| p == id))
     }
 
     /// The General behind a `UnitDefIdx` value, if it names one.

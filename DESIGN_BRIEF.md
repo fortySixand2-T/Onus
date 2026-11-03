@@ -445,6 +445,7 @@ follow the existing RON style (`units.ron`, `strategies.ron`).
 generals: [
     (
         id: "general_synthesis", name: "Heir of Vael",
+        mvp_kind: Soldier, mvp_attack_ticks: 80, mvp_attack_range: 48.0,   // he fights
         speed: 5, offense: 5, defense: 6, armor: 4,
         aura: (
             radius: 220.0,                          // world units
@@ -452,6 +453,7 @@ generals: [
             scaling: PerDistinctDomain(max: 3),     // Synthesis only: x1 per domain present nearby
         ),
     ),
+    // (the shipped file gives every General mvp_kind / mvp_attack_ticks / mvp_attack_range)
     (id: "general_bulwark",   name: "Forge-Marshal", speed: 3, offense: 4, defense: 8, armor: 6,
      aura: (radius: 200.0, modifiers: [ (stat: Defense, add: 2), (stat: Armor, add: 2) ], scaling: Flat)),
     (id: "general_frenzy",    name: "Brood-Mother",  speed: 7, offense: 6, defense: 5, armor: 2,
@@ -461,8 +463,10 @@ generals: [
     (id: "general_logistics", name: "Quartermaster", speed: 8, offense: 3, defense: 5, armor: 3,
      aura: (radius: 260.0, modifiers: [ (stat: Speed, add: 2) ], scaling: Flat)),
     (id: "general_endurance", name: "Ash-Keeper",    speed: 4, offense: 4, defense: 7, armor: 4,
-     aura: (radius: 200.0, modifiers: [ (stat: RegenPerSecond, add: 1.0) ], scaling: Flat)),
+     aura: (radius: 200.0, modifiers: [ (stat: Regen, add: 1) ], scaling: Flat)),   // +1 HP per regen interval
 ],
+// Battle layout and the regen clock (C1).
+mvp_battle: (general_front: 80.0, formation_spacing: 30.0, regen_interval_ticks: 60),
 // Ranks scale the whole aura (C4). A replacement General starts at rank 0.
 general_ranks: [
     (xp: 0,  aura_mult: 1.00),
