@@ -181,5 +181,7 @@
         regen_interval_ticks: 60,  // a Regen aura heals once a second
         entry_edge_offset: 150.0,  // a side's entry edge runs this far behind its base;
                                    // a retreat (Order::Retreat) leaves the field there
+        building_spacing: 160.0,   // a roster's buildings, in a line across the base
+        formation_rank: 8,         // a roster's units per rank, behind the Generals
     ),
 )

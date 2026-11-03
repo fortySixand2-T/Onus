@@ -5886,3 +5886,32 @@ battle ends as a retreat once the withdrawal finishes; the outcome records who g
   not fall, so a withdrawal that gets its General out is a retreat, and one whose General is
   killed on the way is a General lost. `BattleResult.escaped` is the crossing list.
 - **Hash.** Retreat flags, edges and the escapee list are in `BattleState::hash_words`.
+
+## F-056 — Battle setup from a roster: a given army and given buildings replace the skirmish start (C1)
+
+**Context.** C1 AC5: a side can start a battle with a given General, units with HP and
+buildings with HP (siege damage persists, F-052), instead of the skirmish start.
+
+**Decisions.**
+- **`Roster { units, buildings }`** on a side of the `BattleSetup` (`with_roster`). Units are
+  roster ids with an optional HP (`unit_hp`), buildings likewise (`building_hp`); no HP means
+  full. A side with a roster gets **no** skirmish HQ and no workers. Its resource deposit
+  still spawns, so a roster that includes a worker can still gather. A side without a roster
+  keeps today's start, unchanged.
+- **Checked before anything spawns.** `BattleSetup::check` refuses an unknown unit or building
+  id, a General id in the unit list (Generals go in `generals`; `unit_index` never resolves
+  one), and HP 0 or above the RON pool (`BadHp { id, side, hp, max }`).
+- **Layout is data.** `mvp_battle.formation_rank` (8 per rank) and `building_spacing` (160)
+  join `formation_spacing` (30). Units stand in ranks one spacing behind the Generals' line,
+  each further rank one spacing nearer the base, centred across the front. Buildings stand in
+  a line across the base: the first on it, the rest alternating either side. Spawn order is
+  the list order (buildings, then units), after the Generals, so entity allocation is a
+  function of the setup alone.
+- **HP.** A unit always gets a `Health` (current = given or full). A building gets an explicit
+  `Health` only when its HP is given. Otherwise combat takes its pool from the RON, as in a
+  skirmish.
+- **No HQ in a roster** means the side cannot lose by HQ: `victory_seen` stays false, so a
+  field battle is decided by Generals or a retreat.
+
+**Not yet.** Rosters come from the campaign layer (C2+). The map's geography is the headless
+fixture's two bases; real battlefields are C3.

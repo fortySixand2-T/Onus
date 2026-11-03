@@ -462,6 +462,10 @@ pub struct BattleDef {
     /// How far behind its base (away from the enemy) a side's entry edge
     /// runs — where a retreat leaves the field.
     pub entry_edge_offset: f32,
+    /// Spacing of a roster's buildings in their line across the base.
+    pub building_spacing: f32,
+    /// Units per rank in a roster's starting formation.
+    pub formation_rank: u32,
 }
 
 // ---- file shapes -----------------------------------------------------------
@@ -1037,6 +1041,7 @@ impl Content {
                 ("general_front", b.general_front),
                 ("formation_spacing", b.formation_spacing),
                 ("entry_edge_offset", b.entry_edge_offset),
+                ("building_spacing", b.building_spacing),
             ] {
                 if !(v.is_finite() && v > 0.0) {
                     return bad(format!("mvp_battle {what} must be finite and positive"));
@@ -1044,6 +1049,9 @@ impl Content {
             }
             if b.regen_interval_ticks == 0 {
                 return bad("mvp_battle regen_interval_ticks must be positive".to_string());
+            }
+            if b.formation_rank == 0 {
+                return bad("mvp_battle formation_rank must be positive".to_string());
             }
         }
 
@@ -1440,7 +1448,9 @@ impl Content {
                 .f32(b.general_front)
                 .f32(b.formation_spacing)
                 .u32(b.regen_interval_ticks)
-                .f32(b.entry_edge_offset);
+                .f32(b.entry_edge_offset)
+                .f32(b.building_spacing)
+                .u32(b.formation_rank);
         }
 
         let ids = |all: &[String]| {

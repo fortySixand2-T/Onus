@@ -77,6 +77,57 @@ pub struct General;
 
 // ---- setup -----------------------------------------------------------------
 
+/// One unit in a [`Roster`]: a roster unit id and its HP (`None`: full).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RosterUnit {
+    pub id: String,
+    pub hp: Option<u32>,
+}
+
+/// One building in a [`Roster`]: a building id and its HP (`None`: full).
+/// Siege damage persists between battles (C0), so a city's buildings arrive
+/// with whatever HP the last siege left them.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RosterBuilding {
+    pub id: String,
+    pub hp: Option<u32>,
+}
+
+/// What a side brings to a battle **instead of the skirmish start** (C1 AC5):
+/// its army and its buildings, each with its HP. C4 builds these from
+/// campaign state; the order of each list is the order things are placed.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Roster {
+    pub units: Vec<RosterUnit>,
+    pub buildings: Vec<RosterBuilding>,
+}
+
+impl Roster {
+    /// One more unit `id` at full HP.
+    pub fn unit(mut self, id: &str) -> Self {
+        self.units.push(RosterUnit { id: id.to_string(), hp: None });
+        self
+    }
+
+    /// One more unit `id` with `hp` HP.
+    pub fn unit_hp(mut self, id: &str, hp: u32) -> Self {
+        self.units.push(RosterUnit { id: id.to_string(), hp: Some(hp) });
+        self
+    }
+
+    /// One more building `id` at full HP.
+    pub fn building(mut self, id: &str) -> Self {
+        self.buildings.push(RosterBuilding { id: id.to_string(), hp: None });
+        self
+    }
+
+    /// One more building `id` with `hp` HP.
+    pub fn building_hp(mut self, id: &str, hp: u32) -> Self {
+        self.buildings.push(RosterBuilding { id: id.to_string(), hp: Some(hp) });
+        self
+    }
+}
+
 /// One side's part of a battle setup.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SideSetup {
@@ -85,6 +136,9 @@ pub struct SideSetup {
     /// Generals; the same type may appear more than once (a house raises
     /// extra Generals of its own kind).
     pub generals: Vec<String>,
+    /// The side's army and buildings. `None`: the skirmish start (an HQ and
+    /// its workers); `Some`: exactly this, and no skirmish start at all.
+    pub roster: Option<Roster>,
 }
 
 /// How a campaign battle starts. Indexed by faction slot (A, B).
@@ -94,6 +148,17 @@ pub struct BattleSetup {
 }
 
 impl BattleSetup {
+    /// `side`'s part of the setup.
+    pub fn side(&self, side: Faction) -> &SideSetup {
+        &self.sides[faction_slot(side)]
+    }
+
+    /// Start `side` from `roster` instead of the skirmish start.
+    pub fn with_roster(mut self, side: Faction, roster: Roster) -> Self {
+        self.sides[faction_slot(side)].roster = Some(roster);
+        self
+    }
+
     /// Field one more General, `id`, on `side`.
     pub fn with_general(mut self, side: Faction, id: &str) -> Self {
         self.sides[faction_slot(side)].generals.push(id.to_string());
@@ -115,6 +180,39 @@ impl BattleSetup {
                     });
                 }
             }
+            let Some(roster) = &s.roster else {
+                continue;
+            };
+            let bad_hp = |id: &str, hp: u32, max: u32| BattleSetupError::BadHp {
+                id: id.to_string(),
+                side: *side,
+                hp,
+                max,
+            };
+            for u in &roster.units {
+                let Some(idx) = content.unit_index(&u.id) else {
+                    return Err(BattleSetupError::UnknownUnit {
+                        id: u.id.clone(),
+                        side: *side,
+                    });
+                };
+                let max = Health::from_def(content, idx).max;
+                if let Some(hp) = u.hp.filter(|hp| *hp == 0 || *hp > max) {
+                    return Err(bad_hp(&u.id, hp, max));
+                }
+            }
+            for b in &roster.buildings {
+                let Some(idx) = content.building_index(&b.id) else {
+                    return Err(BattleSetupError::UnknownBuilding {
+                        id: b.id.clone(),
+                        side: *side,
+                    });
+                };
+                let max = Health::from_building_def(content, idx).max;
+                if let Some(hp) = b.hp.filter(|hp| *hp == 0 || *hp > max) {
+                    return Err(bad_hp(&b.id, hp, max));
+                }
+            }
         }
         Ok(())
     }
@@ -127,6 +225,18 @@ pub enum BattleSetupError {
     NoBattleContent,
     /// A General id the content does not define.
     UnknownGeneral { id: String, side: Faction },
+    /// A roster unit id the content does not define (Generals go in
+    /// `generals`, never in a roster).
+    UnknownUnit { id: String, side: Faction },
+    /// A building id the content does not define.
+    UnknownBuilding { id: String, side: Faction },
+    /// An HP of 0 (a dead thing does not take the field) or above the pool.
+    BadHp {
+        id: String,
+        side: Faction,
+        hp: u32,
+        max: u32,
+    },
 }
 
 impl std::fmt::Display for BattleSetupError {
@@ -137,6 +247,15 @@ impl std::fmt::Display for BattleSetupError {
             }
             BattleSetupError::UnknownGeneral { id, side } => {
                 write!(f, "no general `{id}` (asked for by {side:?})")
+            }
+            BattleSetupError::UnknownUnit { id, side } => {
+                write!(f, "no roster unit `{id}` (asked for by {side:?})")
+            }
+            BattleSetupError::UnknownBuilding { id, side } => {
+                write!(f, "no building `{id}` (asked for by {side:?})")
+            }
+            BattleSetupError::BadHp { id, side, hp, max } => {
+                write!(f, "`{id}` for {side:?} with HP {hp}: must be 1..={max}")
             }
         }
     }
@@ -158,6 +277,63 @@ pub struct SideGround {
 fn line_offset(g: SideGround, j: usize, n: usize, spacing: f32) -> Vec2 {
     let across = Vec2::new(-g.front.y, g.front.x);
     across * ((j as f32 - (n as f32 - 1.0) / 2.0) * spacing)
+}
+
+/// Place a side's [`Roster`]: buildings in a line across the base (the first
+/// on it, the rest alternating either side), `building_spacing` apart; units in ranks of `formation_rank` just
+/// behind the Generals' line, `formation_spacing` apart, each further rank one
+/// spacing nearer the base. Buildings first, then units, in list order.
+fn spawn_roster(
+    world: &mut World,
+    content: &Content,
+    battle: &crate::sim::content::BattleDef,
+    side: Faction,
+    g: SideGround,
+    roster: &Roster,
+) {
+    let across = Vec2::new(-g.front.y, g.front.x);
+    for (k, b) in roster.buildings.iter().enumerate() {
+        let def = content
+            .building_index(&b.id)
+            .expect("BattleSetup::check admits only known buildings");
+        // The first stands on the base; the rest alternate either side of it
+        // (k = 1, 2, 3, 4 → +1, -1, +2, -2 spacings).
+        let step = k.div_ceil(2) as f32;
+        let slot = if k % 2 == 1 { step } else { -step };
+        let full = Health::from_building_def(content, def);
+        let mut e = world.spawn((
+            Position(g.base + across * (slot * battle.building_spacing)),
+            Building { def },
+            side,
+            ProductionQueue::default(),
+        ));
+        if let Some(hp) = b.hp {
+            e.insert(Health { current: hp, max: full.max });
+        }
+    }
+    let rank = battle.formation_rank as usize;
+    let total = roster.units.len();
+    for (k, u) in roster.units.iter().enumerate() {
+        let idx = content
+            .unit_index(&u.id)
+            .expect("BattleSetup::check admits only known units");
+        let row = k / rank;
+        let col = k % rank;
+        let in_row = (total - row * rank).min(rank);
+        let back = battle.general_front - battle.formation_spacing * (row as f32 + 1.0);
+        let at = g.base + g.front * back + line_offset(g, col, in_row, battle.formation_spacing);
+        let full = Health::from_def(content, idx);
+        world.spawn((
+            Position(at),
+            UnitDefIdx(idx),
+            content.units[idx].mvp_kind,
+            side,
+            Health {
+                current: u.hp.unwrap_or(full.max),
+                max: full.max,
+            },
+        ));
+    }
 }
 
 /// Field the setup's Generals and install the battle's state. Call after the
@@ -189,6 +365,9 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
                 Health::from_def(&content, idx),
                 General,
             ));
+        }
+        if let Some(roster) = &setup.sides[slot].roster {
+            spawn_roster(world, &content, battle, *side, g, roster);
         }
     }
     let edges = ground.map(|g| Edge {

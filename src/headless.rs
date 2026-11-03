@@ -306,6 +306,21 @@ pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSe
 
     for faction in SIDES {
         let base = base_of(faction, settings.orientation);
+        // A campaign battle side with a roster brings its own army and
+        // buildings instead (C1); the map's deposit is still there.
+        let roster = settings
+            .battle
+            .as_ref()
+            .is_some_and(|b| b.side(faction).roster.is_some());
+        if roster {
+            app.world_mut().spawn((
+                Position(base + Vec2::new(0.0, 250.0)),
+                ResourceNode {
+                    amount: NODE_AMOUNT,
+                },
+            ));
+            continue;
+        }
         let def = app
             .world()
             .resource::<Content>()

@@ -678,3 +678,9 @@
 - [2026-11-02] Modified: src/lib.rs — C1: withdraw after apply_commands, battle-only
 - [2026-11-02] Created: tests/c1_retreat.rs — C1 AC4 tests: retreat
 - [2026-11-02] Modified: FINDINGS.md — F-055 retreat
+- [2026-11-02] Modified: src/sim/battle.rs — C1: Roster, roster checks (unknown ids, BadHp), spawn_roster
+- [2026-11-02] Modified: src/sim/content.rs — C1: mvp_battle building_spacing and formation_rank
+- [2026-11-02] Modified: assets/data/units.ron — C1: mvp_battle building_spacing and formation_rank
+- [2026-11-02] Modified: src/headless.rs — C1: a roster side gets no skirmish HQ or workers
+- [2026-11-02] Created: tests/c1_roster.rs — C1 AC5 tests: battle setup from a roster
+- [2026-11-02] Modified: FINDINGS.md — F-056 battle setup from a roster

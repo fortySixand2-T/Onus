@@ -142,7 +142,7 @@ A **skirmish** mode keeps today's rules exactly.
 - [x] **Retreat:** an `Order`. The side's units head for its entry edge, and the battle ends
   as a retreat once the withdrawal finishes. The outcome records which units got off the
   field.
-- [ ] **Battle setup from a roster.** A side can start with a given army (its General, its
+- [x] **Battle setup from a roster.** A side can start with a given army (its General, its
   units and their HP) and given buildings, instead of the skirmish start. The attacker and
   defender setups are what C4 builds from campaign state.
 - [ ] **The battle outcome reports survivors:** each surviving unit's type and HP per side,
