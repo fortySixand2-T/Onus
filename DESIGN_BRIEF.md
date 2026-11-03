@@ -159,7 +159,7 @@ Gated behind: the battle loop proving fun and the pentagon balancing first. None
 
 | Nation | Cities | Capital |
 |---|---|---|
-| Your house | 1 | Cinderhold *(placeholder name)* |
+| House Vael (you) | 1 | Cinderhold |
 | Forgeborn | 4 | — |
 | Verdant | 4 | — |
 | Aetherkin | 3 | — |
@@ -190,6 +190,34 @@ The layout is illustrative only; the exact adjacency is decided in the C4 data.
   trained at its barracks, every round. Size therefore matters, and lost armies can be
   rebuilt slowly. Without this, armies only ever shrink.
 - **Healing** *(rec)*: an army that skips a round in one of its own cities recovers some HP.
+- **Every army is led by one General.** More armies means more Generals, and several armies
+  can converge on one battle to **overwhelm** a defender *(decided by the user,
+  2026-11-02)*. A nation's Generals are:
+  - its own first General (for you, the heir);
+  - up to **3 absorbed Generals** from conquered capitals (decided);
+  - **additional Generals of its own house**, raised at a city for a levy cost *(decided by the
+    user, 2026-11-02; the cost is RON)*. These carry the house's own aura.
+
+### Army movement on the map (decided: moving takes turns, and mobility depends on type)
+
+- **An army marches only as fast as its slowest unit.** Each round an army gets **march
+  points** equal to the lowest Speed stat in its roster. These are the same Speed values the
+  battle uses: Bulwark 2, Ravager 4, Arclight 5, Worker 5, Sentinel 7, Ripper 9.
+- **Every road has a length** in march points (RON). An army moves along roads, spending its
+  points, and keeps any partial progress into the next round. Some examples:
+  - a road of length 9 takes a Ripper army one round;
+  - it takes a Bulwark army five rounds;
+  - it takes a mixed army as long as its Bulwarks need.
+- **This is the trade-off:** heavy armies hit hard but arrive late, and the enemy sees them
+  coming. A fast raiding army can strike before the defender can reinforce. Splitting an army
+  by speed is a real decision.
+- *(rec)* Tollmarch's **Logistics** aura also adds march points on the map, not only speed in
+  battle. Rough terrain or a road through the Rupture scar's edge can carry a length
+  multiplier.
+- **Converging:** a battle includes every army that is at the city, or adjacent to it with
+  enough march points to arrive, in the round it starts. Armies arriving later join the
+  **next round's assault**. Siege damage persists, so a siege can continue across rounds,
+  with fresh armies arriving.
 
 ### Campaign battles (decided: General and retreat)
 
@@ -200,7 +228,9 @@ The layout is illustrative only; the exact adjacency is decided in the C4 data.
   - Both sides can still gather and train during the battle *(rec)*. This keeps the RTS core
     that B1–B4 balanced.
 - **The General** is a unit, one per army, and is always on the field.
-  - **If your General dies, you lose the battle.** The rest of your army survives and
+  - **If your General dies, you lose the battle.** *(rec)* With several armies in one battle, a
+    side loses when **all** its Generals are dead. Each dead General's own army withdraws,
+    and the others fight on. The rest of your army survives and
     withdraws, so it still carries over.
   - The General fights, but is fragile enough that protecting him is a decision (stats to come
     from the sim).
@@ -208,6 +238,53 @@ The layout is illustrative only; the exact adjacency is decided in the C4 data.
     aura radius get a bonus. The radius, the stats it touches and its size are RON data, tuned
     by the sim. Keeping him close to the fight helps the army, and that is exactly what puts
     him at risk.
+  - **Each nation's General gives a different kind of buff** *(decided by the user,
+    2026-11-02)*. The aura matches the nation's doctrine, so its army fights differently near
+    its General, and the opponent can read that (P3: the aura is visible on the field).
+    Every aura is a list of stat modifiers in RON, so the kinds are data, not code. The one
+    exception is a special scaling rule for the synthesists. Sizes are tuned by the sim.
+
+    | Nation | Aura | Effect on nearby friendly units | How it plays |
+    |---|---|---|---|
+    | Your house | **Synthesis** | a bonus that grows with the number of *different domains* among the nearby units | rewards a mixed army; a pure army gets almost nothing |
+    | Forgeborn | **Bulwark** | + defense and armor | hold the line; hard to break near the General |
+    | Verdant | **Frenzy** | faster attacks (shorter attack interval) | short, violent trades; the swarm hits harder near him |
+    | Aetherkin | **Focus** | + offense | few units, each hitting harder |
+    | Tollmarch | **Logistics** | + move speed | arrives first, picks fights, gets out; strong for retreats |
+    | The Ashen Reach | **Endurance** | slow HP regeneration | outlasts the enemy; survivors carry more HP between battles |
+
+  - **Veteran Generals** *(decided by the user, 2026-11-02)*. A General who survives a
+    battle gains experience, and his rank rises.
+    - *(rec)* Each rank strengthens his aura by one step: a larger radius or a larger bonus,
+      as RON data per rank, with a cap on the top rank.
+    - *(rec)* A replacement General starts at rank 0. Losing a veteran is therefore a real
+      loss, which raises the stakes of protecting him and makes **retreating to save him** a
+      real choice.
+    - *(rec)* Winning earns more experience than retreating, and retreating earns more than
+      dying.
+  - **Absorbing an aura** *(decided by the user, 2026-11-02)*. When you take a nation's
+    capital, you gain **a new General carrying that nation's aura**, and he leads a new army
+    of your own. A Forgeborn General leads your Bulwark army, and a Verdant one leads your
+    Frenzy army.
+    - **At most 3 absorbed Generals** *(decided by the user, 2026-11-02)*.
+      *(rec)* After 3, taking a further capital offers a swap: you may replace one absorbed
+      General with the new one.
+    - **This is the only thing conquest grants beyond the cities themselves.** There is no
+      abstract "absorbed trait" (the earlier draft's "gain its art" is dropped by the user's
+      decision). An aura reaches the field only through a General who is there.
+    - **Several armies, and so several Generals, can fight in one battle**, so a side can
+      overwhelm the other.
+      *(rec)* Auras of different kinds stack. Auras of the same kind do not: a unit takes the
+      strongest. For example, a unit standing near both a Bulwark and a Frenzy General gets
+      both buffs.
+    - *(rec)* The new General's army starts small, raised from the conquered cities' levy.
+      An absorbed General who dies is replaced after N rounds at rank 0. The replacement
+      still counts toward the 3.
+    - The campaign sim must measure the snowball risk: each capital adds both cities and an
+      army.
+    *(rec)* An aura changes stats only. It never touches the nemesis bonus, so the pentagon's
+    hard counters stay intact. C2's balance gate checks every aura against the pentagon and
+    the 35–65% strength band.
   - *(rec)* A nation whose General dies gets a weaker replacement General after N rounds.
     **Your own General is the heir**: if he dies, the battle is lost and the heir is wounded
     for N rounds. The campaign is not lost.
@@ -222,19 +299,34 @@ The layout is illustrative only; the exact adjacency is decided in the C4 data.
 - **Destroying the city's HQ** also wins the battle and takes the city *(rec)*. The skirmish
   mode keeps today's rule that destroying the HQ wins.
 
+### Siege damage persists *(decided by the user, 2026-11-02)*
+
+- A city's buildings keep their HP between rounds. If the battle ends without the city
+  falling, by retreat or by a General's death, the damage stays. A strong city can therefore
+  be **worn down over several assaults**.
+- *(rec)* **Repair.** A city that is not attacked in a round repairs a set amount of building
+  HP. The repair rate is RON data, and the Forgeborn repair faster as part of their sturdier
+  buildings.
+- *(rec)* **Destroyed buildings stay destroyed** until rebuilt. Rebuilding is paid from the
+  city's levy over rounds, or by workers during a battle.
+- *(rec)* **A conqueror inherits the damage:** a city taken half-ruined stays half-ruined
+  until it is repaired.
+
 ### Rounds *(rec)*
 
-1. **Order.** Each round, every nation acts once, in a seeded order. Its choices:
-   - move an army along a road;
-   - attack an adjacent city;
-   - hold and heal;
-   - a diplomatic action.
+1. **Order.** Each round, every nation acts in a seeded order. **Each of its armies** may:
+   - march along roads, spending its march points (see Army movement);
+   - attack the city it has reached;
+   - hold, which heals and lets the army join another army;
+   - split into two armies (a General is needed for each) or merge with another.
+
+   The nation also gets one diplomatic action per round.
 2. **Your battles are played.** Battles between two AI nations are **auto-resolved by the real
    headless battle sim**, which is deterministic and already built. The survivors it reports
    carry over exactly as yours do.
-3. **Taking a capital** absorbs the nation: its other cities go to the conqueror. You also gain
-   **its art**, meaning its speciality trait. You start with no art and end as the synthesis.
-   Traits stack, so C0 caps how many.
+3. **Taking a capital** absorbs the nation. Its other cities go to the conqueror, and you
+   gain a General with its aura, up to 3 (see Absorbing an aura). No trait transfers: a
+   nation's speciality stays with that nation's cities and Generals.
 
 ### Diplomacy *(rec, refines the brief)*
 
@@ -261,13 +353,20 @@ The layout is illustrative only; the exact adjacency is decided in the C4 data.
 Each nation's battle personality maps to a strategy script. Each nation also gets an
 Alloy-only stand-in trait, used until Biomass and Aether exist.
 
-**Your house: the synthesists**
+**Perks apply only to the nation's own armies** *(decided by the user, 2026-11-02)*. A nation's
+lean and speciality affect only armies that nation fields, and the cities it holds. They never
+transfer through conquest. An absorbed General brings his **aura** to your army, but not his
+old nation's perks: a Forgeborn General leading your army does not make your Foundry units
+cheaper.
+
+**House Vael: the synthesists (you)**
 - **Art:** none. They practise the forbidden mix.
 - **Cities:** 1.
 - **Lean:** none. **Speciality:** **Synthesis**, a small bonus for units fighting beside units
   of another domain. It rewards the mixed army the pentagon already wants.
 - **Alloy-only stand-in:** the same.
 - **Disposition:** everyone distrusts you, and the Forgeborn hate you.
+- **General's aura:** Synthesis: a bonus that grows with the number of domains mixed nearby.
 - **Look:** ash grey and ember.
 
 **Forgeborn: the zealots of Machine**
@@ -277,6 +376,7 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 - **Battle personality:** Bulwark and Sentinel, slow and defensive, they hold.
 - **Alloy-only stand-in:** Foundry units cost x% less Alloy.
 - **Disposition:** Hostile to you. They never ally with you until you are big enough to fear.
+- **General's aura:** Bulwark: + defense and armor.
 - **Look:** iron and brass.
 
 **Verdant: the Flesh-shapers**
@@ -286,6 +386,7 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 - **Battle personality:** swarms of Ripper and Ravager. They attack early and often.
 - **Alloy-only stand-in:** Gene-Vats train x% faster.
 - **Disposition:** greedy, and can be bought into an alliance.
+- **General's aura:** Frenzy: faster attacks.
 - **Look:** green and bone.
 
 **Aetherkin: the wardens of Energy**
@@ -295,6 +396,7 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 - **Battle personality:** few, deadly Arclights behind a screen.
 - **Alloy-only stand-in:** Arclight gets +x range.
 - **Disposition:** the most reasonable house. It can be Tied if you avoid the ley-wells.
+- **General's aura:** Focus: + offense.
 - **Look:** violet and white.
 
 **Tollmarch: the merchant city-state (minor, Machine-leaning)**
@@ -303,6 +405,7 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 - **Battle personality:** turtle; economy first.
 - **Alloy-only stand-in:** +x worker carry.
 - **Disposition:** neutral to all. They sell alliances, and switch sides for a better offer.
+- **General's aura:** Logistics: + move speed.
 - **Look:** gold and blue.
 
 **The Ashen Reach: the Rupture remnant (minor)**
@@ -312,15 +415,139 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 - **Alloy-only stand-in:** +x% building HP.
 - **Disposition:** may ally with you if you seek the truth of the Rupture. This is a story
   thread.
+- **General's aura:** Endurance: slow HP regeneration.
 - **Look:** charcoal and red.
 
-### Still open (C0)
+### Names (chosen 2026-11-02)
 
-- The names of your house and its capital.
-- **Whether a General carries his own traits** (veteran Generals).
-- **Siege rules:** does the defender's city keep its damaged buildings between rounds?
-- **Trait caps** for absorbed arts.
-- **Data shape:** `nations.ron` and `campaign.ron`, with fields only.
+The user delegated the naming.
+- **House Vael** is the player's house. *Vael* is close to "veil": the truth of the Rupture
+  is veiled, and the record is ash.
+- **Cinderhold** is its capital and last holding. It is the one city the pure houses left
+  standing after burning the rest, at the edge of the Rupture scar.
+- The heir's General is **the Heir of Vael**.
+
+C0 has no open questions left. Items marked *(rec)* stand as the design until the user
+changes them, or until a sim or play test shows they fail.
+
+## Campaign data shape (C0 draft, 2026-11-02)
+
+These are drafts of the content files C1–C4 will load. **Nothing loads them yet.** They live
+here, not in `assets/data/`, until the milestone that reads them, so the shipped content and
+its fingerprint stay unchanged. Every number is a placeholder for the sims to tune. The types
+follow the existing RON style (`units.ron`, `strategies.ron`).
+
+### `units.ron` additions (C1): Generals and auras
+
+```ron
+// One General type per aura kind. A General is a unit: the 4-stat model, a barracks of none,
+// and an aura. If it dies, its side loses the battle (C1).
+generals: [
+    (
+        id: "general_synthesis", name: "Heir of Vael",
+        speed: 5, offense: 5, defense: 6, armor: 4,
+        aura: (
+            radius: 220.0,                          // world units
+            modifiers: [ (stat: Offense, add: 1), (stat: Armor, add: 1) ],
+            scaling: PerDistinctDomain(max: 3),     // Synthesis only: x1 per domain present nearby
+        ),
+    ),
+    (id: "general_bulwark",   name: "Forge-Marshal", speed: 3, offense: 4, defense: 8, armor: 6,
+     aura: (radius: 200.0, modifiers: [ (stat: Defense, add: 2), (stat: Armor, add: 2) ], scaling: Flat)),
+    (id: "general_frenzy",    name: "Brood-Mother",  speed: 7, offense: 6, defense: 5, armor: 2,
+     aura: (radius: 200.0, modifiers: [ (stat: AttackTicks, mul: 0.8) ], scaling: Flat)),
+    (id: "general_focus",     name: "Ley-Warden",    speed: 5, offense: 7, defense: 4, armor: 2,
+     aura: (radius: 240.0, modifiers: [ (stat: Offense, add: 2) ], scaling: Flat)),
+    (id: "general_logistics", name: "Quartermaster", speed: 8, offense: 3, defense: 5, armor: 3,
+     aura: (radius: 260.0, modifiers: [ (stat: Speed, add: 2) ], scaling: Flat)),
+    (id: "general_endurance", name: "Ash-Keeper",    speed: 4, offense: 4, defense: 7, armor: 4,
+     aura: (radius: 200.0, modifiers: [ (stat: RegenPerSecond, add: 1.0) ], scaling: Flat)),
+],
+// Ranks scale the whole aura (C4). A replacement General starts at rank 0.
+general_ranks: [
+    (xp: 0,  aura_mult: 1.00),
+    (xp: 3,  aura_mult: 1.25),
+    (xp: 8,  aura_mult: 1.50),   // top rank: the cap
+],
+// The AI's battle behaviour around its General (C1).
+mvp_general_ai: (guard_radius: 150.0, retreat_at_army_lost: 0.6),
+```
+
+The rule from the brief: no aura modifies the nemesis multiplier, and content validation
+rejects one that tries.
+
+### `nations.ron` (C2)
+
+```ron
+(
+    nations: [
+        (
+            id: "house", name: "House Vael",
+            domain: None,                               // the synthesists hold no art
+            colour: (0.45, 0.42, 0.40), accent: (0.95, 0.45, 0.15),
+            general: "general_synthesis",
+            strategy: "house",                          // a strategies.ron entry: the AI personality
+            traits: [],                                 // its edge is the Synthesis aura
+            disposition: (towards: [], ally_bias: 0, betrayal_tolerance: 1),
+        ),
+        (
+            id: "forgeborn", name: "Forgeborn",
+            domain: Some("machine"),
+            colour: (0.35, 0.33, 0.30), accent: (0.80, 0.62, 0.25),
+            general: "general_bulwark",
+            strategy: "forgeborn",
+            // The Alloy-only stand-in trait; it becomes the real lean in C3.
+            traits: [
+                (applies_to: Barracks("foundry"), stat: AlloyCost,   mul: 0.90),
+                (applies_to: Buildings,           stat: RepairRate,  mul: 1.50),
+            ],
+            disposition: (towards: [ ("house", Hostile) ], ally_bias: -2, betrayal_tolerance: 0),
+        ),
+        // verdant, aetherkin, tollmarch, ashen_reach follow the same shape (see the nation sheets)
+    ],
+)
+```
+
+### `campaign.ron` (C4)
+
+```ron
+(
+    cities: [
+        (
+            id: "cinderhold", name: "Cinderhold", owner: "house", capital: true,
+            position: (0.0, 0.0),                       // map-screen layout only
+            buildings: [ (building: "hq", hp: None), (building: "foundry", hp: None) ],  // None = full
+            levy: (alloy: 60, units: []),               // per round
+            local: None,                                // e.g. Some(RichAlloy) for a mining town
+        ),
+        // ... 15 more
+    ],
+    roads: [
+        (from: "cinderhold", to: "forge_gate", length: 9,  terrain: Plain),
+        (from: "cinderhold", to: "scar_edge",  length: 12, terrain: Scarred),   // terrain multiplies length
+    ],
+    terrain: [ (kind: Plain, length_mult: 1.0), (kind: Scarred, length_mult: 1.5) ],
+    start_armies: [
+        (nation: "house", general: "general_synthesis", at: "cinderhold",
+         units: [ (unit: "sentinel", count: 3), (unit: "ripper", count: 4) ]),
+        // ...
+    ],
+    rules: (
+        march_points: SlowestUnitSpeed,     // per round; Logistics adds its Speed bonus
+        max_absorbed_generals: 3,
+        raise_general_cost: (alloy: 400),   // a house General (decided: allowed)
+        ally_cap: 1,
+        betrayal_standing_drop: 1,
+        destabilize_requires_tied: 2,
+        repair_per_round: 300,              // building HP; unattacked cities only
+        heal_per_round: 0.20,               // share of max HP; armies holding in their own city
+        xp: (win: 3, retreat: 1, death: 0),
+        general_replacement_rounds: 3,
+        notice_per_city: 1,                 // neighbours' hostility toward you
+        round_cap: 25,
+    ),
+)
+```
 
 ## Fun hypothesis (what we're actually testing)
 

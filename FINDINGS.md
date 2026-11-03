@@ -5713,11 +5713,74 @@ threshold.
 
 **Open:**
 - The names of your house and its capital.
-- Whether Generals become veterans.
-- Whether siege damage persists between rounds.
 - The trait cap.
 - The `nations.ron` and `campaign.ron` field sketch.
 
 **Update (2026-11-02):** the user decided that the General **buffs nearby units** with an aura,
 whose radius and bonus are RON data. That closes the General's-role question. C1 gains an AC
 for it.
+
+**Update 2 (2026-11-02):** the user decided that **each nation's General gives a different kind
+of buff.** The draft gives one aura per nation, matched to its doctrine:
+- your house: Synthesis, which scales with the number of domains mixed nearby;
+- Forgeborn: Bulwark (+ defense and armor);
+- Verdant: Frenzy (faster attacks);
+- Aetherkin: Focus (+ offense);
+- Tollmarch: Logistics (+ speed);
+- the Ashen Reach: Endurance (regeneration).
+
+Auras are RON stat-modifier lists and never touch the nemesis bonus, so the pentagon's hard
+counters survive. The risk is that a strong aura becomes a nation's whole identity in balance
+terms. C2's gate measures each aura against the pentagon and the strength band.
+
+**Update 3 (2026-11-02):** the user decided that **taking a capital absorbs its aura with a
+second General.** The conqueror gains a General carrying that nation's aura, who leads a new
+army, up to six in total. The recommendation is one General per army and one army per side in
+a battle, so auras never stack. The campaign sim must measure the snowball risk, since each
+capital adds both cities and an army. C4 gains an AC for it.
+
+**Update 4 (2026-11-02):** the user decided two more questions.
+- **Generals can be veterans.** Surviving battles raises a General's rank, and each rank
+  strengthens his aura, with a cap on the top rank. A replacement General starts at rank 0,
+  which makes retreating to save a veteran a real choice.
+- **Siege damage persists between rounds.** A city can be worn down over several assaults.
+  The recommendation is that unattacked cities repair a set amount each round, destroyed
+  buildings need rebuilding, and a conqueror inherits the damage.
+
+C1 now includes building HP in battle setup and outcome. C4 persists it.
+
+**Update 5 (2026-11-02):** the user made three decisions and rejected one rule.
+- **At most 3 absorbed Generals.**
+- **The rejected rule:** abstract "absorbed traits" (the draft's "gain its art") are dropped,
+  because holding a buff from conquest made no sense. Conquest grants the cities, plus a
+  General who carries the aura onto the field.
+- **More armies mean more Generals.** Several armies can converge on one battle to overwhelm
+  a defender. This replaces the draft's "one army per side".
+- **Moving takes turns, and mobility depends on unit type.** An army's march points per round
+  equal its slowest unit's Speed, the same stat the battle uses (Bulwark 2 to Ripper 9).
+  Roads have lengths. Heavy armies hit hard but arrive late.
+
+Two consequences:
+- A side loses a battle when all its Generals are dead.
+- Auras of different kinds stack, and auras of the same kind do not *(rec)*.
+
+The C0 data shape (`units.ron` additions, `nations.ron`, `campaign.ron`) is drafted in the
+brief, not in `assets/data`, so the shipped content and its fingerprint are untouched.
+
+**Update 6 (2026-11-02):** the user decided two more questions.
+- **Extra Generals of your own house can be raised** at a city, for a levy cost set in RON.
+- **Nation perks apply only to that nation's own armies and cities.** An absorbed General
+  brings his aura, but not his old nation's perks.
+
+**Update 7 (2026-11-02): C0 closed.** The user delegated the names: **House Vael** for the
+player's house (close to "veil", for the veiled truth of the Rupture), **Cinderhold** for its
+capital, and **the Heir of Vael** for its first General. C0 has no open questions left; its
+boxes are ticked, and the *(rec)* items stand unless the user changes them. Next is C1
+(campaign battle rules), which waits for the B5 Go.
+
+**Update 8 (2026-11-02): the B5 wait is lifted.** The user said: "start c1 now, don't wait for
+b5". So C1, the campaign battle rules, begins before the human fun check. B5 stays open and
+still runs when the user can play. If it finds the core loop flat, that can revise C1 and
+everything after it. This is a recorded exception to `BALANCE_PLAN.md`'s B5 Go/No-Go, not a
+removal of it.
+
