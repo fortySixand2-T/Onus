@@ -712,3 +712,4 @@
 - [2026-11-02] Modified: src/sim/battle.rs — C1 fix: retreat order ticks; the earliest order loses, a same-tick mutual retreat has no winner
 - [2026-11-02] Modified: src/sim/mod.rs — C1 fix: Order::Retreat records the tick it was applied
 - [2026-11-02] Modified: tests/c1_retreat.rs — C1 fix: mutual and staggered retreat tests
+- [2026-11-02] Modified: tests/c1_aura.rs — C1 fix: the enemy stands inside the aura radius

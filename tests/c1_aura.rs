@@ -285,7 +285,8 @@ fn friendly_units_inside_the_radius_get_the_aura_and_no_one_else_does() {
     let g = generals_of(&mut app, Faction::A)[0];
     let inside = spawn_unit(&mut app, "ravager", Faction::A, HERE + Vec2::new(r - 1.0, 0.0));
     let outside = spawn_unit(&mut app, "ravager", Faction::A, HERE + Vec2::new(r + 1.0, 0.0));
-    let enemy = spawn_unit(&mut app, "ravager", Faction::B, HERE + Vec2::new(0.0, r + 200.0));
+    // An enemy well inside the radius: the side filter, not distance, is what keeps him out.
+    let enemy = spawn_unit(&mut app, "ravager", Faction::B, HERE + Vec2::new(0.0, r * 0.5));
     headless::step(&mut app);
     let want = StatBonus { offense: add(&c, id, AuraStat::Offense), ..StatBonus::NONE };
     assert_eq!(bonus(&app, inside), want);
