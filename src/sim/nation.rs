@@ -498,6 +498,18 @@ impl NationRules {
     }
 }
 
+/// Each side's nation id, per faction slot (A, B): what a match log records,
+/// and what [`install`] takes back. All `None` when the match has no
+/// [`NationRules`].
+pub fn ids<'a>(content: &'a Content, rules: Option<&NationRules>) -> [Option<&'a str>; 2] {
+    SIDES.map(|f| {
+        rules
+            .and_then(|r| r.nation_of(f))
+            .and_then(|i| content.nations.get(i))
+            .map(|n| n.id.as_str())
+    })
+}
+
 /// Install the match's nations into a world: insert [`NationRules`] when a
 /// side has one (nothing otherwise), and give every unit and building already
 /// on the field the full HP pool of its side's table. Call before the first

@@ -766,3 +766,9 @@
 - [2026-11-03] Modified: src/sim/battle.rs — BattleSetup::check_with: roster HP checked against the side's traited pool (refused, never clamped)
 - [2026-11-03] Modified: src/headless.rs — resolve nations before checking a battle setup, and check it with them
 - [2026-11-03] Modified: FINDINGS.md — F-068: roster HP against the traited pool
+- [2026-11-03] Modified: src/sim/replay.rs — MatchLog records each side's nation (serde default, unwritten when none); the sim stamps it; matches_content refuses an unknown nation; new apply_log_nations installs or refuses a replay's nations (critic finding 2)
+- [2026-11-03] Modified: src/sim/nation.rs — nation::ids, each side's nation id for the log
+- [2026-11-03] Modified: src/lib.rs — apply_log_nations runs before feed_replay in a replay
+- [2026-11-03] Modified: tests/critic_c2.rs — restored the critic's nation-replay test
+- [2026-11-03] Modified: tests/c2_nations.rs — tests for the logged nations: faithful replay, pre-C2 logs, unknown and mismatched nations refused
+- [2026-11-03] Modified: FINDINGS.md — F-063/F-067 replay claims marked corrected; added F-069

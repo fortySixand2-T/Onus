@@ -13,8 +13,8 @@ use onus::sim::content::Content;
 use onus::sim::economy::{Building, Produced};
 use onus::sim::nation::{self, Defs, NationRules, UnknownNation};
 use onus::sim::{
-    AiCommanders, Carrying, CommandQueue, Faction, Health, Order, Position, Stockpiles,
-    UnitDefIdx, UnitKind,
+    AiCommanders, Carrying, CommandLog, CommandQueue, Faction, Health, MatchLog, Order, Position,
+    ReplaySource, StateHashLog, Stockpiles, UnitDefIdx, UnitKind,
 };
 
 fn data_dir() -> PathBuf {
@@ -534,4 +534,111 @@ fn install_is_a_no_op_with_no_nations() {
     let mut app = quiet(None, None);
     nation::install(app.world_mut(), &[None, None]).unwrap();
     assert!(!app.world().contains_resource::<NationRules>());
+}
+
+// ---- the log carries the nations (critic finding 2) --------------------------
+
+/// Record `a` vs `b` for `ticks`, AI against AI, and return the log as it
+/// comes back from disk, plus the recording's hashes.
+fn record(a: Option<&str>, b: Option<&str>, ticks: u32) -> (MatchLog, StateHashLog) {
+    let s = MatchSettings::default()
+        .with_seed(9)
+        .with_nations(a, b)
+        .with_hashing(true);
+    let mut rec = headless::ai_vs_ai(shipped(), &s).unwrap();
+    headless::tick(&mut rec, ticks);
+    let hashes = rec.world().resource::<StateHashLog>().clone();
+    let log = rec.world().resource::<CommandLog>().log().clone();
+    (MatchLog::from_ron(&log.to_ron().unwrap()).unwrap(), hashes)
+}
+
+/// Replay `log` into a world built from **nothing but its seed** — the replay
+/// has to bring the nations itself.
+fn replay(log: MatchLog, setup_nations: [Option<&str>; 2], ticks: u32) -> App {
+    let rs = MatchSettings::default()
+        .with_seed(log.seed)
+        .with_nations(setup_nations[0], setup_nations[1])
+        .with_hashing(true);
+    let mut rep = headless::ai_vs_ai(shipped(), &rs).unwrap();
+    rep.insert_resource(AiCommanders::default());
+    rep.insert_resource(StateHashLog::default());
+    rep.insert_resource(CommandLog::new(log.seed));
+    rep.insert_resource(ReplaySource::new(log));
+    headless::tick(&mut rep, ticks);
+    rep
+}
+
+#[test]
+fn a_nation_match_log_names_its_nations_and_replays_them_faithfully() {
+    const TICKS: u32 = 1_200;
+    let (log, recorded) = record(Some("forgeborn"), Some("tollmarch"), TICKS);
+    assert_eq!(
+        log.nations,
+        [Some("forgeborn".to_string()), Some("tollmarch".to_string())],
+        "the sim stamps each side's nation into the log"
+    );
+    assert!(log.commands.len() > 10, "the AI played: {}", log.commands.len());
+    let rep = replay(log.clone(), [None, None], TICKS);
+    let src = rep.world().resource::<ReplaySource>();
+    assert_eq!(src.rejection(), None, "a faithful log is not refused");
+    assert!(src.finished());
+    let rules = rep.world().resource::<NationRules>();
+    let c = rep.world().resource::<Content>();
+    assert_eq!(c.nations[rules.nation_of(Faction::A).unwrap()].id, "forgeborn");
+    assert_eq!(c.nations[rules.nation_of(Faction::B).unwrap()].id, "tollmarch");
+    let replayed = rep.world().resource::<StateHashLog>().clone();
+    assert_eq!(recorded.first_divergence(&replayed), None);
+    // The replay's own log names the same nations: a replay of a replay holds.
+    assert_eq!(rep.world().resource::<CommandLog>().log().nations, log.nations);
+
+    // One side only: the other slot stays none, and it still replays.
+    let (log, recorded) = record(None, Some("verdant"), 600);
+    assert_eq!(log.nations, [None, Some("verdant".to_string())]);
+    let rep = replay(log, [None, None], 600);
+    assert_eq!(rep.world().resource::<ReplaySource>().rejection(), None);
+    let replayed = rep.world().resource::<StateHashLog>().clone();
+    assert_eq!(recorded.first_divergence(&replayed), None);
+}
+
+#[test]
+fn a_no_nation_log_is_written_as_before_and_a_pre_c2_log_reads_as_no_nations() {
+    let (log, _) = record(None, None, 300);
+    assert_eq!(log.nations, [None, None]);
+    let text = log.to_ron().unwrap();
+    assert!(!text.contains("nations"), "a no-nation log is byte-for-byte pre-C2");
+    // ...so a pre-C2 log, which has no such field, reads as no nations.
+    assert_eq!(MatchLog::from_ron(&text).unwrap().nations, [None, None]);
+}
+
+#[test]
+fn a_log_naming_a_nation_this_content_lacks_is_refused() {
+    let (mut log, _) = record(Some("forgeborn"), Some("tollmarch"), 300);
+    log.nations[1] = Some("atlantis".to_string());
+    let text = log.to_ron().unwrap();
+    // The front door refuses it, naming the nation...
+    let why = MatchLog::from_ron_for(&text, &shipped()).unwrap_err();
+    assert!(why.contains("atlantis"), "{why}");
+    // ...and so does the backstop, for a log that never went through it.
+    let rep = replay(MatchLog::from_ron(&text).unwrap(), [None, None], 60);
+    let src = rep.world().resource::<ReplaySource>();
+    let why = src.rejection().expect("refused");
+    assert!(why.contains("atlantis"), "{why}");
+    assert_eq!(src.cursor(), 0, "nothing of a refused log is fed");
+    assert!(!rep.world().contains_resource::<NationRules>(), "nothing installed");
+}
+
+#[test]
+fn a_log_whose_nations_disagree_with_the_world_is_refused() {
+    // The world already plays nations the log did not record — either way round.
+    let (log, _) = record(None, None, 300);
+    let rep = replay(log, [Some("forgeborn"), None], 60);
+    let why = rep.world().resource::<ReplaySource>().rejection().map(str::to_string);
+    assert!(why.as_deref().is_some_and(|w| w.contains("nation")), "{why:?}");
+
+    let (log, _) = record(Some("forgeborn"), Some("tollmarch"), 300);
+    let rep = replay(log.clone(), [Some("verdant"), Some("tollmarch")], 60);
+    assert!(rep.world().resource::<ReplaySource>().rejection().is_some());
+    // The same nations already installed by setup are the same match: accepted.
+    let rep = replay(log, [Some("forgeborn"), Some("tollmarch")], 60);
+    assert_eq!(rep.world().resource::<ReplaySource>().rejection(), None);
 }

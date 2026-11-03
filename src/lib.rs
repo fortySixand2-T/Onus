@@ -213,6 +213,10 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
                 // them think again would double every one of them.
                 sim::ai::ai_commanders
                     .run_if(not(resource_exists::<sim::replay::ReplaySource>)),
+                // A replay's starting world includes its nations (C2): applied
+                // (or the log refused) before anything of it is fed.
+                sim::replay::apply_log_nations
+                    .run_if(resource_exists::<sim::replay::ReplaySource>),
                 // A replay's only producer: this tick's logged commands, pushed
                 // onto the same queue every other producer writes to.
                 sim::replay::feed_replay

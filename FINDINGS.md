@@ -6209,9 +6209,11 @@ exactly (C2 AC2).
   instant). Diplomatic disposition is campaign-layer data (C5) and is not in this file yet.
 
 **Known gaps.**
-- `MatchLog` records no nations, the same gap as F-061's `BattleSetup`. A replay of a nation
+- `MatchLog` records no nations, the same gap as F-061's `BattleSetup`. ~~A replay of a nation
   match against the wrong content or settings is caught by the state hash on its first tick
-  (the NATIONS rows), not rebuilt.
+  (the NATIONS rows), not rebuilt.~~ **Overstated, corrected in F-069:** nothing compared
+  hashes during a replay, so the replay ran, unrefused, as a different match (the critic's
+  test diverged at tick 0). The log now records the nations and the replay installs them.
 - `BattleSetup::check` validates a roster building's HP against the base pool, so a campaign
   roster cannot name HP above the base maximum even for Ashen Reach.
 
@@ -6446,9 +6448,11 @@ six colours tell the sides apart on the map, and the unit rings (gizmos need the
 plugins). `cargo run` now opens on the pick screen; press Enter to play.
 
 **Known gap, not fixed here (outside C2 AC5's files).** The command log carries no nations.
-A replay written from a nation match would replay without its traits. The state hash includes
+A replay written from a nation match would replay without its traits. ~~The state hash includes
 the nations (tag 25), so a hash check would fail loudly at tick 0 rather than silently
-diverge.
+diverge.~~ **Overstated, corrected in F-069:** only a caller that compares two hash logs sees
+that divergence. The replay itself accepted the log and played a different match. Fixed in
+F-069: the log names its nations and the replay applies or refuses them.
 
 ## F-068 — C2 critic fixes: a roster's HP is checked against its side's traited pool (C2)
 
@@ -6470,3 +6474,44 @@ clamped: a trimmed roster would hide a campaign bug that wrote an HP the side ca
   `a_roster_building_never_starts_above_its_sides_pool` failed before the fix. They now expect
   the refusal, with the traited max in the error, and an admitted roster at that max with
   `current <= max`.
+
+## F-069 — C2 critic fixes: a nation match's log records its nations, and a replay rebuilds them (C2)
+
+**Defect (critic, Medium).** `MatchLog` carried the seed, the content fingerprint and the
+commands, but not the nations. A Forgeborn-vs-Tollmarch log replayed into a world built from
+its seed played a no-nation match. Nothing refused it, and it diverged at tick 0. F-063's and
+F-067's notes said the state hash would catch this; it only does for a caller that compares
+two hash logs (both notes are now marked as corrected).
+
+**Fix.**
+- `MatchLog::nations: [Option<String>; 2]`, per faction slot. `#[serde(default)]`, and not
+  written when both are none, so a pre-C2 log reads as a no-nation match and a no-nation match
+  writes the same bytes as before. `LOG_FORMAT_VERSION` stays 2: the change only adds a field.
+- **The sim stamps the field itself** in `replay::stamp_content`, from `NationRules`
+  (`nation::ids`), the same way it stamps the content fingerprint. A log never depends on a
+  caller remembering to stamp it. If the nations change after the first stamp, the log is
+  marked `content_changed` and refused at both boundaries, like a content change.
+- `MatchLog::matches_content` refuses a log naming a nation the content lacks. That check
+  covers the front door (`load_for` / `from_ron_for`) and `feed_replay`'s backstop.
+- **`replay::apply_log_nations`** is an exclusive system that runs once, just before
+  `feed_replay`, when a `ReplaySource` exists. It handles four cases:
+  - It refuses a log that does not match the content.
+  - It accepts a world that already plays the log's nations.
+  - In a world with no nations at tick 0, it installs the log's nations through
+    `nation::install`. This is the path headless setup and the client's `start_match` also use.
+  - It refuses anything else: other nations, or a match already under way. A refused replay
+    feeds nothing.
+
+**Gates.**
+- `tests/critic_c2.rs` `a_nation_match_log_replays_faithfully_or_is_refused` failed before
+  the fix (diverged at tick 0). It now replays faithfully, without a refusal.
+- `tests/c2_nations.rs`:
+  - `a_nation_match_log_names_its_nations_and_replays_them_faithfully` covers both sides
+    (1 200 ticks) and one side. The replay comes hash for hash from a seed-only world, and
+    the replay's own log names the same nations.
+  - `a_no_nation_log_is_written_as_before_and_a_pre_c2_log_reads_as_no_nations`.
+  - `a_log_naming_a_nation_this_content_lacks_is_refused` covers both the front door and the
+    backstop. The refused replay feeds nothing and installs nothing.
+  - `a_log_whose_nations_disagree_with_the_world_is_refused` covers both directions. A world
+    whose setup already named the log's nations is accepted.
+- The M5/M6/P2 replay suites and the c1/c2 goldens pass unchanged.

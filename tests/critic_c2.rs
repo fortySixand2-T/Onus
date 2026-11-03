@@ -13,12 +13,16 @@ use onus::sim::content::Content;
 use onus::sim::economy::Building;
 use onus::sim::nation::{Defs, NationRules};
 use onus::sim::{
-    AiCommanders, CommandQueue, Faction, Health, MoveTarget, Order, Position, Stockpiles,
-    UnitDefIdx,
+    AiCommanders, CommandLog, CommandQueue, Faction, Health, MatchLog, MoveTarget, Order,
+    Position, ReplaySource, StateHashLog, Stockpiles, UnitDefIdx,
 };
 
 fn data_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data")
+}
+
+fn shipped() -> Content {
+    Content::load_from_dir(&data_dir()).expect("content loads")
 }
 
 fn with_traits(name: &str, traits: &str) -> Content {
@@ -221,4 +225,40 @@ fn a_roster_building_never_starts_above_its_sides_pool() {
         }
     }
     assert!(seen > 0, "the roster foundry was spawned");
+}
+
+// ---- the M5 replay guarantee under nations -----------------------------------
+
+/// A nation match recorded to disk must either replay tick-for-tick from what
+/// the log carries, or be refused. It must never be silently accepted and
+/// replayed as a different match.
+#[test]
+fn a_nation_match_log_replays_faithfully_or_is_refused() {
+    const TICKS: u32 = 1_800;
+    let s = MatchSettings::default()
+        .with_seed(9)
+        .with_nations(Some("forgeborn"), Some("tollmarch"))
+        .with_hashing(true);
+    let mut rec = headless::ai_vs_ai(shipped(), &s).unwrap();
+    headless::tick(&mut rec, TICKS);
+    let recorded = rec.world().resource::<StateHashLog>().clone();
+    let log = rec.world().resource::<CommandLog>().log().clone();
+    let log = MatchLog::from_ron(&log.to_ron().unwrap()).unwrap();
+
+    // Everything the log carries: its seed, its content (same), its commands.
+    let rs = MatchSettings::default().with_seed(log.seed).with_hashing(true);
+    let mut rep = headless::ai_vs_ai(shipped(), &rs).unwrap();
+    rep.world_mut().remove_resource::<AiCommanders>();
+    rep.insert_resource(AiCommanders::default());
+    rep.insert_resource(StateHashLog::default());
+    rep.insert_resource(CommandLog::new(log.seed));
+    rep.insert_resource(ReplaySource::new(log));
+    headless::tick(&mut rep, TICKS);
+    let refused = rep.world().resource::<ReplaySource>().rejection().is_some();
+    let diverged = recorded.first_divergence(&rep.world().resource::<StateHashLog>().clone());
+    assert!(
+        refused || diverged.is_none(),
+        "the log of a Forgeborn-vs-Tollmarch match was accepted (no rejection) and \
+         replayed as a different match, diverging at tick {diverged:?}"
+    );
 }
