@@ -5915,3 +5915,28 @@ buildings with HP (siege damage persists, F-052), instead of the skirmish start.
 
 **Not yet.** Rosters come from the campaign layer (C2+). The map's geography is the headless
 fixture's two bases; real battlefields are C3.
+
+## F-057 — The battle report: survivors, standing buildings and each General's fate (C1)
+
+**Context.** C1 AC6: the outcome reports survivors. Per side, it gives each unit's type and
+HP, building HP, and whether each General survived. This is what the campaign layer (C2+)
+writes back onto its persistent armies and cities.
+
+**Decisions.**
+- **`BattleResult.sides: [SideReport; 2]`** (`report(side)`), built in `battle_end` on the
+  state the tick ended in, so it is the same tick as the outcome.
+  - `units`: every unit on the field (Generals included, flagged) plus every escapee (flagged
+    `escaped`, with the HP it left with), sorted by `SimId`. A sim id is stable across
+    processes, and an entity id is not (F-041).
+  - `buildings`: every standing building with its HP (the RON pool if it was never hit),
+    sorted by `SimId`.
+  - `generals`: one `GeneralFate { unit, survived, escaped }` per General the setup fielded,
+    in setup order, so a fallen General still has an entry.
+- **Fielded Generals are tracked from `install`.** `BattleState` keeps `(entity, side, def,
+  escaped)` for each one. `withdraw` sets `escaped` when he crosses the edge. A General
+  survived if he is still on the field or escaped.
+- **Hash.** The fielded list (side, def, escaped flag; no entity bits) and the report are in
+  `BattleState::hash_words`. That covers battle mode only, so a skirmish hash is untouched.
+
+**Not yet.** Veteran XP and kills per General are C4. Applying the report to a campaign army
+is C2.

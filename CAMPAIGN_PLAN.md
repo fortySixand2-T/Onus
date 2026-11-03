@@ -145,7 +145,7 @@ A **skirmish** mode keeps today's rules exactly.
 - [x] **Battle setup from a roster.** A side can start with a given army (its General, its
   units and their HP) and given buildings, instead of the skirmish start. The attacker and
   defender setups are what C4 builds from campaign state.
-- [ ] **The battle outcome reports survivors:** each surviving unit's type and HP per side,
+- [x] **The battle outcome reports survivors:** each surviving unit's type and HP per side,
   every building's HP (siege damage persists), and whether each General survived.
   C4 writes this back to the campaign.
 - [ ] **AI:** protects its General, and retreats on a data-driven threshold.

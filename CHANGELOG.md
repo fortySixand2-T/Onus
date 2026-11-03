@@ -684,3 +684,6 @@
 - [2026-11-02] Modified: src/headless.rs — C1: a roster side gets no skirmish HQ or workers
 - [2026-11-02] Created: tests/c1_roster.rs — C1 AC5 tests: battle setup from a roster
 - [2026-11-02] Modified: FINDINGS.md — F-056 battle setup from a roster
+- [2026-11-02] Modified: src/sim/battle.rs — C1: battle report (SideReport, UnitReport, BuildingReport, GeneralFate), fielded Generals tracked
+- [2026-11-02] Created: tests/c1_report.rs — C1 AC6 tests: the outcome reports survivors
+- [2026-11-02] Modified: FINDINGS.md — F-057 the battle report

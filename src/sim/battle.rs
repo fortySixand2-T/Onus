@@ -346,6 +346,7 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
         .battle
         .as_ref()
         .expect("BattleSetup::check admits only content with a battle block");
+    let mut fielded = Vec::new();
     for (slot, side) in SLOTS.iter().enumerate() {
         let g = ground[slot];
         let line = setup.sides[slot].generals.len();
@@ -357,14 +358,22 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
             let at = g.base
                 + g.front * battle.general_front
                 + line_offset(g, j, line, battle.formation_spacing);
-            world.spawn((
-                Position(at),
-                UnitDefIdx(idx),
-                def.mvp_kind,
-                *side,
-                Health::from_def(&content, idx),
-                General,
-            ));
+            let entity = world
+                .spawn((
+                    Position(at),
+                    UnitDefIdx(idx),
+                    def.mvp_kind,
+                    *side,
+                    Health::from_def(&content, idx),
+                    General,
+                ))
+                .id();
+            fielded.push(Fielded {
+                entity,
+                side: *side,
+                unit: idx,
+                escaped: false,
+            });
         }
         if let Some(roster) = &setup.sides[slot].roster {
             spawn_roster(world, &content, battle, *side, g, roster);
@@ -374,7 +383,9 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
         point: g.base - g.front * battle.entry_edge_offset,
         outward: -g.front,
     });
-    world.insert_resource(BattleState::new(edges));
+    let mut state = BattleState::new(edges);
+    state.fielded = fielded;
+    world.insert_resource(state);
     world.insert_resource(AuraField::default());
 }
 
@@ -440,6 +451,8 @@ pub struct BattleResult {
     /// Every unit that escaped in a retreat, in the order they crossed (tick,
     /// then ascending entity bits).
     pub escaped: Vec<Escaped>,
+    /// Per faction slot: what that side came out of the battle with.
+    pub sides: [SideReport; 2],
 }
 
 impl BattleResult {
@@ -447,6 +460,64 @@ impl BattleResult {
     pub fn loss(&self, side: Faction) -> Option<LossCause> {
         self.lost[faction_slot(side)]
     }
+
+    /// What `side` came out of the battle with (C1 AC6).
+    pub fn report(&self, side: Faction) -> &SideReport {
+        &self.sides[faction_slot(side)]
+    }
+}
+
+/// A unit that came out of a battle alive (C1 AC6): still on the field when
+/// it was decided, or escaped in a retreat (with the HP it left with).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct UnitReport {
+    pub sim_id: SimId,
+    /// Its `UnitDefIdx` (a roster unit or a General).
+    pub unit: usize,
+    pub hp: u32,
+    pub max_hp: u32,
+    pub general: bool,
+    pub escaped: bool,
+}
+
+/// A building still standing when the battle was decided.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BuildingReport {
+    pub sim_id: SimId,
+    /// Its index in `Content::buildings`.
+    pub building: usize,
+    pub hp: u32,
+    pub max_hp: u32,
+}
+
+/// What became of one General the setup fielded.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GeneralFate {
+    /// His `UnitDefIdx`.
+    pub unit: usize,
+    /// On the field at the end, or escaped.
+    pub survived: bool,
+    pub escaped: bool,
+}
+
+/// One side's account of a battle: every survivor (by sim id), every
+/// standing building (by sim id), and each fielded General's fate (in the
+/// setup's order).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct SideReport {
+    pub units: Vec<UnitReport>,
+    pub buildings: Vec<BuildingReport>,
+    pub generals: Vec<GeneralFate>,
+}
+
+/// A General the setup fielded, tracked to the end so a fallen one still has
+/// a fate in the report.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Fielded {
+    entity: Entity,
+    side: Faction,
+    unit: usize,
+    escaped: bool,
 }
 
 /// The battle's own sim state. Present only in a campaign battle — which is
@@ -463,6 +534,8 @@ pub struct BattleState {
     retreating: [bool; 2],
     /// Everyone who has escaped so far, in crossing order.
     escaped: Vec<Escaped>,
+    /// Every General the setup fielded, in spawn order.
+    fielded: Vec<Fielded>,
     result: Option<BattleResult>,
 }
 
@@ -475,6 +548,7 @@ impl BattleState {
             edges,
             retreating: [false; 2],
             escaped: Vec::new(),
+            fielded: Vec::new(),
             result: None,
         }
     }
@@ -544,6 +618,11 @@ impl BattleState {
             }
         }
         escapes(&mut w, &self.escaped);
+        w.push(self.fielded.len() as u64);
+        for g in &self.fielded {
+            w.push(faction_slot(g.side) as u64 | (g.escaped as u64) << 1);
+            w.push(g.unit as u64);
+        }
         match &self.result {
             None => w.push(0),
             Some(r) => {
@@ -556,6 +635,26 @@ impl BattleState {
                 w.push(cause(r.lost[0]));
                 w.push(cause(r.lost[1]));
                 escapes(&mut w, &r.escaped);
+                for side in &r.sides {
+                    w.push(side.units.len() as u64);
+                    for u in &side.units {
+                        w.push(u.sim_id.0);
+                        w.push(u.unit as u64);
+                        w.push(u.hp as u64 | (u.max_hp as u64) << 32);
+                        w.push(u.general as u64 | (u.escaped as u64) << 1);
+                    }
+                    w.push(side.buildings.len() as u64);
+                    for b in &side.buildings {
+                        w.push(b.sim_id.0);
+                        w.push(b.building as u64);
+                        w.push(b.hp as u64 | (b.max_hp as u64) << 32);
+                    }
+                    w.push(side.generals.len() as u64);
+                    for g in &side.generals {
+                        w.push(g.unit as u64);
+                        w.push(g.survived as u64 | (g.escaped as u64) << 1);
+                    }
+                }
             }
         }
         w
@@ -594,13 +693,22 @@ pub fn battle_watch(
 /// Decide the battle on the state the tick ended in. Runs just before
 /// `victory::match_end`, so on a tick it decides, the skirmish check sees a
 /// decided match and leaves it alone.
+#[allow(clippy::type_complexity)]
 pub fn battle_end(
     content: Res<Content>,
     mut state: ResMut<MatchState>,
     mut battle: ResMut<BattleState>,
     generals: Query<&Faction, With<General>>,
-    units: Query<&Faction, With<UnitDefIdx>>,
+    units: Query<(
+        Entity,
+        &Faction,
+        &UnitDefIdx,
+        Option<&Health>,
+        Option<&SimId>,
+        Has<General>,
+    )>,
     buildings: Query<(&Building, &Faction)>,
+    standing: Query<(&Building, &Faction, Option<&Health>, Option<&SimId>)>,
 ) {
     if state.is_over() {
         return;
@@ -608,7 +716,7 @@ pub fn battle_end(
     let g = count_generals(&generals);
     let v = count_victory_buildings(&content, &buildings);
     let mut on_field = [0u32; 2];
-    for f in &units {
+    for (_, f, ..) in &units {
         on_field[faction_slot(*f)] += 1;
     }
     // A General who escaped in a retreat did not fall.
@@ -636,13 +744,81 @@ pub fn battle_end(
     };
     let tick = state.tick();
     state.conclude(winner);
+    let sides = report(&content, &battle, &units, &standing);
     let escaped = battle.escaped.clone();
     battle.result = Some(BattleResult {
         winner,
         tick,
         lost,
         escaped,
+        sides,
     });
+}
+
+/// Each side's account of the battle (C1 AC6), on the state it ended in.
+/// Survivors and buildings are sorted by sim id (escapees after anyone on the
+/// field with the same id, which cannot happen), Generals kept in setup order —
+/// so no query order reaches the report.
+#[allow(clippy::type_complexity)]
+fn report(
+    content: &Content,
+    battle: &BattleState,
+    units: &Query<(
+        Entity,
+        &Faction,
+        &UnitDefIdx,
+        Option<&Health>,
+        Option<&SimId>,
+        Has<General>,
+    )>,
+    standing: &Query<(&Building, &Faction, Option<&Health>, Option<&SimId>)>,
+) -> [SideReport; 2] {
+    let mut sides: [SideReport; 2] = Default::default();
+    for (_, f, def, health, id, general) in units {
+        let hp = health.copied().unwrap_or_else(|| Health::from_def(content, def.0));
+        sides[faction_slot(*f)].units.push(UnitReport {
+            sim_id: id.copied().unwrap_or(SimId::UNIDENTIFIED),
+            unit: def.0,
+            hp: hp.current,
+            max_hp: hp.max,
+            general,
+            escaped: false,
+        });
+    }
+    for e in &battle.escaped {
+        sides[faction_slot(e.side)].units.push(UnitReport {
+            sim_id: e.sim_id,
+            unit: e.unit,
+            hp: e.hp,
+            max_hp: e.max_hp,
+            general: e.general,
+            escaped: true,
+        });
+    }
+    for (b, f, health, id) in standing {
+        let hp = health
+            .copied()
+            .unwrap_or_else(|| Health::from_building_def(content, b.def));
+        sides[faction_slot(*f)].buildings.push(BuildingReport {
+            sim_id: id.copied().unwrap_or(SimId::UNIDENTIFIED),
+            building: b.def,
+            hp: hp.current,
+            max_hp: hp.max,
+        });
+    }
+    for g in &battle.fielded {
+        let alive = units.get(g.entity).is_ok_and(|row| row.5);
+        sides[faction_slot(g.side)].generals.push(GeneralFate {
+            unit: g.unit,
+            survived: alive || g.escaped,
+            escaped: g.escaped,
+        });
+    }
+    for s in &mut sides {
+        s.units.sort_by_key(|u| (u.sim_id, u.escaped, u.unit));
+        s.buildings.sort_by_key(|b| (b.sim_id, b.building));
+    }
+    sides
 }
 
 // ---- retreat -----------------------------------------------------------------
@@ -699,6 +875,9 @@ pub fn withdraw(
                 general,
                 tick,
             });
+            if let Some(g) = battle.fielded.iter_mut().find(|g| g.entity == e) {
+                g.escaped = true;
+            }
             commands.entity(e).despawn();
         } else {
             let mut ent = commands.entity(e);
