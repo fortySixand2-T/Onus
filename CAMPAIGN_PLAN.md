@@ -130,28 +130,30 @@ This draft follows the brief's fiction:
 The user's decisions change the battle itself, so they come first. Every item is data-driven.
 A **skirmish** mode keeps today's rules exactly.
 
-- [ ] **The General:** a unit type in `units.ron`, one per side. When a side's General dies,
+- [x] **The General:** a unit type in `units.ron`, one per side. When a side's General dies,
   that side loses the battle.
-- [ ] **Several Generals per side:** a battle can field more than one General per side, and
+- [x] **Several Generals per side:** a battle can field more than one General per side, and
   that side loses when **all** its Generals are dead (or it retreats).
-- [ ] **The General's aura:** friendly units within a radius get a bonus. Each General type
+- [x] **The General's aura:** friendly units within a radius get a bonus. Each General type
   carries its own aura, defined in RON as a radius plus a list of stat modifiers (offense,
   defense, armor, speed, attack interval, HP regeneration). The synthesists add a
   domain-count scaling rule. Six aura kinds, one per nation (see the brief). An aura never
   touches the nemesis bonus.
-- [ ] **Retreat:** an `Order`. The side's units head for its entry edge, and the battle ends
+- [x] **Retreat:** an `Order`. The side's units head for its entry edge, and the battle ends
   as a retreat once the withdrawal finishes. The outcome records which units got off the
   field.
-- [ ] **Battle setup from a roster.** A side can start with a given army (its General, its
+- [x] **Battle setup from a roster.** A side can start with a given army (its General, its
   units and their HP) and given buildings, instead of the skirmish start. The attacker and
   defender setups are what C4 builds from campaign state.
-- [ ] **The battle outcome reports survivors:** each surviving unit's type and HP per side,
+- [x] **The battle outcome reports survivors:** each surviving unit's type and HP per side,
   every building's HP (siege damage persists), and whether each General survived.
   C4 writes this back to the campaign.
-- [ ] **AI:** protects its General, and retreats on a data-driven threshold.
-- [ ] **Golden licence:** skirmish mode reproduces today's pinned results exactly.
+- [x] **AI:** protects its General, and retreats on a data-driven threshold.
+- [x] **Golden licence:** skirmish mode reproduces today's pinned results exactly.
 - [ ] **Balance:** the B3 gate runs on campaign-style battles (General plus retreat), and B5
   is re-read with a human playing them.
+  *(2026-11-02: the B3 half is done and recorded in FINDINGS F-060 (gate Fail on K1 and K3; K2 undetermined after F-061).
+  The B5 human re-read is still open, so this box stays unticked.)*
 
 ## C2 — Nations in the 1v1, light traits on Alloy (after B5 Go)
 

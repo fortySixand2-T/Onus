@@ -12,6 +12,7 @@ use bevy::time::{Fixed, Time};
 use std::collections::VecDeque;
 
 pub mod ai;
+pub mod battle;
 pub mod combat;
 pub mod content;
 pub mod economy;
@@ -19,7 +20,9 @@ pub mod pathfind;
 pub mod replay;
 pub mod spatial;
 pub mod victory;
-pub use ai::{AiAction, AiCommander, AiCommanders, AiJournal, UnknownStrategy};
+pub use ai::{
+    AiAction, AiCommander, AiCommanders, AiJournal, BattleAiAction, BattleAiJournal, UnknownStrategy,
+};
 pub use combat::{AttackCooldown, Casualties, Engaging, Health, Target};
 pub use content::Content;
 pub use economy::{
@@ -565,6 +568,14 @@ pub enum Order {
         building: Entity,
         unit: usize,
     },
+    /// Withdraw `faction`'s whole army from a campaign battle (C1): every
+    /// unit walks to the side's entry edge and leaves the field, and the battle
+    /// ends as a retreat once none is left (see [`battle`]). Like `Place`, it
+    /// names the faction it commands, which must be the signer. A skirmish has
+    /// no retreat: there the order does nothing.
+    Retreat {
+        faction: Faction,
+    },
     /// `order`, signed by the faction that issued it. Built with
     /// [`Order::issued_by`].
     By {
@@ -677,6 +688,8 @@ pub fn apply_commands(
     content: Res<Content>,
     mut stock: ResMut<Stockpiles>,
     mut producers: Query<(&Building, &Faction, &mut ProductionQueue)>,
+    // A campaign battle's state (C1): where a retreat order lands.
+    mut battle_state: Option<ResMut<battle::BattleState>>,
     defs: Query<&UnitDefIdx>,
     owners: Query<&Faction>,
     // **`Res`, not `ResMut`**: naming a thing must never create one. The record
@@ -900,6 +913,15 @@ pub fn apply_commands(
                     economy::enqueue_unit(&content, &mut stock, b.def, *faction, &mut queue, unit);
                 }
             }
+            Order::Retreat { faction } => {
+                // A commander withdraws its own army only.
+                if matches!(attribution, Attribution::By(by) if by != faction) {
+                    continue;
+                }
+                if let Some(b) = battle_state.as_mut() {
+                    b.order_retreat(faction, now);
+                }
+            }
             // Peeled off above; `signed` never returns a wrapper.
             Order::By { .. } => {}
         }
@@ -984,6 +1006,7 @@ fn nameable(
             content.units.get(unit)?;
             Order::Train { building, unit }
         }
+        Order::Retreat { faction } => Order::Retreat { faction },
         // Peeled at the queue boundary; never reaches here.
         Order::By { issuer, order } => Order::By { issuer, order },
     })
@@ -1054,6 +1077,8 @@ pub fn movement(
     time: Res<Time<Fixed>>,
     content: Res<Content>,
     mut report: ResMut<RateReport>,
+    // A campaign battle's auras (C1); absent in a skirmish.
+    auras: Option<Res<battle::AuraField>>,
     mut query: Query<(Entity, &mut Position, &MoveTarget, &UnitDefIdx)>,
     mut commands: Commands,
 ) {
@@ -1061,7 +1086,8 @@ pub fn movement(
     let dt = time.delta_secs();
 
     for (e, mut pos, target, def) in &mut query {
-        let step = combat::move_speed(&content, def.0) * dt;
+        let bonus = auras.as_ref().map_or(combat::StatBonus::NONE, |a| a.get(e));
+        let step = combat::move_speed_with(&content, def.0, bonus) * dt;
         let (next, arrived) = step_toward(pos.0, target.0, step);
         pos.0 = next;
         if arrived {

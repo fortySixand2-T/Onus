@@ -5784,3 +5784,378 @@ still runs when the user can play. If it finds the core loop flat, that can revi
 everything after it. This is a recorded exception to `BALANCE_PLAN.md`'s B5 Go/No-Go, not a
 removal of it.
 
+
+## F-053 — The General: its own list in `units.ron`, opt-in battle rules, a skirmish untouched (C1)
+
+**Context.** C1 AC1 asks for a General, one per side; a side whose General dies loses. The
+golden licence (AC8) asks that the default skirmish reproduce today's pinned hashes exactly.
+
+**Decisions.**
+- **Generals are their own list** (`units.ron` `generals`), not entries in `combat`. They share
+  the 4-stat model and the per-unit `mvp_attack_ticks` / `mvp_attack_range`, but carry no cost,
+  no barracks and **no nemesis** (`deny_unknown_fields`, so a `nemesis:` on a General is a load
+  error, not a silently ignored key). A General's id may not collide with a roster unit's.
+- **One index space, two lookups.** A General's `UnitDefIdx` is `units.len() + k`.
+  `Content::unit_def(i)` resolves either list and is what combat and movement read (HP, damage,
+  speed, armed-ness). Everything that *buys or commands an army* — `Train`, production, gather,
+  the AI's force list — keeps reading `content.units`, so a General can never be trained, never
+  gathers and never joins a wave. `content.units.len()` stays 6 (rally spokes, the pentagon and
+  `m4a_economy` read it).
+- **Opt-in by resource.** A battle is `MatchSettings::with_battle(BattleSetup)`. It spawns the
+  Generals after the skirmish start (General at `base + front * mvp_battle.general_front`) and
+  inserts `BattleState`; every battle system is `run_if(resource_exists::<BattleState>)`. No
+  resource is `init_resource`d in `build_app`, so the pinned allocation order (critic_p2) holds.
+- **Deciding.** `battle_watch` latches at the start of a tick which losses a side can suffer
+  (fielded a General / held an HQ), mirroring `match_watch` (F-010). `battle_end` runs just
+  before `match_end` and decides from fixed per-side counts: all Generals gone → `GeneralsFell`;
+  else HQ gone → `VictoryBuildingLost`; both sides losing on one tick is a draw. It writes
+  `MatchState` through `conclude` (same tick bookkeeping as `match_end`), so the chain stops
+  exactly as for a skirmish result. A side that never fielded a General cannot lose one.
+- **Hash.** New state-hash tags `GENERAL` (23) and `BATTLE_STATE` (24) emit rows only in a
+  battle, so a skirmish hashes as before.
+- **Refusal.** `headless::battle` returns `MatchSetupError::{Strategy, Battle}`; an unknown
+  General or content with no `mvp_battle` block is refused before anything spawns.
+  `ai_vs_ai` keeps its `UnknownStrategy` error type (every existing caller) and panics on a
+  bad battle setup.
+
+**Not yet.** Replaying a battle from a `CommandLog` is not supported: the log does not carry
+the `BattleSetup` (that belongs to C4's campaign state).
+
+**Addendum (AC2, several Generals per side).** `BattleSetup::with_general` may be called
+more than once per side. The Generals stand in a line across the front, centred on the
+single-General spot and spaced `mvp_battle.formation_spacing` apart, in setup order. A side loses
+on `GeneralsFell` only when **all** of its fielded Generals are gone. Bevy 0.19 entity bits are
+not spawn order, so the sim never relies on spawn order for an outcome (the report's General
+fates are in setup order, and everything else is sorted by `SimId`), and the tests find
+Generals by definition or position, never by entity.
+
+## F-054 — Auras: a per-tick bonus field, integer rules, kinds stack and one kind does not (C1)
+
+**Context.** C1 AC3: each General type carries a RON aura (a radius plus stat modifiers);
+the synthesists scale by distinct domains nearby; six kinds; never the nemesis bonus;
+different kinds stack, the same kind does not.
+
+**Decisions.**
+- **Shape (RON).** `aura: (radius, modifiers: [(stat, add | mul)], scaling: Flat |
+  PerDistinctDomain(max))`. Stats: `Offense`, `Defense`, `Armor`, `Speed`, `Regen` take `add`
+  (design points, 1..=max_stat); `AttackTicks` takes `mul` in (0, 1), held as per-mille.
+  There is **no nemesis stat**: `stat: Nemesis` is an unknown variant and a load error, and
+  `deny_unknown_fields` refuses any extra key. Each stat at most once per aura.
+- **Rules (integer only).** Offense and Armor add design points to the per-hit rule. Defense
+  never changes the HP pool (a pool that grows and shrinks as a unit walks in and out of an
+  aura would heal or kill it by walking); it scales what gets through by
+  `defense / (defense + bonus)`, floored. Speed adds design points. AttackTicks: the interval
+  set after a hit is `ticks * milli / 1000`, floored, at least 1. Regen heals `add` HP every
+  `mvp_battle.regen_interval_ticks` (60), on ticks that are a multiple of it, up to the pool.
+  The nemesis multiplier and its armor rule are applied exactly as before; an offense bonus
+  enters the base the multiplier is applied to (the multiplier itself is untouched).
+- **Who.** Friendly units **other than Generals** within the radius. A General's own stats are
+  his kit; an aura is for his army. Workers in range get it too (they carry no domain, so they
+  never raise the Synthesis count).
+- **Kinds.** Kind = General type. Per unit and kind, the strongest scaling factor (all
+  Generals of one type share one aura, so "strongest" is the largest factor); then the kinds
+  fold together: adds sum, AttackTicks factors multiply. A factor `n` applies the modifiers
+  `n` times (adds × n; `mul` to the n-th power).
+- **Synthesis.** Distinct domains (resources.ron `powers` → `domain`) among the friendly
+  non-General units in the radius, capped at `max` (1..=number of domains). An empty or
+  worker-only radius gives ×0, so a pure army gets ×1 and the full mix ×3.
+- **Where.** `battle::auras` builds the `AuraField` (entity-sorted) after gather and before
+  combat; combat (damage, cooldown), movement (speed) and `battle::regen` (after combat) read
+  it. In a skirmish there is no `AuraField`: combat and movement read `StatBonus::NONE`, and
+  the `_with` functions given `NONE` are the plain functions exactly (tested for every pair).
+- **Hash.** `AuraField` is derived from positions each tick, so it is not hashed on its own.
+
+**Not yet.** Ranks (`general_ranks`, `aura_mult`) are C4. The aura is not drawn on the field
+(P3 visibility) — that is client work.
+
+## F-055 — Retreat: a signed order, a per-tick withdrawal, escapees recorded with their HP (C1)
+
+**Context.** C1 AC4: retreat is an `Order`; the side's units head for its entry edge; the
+battle ends as a retreat once the withdrawal finishes; the outcome records who got off.
+
+**Decisions.**
+- **`Order::Retreat { faction }`**, signed like `Place` (a commander withdraws only its own
+  army), logged as `LoggedOrder::Retreat` (a new variant, so older logs read unchanged) and
+  digested as tag 6. Without a `BattleState` (a skirmish) it is logged and does nothing.
+  Once ordered, a retreat is not called back.
+- **Entry edge.** The line `mvp_battle.entry_edge_offset` (150) behind the side's base,
+  square to the base-to-front axis. A retreating unit walks straight out to the nearest
+  point of it; on or beyond it, it has **escaped**.
+- **`battle::withdraw`**, right after `apply_commands`, so it overrides any other order every
+  tick (the AI or a player cannot turn a retreating unit around). Ascending entity order. It
+  records each escapee (side, `SimId`, `UnitDefIdx`, HP, max HP, General flag, tick), then
+  despawns it; others get `MoveTarget(exit)` with any chase, attack-move and gather job
+  dropped. Retreating units still hit what comes into reach on the way (combat's normal rule
+  for a moving unit), but never stop to chase. The side's production queues are cleared:
+  nothing new joins a withdrawal. Buildings stay.
+- **Ending.** In `battle_end`: a side with retreat ordered and no unit left on the field has
+  lost with cause `Retreated`. Order of causes: all Generals dead **with none escaped** →
+  `GeneralsFell`; HQ gone → `VictoryBuildingLost`; then `Retreated`. A General who escaped did
+  not fall, so a withdrawal that gets its General out is a retreat, and one whose General is
+  killed on the way is a General lost. `BattleResult.escaped` is the crossing list.
+- **Hash.** Retreat flags, edges and the escapee list are in `BattleState::hash_words`.
+
+## F-056 — Battle setup from a roster: a given army and given buildings replace the skirmish start (C1)
+
+**Context.** C1 AC5: a side can start a battle with a given General, units with HP and
+buildings with HP (siege damage persists, F-052), instead of the skirmish start.
+
+**Decisions.**
+- **`Roster { units, buildings }`** on a side of the `BattleSetup` (`with_roster`). Units are
+  roster ids with an optional HP (`unit_hp`), buildings likewise (`building_hp`); no HP means
+  full. A side with a roster gets **no** skirmish HQ and no workers. Its resource deposit
+  still spawns, so a roster that includes a worker can still gather. A side without a roster
+  keeps today's start, unchanged.
+- **Checked before anything spawns.** `BattleSetup::check` refuses an unknown unit or building
+  id, a General id in the unit list (Generals go in `generals`; `unit_index` never resolves
+  one), and HP 0 or above the RON pool (`BadHp { id, side, hp, max }`).
+- **Layout is data.** `mvp_battle.formation_rank` (8 per rank) and `building_spacing` (160)
+  join `formation_spacing` (30). Units stand in ranks one spacing behind the Generals' line,
+  each further rank one spacing nearer the base, centred across the front. Buildings stand in
+  a line across the base: the first on it, the rest alternating either side. Spawn order is
+  the list order (buildings, then units), after the Generals, so entity allocation is a
+  function of the setup alone.
+- **HP.** A unit always gets a `Health` (current = given or full). A building gets an explicit
+  `Health` only when its HP is given. Otherwise combat takes its pool from the RON, as in a
+  skirmish.
+- **No HQ in a roster** means the side cannot lose by HQ: `victory_seen` stays false, so a
+  field battle is decided by Generals or a retreat.
+
+**Not yet.** Rosters come from the campaign layer (C2+). The map's geography is the headless
+fixture's two bases; real battlefields are C3.
+
+## F-057 — The battle report: survivors, standing buildings and each General's fate (C1)
+
+**Context.** C1 AC6: the outcome reports survivors. Per side, it gives each unit's type and
+HP, building HP, and whether each General survived. This is what the campaign layer (C2+)
+writes back onto its persistent armies and cities.
+
+**Decisions.**
+- **`BattleResult.sides: [SideReport; 2]`** (`report(side)`), built in `battle_end` on the
+  state the tick ended in, so it is the same tick as the outcome.
+  - `units`: every unit on the field (Generals included, flagged) plus every escapee (flagged
+    `escaped`, with the HP it left with), sorted by `SimId`. A sim id is stable across
+    processes, and an entity id is not (F-041).
+  - `buildings`: every standing building with its HP (the RON pool if it was never hit),
+    sorted by `SimId`.
+  - `generals`: one `GeneralFate { unit, survived, escaped }` per General the setup fielded,
+    in setup order, so a fallen General still has an entry.
+- **Fielded Generals are tracked from `install`.** `BattleState` keeps `(entity, side, def,
+  escaped)` for each one. `withdraw` sets `escaped` when he crosses the edge. A General
+  survived if he is still on the field or escaped.
+- **Hash.** The fielded list (side, def, escaped flag; no entity bits) and the report are in
+  `BattleState::hash_words`. That covers battle mode only, so a skirmish hash is untouched.
+
+**Not yet.** Veteran XP and kills per General are C4. Applying the report to a campaign army
+is C2.
+
+## F-058 — The battle AI: guard the General, retreat on a RON share, fight without a city (C1)
+
+**Context.** C1 AC7 says the AI protects its General and retreats on a data-driven
+threshold. The numbers are in `units.ron` `mvp_general_ai` (`guard_radius: 150.0`,
+`retreat_at_army_lost: 0.6`), as the brief sketches them. They are validated (radius finite
+and > 0, share in (0, 1]) and required wherever there are Generals.
+
+**Decisions.**
+- **Opt-in.** The commander reads `Option<Res<BattleState>>`. In a skirmish every new branch
+  is dead, and the script plays, RNG draws included, exactly as before. Steps 1–4 (mine,
+  workers, tech, army) moved verbatim into `economy()`. The wave step reads the same
+  snapshot as before.
+- **Retreat (step 0).** The commander keeps `peak_army`, the most combat units (roster units
+  with offense > 0; never a General or a gatherer) it has seen at one decision. Once
+  `(peak - now) * 1000 >= peak * retreat_milli` it issues `Order::Retreat` for its own side,
+  journals `BattleAiAction::Retreat`, and from then on decides nothing (the withdrawal commands its
+  units). The comparison is integer, using thousandths rounded once from the RON float. Peak,
+  not the starting roster, is the yardstick: an army that grew and then lost 60% of its best
+  is beaten.
+- **Guard (step 5a).** If an enemy unit with offense > 0 (an enemy General counts; a worker
+  does not) is within `guard_radius` of one of its Generals, the first such General by
+  entity, the commander attack-moves its whole army onto him in place of this decision's
+  wave, and journals `BattleAiAction::Guard { general, force }`.
+- **A journal of its own.** Guard and retreat go to `BattleAiJournal` (`BattleAiAction`),
+  inserted only by `battle::install`, not as new `AiAction` variants. The skirmish action
+  trace and every exhaustive match over `AiAction` stay as they were, and a skirmish world
+  holds no extra resource (critic_p2's allocation order).
+- **No city.** In a battle, a side with no HQ still guards and attacks. It cannot grow, so
+  its wave size is `min(attack_at_army, peak_army)`. With no enemy HQ, the wave goes for the
+  enemy's first General. A skirmish commander without an HQ still does nothing, as before.
+
+**Not yet.** The brief's other trigger, the enemy outnumbering it by a set ratio, is not
+built. The share-lost threshold is the one the AC names. A General does not move himself.
+
+## F-059 — The golden licence: no re-pin, and a skirmish cannot see the campaign layer (C1)
+
+**Context.** C1 AC8 lets the skirmish keep its pinned results only if they reproduce exactly.
+A re-pin needs its own finding and a human sign-off.
+
+**Result: no re-pin.** Every existing golden passes unchanged on the C1 tree: b1_matchup,
+b1_strategies, b35_queue_depth, b35_parallel, critic_b2_ac4 (state hashes), critic_b35_ac0,
+critic_b35_ac0b, b2_headless, b2_orientation, critic_b2_ac2, m5_replay (recorded replays) and
+critic_p2 (allocation order). m4c_ai (the AI's skirmish script and journal) passes unchanged too.
+
+**Why it holds, and the test that says so (`tests/c1_golden.rs`).**
+- The default `MatchSettings` has no battle. A skirmish world holds no `BattleState`,
+  `AuraField` or `BattleAiJournal` and no `General`, so every battle system's `run_if` is false,
+  the new hash tags emit nothing, and the new AI branches are dead.
+- The data changes are additive: the `generals` list, `mvp_battle` and `mvp_general_ai` blocks.
+  `content.units` is unchanged. The content **fingerprint** covers the new blocks when they are
+  present, so the shipped content fingerprints differently from pre-C1 content, and a replay log
+  recorded before C1 is refused rather than replayed against different rules.
+  Content with no Generals and no battle blocks fingerprints exactly as before. No test pins a
+  fingerprint value, so this is not a re-pin.
+- The test cuts everything from the `// ---- C1: the campaign battle layer` marker out of
+  `units.ron` and plays the same skirmishes (seeds 0, 4 and 11 for 1800 ticks; rush vs turtle
+  and mass_ripper vs mass_bulwark for 3600) on both contents. The per-tick state hashes, the AI
+  journal length and the outcome tick are identical.
+
+## F-060 — The B3 gate on campaign battles: it runs, and it reads Fail on K1, K2 and K3 (C1)
+
+**Context.** C1 AC9 asks for the B3 kill-criteria gate to run on campaign-style battles
+(a General per side, the battle AI's guard and retreat on), and for B5 to be re-read by a
+human playing them. This entry is the first half. **The B5 human re-read is not done; the AC9
+box stays unticked until it is.**
+
+**Method.** `tests/c1_balance.rs` `b3_gate_on_campaign_battles` (ignored; run with
+`cargo test --release --test c1_balance -- --ignored --nocapture`). It uses the B3 pentagon
+batch: the five mass probes, every ordered pair, both orientations, seeds 0–5, so 300 matches.
+Seed k fields the k-th General kind on **both** sides, a mirror of Generals, so every aura is
+played and the strategies are what differs. It uses the skirmish start, the default
+`GateSpec`, the same `KillGate::of` and the same `MatchRecord`s. The suite keeps a small batch
+(`campaign_battles_feed_the_b3_gate_and_every_decision_has_a_battle_cause`, 8 matches) that
+checks every decided match has a battle loss cause for the loser and none for the winner, and
+that the gate reads a battle batch as it reads a skirmish one. Run time was 596 s, release,
+on the box.
+
+**Reading (2026-11-02, the C1 tree).** Status: **Fail**.
+
+| | value | interval | status |
+|---|---|---|---|
+| K1 mass_sentinel | 52.1% | [39.8, 64.4] | pass |
+| K1 mass_ripper | **87.5%** | [77.2, 95.6] | **FAIL, dominant** |
+| K1 mass_arclight | 71.9% | [59.8, 82.9] | undetermined |
+| K1 mass_bulwark | 28.1% | [17.1, 40.2] | pass |
+| K1 mass_ravager | 10.4% | [2.9, 20.3] | pass, losing |
+| K2 slot A | 47.5% (n 60) | | undetermined |
+| K2 left base | **24.2%** | | **FAIL** |
+| K3 decided median | 9960 ticks (2:46) | | |
+| K3 timeouts | 0% | | pass |
+| K3 band share (5–8 min) | **0.7%** | | **FAIL** |
+| K3 below / beyond band | 96% / 3.3% | | reported |
+
+Loss causes over the 300 matches: Generals fell 192, HQ lost 0, retreated 109, timeouts 0. Each
+General kind decided all 50 of its matches. Mean decided lengths were synthesis 11480,
+bulwark 11847, frenzy 11849, focus 11829, logistics 10843 and endurance 11384 ticks.
+
+**What it says.**
+- **K3: battles are short, by construction.** A General stands `general_front` (80) in front of
+  his base, so the first wave that breaks through reaches him well before it could raze an HQ.
+  No battle ended on an HQ. 96% end before the 5-minute mark. The 5–8 minute band was set for
+  a skirmish decided by razing (DESIGN_BRIEF), and whether a campaign battle should meet it is
+  a design question for B5 and C4, not something to tune here.
+- **Retreat is a real outcome.** About a third of losses (109 of 301 loss causes) are the AI
+  withdrawing at 60% of its peak army lost (`retreat_at_army_lost`). That is the outcome a
+  campaign carries forward with survivors (F-057).
+- **K1: mass_ripper dominates**, as it already does in skirmish readings (F-048 shows it at
+  100% in every attack-move candidate). The General layer does not cause it. Ravager is the
+  weak probe here.
+- **K2: the left base won 24% of the 60 mirrors.** Slot A is even (47.5%), so the bias is not
+  faction order. Skirmish readings have shown per-mirror left-base FAILs before (F-048: the
+  sentinel and ravager mirrors at 0%), because a deterministic mirror tends to give the same
+  winner across seeds. With a General as the target, a mirror is decided by a single early
+  fight, which makes that tendency stronger. The battle geometry is symmetric: `SideGround`
+  fronts point at x = 0 from bases at x = ±750, and the entry edges mirror. **Not investigated
+  further in C1.** It is flagged for B5 and the critic.
+
+**Update 1 (2026-11-02, after F-061's mutual-retreat rule). Re-run, same batch and seeds.**
+Status: **Fail** (K1 and K3). **K2 is now undetermined.**
+
+| | first reading | after F-061 |
+|---|---|---|
+| K1 mass_sentinel | 52.1% pass | 53.1% [40.9, 65.4] undetermined |
+| K1 mass_ripper | 87.5% FAIL, dominant | **87.0% [76.6, 95.3] FAIL, dominant** |
+| K1 mass_arclight | 71.9% undetermined | 69.3% [57.1, 80.6] undetermined |
+| K1 mass_bulwark | 28.1% pass | 28.1% [17.1, 40.2] pass |
+| K1 mass_ravager | 10.4% pass, losing | 12.5% [4.4, 22.8] pass, losing |
+| K2 slot A | 47.5% undetermined | 46.7% (n 60) undetermined |
+| K2 left base | **24.2% FAIL** | **46.7% undetermined** |
+| K3 median / band share | 9960 ticks / 0.7% FAIL | 9960 ticks / **0.7% FAIL** (96% below, 3.3% beyond, 0 timeouts) |
+| Loss causes | Generals fell 192, HQ 0, retreated 109 | Generals fell 192, HQ 0, **retreated 157** |
+
+Mean decided lengths per General kind barely moved (10847 to 11860 ticks). The loss causes
+now total 349 over 300 decided matches, so 49 matches had two losers. Before the fix there
+was 1. About 48 battles were **mutual retreats** that the old rule had handed to the slower
+withdrawer. That accounts for the **K2 left-base FAIL in the first reading**: which side's
+withdrawal finished last depended on geometry, not play. With the rule fixed, the seat bias is
+gone. The K1 and K3 readings stand as interpreted above. No content was tuned.
+
+**Not done (AC9).** The B5 human re-read on campaign battles. No content was tuned against
+this reading. Balance changes are data and design decisions for B5.
+
+## F-061 — C1 critic fixes: retreats finish on any front, a mutual retreat has no winner (C1)
+
+**Context.** The C1 critic returned FAIL. Its probes are landed as `tests/critic_c1.rs`.
+
+**1. A retreat now finishes on any front (HIGH).** A retreating unit walks to
+`Edge::exit_for(pos)`, the nearest point of its entry edge, and lands there only up to float
+rounding. When the front is not axis-aligned, or the base is at a non-round coordinate,
+`beyond()` came out near -1e-6. The test `beyond >= 0` then never held, and the unit was
+re-ordered every tick forever. The escape test is now `Edge::reached`: on or beyond the edge
+within `Edge::ON_EDGE = 0.01` world units. This is a numerical tolerance, not a gameplay
+number. It is far above the rounding error and far below a tick's movement or anything
+visible. So it is a named constant in `battle.rs`, not RON. The result is deterministic (pure
+f32 arithmetic on the sim's own state). Gate: `critic_retreat_finishes_on_a_diagonal_front`
+(eight fronts, 10 to 333 degrees) and `critic_retreat_finishes_on_an_axis_front_with_odd_base`.
+
+**2. A mutual retreat crowns no one (MEDIUM). Coordinator's decision, recorded here.**
+`BattleState` now keeps the tick each side ordered its retreat (`retreat_ordered`, hashed).
+- Only the **earliest** order counts. A side that ordered later still withdraws, but it never
+  loses by retreat. The earlier side is the retreating loser once its withdrawal is complete,
+  even if the later side got off first. The battle waits for the earlier side.
+- Two orders on **one tick** are a **mutual retreat**. The battle ends when both withdrawals
+  are complete: `winner: None`, both sides `LossCause::Retreated`, and every escapee of both
+  sides listed. A General falling during the withdrawal still loses that side the battle as
+  `GeneralsFell`, which is checked first, as before.
+- **How C4 reads a mutual retreat:** the attack failed and the defender keeps the city. Both
+  armies survive as the report lists them, so a mutual retreat is a failed siege, not a draw
+  that changes ownership.
+- Gates: `critic_a_mutual_retreat_does_not_crown_the_slower_withdrawer`, and in
+  `tests/c1_retreat.rs`
+  `a_mutual_retreat_on_one_tick_has_no_winner_and_both_sides_escapees` and
+  `of_two_retreats_the_earlier_order_loses_even_if_the_later_side_is_off_first`.
+
+**3 and 4. Aura tests (LOW).** `tests/c1_aura.rs` now places its enemy *inside* the radius
+(it stood outside, so the side filter was untested there).
+`critic_an_enemy_inside_the_radius_gets_no_aura`,
+`critic_synthesis_ignores_enemy_domains` and
+`critic_synthesis_cap_binds_when_below_the_domain_count` (RON max 2, three domains, x2) are in
+the suite.
+
+**5a. A large roster starts on the field.** Ranks ran back one `formation_spacing` each from
+just behind the Generals, so a ninth row (more than 64 units at rank 8) stood behind the
+entry edge. The layout now fits `floor((general_front + entry_edge_offset) /
+formation_spacing) - 1` ranks, at least 1. That is 6 with the shipped numbers, and the last
+rank stands at least one spacing inside the edge. A bigger roster widens every rank to
+`ceil(units / ranks)` instead of adding ranks. Up to 48 units, the layout is unchanged. Gate:
+`a_large_roster_starts_entirely_on_the_field` (8 to 250 units, all on the field, no shared
+spot).
+
+**5b. Auras skip Generals.** This is kept. DESIGN_BRIEF now says so: an aura buffs friendly
+non-General units.
+
+**5c. `BattleSetup` is not in `MatchLog`.** This is left for C4/C6, as F-053's "Not yet" says:
+a battle cannot be replayed from its log until the log carries the setup (Generals, rosters
+and ground). Until then, a battle's log cannot rebuild the battle it recorded.
+
+**Addendum (critic re-review, LOW): the layout is refused when it leaves no room for a rank.**
+The rank count was forced to at least 1, so when `general_front + entry_edge_offset <
+2 * formation_spacing` the first rank, one spacing behind the Generals, stood less than one
+spacing inside the entry edge, or beyond it. With front 10, spacing 30 and offset 10, every
+roster unit spawned 10 past its own edge. **Coordinator's decision:** content validation now
+refuses such an `mvp_battle` block, with an error naming `general_front`, `entry_edge_offset` and
+`formation_spacing`. So "at least one rank, standing at least one spacing inside the edge"
+always holds, and `spawn_roster` keeps a `debug_assert!` on it. The shipped numbers (80 + 150
+against 2 x 30) are unaffected. Gates in `tests/c1_roster.rs`:
+- `a_layout_with_no_room_for_a_rank_is_refused_at_load`: front 10, spacing 30 and offset 10 are
+  refused, and so is the near-boundary case 20 + 39.5 < 60.
+- `a_layout_exactly_two_spacings_deep_loads_and_keeps_every_unit_on_the_field`: 20 + 40 ==
+  2 x 30 loads, and 1, 8 and 30 units all start at least one spacing inside the edge.

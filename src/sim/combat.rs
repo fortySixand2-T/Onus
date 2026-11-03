@@ -59,8 +59,7 @@ impl Health {
     /// RON's `mvp_combat.hp_per_defense`.
     pub fn from_def(content: &Content, unit: usize) -> Self {
         let max = content
-            .units
-            .get(unit)
+            .unit_def(unit)
             // Saturating like every other derived stat: `Content::validate`
             // proves this product fits u32 for *loaded* content, so the clamp
             // only ever bites on a `Content` assembled in memory.
@@ -161,12 +160,84 @@ impl Casualties {
 /// Pure and total — no clock, no RNG, no allocation. The sim and the tests read
 /// the same function, and it is the only place damage is decided.
 pub fn damage_per_hit(content: &Content, attacker: usize, defender: usize) -> u32 {
-    let (Some(a), Some(d)) = (content.units.get(attacker), content.units.get(defender)) else {
+    damage_per_hit_with(content, attacker, defender, StatBonus::NONE, StatBonus::NONE)
+}
+
+/// Stat bonuses a unit carries on this tick — a campaign battle's auras (C1,
+/// [`crate::sim::battle::AuraField`]). In design points (offense, defense,
+/// armor, speed), HP per heal (`regen`) and a per-mille attack-interval
+/// factor. [`StatBonus::NONE`] changes nothing, and every `_with` function
+/// below given it is **exactly** its plain counterpart.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StatBonus {
+    pub offense: u32,
+    pub defense: u32,
+    pub armor: u32,
+    pub speed: u32,
+    pub regen: u32,
+    /// Attack interval × `attack_milli / 1000` (1000: unchanged).
+    pub attack_milli: u32,
+}
+
+impl StatBonus {
+    pub const NONE: StatBonus = StatBonus {
+        offense: 0,
+        defense: 0,
+        armor: 0,
+        speed: 0,
+        regen: 0,
+        attack_milli: 1000,
+    };
+}
+
+impl Default for StatBonus {
+    fn default() -> Self {
+        Self::NONE
+    }
+}
+
+/// [`damage_per_hit`] with the attacker's and defender's [`StatBonus`]es:
+/// the attacker hits with `offense + bonus`, the defender mitigates with
+/// `armor + bonus`, and a Defense bonus then scales what gets through by
+/// `defense / (defense + bonus)` (floored; the HP pool never changes). The
+/// nemesis multiplier and its armor rule are applied exactly as without
+/// bonuses — an aura never touches the hard counters.
+pub fn damage_per_hit_with(
+    content: &Content,
+    attacker: usize,
+    defender: usize,
+    atk: StatBonus,
+    dfn: StatBonus,
+) -> u32 {
+    let (Some(a), Some(d)) = (content.unit_def(attacker), content.unit_def(defender)) else {
         return 0;
     };
-    let base = a.offense.saturating_mul(content.combat.damage_per_offense);
-    let mitigation = d.armor.saturating_mul(content.combat.mitigation_per_armor);
+    let base = a
+        .offense
+        .saturating_add(atk.offense)
+        .saturating_mul(content.combat.damage_per_offense);
+    let mitigation = d
+        .armor
+        .saturating_add(dfn.armor)
+        .saturating_mul(content.combat.mitigation_per_armor);
+    let dealt = unbuffed_rule(content, a, d, base, mitigation);
+    if dfn.defense == 0 {
+        return dealt;
+    }
+    // u64 so the product cannot wrap; `d.defense >= 1` is a load invariant.
+    let num = d.defense as u64;
+    let den = num + dfn.defense as u64;
+    (dealt as u64 * num / den) as u32
+}
 
+/// The 4-stat + nemesis rule on an already-computed `base` and `mitigation`.
+fn unbuffed_rule(
+    content: &Content,
+    a: &crate::sim::content::UnitDef,
+    d: &crate::sim::content::UnitDef,
+    base: u32,
+    mitigation: u32,
+) -> u32 {
     let is_nemesis = a.nemesis.as_deref() == Some(d.id.as_str());
     if is_nemesis {
         let bonus = content.nemesis_bonus;
@@ -193,10 +264,23 @@ pub fn damage_per_hit(content: &Content, attacker: usize, defender: usize) -> u3
 /// definition `defender`: the same integer rule as unit-vs-unit, minus the
 /// nemesis clause (a nemesis names a unit id, and a building is not a unit).
 pub fn damage_per_hit_to_building(content: &Content, attacker: usize, defender: usize) -> u32 {
-    let (Some(a), Some(d)) = (content.units.get(attacker), content.buildings.get(defender)) else {
+    damage_per_hit_to_building_with(content, attacker, defender, StatBonus::NONE)
+}
+
+/// [`damage_per_hit_to_building`] with the attacker's [`StatBonus`] (offense).
+pub fn damage_per_hit_to_building_with(
+    content: &Content,
+    attacker: usize,
+    defender: usize,
+    atk: StatBonus,
+) -> u32 {
+    let (Some(a), Some(d)) = (content.unit_def(attacker), content.buildings.get(defender)) else {
         return 0;
     };
-    let base = a.offense.saturating_mul(content.combat.damage_per_offense);
+    let base = a
+        .offense
+        .saturating_add(atk.offense)
+        .saturating_mul(content.combat.damage_per_offense);
     let mitigation = d.mvp_armor.saturating_mul(content.combat.mitigation_per_armor);
     base.saturating_sub(mitigation)
 }
@@ -205,11 +289,24 @@ pub fn damage_per_hit_to_building(content: &Content, attacker: usize, defender: 
 /// per-unit RON data (`speed * combat.speed_per_point`), which is what retires
 /// the old global `sim::SPEED` constant.
 pub fn move_speed(content: &Content, unit: usize) -> f32 {
+    move_speed_with(content, unit, StatBonus::NONE)
+}
+
+/// [`move_speed`] with a [`StatBonus`] (`speed` design points).
+pub fn move_speed_with(content: &Content, unit: usize, bonus: StatBonus) -> f32 {
     content
-        .units
-        .get(unit)
-        .map(|u| u.speed as f32 * content.combat.speed_per_point)
+        .unit_def(unit)
+        .map(|u| u.speed.saturating_add(bonus.speed) as f32 * content.combat.speed_per_point)
         .unwrap_or(0.0)
+}
+
+/// A unit's attack interval in ticks under a [`StatBonus`]: `ticks ×
+/// attack_milli / 1000`, floored, never below 1. Unchanged at 1000.
+pub fn attack_ticks_with(ticks: u32, bonus: StatBonus) -> u32 {
+    if bonus.attack_milli == StatBonus::NONE.attack_milli {
+        return ticks;
+    }
+    ((ticks as u64 * bonus.attack_milli as u64 / 1000) as u32).max(1)
 }
 
 // ---- M3 pathing for the approach -------------------------------------------
@@ -297,6 +394,9 @@ pub fn combat(
     content: Res<Content>,
     tiles: Option<Res<TileGrid>>,
     mut casualties: ResMut<Casualties>,
+    // A campaign battle's auras (C1) — absent in a skirmish, where every
+    // lookup below is `StatBonus::NONE` and the arithmetic is the plain rule.
+    auras: Option<Res<crate::sim::battle::AuraField>>,
     mut units: Query<(
         Entity,
         &Position,
@@ -344,7 +444,7 @@ pub fn combat(
                     has_move_target: mt.is_some(),
                     attack_move: am.map(|d| d.0),
                     armed_target: match kind {
-                        RowKind::Unit(u) => content.units.get(u).is_some_and(|d| d.offense > 0),
+                        RowKind::Unit(u) => content.unit_def(u).is_some_and(|d| d.offense > 0),
                         RowKind::Building(_) => false,
                     },
                     gathering: gather.is_some(),
@@ -383,7 +483,7 @@ pub fn combat(
         let RowKind::Unit(unit_def) = row.kind else {
             continue;
         };
-        let Some(def) = content.units.get(unit_def) else {
+        let Some(def) = content.unit_def(unit_def) else {
             continue;
         };
         let next_cd = row.cooldown.saturating_sub(1);
@@ -468,11 +568,17 @@ pub fn combat(
                 e.remove::<MoveTarget>().remove::<Engaging>();
             }
             if cooldown == 0 {
+                let bonus = |e: Entity| auras.as_ref().map_or(StatBonus::NONE, |a| a.get(e));
+                let atk = bonus(row.entity);
                 damage[j] += match rows[j].kind {
-                    RowKind::Unit(prey) => damage_per_hit(&content, unit_def, prey),
-                    RowKind::Building(b) => damage_per_hit_to_building(&content, unit_def, b),
+                    RowKind::Unit(prey) => {
+                        damage_per_hit_with(&content, unit_def, prey, atk, bonus(rows[j].entity))
+                    }
+                    RowKind::Building(b) => {
+                        damage_per_hit_to_building_with(&content, unit_def, b, atk)
+                    }
                 };
-                cooldown = def.mvp_attack_ticks;
+                cooldown = attack_ticks_with(def.mvp_attack_ticks, atk);
             }
         } else if row.engaging || !row.has_move_target || row.attack_move.is_some() {
             // Out of reach but worth chasing — and the commander has not said

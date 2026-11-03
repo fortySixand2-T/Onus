@@ -20,6 +20,7 @@ use std::path::PathBuf;
 use bevy::prelude::*;
 
 use crate::sim::ai::UnknownStrategy;
+use crate::sim::battle::{BattleSetup, BattleSetupError, SideGround};
 use crate::sim::combat::{Casualties, Health};
 use crate::sim::content::{Content, ContentError};
 use crate::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
@@ -148,6 +149,9 @@ pub struct MatchSettings {
     /// geometry; the batch plays every matchup in both, so a left-hand edge
     /// cannot masquerade as strategy strength.
     pub orientation: Orientation,
+    /// A campaign battle (C1): the campaign rules layered on this match.
+    /// `None` — the default — is the skirmish, exactly as it always played.
+    pub battle: Option<BattleSetup>,
 }
 
 /// The budget for one match: **fifteen minutes of play** — an anti-stalemate
@@ -176,6 +180,7 @@ impl Default for MatchSettings {
             hashing: false,
             tick_cap: DEFAULT_TICK_CAP,
             orientation: Orientation::Normal,
+            battle: None,
         }
     }
 }
@@ -207,6 +212,12 @@ impl MatchSettings {
         self.orientation = orientation;
         self
     }
+
+    /// Play this match as a campaign battle (C1).
+    pub fn with_battle(mut self, battle: BattleSetup) -> Self {
+        self.battle = Some(battle);
+        self
+    }
 }
 
 /// Load the shipped content from the crate's own `assets/data`, independent of
@@ -225,7 +236,45 @@ pub fn content() -> Result<Content, ContentError> {
 /// than mislabel a row.
 ///
 /// The app is built but not stepped: drive it with [`step`] / [`tick`].
+///
+/// A [`MatchSettings::battle`] the content cannot field (an unknown General,
+/// content with no battle block) **panics** here with the reason: the error
+/// type is the strategy refusal every caller already handles, and a battle
+/// setup is checked ahead of time with [`BattleSetup::check`] (or built through
+/// [`battle`], which returns either refusal).
 pub fn ai_vs_ai(content: Content, settings: &MatchSettings) -> Result<App, UnknownStrategy> {
+    match battle(content, settings) {
+        Ok(app) => Ok(app),
+        Err(MatchSetupError::Strategy(e)) => Err(e),
+        Err(MatchSetupError::Battle(e)) => panic!("battle setup refused: {e}"),
+    }
+}
+
+/// Why a match could not be set up: a strategy or a battle setup the content
+/// does not have.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum MatchSetupError {
+    Strategy(UnknownStrategy),
+    Battle(BattleSetupError),
+}
+
+impl std::fmt::Display for MatchSetupError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MatchSetupError::Strategy(e) => write!(f, "{e}"),
+            MatchSetupError::Battle(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for MatchSetupError {}
+
+/// [`ai_vs_ai`], refusing a bad battle setup with an error rather than a
+/// panic. Every name is resolved before anything is spawned.
+pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSetupError> {
+    if let Some(b) = &settings.battle {
+        b.check(&content).map_err(MatchSetupError::Battle)?;
+    }
     // Resolve names *before* anything is spawned, so a refusal costs nothing
     // and cannot leave a half-built match behind.
     let commanders = match &settings.strategies {
@@ -237,7 +286,8 @@ pub fn ai_vs_ai(content: Content, settings: &MatchSettings) -> Result<App, Unkno
                 .zip([a, b])
                 .map(|(f, s)| (*f, s.as_deref().unwrap_or(default.as_str())))
                 .collect();
-            AiCommanders::matchup(&content, settings.seed, &named)?
+            AiCommanders::matchup(&content, settings.seed, &named)
+                .map_err(MatchSetupError::Strategy)?
         }
     };
 
@@ -256,6 +306,21 @@ pub fn ai_vs_ai(content: Content, settings: &MatchSettings) -> Result<App, Unkno
 
     for faction in SIDES {
         let base = base_of(faction, settings.orientation);
+        // A campaign battle side with a roster brings its own army and
+        // buildings instead (C1); the map's deposit is still there.
+        let roster = settings
+            .battle
+            .as_ref()
+            .is_some_and(|b| b.side(faction).roster.is_some());
+        if roster {
+            app.world_mut().spawn((
+                Position(base + Vec2::new(0.0, 250.0)),
+                ResourceNode {
+                    amount: NODE_AMOUNT,
+                },
+            ));
+            continue;
+        }
         let def = app
             .world()
             .resource::<Content>()
@@ -287,6 +352,18 @@ pub fn ai_vs_ai(content: Content, settings: &MatchSettings) -> Result<App, Unkno
                 hp,
             ));
         }
+    }
+
+    // A campaign battle's layer goes on top of the skirmish start (C1).
+    if let Some(b) = &settings.battle {
+        let ground = SIDES.map(|f| {
+            let base = base_of(f, settings.orientation);
+            SideGround {
+                base,
+                front: Vec2::new(-base.x.signum(), 0.0),
+            }
+        });
+        crate::sim::battle::install(app.world_mut(), b, ground);
     }
 
     app.insert_resource(commanders);

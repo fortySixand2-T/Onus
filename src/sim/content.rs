@@ -343,6 +343,152 @@ pub struct EconomyDef {
     pub deposit_range: f32,
 }
 
+/// One General type (C1): a unit that leads an army in a campaign battle and
+/// whose death loses that battle. Its own list in `units.ron` (`generals`), so
+/// it never joins [`Content::units`]: a General is not trained, never mines,
+/// never rides in an AI attack wave, and the roster-sized tables (production
+/// counts, rally spokes, the pentagon) keep their shape.
+///
+/// The sim still addresses a General by a [`crate::sim::economy::UnitDefIdx`]:
+/// the index space runs on past the roster, so `units.len() + k` is
+/// `generals[k]` (see [`Content::unit_def`]). Combat, movement and the HP pool
+/// read that one lookup, so a General fights under exactly the 4-stat model.
+///
+/// `deny_unknown_fields`: a General has **no nemesis** (an aura never touches
+/// the hard counters, and neither does the General himself), so a `nemesis:`
+/// written on one is a load error rather than a field serde quietly drops.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeneralDef {
+    pub id: String,
+    pub name: String,
+    /// Silhouette class, as for every unit.
+    pub mvp_kind: UnitKind,
+    /// Ticks between two hits. A General fights, so this is required and > 0.
+    pub mvp_attack_ticks: u32,
+    /// World-unit reach.
+    pub mvp_attack_range: f32,
+    pub speed: u32,
+    pub offense: u32,
+    pub defense: u32,
+    pub armor: u32,
+    /// What he does for the friendly units around him (C1 AC3).
+    pub aura: AuraDef,
+    /// The General as a plain unit definition, synthesised at load (never
+    /// written in the RON): no cost, no training time, no nemesis, no gathering.
+    /// What combat and movement read, through [`Content::unit_def`].
+    #[serde(skip)]
+    pub unit: Option<UnitDef>,
+}
+
+/// A stat an aura can change (C1). There is deliberately **no nemesis
+/// variant**: an aura never touches the hard counters, so a `stat: Nemesis`
+/// in the RON is a load error (an unknown variant), not a rule enforced later.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum AuraStat {
+    /// Adds design points of Offense (damage per hit).
+    Offense,
+    /// Adds design points of Defense: incoming damage is scaled by
+    /// `defense / (defense + bonus)` (the HP pool itself never changes).
+    Defense,
+    /// Adds design points of Armor (flat mitigation per hit).
+    Armor,
+    /// Adds design points of Speed.
+    Speed,
+    /// × the attack interval (`mul` < 1 attacks faster).
+    AttackTicks,
+    /// Adds HP every `mvp_battle.regen_interval_ticks`.
+    Regen,
+}
+
+/// One modifier in an aura: `add` design points to a stat, or (attack
+/// interval only) `mul` it. Exactly one of the two, checked at load.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuraModifier {
+    pub stat: AuraStat,
+    #[serde(default)]
+    pub add: Option<u32>,
+    #[serde(default)]
+    pub mul: Option<f32>,
+}
+
+impl AuraModifier {
+    /// Per-mille scale of `mul`.
+    pub const MULT_SCALE: u32 = 1000;
+
+    /// `mul` as an integer per-mille factor (1000 = unchanged), so no float
+    /// enters the per-tick arithmetic — the same treatment as the nemesis bonus.
+    pub fn mul_milli(&self) -> u32 {
+        self.mul
+            .map(|m| (m * Self::MULT_SCALE as f32).round() as u32)
+            .unwrap_or(Self::MULT_SCALE)
+    }
+}
+
+/// How an aura's strength scales (C1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+pub enum AuraScaling {
+    /// The modifiers as written.
+    Flat,
+    /// The Synthesis rule: the modifiers × the number of distinct domains
+    /// among the friendly (non-General) units inside the radius, capped at
+    /// `max`. A pure army gets ×1; no units, ×0.
+    PerDistinctDomain { max: u32 },
+}
+
+/// A General's aura (C1): friendly units within `radius` get `modifiers`,
+/// scaled by `scaling`. The aura's **kind** is its General type: auras of
+/// different kinds stack; of the same kind, a unit takes the strongest.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AuraDef {
+    pub radius: f32,
+    pub modifiers: Vec<AuraModifier>,
+    pub scaling: AuraScaling,
+}
+
+/// Campaign-battle layout numbers (C1). Only read when a match is set up as a
+/// battle ([`crate::sim::battle::BattleSetup`]); a skirmish never touches them.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BattleDef {
+    /// How far in front of its base (towards the enemy) a side's Generals stand.
+    pub general_front: f32,
+    /// Spacing between two neighbours in a starting formation (world units).
+    pub formation_spacing: f32,
+    /// A `Regen` aura heals once every this many ticks.
+    pub regen_interval_ticks: u32,
+    /// How far behind its base (away from the enemy) a side's entry edge
+    /// runs — where a retreat leaves the field.
+    pub entry_edge_offset: f32,
+    /// Spacing of a roster's buildings in their line across the base.
+    pub building_spacing: f32,
+    /// Units per rank in a roster's starting formation.
+    pub formation_rank: u32,
+}
+
+/// The AI's battle behaviour around its General (C1 AC7, `mvp_general_ai`).
+/// Only read in a campaign battle; a skirmish commander never touches it.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GeneralAiDef {
+    /// An enemy fighter this close to one of its Generals pulls its army
+    /// back onto him.
+    pub guard_radius: f32,
+    /// It retreats once it has lost this fraction, in (0, 1], of the most
+    /// fighters it has had on the field.
+    pub retreat_at_army_lost: f32,
+}
+
+impl GeneralAiDef {
+    /// [`GeneralAiDef::retreat_at_army_lost`] in thousandths, so the AI's
+    /// decision is integer arithmetic.
+    pub fn retreat_milli(&self) -> u32 {
+        (self.retreat_at_army_lost * 1000.0).round() as u32
+    }
+}
+
 // ---- file shapes -----------------------------------------------------------
 
 #[derive(Deserialize)]
@@ -352,6 +498,14 @@ struct UnitsFile {
     mvp_buildings: Vec<BuildingDef>,
     mvp_combat: CombatDef,
     nemesis_bonus: NemesisBonus,
+    /// C1. Optional so content with no campaign layer (and every pre-C1 data
+    /// set a test keeps) still loads: no Generals means no campaign battles.
+    #[serde(default)]
+    generals: Vec<GeneralDef>,
+    #[serde(default)]
+    mvp_battle: Option<BattleDef>,
+    #[serde(default)]
+    mvp_general_ai: Option<GeneralAiDef>,
 }
 
 #[derive(Deserialize)]
@@ -392,6 +546,13 @@ pub struct Content {
     pub resources: Vec<ResourceDef>,
     pub mvp_active: Vec<String>,
     pub economy: EconomyDef,
+    /// The General types (C1), in RON order. **Not** part of [`Content::units`]
+    /// — see [`GeneralDef`] for the index space they share.
+    pub generals: Vec<GeneralDef>,
+    /// Campaign-battle layout (C1); `None` in content with no campaign layer.
+    pub battle: Option<BattleDef>,
+    /// The battle AI's numbers (C1); `None` in content with no campaign layer.
+    pub general_ai: Option<GeneralAiDef>,
 }
 
 // ---- content fingerprint ----------------------------------------------------
@@ -607,7 +768,11 @@ impl Content {
             resources: resources_file.resources,
             mvp_active: resources_file.mvp_active,
             economy: resources_file.mvp_economy,
+            generals: units_file.generals,
+            battle: units_file.mvp_battle,
+            general_ai: units_file.mvp_general_ai,
         };
+        content.synthesise_general_units();
         content.validate()?;
         // `validate` has just proved the default names a strategy, so this
         // lookup cannot fail.
@@ -771,6 +936,170 @@ impl Content {
                 if self.unit_index(prey).is_none() {
                     return bad(format!("unit `{}` names unknown nemesis `{prey}`", u.id));
                 }
+            }
+        }
+
+        // The Generals (C1). A General is a unit the sim addresses by a
+        // `UnitDefIdx` past the roster, so its id must be unique among the
+        // Generals **and** distinct from every roster unit id: the two share
+        // one index space, and a shared id would make "which unit is this"
+        // depend on which list was searched first.
+        for (i, g) in self.generals.iter().enumerate() {
+            if let Some(j) = self.generals[..i].iter().position(|h| h.id == g.id) {
+                return bad(format!(
+                    "duplicate general id `{}` at positions {j} and {i}",
+                    g.id
+                ));
+            }
+            if self.unit_index(&g.id).is_some() {
+                return bad(format!(
+                    "general `{}` shares its id with a roster unit; Generals and \
+                     units share one index space",
+                    g.id
+                ));
+            }
+            for (stat, value) in [
+                ("offense", g.offense),
+                ("defense", g.defense),
+                ("armor", g.armor),
+                ("speed", g.speed),
+            ] {
+                if value > self.combat.max_stat {
+                    return bad(format!(
+                        "general `{}` has {stat} {value}, above the design scale max {}",
+                        g.id, self.combat.max_stat
+                    ));
+                }
+            }
+            if g.defense == 0 {
+                return bad(format!("general `{}` has no HP pool (defense 0)", g.id));
+            }
+            if g.speed == 0 {
+                return bad(format!("general `{}` cannot move (speed 0)", g.id));
+            }
+            // A General fights (the brief: "the General fights, but is fragile
+            // enough that protecting him is a decision").
+            if g.offense == 0 || g.mvp_attack_ticks == 0 {
+                return bad(format!(
+                    "general `{}` must fight: offense and mvp_attack_ticks positive",
+                    g.id
+                ));
+            }
+            if !(g.mvp_attack_range.is_finite()
+                && g.mvp_attack_range > 0.0
+                && g.mvp_attack_range <= self.combat.engage_range
+                && g.mvp_attack_range <= self.combat.attack_move_range)
+            {
+                return bad(format!(
+                    "general `{}` mvp_attack_range must be finite, positive and within \
+                     engage_range and attack_move_range",
+                    g.id
+                ));
+            }
+        }
+        for g in &self.generals {
+            let a = &g.aura;
+            if !(a.radius.is_finite() && a.radius > 0.0) {
+                return bad(format!("general `{}` aura radius must be finite and positive", g.id));
+            }
+            if a.modifiers.is_empty() {
+                return bad(format!("general `{}` aura has no modifiers", g.id));
+            }
+            for (i, m) in a.modifiers.iter().enumerate() {
+                if a.modifiers[..i].iter().any(|n| n.stat == m.stat) {
+                    return bad(format!(
+                        "general `{}` aura lists {:?} twice",
+                        g.id, m.stat
+                    ));
+                }
+                match (m.stat, m.add, m.mul) {
+                    // The attack interval is the one multiplied stat: faster
+                    // attacks, never slower, and never a zero interval.
+                    (AuraStat::AttackTicks, None, Some(mul)) => {
+                        let milli = m.mul_milli();
+                        if !(mul.is_finite()
+                            && mul > 0.0
+                            && (1..AuraModifier::MULT_SCALE).contains(&milli))
+                        {
+                            return bad(format!(
+                                "general `{}` aura AttackTicks mul must be in (0, 1)",
+                                g.id
+                            ));
+                        }
+                    }
+                    (AuraStat::AttackTicks, ..) => {
+                        return bad(format!(
+                            "general `{}` aura AttackTicks takes `mul` only",
+                            g.id
+                        ));
+                    }
+                    (stat, Some(add), None) => {
+                        if add == 0 || add > self.combat.max_stat {
+                            return bad(format!(
+                                "general `{}` aura {stat:?} add must be 1..={}",
+                                g.id, self.combat.max_stat
+                            ));
+                        }
+                    }
+                    (stat, ..) => {
+                        return bad(format!(
+                            "general `{}` aura {stat:?} takes `add` only",
+                            g.id
+                        ));
+                    }
+                }
+            }
+            if let AuraScaling::PerDistinctDomain { max } = a.scaling {
+                if max == 0 || max as usize > self.resources.len() {
+                    return bad(format!(
+                        "general `{}` aura PerDistinctDomain max must be 1..={} (the domains)",
+                        g.id,
+                        self.resources.len()
+                    ));
+                }
+            }
+        }
+        if !self.generals.is_empty() && self.battle.is_none() {
+            return bad("generals need an mvp_battle block".to_string());
+        }
+        if let Some(b) = &self.battle {
+            for (what, v) in [
+                ("general_front", b.general_front),
+                ("formation_spacing", b.formation_spacing),
+                ("entry_edge_offset", b.entry_edge_offset),
+                ("building_spacing", b.building_spacing),
+            ] {
+                if !(v.is_finite() && v > 0.0) {
+                    return bad(format!("mvp_battle {what} must be finite and positive"));
+                }
+            }
+            // A roster's first rank stands one spacing behind the Generals and
+            // must stand at least one spacing inside the entry edge.
+            if b.general_front + b.entry_edge_offset < 2.0 * b.formation_spacing {
+                return bad(format!(
+                    "mvp_battle general_front + entry_edge_offset ({} + {}) must be at least \
+                     2 * formation_spacing ({}): a roster's first rank must stand one spacing \
+                     inside the entry edge",
+                    b.general_front, b.entry_edge_offset, b.formation_spacing
+                ));
+            }
+            if b.regen_interval_ticks == 0 {
+                return bad("mvp_battle regen_interval_ticks must be positive".to_string());
+            }
+            if b.formation_rank == 0 {
+                return bad("mvp_battle formation_rank must be positive".to_string());
+            }
+        }
+        if !self.generals.is_empty() && self.general_ai.is_none() {
+            return bad("generals need an mvp_general_ai block".to_string());
+        }
+        if let Some(ai) = &self.general_ai {
+            if !(ai.guard_radius.is_finite() && ai.guard_radius > 0.0) {
+                return bad("mvp_general_ai guard_radius must be finite and positive".to_string());
+            }
+            let lost = ai.retreat_at_army_lost;
+            if !(lost.is_finite() && lost > 0.0 && lost <= 1.0) || ai.retreat_milli() == 0 {
+                return bad("mvp_general_ai retreat_at_army_lost must be in (0, 1]".to_string());
             }
         }
 
@@ -1135,6 +1464,48 @@ impl Content {
             .f32(self.economy.gather_range)
             .f32(self.economy.deposit_range);
 
+        // C1: the campaign layer. Mixed in **only when present**, so a content
+        // set with no Generals and no battle block fingerprints exactly as it
+        // did before C1 existed (a recorded skirmish log stays replayable
+        // against such content).
+        if !self.generals.is_empty() {
+            h.str("generals").u64(self.generals.len() as u64);
+            for g in &self.generals {
+                h.str(&g.id).str(&g.name);
+                h.u64(match g.mvp_kind {
+                    UnitKind::Worker => 0,
+                    UnitKind::Soldier => 1,
+                    UnitKind::Scout => 2,
+                });
+                h.u32(g.mvp_attack_ticks).f32(g.mvp_attack_range);
+                h.u32(g.speed).u32(g.offense).u32(g.defense).u32(g.armor);
+                h.str("aura").f32(g.aura.radius);
+                h.u64(g.aura.modifiers.len() as u64);
+                for m in &g.aura.modifiers {
+                    h.u64(m.stat as u64);
+                    h.u32(m.add.unwrap_or(0)).u32(m.mul_milli());
+                }
+                match g.aura.scaling {
+                    AuraScaling::Flat => h.u64(0),
+                    AuraScaling::PerDistinctDomain { max } => h.u64(1).u32(max),
+                };
+            }
+        }
+        if let Some(b) = &self.battle {
+            h.str("battle")
+                .f32(b.general_front)
+                .f32(b.formation_spacing)
+                .u32(b.regen_interval_ticks)
+                .f32(b.entry_edge_offset)
+                .f32(b.building_spacing)
+                .u32(b.formation_rank);
+        }
+        if let Some(ai) = &self.general_ai {
+            h.str("general_ai")
+                .f32(ai.guard_radius)
+                .f32(ai.retreat_at_army_lost);
+        }
+
         let ids = |all: &[String]| {
             if all.is_empty() {
                 "-".to_string()
@@ -1167,6 +1538,73 @@ impl Content {
 
     pub fn unit(&self, id: &str) -> Option<&UnitDef> {
         self.units.iter().find(|u| u.id == id)
+    }
+
+    /// The unit definition behind a [`crate::sim::economy::UnitDefIdx`]: the
+    /// roster for `i < units.len()`, then the Generals (C1). What combat,
+    /// movement and the HP pool read, so a General fights under the same
+    /// 4-stat model as every unit. Anything that must stay roster-only
+    /// (training, gathering, the AI's waves) keeps reading `units` directly.
+    pub fn unit_def(&self, i: usize) -> Option<&UnitDef> {
+        match self.units.get(i) {
+            Some(u) => Some(u),
+            None => self
+                .generals
+                .get(i.checked_sub(self.units.len())?)
+                .and_then(|g| g.unit.as_ref()),
+        }
+    }
+
+    /// The `UnitDefIdx` value of the General `id` (`units.len() + k`).
+    pub fn general_index(&self, id: &str) -> Option<usize> {
+        self.generals
+            .iter()
+            .position(|g| g.id == id)
+            .map(|k| self.units.len() + k)
+    }
+
+    /// The domain (an index into [`Content::resources`]) of the unit behind a
+    /// `UnitDefIdx` value: the resource whose `powers` list it. `None` for a
+    /// unit no resource powers (the Worker, a General).
+    pub fn domain_of(&self, i: usize) -> Option<usize> {
+        let id = &self.units.get(i)?.id;
+        self.resources.iter().position(|r| r.powers.iter().any(|p| p == id))
+    }
+
+    /// The General behind a `UnitDefIdx` value, if it names one.
+    pub fn general_at(&self, i: usize) -> Option<&GeneralDef> {
+        self.generals.get(i.checked_sub(self.units.len())?)
+    }
+
+    /// Fill each [`GeneralDef::unit`] from its RON fields. Called once at load.
+    fn synthesise_general_units(&mut self) {
+        let currency = self.economy.currency.clone();
+        for g in &mut self.generals {
+            g.unit = Some(UnitDef {
+                id: g.id.clone(),
+                name: g.name.clone(),
+                source: None,
+                barracks: None,
+                cost: Cost {
+                    resource: currency.clone(),
+                    amount: 0,
+                },
+                mvp_kind: g.mvp_kind,
+                mvp_alloy_cost: 0,
+                mvp_train_ticks: 0,
+                mvp_carry_capacity: 0,
+                mvp_gather_ticks: 0,
+                mvp_attack_ticks: g.mvp_attack_ticks,
+                mvp_attack_range: g.mvp_attack_range,
+                speed: g.speed,
+                offense: g.offense,
+                defense: g.defense,
+                armor: g.armor,
+                nemesis: None,
+                gathers: false,
+                builds: false,
+            });
+        }
     }
 
     /// Index of a building definition by id (stable: the RON order).

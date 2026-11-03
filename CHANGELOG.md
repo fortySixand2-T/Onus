@@ -648,3 +648,79 @@
 - [2026-11-02] Modified: DESIGN_BRIEF.md, CAMPAIGN_PLAN.md, FINDINGS.md — extra house Generals can be raised for a levy cost; nation perks apply only to own armies and cities; C4 AC; F-052 update 6
 - [2026-11-02] Modified: DESIGN_BRIEF.md, CAMPAIGN_PLAN.md, FINDINGS.md — names chosen (House Vael, Cinderhold, Heir of Vael); C0 closed and ticked; F-052 update 7
 - [2026-11-02] Modified: CAMPAIGN_PLAN.md, FINDINGS.md — user lifts the B5 wait: C1 starts now, and B5 still runs later (F-052 update 8)
+- [2026-11-02] Modified: assets/data/units.ron — C1: six General types (`generals`) and the `mvp_battle` layout block
+- [2026-11-02] Modified: src/sim/content.rs — C1: GeneralDef and BattleDef, loaded and validated; `unit_def` resolves roster units and Generals in one index space
+- [2026-11-02] Modified: src/sim/combat.rs — C1: HP, damage and speed read `Content::unit_def`, so a General fights like any unit
+- [2026-11-02] Modified: src/sim/victory.rs — C1: `MatchState::conclude` for battle-decided outcomes
+- [2026-11-02] Created: src/sim/battle.rs — C1: General marker, BattleSetup, install, BattleState, battle_watch and battle_end
+- [2026-11-02] Modified: src/sim/mod.rs — C1: battle module
+- [2026-11-02] Modified: src/lib.rs — C1: battle systems in the sim chain, gated on BattleState
+- [2026-11-02] Modified: src/headless.rs — C1: MatchSettings::with_battle, headless::battle, MatchSetupError
+- [2026-11-02] Modified: src/sim/replay.rs — C1: battle-only state-hash rows (GENERAL, BATTLE_STATE)
+- [2026-11-02] Created: tests/c1_general.rs — C1 AC1 tests: the General
+- [2026-11-02] Modified: FINDINGS.md — F-053 the General
+- [2026-11-02] Modified: src/sim/battle.rs — C1: a side fields a list of Generals, in a line across its front; it loses when all have fallen
+- [2026-11-02] Created: tests/c1_several_generals.rs — C1 AC2 tests: several Generals per side
+- [2026-11-02] Modified: src/sim/content.rs — C1: aura definitions (AuraDef, AuraModifier, AuraStat, AuraScaling) with validation; regen_interval_ticks; domain_of
+- [2026-11-02] Modified: assets/data/units.ron — C1: an aura on every General; mvp_battle regen_interval_ticks
+- [2026-11-02] Modified: src/sim/combat.rs — C1: StatBonus and the `_with` damage, speed and attack-interval rules; combat reads the AuraField
+- [2026-11-02] Modified: src/sim/mod.rs — C1: movement reads the AuraField speed bonus
+- [2026-11-02] Modified: src/sim/battle.rs — C1: AuraField, the auras and regen systems
+- [2026-11-02] Modified: src/lib.rs — C1: auras before combat, regen after it, battle-only
+- [2026-11-02] Modified: DESIGN_BRIEF.md — C1: Generals' data sketch matches the RON (attack fields, Regen stat, mvp_battle)
+- [2026-11-02] Created: tests/c1_aura.rs — C1 AC3 tests: auras
+- [2026-11-02] Modified: FINDINGS.md — F-054 auras
+- [2026-11-02] Modified: src/sim/mod.rs — C1: Order::Retreat, applied into the BattleState
+- [2026-11-02] Modified: src/sim/replay.rs — C1: LoggedOrder::Retreat and its command digest
+- [2026-11-02] Modified: src/sim/battle.rs — C1: entry edges, the withdraw system, escapees, LossCause::Retreated
+- [2026-11-02] Modified: src/sim/content.rs — C1: mvp_battle entry_edge_offset
+- [2026-11-02] Modified: assets/data/units.ron — C1: mvp_battle entry_edge_offset
+- [2026-11-02] Modified: src/lib.rs — C1: withdraw after apply_commands, battle-only
+- [2026-11-02] Created: tests/c1_retreat.rs — C1 AC4 tests: retreat
+- [2026-11-02] Modified: FINDINGS.md — F-055 retreat
+- [2026-11-02] Modified: src/sim/battle.rs — C1: Roster, roster checks (unknown ids, BadHp), spawn_roster
+- [2026-11-02] Modified: src/sim/content.rs — C1: mvp_battle building_spacing and formation_rank
+- [2026-11-02] Modified: assets/data/units.ron — C1: mvp_battle building_spacing and formation_rank
+- [2026-11-02] Modified: src/headless.rs — C1: a roster side gets no skirmish HQ or workers
+- [2026-11-02] Created: tests/c1_roster.rs — C1 AC5 tests: battle setup from a roster
+- [2026-11-02] Modified: FINDINGS.md — F-056 battle setup from a roster
+- [2026-11-02] Modified: src/sim/battle.rs — C1: battle report (SideReport, UnitReport, BuildingReport, GeneralFate), fielded Generals tracked
+- [2026-11-02] Created: tests/c1_report.rs — C1 AC6 tests: the outcome reports survivors
+- [2026-11-02] Modified: FINDINGS.md — F-057 the battle report
+- [2026-11-02] Modified: src/sim/ai.rs — C1: battle AI guards its General, retreats on the RON threshold, attacks without a city
+- [2026-11-02] Modified: src/sim/content.rs — C1: mvp_general_ai (GeneralAiDef) loaded, validated, fingerprinted
+- [2026-11-02] Modified: assets/data/units.ron — C1: mvp_general_ai guard_radius and retreat_at_army_lost
+- [2026-11-02] Modified: DESIGN_BRIEF.md — C1: mvp_battle sketch matches the RON
+- [2026-11-02] Created: tests/c1_ai.rs — C1 AC7 tests: the battle AI
+- [2026-11-02] Modified: FINDINGS.md — F-058 the battle AI
+- [2026-11-02] Created: tests/c1_golden.rs — C1 AC8 tests: the campaign layer is inert in a skirmish (golden licence)
+- [2026-11-02] Created: tests/c1_balance.rs — C1 AC9: the B3 gate on campaign-style battles (sanity batch; ignored measurement)
+- [2026-11-02] Modified: src/sim/ai.rs — C1: guard and retreat journaled in their own BattleAiJournal (BattleAiAction); AiAction unchanged
+- [2026-11-02] Modified: src/sim/mod.rs — C1: export BattleAiAction, BattleAiJournal
+- [2026-11-02] Modified: src/sim/battle.rs — C1: install inserts BattleAiJournal; regen check uses is_multiple_of (clippy)
+- [2026-11-02] Modified: src/sim/content.rs — C1: AuraStat doc lines reworded (clippy doc_lazy_continuation)
+- [2026-11-02] Modified: tests/c1_several_generals.rs — C1: Generals identified by line position, not entity order
+- [2026-11-02] Modified: tests/c1_roster.rs — C1: units and buildings identified by def and position, not entity order
+- [2026-11-02] Modified: tests/c1_report.rs — C1: General fates checked by def; expect_err
+- [2026-11-02] Modified: tests/c1_ai.rs — C1: read the BattleAiJournal; expect_err
+- [2026-11-02] Modified: tests/c1_general.rs — C1: expect_err (clippy)
+- [2026-11-02] Modified: FINDINGS.md — F-053 addendum (several Generals), F-058 BattleAiJournal, F-059 golden licence
+- [2026-11-02] Modified: FINDINGS.md — F-060 the B3 gate on campaign battles
+- [2026-11-02] Modified: CAMPAIGN_PLAN.md — C1 AC9: B3 half recorded, B5 human re-read still open
+- [2026-11-02] Created: tests/critic_c1.rs — C1 critic probes, landed as red tests ahead of their fixes
+- [2026-11-02] Modified: src/sim/battle.rs — C1 fix: Edge::reached with an ON_EDGE tolerance, so a retreat finishes on any front
+- [2026-11-02] Modified: src/sim/battle.rs — C1 fix: retreat order ticks; the earliest order loses, a same-tick mutual retreat has no winner
+- [2026-11-02] Modified: src/sim/mod.rs — C1 fix: Order::Retreat records the tick it was applied
+- [2026-11-02] Modified: tests/c1_retreat.rs — C1 fix: mutual and staggered retreat tests
+- [2026-11-02] Modified: tests/c1_aura.rs — C1 fix: the enemy stands inside the aura radius
+- [2026-11-02] Modified: src/sim/battle.rs — C1 fix: a large roster widens its ranks instead of spilling past the entry edge
+- [2026-11-02] Modified: assets/data/units.ron — C1 fix: formation_rank comment notes rank widening
+- [2026-11-02] Modified: tests/c1_roster.rs — C1 fix: a large roster starts entirely on the field
+- [2026-11-02] Modified: DESIGN_BRIEF.md — C1: an aura buffs friendly non-General units
+- [2026-11-02] Modified: FINDINGS.md — F-061 C1 critic fixes
+- [2026-11-02] Modified: FINDINGS.md — F-060 update 1: B3 re-run after the mutual-retreat rule
+- [2026-11-02] Modified: CAMPAIGN_PLAN.md — C1 AC9 note: the current gate reading
+- [2026-11-03] Modified: src/sim/content.rs — C1 fix: refuse mvp_battle when general_front + entry_edge_offset < 2 * formation_spacing
+- [2026-11-03] Modified: src/sim/battle.rs — C1 fix: spawn_roster debug_asserts the validated room for a rank
+- [2026-11-03] Modified: tests/c1_roster.rs — C1 fix: tight layout refused at load; the boundary layout keeps every unit on the field
+- [2026-11-03] Modified: FINDINGS.md — F-061 addendum: the layout guarantee is enforced at load

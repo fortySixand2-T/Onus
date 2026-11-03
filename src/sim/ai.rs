@@ -30,7 +30,8 @@
 use bevy::ecs::prelude::*;
 use bevy::math::Vec2;
 
-use crate::sim::content::{Content, StrategyDef, WaveOrder};
+use crate::sim::battle::{BattleState, General};
+use crate::sim::content::{Content, GeneralAiDef, StrategyDef, WaveOrder};
 use crate::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use crate::sim::spatial::{Faction, SplitMix64};
 use crate::sim::{CommandQueue, GatherTarget, Order, Position, ResourceNode};
@@ -51,8 +52,38 @@ pub enum AiAction {
     /// Queued the next unit of the army build order (index into
     /// [`Content::units`]).
     TrainArmy { unit: usize },
-    /// Sent `force` combat units at the enemy HQ.
+    /// Sent `force` combat units at the enemy HQ (in a battle with no enemy
+    /// HQ, at the enemy's first General).
     Attack { dest: Vec2, force: u32 },
+}
+
+/// A decision only a campaign battle's commander takes (C1). Kept out of
+/// [`AiAction`] so the skirmish action trace — and every match over it —
+/// is exactly what it was.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum BattleAiAction {
+    /// Pulled `force` combat units back onto its `general`, who had an enemy
+    /// fighter within `guard_radius`.
+    Guard { general: Entity, force: u32 },
+    /// Ordered its side off the field, having lost `retreat_at_army_lost` of
+    /// its army.
+    Retreat,
+}
+
+/// Every battle decision every commander has taken, in order. Inserted only
+/// by `battle::install`, so a skirmish has none.
+#[derive(Resource, Debug, Default)]
+pub struct BattleAiJournal(pub Vec<(u32, Faction, BattleAiAction)>);
+
+impl BattleAiJournal {
+    /// The battle decisions of one commander, tick-tagged.
+    pub fn for_faction(&self, f: Faction) -> Vec<(u32, BattleAiAction)> {
+        self.0
+            .iter()
+            .filter(|(_, who, _)| *who == f)
+            .map(|(t, _, a)| (*t, *a))
+            .collect()
+    }
 }
 
 /// Every action every AI commander has taken, in order. Sim-owned state (so it
@@ -91,6 +122,9 @@ pub struct AiCommander {
     army_cursor: u32,
     /// Earliest tick the next attack wave may go out.
     next_attack_tick: u32,
+    /// Campaign battle (C1): the most combat units it has seen on the field
+    /// at one decision — what its losses are measured against.
+    peak_army: u32,
 }
 
 impl AiCommander {
@@ -134,6 +168,7 @@ impl AiCommander {
             tick: 0,
             army_cursor: 0,
             next_attack_tick: 0,
+            peak_army: 0,
         }
     }
 
@@ -251,6 +286,7 @@ struct UnitRow {
     def: usize,
     faction: Faction,
     on_a_job: bool,
+    general: bool,
 }
 
 struct BuildingRow {
@@ -282,19 +318,24 @@ fn nearest(candidates: &[(Entity, Vec2)], from: Vec2) -> Option<(Entity, Vec2)> 
 /// split gather claim as a live job (F-008). The orders it issues are applied
 /// by `apply_commands` on the same tick — exactly
 /// like a click that lands before the tick boundary.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 pub fn ai_commanders(
     content: Res<Content>,
     stock: Res<Stockpiles>,
     mut ai: ResMut<AiCommanders>,
     mut journal: ResMut<AiJournal>,
     mut queue: ResMut<CommandQueue>,
+    // A campaign battle's state (C1) — absent in a skirmish, where the
+    // commander plays exactly the script it always played.
+    battle: Option<Res<BattleState>>,
+    mut battle_journal: Option<ResMut<BattleAiJournal>>,
     units: Query<(
         Entity,
         &Position,
         &UnitDefIdx,
         &Faction,
         Option<&GatherTarget>,
+        Has<General>,
     )>,
     buildings: Query<(Entity, &Position, &Building, &Faction, &ProductionQueue)>,
     nodes: Query<(Entity, &Position), With<ResourceNode>>,
@@ -306,12 +347,13 @@ pub fn ai_commanders(
     // ---- snapshot, in a stable order ---------------------------------------
     let mut unit_rows: Vec<UnitRow> = units
         .iter()
-        .map(|(entity, pos, def, faction, job)| UnitRow {
+        .map(|(entity, pos, def, faction, job, general)| UnitRow {
             entity,
             pos: pos.0,
             def: def.0,
             faction: *faction,
             on_a_job: job.is_some(),
+            general,
         })
         .collect();
     unit_rows.sort_unstable_by_key(|r| r.entity.to_bits());
@@ -331,6 +373,9 @@ pub fn ai_commanders(
     let mut node_rows: Vec<(Entity, Vec2)> = nodes.iter().map(|(e, p)| (e, p.0)).collect();
     node_rows.sort_unstable_by_key(|(e, _)| e.to_bits());
 
+    // The battle AI's numbers apply only in a battle (and only if the content
+    // has them — `validate` insists on them wherever there are Generals).
+    let battle = battle.as_deref().zip(content.general_ai.as_ref());
     for commander in ai.0.iter_mut() {
         let tick = commander.tick;
         commander.tick = commander.tick.saturating_add(1);
@@ -347,6 +392,8 @@ pub fn ai_commanders(
             &unit_rows,
             &building_rows,
             &node_rows,
+            battle,
+            battle_journal.as_deref_mut(),
             &mut queue,
             &mut journal,
         );
@@ -364,6 +411,8 @@ fn think(
     units: &[UnitRow],
     buildings: &[BuildingRow],
     nodes: &[(Entity, Vec2)],
+    battle: Option<(&BattleState, &GeneralAiDef)>,
+    mut battle_journal: Option<&mut BattleAiJournal>,
     queue: &mut CommandQueue,
     journal: &mut AiJournal,
 ) {
@@ -374,6 +423,12 @@ fn think(
         queue.0.push_back(o.issued_by(me));
         journal.0.push((tick, me, a));
     };
+    let mut battle_order = |queue: &mut CommandQueue, o: Order, a: BattleAiAction| {
+        queue.0.push_back(o.issued_by(me));
+        if let Some(j) = battle_journal.as_deref_mut() {
+            j.0.push((tick, me, a));
+        }
+    };
 
     // Its HQ: the victory building it owns (lowest entity index if it somehow
     // owns several). Without one it has no economy and no rally point.
@@ -381,8 +436,150 @@ fn think(
         .iter()
         .find(|b| b.faction == me && content.buildings.get(b.def).is_some_and(|def| def.victory))
         .map(|b| (b.entity, b.pos, b.queued));
-    let Some((hq_entity, hq_pos, hq_queued)) = hq else {
+
+    // Its fighters: combat units of the roster (never a General, never a
+    // gatherer) — the wave, the guard, and what a retreat is measured on.
+    let force: Vec<Entity> = units
+        .iter()
+        .filter(|u| u.faction == me && content.units.get(u.def).is_some_and(|d| d.offense > 0))
+        .map(|u| u.entity)
+        .collect();
+
+    // ---- 0. campaign battle: retreat on the RON threshold (C1) -------------
+    // Losses are measured against the most fighters it has seen at one
+    // decision. Once it has lost `retreat_at_army_lost` of them it orders its
+    // side off the field — once; from then on the withdrawal commands its
+    // units and the commander has nothing left to decide.
+    if let Some((b, ai)) = battle {
+        if b.retreating(me) {
+            return;
+        }
+        let now = force.len() as u32;
+        c.peak_army = c.peak_army.max(now);
+        let lost = c.peak_army - now;
+        if c.peak_army > 0
+            && u64::from(lost) * 1000 >= u64::from(c.peak_army) * u64::from(ai.retreat_milli())
+        {
+            battle_order(queue, Order::Retreat { faction: me }, BattleAiAction::Retreat);
+            return;
+        }
+    }
+
+    if let Some((hq_entity, hq_pos, hq_queued)) = hq {
+        economy(
+            c, tick, content, stock, units, buildings, nodes, hq_entity, hq_pos, hq_queued,
+            queue, journal,
+        );
+    } else if battle.is_none() {
+        // A skirmish commander without an HQ has no economy and no rally
+        // point. (A battle side may field an army with no city: it still
+        // guards and attacks.)
         return;
+    }
+
+    // ---- 5a. campaign battle: guard the General (C1) -----------------------
+    // An enemy fighter within `guard_radius` of one of its Generals (the
+    // first so threatened, by entity) pulls the whole army onto him, in place
+    // of this decision's wave.
+    if let Some((_, ai)) = battle {
+        let r2 = ai.guard_radius * ai.guard_radius;
+        let threatened = units
+            .iter()
+            .filter(|g| g.faction == me && g.general)
+            .find(|g| {
+                units.iter().any(|e| {
+                    e.faction != me
+                        && content.unit_def(e.def).is_some_and(|d| d.offense > 0)
+                        && e.pos.distance_squared(g.pos) <= r2
+                })
+            });
+        if let Some(g) = threatened {
+            if !force.is_empty() {
+                let count = force.len() as u32;
+                battle_order(
+                    queue,
+                    Order::AttackMove {
+                        units: force,
+                        dest: g.pos,
+                    },
+                    BattleAiAction::Guard {
+                        general: g.entity,
+                        force: count,
+                    },
+                );
+            }
+            return;
+        }
+    }
+
+    // ---- 5. attack: send the wave at the enemy HQ --------------------------
+    // In a battle, a side with no city cannot grow its army, so it attacks
+    // once it has all it is going to get (its peak, if below the script's
+    // wave size); and with no enemy HQ, the wave goes for the enemy General.
+    let wave_size = match battle {
+        Some(_) if hq.is_none() && c.peak_army > 0 => script.attack_at_army.min(c.peak_army),
+        _ => script.attack_at_army,
+    };
+    if force.len() as u32 >= wave_size && tick >= c.next_attack_tick {
+        let enemy_hq = buildings
+            .iter()
+            .find(|b| {
+                b.faction != me && content.buildings.get(b.def).is_some_and(|def| def.victory)
+            })
+            .map(|b| b.pos);
+        let enemy_general = || {
+            battle.and_then(|_| {
+                units
+                    .iter()
+                    .find(|u| u.faction != me && u.general)
+                    .map(|u| u.pos)
+            })
+        };
+        if let Some(target) = enemy_hq.or_else(enemy_general) {
+            let spread = script.attack_spread;
+            let dest = target
+                + Vec2::new(
+                    c.rng.range_f32(-spread, spread),
+                    c.rng.range_f32(-spread, spread),
+                );
+            c.next_attack_tick = tick.saturating_add(script.attack_interval_ticks);
+            let count = force.len() as u32;
+            // The wave's order is content (`wave_order`, B4, F-048). The
+            // journal entry is the same `Attack` either way: the order kind is
+            // a function of the strategy, and the command log records it
+            // exactly (`LoggedOrder::AttackMove`), so the action trace — and
+            // every journal pin taken on it — means what it always meant.
+            let wave = match script.wave_order {
+                WaveOrder::Move => Order::MoveTo { units: force, dest },
+                WaveOrder::AttackMove => Order::AttackMove { units: force, dest },
+            };
+            order(queue, journal, wave, AiAction::Attack { dest, force: count });
+        }
+    }
+}
+
+/// Steps 1–4 of a decision: mine, replace workers, open the barracks, build
+/// the army. Needs the commander's HQ.
+#[allow(clippy::too_many_arguments)]
+fn economy(
+    c: &mut AiCommander,
+    tick: u32,
+    content: &Content,
+    stock: &Stockpiles,
+    units: &[UnitRow],
+    buildings: &[BuildingRow],
+    nodes: &[(Entity, Vec2)],
+    hq_entity: Entity,
+    hq_pos: Vec2,
+    hq_queued: usize,
+    queue: &mut CommandQueue,
+    journal: &mut AiJournal,
+) {
+    let script = c.strategy(content);
+    let me = c.faction;
+    let order = |queue: &mut CommandQueue, journal: &mut AiJournal, o: Order, a: AiAction| {
+        queue.0.push_back(o.issued_by(me));
+        journal.0.push((tick, me, a));
     };
 
     // What it can still spend this decision. Orders are all-or-nothing and
@@ -582,43 +779,8 @@ fn think(
         }
     }
     // `budget` has done its job (one decision never commits the same Alloy
-    // twice); the attack below spends nothing.
+    // twice); the attack spends nothing.
     let _ = budget;
-
-    // ---- 5. attack: send the wave at the enemy HQ --------------------------
-    let force: Vec<Entity> = units
-        .iter()
-        .filter(|u| u.faction == me && content.units.get(u.def).is_some_and(|d| d.offense > 0))
-        .map(|u| u.entity)
-        .collect();
-    if force.len() as u32 >= script.attack_at_army && tick >= c.next_attack_tick {
-        let enemy_hq = buildings
-            .iter()
-            .find(|b| {
-                b.faction != me && content.buildings.get(b.def).is_some_and(|def| def.victory)
-            })
-            .map(|b| b.pos);
-        if let Some(target) = enemy_hq {
-            let spread = script.attack_spread;
-            let dest = target
-                + Vec2::new(
-                    c.rng.range_f32(-spread, spread),
-                    c.rng.range_f32(-spread, spread),
-                );
-            c.next_attack_tick = tick.saturating_add(script.attack_interval_ticks);
-            let count = force.len() as u32;
-            // The wave's order is content (`wave_order`, B4, F-048). The
-            // journal entry is the same `Attack` either way: the order kind is
-            // a function of the strategy, and the command log records it
-            // exactly (`LoggedOrder::AttackMove`), so the action trace — and
-            // every journal pin taken on it — means what it always meant.
-            let wave = match script.wave_order {
-                WaveOrder::Move => Order::MoveTo { units: force, dest },
-                WaveOrder::AttackMove => Order::AttackMove { units: force, dest },
-            };
-            order(queue, journal, wave, AiAction::Attack { dest, force: count });
-        }
-    }
 }
 
 /// The gatherer this HQ can train: the first unit in its RON `produces` list
