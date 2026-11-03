@@ -5982,3 +5982,28 @@ and > 0, share in (0, 1]) and required wherever there are Generals.
 
 **Not yet.** The brief's other trigger, the enemy outnumbering it by a set ratio, is not
 built. The share-lost threshold is the one the AC names. A General does not move himself.
+
+## F-059 — The golden licence: no re-pin, and a skirmish cannot see the campaign layer (C1)
+
+**Context.** C1 AC8 lets the skirmish keep its pinned results only if they reproduce exactly.
+A re-pin needs its own finding and a human sign-off.
+
+**Result: no re-pin.** Every existing golden passes unchanged on the C1 tree: b1_matchup,
+b1_strategies, b35_queue_depth, b35_parallel, critic_b2_ac4 (state hashes), critic_b35_ac0,
+critic_b35_ac0b, b2_headless, b2_orientation, critic_b2_ac2, m5_replay (recorded replays) and
+critic_p2 (allocation order). m4c_ai (the AI's skirmish script and journal) passes unchanged too.
+
+**Why it holds, and the test that says so (`tests/c1_golden.rs`).**
+- The default `MatchSettings` has no battle. A skirmish world holds no `BattleState`,
+  `AuraField` or `BattleAiJournal` and no `General`, so every battle system's `run_if` is false,
+  the new hash tags emit nothing, and the new AI branches are dead.
+- The data changes are additive: the `generals` list, `mvp_battle` and `mvp_general_ai` blocks.
+  `content.units` is unchanged. The content **fingerprint** covers the new blocks when they are
+  present, so the shipped content fingerprints differently from pre-C1 content, and a replay log
+  recorded before C1 is refused rather than replayed against different rules.
+  Content with no Generals and no battle blocks fingerprints exactly as before. No test pins a
+  fingerprint value, so this is not a re-pin.
+- The test cuts everything from the `// ---- C1: the campaign battle layer` marker out of
+  `units.ron` and plays the same skirmishes (seeds 0, 4 and 11 for 1800 ticks; rush vs turtle
+  and mass_ripper vs mass_bulwark for 3600) on both contents. The per-tick state hashes, the AI
+  journal length and the outcome tick are identical.
