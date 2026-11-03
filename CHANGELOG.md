@@ -636,3 +636,7 @@
 - [2026-10-12] Modified: tests/b4_reservation.rs — comment marks the whole-script placement as measured, not asserted (critic finding 3)
 - [2026-11-02] Created: CAMPAIGN_PLAN.md — nations and campaign plan: C0 design on paper now, then C1–C6 (nations in the 1v1, three resources, campaign core, diplomacy, client, fun gate) after the B5 Go
 - [2026-11-02] Modified: DESIGN_BRIEF.md, BALANCE_PLAN.md — pointers to CAMPAIGN_PLAN.md
+- [2026-11-02] Modified: DESIGN_BRIEF.md — Campaign design C0 draft: cities map, persistent armies, General and retreat victory, rounds, diplomacy, six nation sheets
+- [2026-11-02] Modified: CAMPAIGN_PLAN.md — new C1 campaign battle rules (General, retreat, roster setup, survivors); later milestones renumbered C2–C7; C0 status and carry-over decision
+- [2026-11-02] Modified: FINDINGS.md — F-052: C0 campaign design decisions and recommendations
+- [2026-11-02] Modified: DESIGN_BRIEF.md, CAMPAIGN_PLAN.md, FINDINGS.md — General buffs nearby units (aura, RON data); C1 AC added; F-052 updated

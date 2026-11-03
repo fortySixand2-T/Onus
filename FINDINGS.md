@@ -5658,3 +5658,66 @@ load was 3.07.
 
 **Resolution.** The 10 reds that F-049 left open are resolved, the gate is green, and B4
 Step 3 is ticked. The critic and the merge follow.
+
+## F-052 — Campaign design, C0 draft: persistent armies, cities, General and retreat (C0)
+
+**Context.** `CAMPAIGN_PLAN.md` (merged 2026-11-02) starts with C0, nation and campaign design
+on paper. B5, the human fun check, has not run yet because the user cannot play at present.
+C0 builds nothing, so the B5 gate still holds for C1 onward.
+
+**User decisions (2026-11-02):**
+1. **Armies persist, as in Age of Empires:** units lost are lost, and survivors carry over to
+   the next battle.
+2. **Nations hold cities**, and battles are fought over cities.
+3. **A battle is won by killing the enemy General or making the enemy retreat.**
+
+**What they change:**
+- **The battle layer itself.** Today's only win condition is destroying the HQ, and every match
+  starts from a fresh base. The decisions add a General unit, a Retreat order, battle setup
+  from an army roster, and a battle outcome that reports survivors. These are battle-layer
+  features, so they get their own milestone, **C1**, ahead of nations. The later milestones
+  shift down one: nations C2, three resources C3, campaign core C4, diplomacy C5, client C6,
+  fun gate C7.
+- **Skirmish mode keeps today's rules,** so the B-series goldens and the balance tooling stay
+  valid. The golden licence ("skirmish reproduces today") is an AC in C1.
+- **Retreat is the army-saving move.** Because armies persist, a lost battle need not destroy
+  an army. That makes the AI's retreat threshold a balance knob, and it lives in RON.
+- **Without reinforcement, armies only shrink.** The draft therefore recommends a per-city
+  levy each round.
+
+**Recommended, awaiting review** (`DESIGN_BRIEF.md`, "Campaign design (C0 draft)"):
+- A fixed 16-city map: you 1, Forgeborn 4, Verdant 4, Aetherkin 3, Tollmarch 2, Ashen Reach 2.
+- Unit HP carries over between battles, with healing when an army holds a round in its own
+  city.
+- Destroying the HQ also takes the city.
+- AI-vs-AI battles are auto-resolved by the headless sim, with survivors written back.
+- Taking a capital absorbs that nation and its art, with a cap on how many arts stack.
+- Diplomacy:
+  - standing runs Hostile, Neutral, Tied, Allied;
+  - at most one ally;
+  - betrayal drops your standing with every nation by one step;
+  - destabilizing needs Tied standing with two nations;
+  - neighbours' notice of you grows with your size.
+- Your General is the heir. If he dies, the battle is lost and he is wounded for N rounds,
+  but the campaign is not lost.
+- Length: 15–25 rounds, about 2–3 hours.
+- Six nation sheets, with trait intents and Alloy-only stand-ins.
+
+**Risks the campaign sim must measure (C4):**
+- Persistent armies plus a levy per city can snowball, as big nations grow bigger.
+- A heavy loss can death-spiral, with no army and too few cities to rebuild.
+- Absorbed arts can stack into a dominant build.
+
+Each risk has a knob in RON: the levy size, the healing rate, the trait cap and the retreat
+threshold.
+
+**Open:**
+- The names of your house and its capital.
+- Whether Generals become veterans.
+- Whether siege damage persists between rounds.
+- The trait cap.
+- The `nations.ron` and `campaign.ron` field sketch.
+
+**Update (2026-11-02):** the user decided that the General **buffs nearby units** with an aura,
+whose radius and bonus are RON data. That closes the General's-role question. C1 gains an AC
+for it.
