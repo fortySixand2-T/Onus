@@ -401,7 +401,9 @@ pub enum LossCause {
     /// rule, which a campaign battle keeps.
     VictoryBuildingLost,
     /// It ordered a retreat, and every unit it had on the field has left it
-    /// (escaped across its entry edge, or fallen on the way).
+    /// (escaped across its entry edge, or fallen on the way). When both sides
+    /// order one, only the earlier order counts; two on one tick are a
+    /// mutual retreat, both sides `Retreated` and no winner.
     Retreated,
 }
 
@@ -457,7 +459,8 @@ pub struct Escaped {
     pub tick: u32,
 }
 
-/// How a battle ended: the winner (`None`: both sides lost on one tick), the
+/// How a battle ended: the winner (`None`: both sides lost on one tick, or
+/// both withdrew in a mutual retreat — ordered on one tick), the
 /// tick, why each losing side lost, and who got off the field in a retreat.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BattleResult {
@@ -547,8 +550,9 @@ pub struct BattleState {
     victory_seen: [bool; 2],
     /// Per slot: the side's entry edge, where a retreat leaves the field.
     edges: [Edge; 2],
-    /// Per slot: has this side ordered a retreat?
-    retreating: [bool; 2],
+    /// Per slot: the tick this side ordered a retreat, if it has. Which side
+    /// ordered first decides a battle both sides withdraw from.
+    retreat_ordered: [Option<u32>; 2],
     /// Everyone who has escaped so far, in crossing order.
     escaped: Vec<Escaped>,
     /// Every General the setup fielded, in spawn order.
@@ -563,7 +567,7 @@ impl BattleState {
             generals_seen: [false; 2],
             victory_seen: [false; 2],
             edges,
-            retreating: [false; 2],
+            retreat_ordered: [None; 2],
             escaped: Vec::new(),
             fielded: Vec::new(),
             result: None,
@@ -575,7 +579,23 @@ impl BattleState {
     }
 
     pub fn retreating(&self, side: Faction) -> bool {
-        self.retreating[faction_slot(side)]
+        self.retreat_ordered[faction_slot(side)].is_some()
+    }
+
+    /// The tick `side` ordered its retreat, if it has.
+    pub fn retreat_ordered(&self, side: Faction) -> Option<u32> {
+        self.retreat_ordered[faction_slot(side)]
+    }
+
+    /// Per slot: does this side's retreat decide the battle? The earliest
+    /// order does; two orders on one tick both do (a mutual retreat). A side
+    /// that ordered later still withdraws, but the other side conceded first.
+    fn retreat_counts(&self) -> [bool; 2] {
+        let [a, b] = self.retreat_ordered;
+        match (a, b) {
+            (Some(a), Some(b)) => [a <= b, b <= a],
+            _ => [a.is_some(), b.is_some()],
+        }
     }
 
     /// Everyone who has escaped so far.
@@ -583,11 +603,13 @@ impl BattleState {
         &self.escaped
     }
 
-    /// Order `side` off the field (from an `Order::Retreat`). Once ordered, a
-    /// retreat is not called back. A decided battle ignores it.
-    pub(crate) fn order_retreat(&mut self, side: Faction) {
-        if self.result.is_none() {
-            self.retreating[faction_slot(side)] = true;
+    /// Order `side` off the field on `tick` (from an `Order::Retreat`). Once
+    /// ordered, a retreat is not called back, and a second order keeps the
+    /// first tick. A decided battle ignores it.
+    pub(crate) fn order_retreat(&mut self, side: Faction, tick: u32) {
+        let slot = &mut self.retreat_ordered[faction_slot(side)];
+        if self.result.is_none() && slot.is_none() {
+            *slot = Some(tick);
         }
     }
 
@@ -627,8 +649,10 @@ impl BattleState {
         let mut w = vec![
             self.generals_seen[0] as u64 | (self.generals_seen[1] as u64) << 1,
             self.victory_seen[0] as u64 | (self.victory_seen[1] as u64) << 1,
-            self.retreating[0] as u64 | (self.retreating[1] as u64) << 1,
         ];
+        for t in self.retreat_ordered {
+            w.push(t.map_or(0, |t| 1 + t as u64));
+        }
         for e in &self.edges {
             for v in [e.point.x, e.point.y, e.outward.x, e.outward.y] {
                 w.push(v.to_bits() as u64);
@@ -741,17 +765,28 @@ pub fn battle_end(
     for e in battle.escaped.iter().filter(|e| e.general) {
         got_away[faction_slot(e.side)] = true;
     }
+    let counts = battle.retreat_counts();
     let mut lost: [Option<LossCause>; 2] = [None, None];
     for s in 0..2 {
         lost[s] = if battle.generals_seen[s] && g[s] == 0 && !got_away[s] {
             Some(LossCause::GeneralsFell)
         } else if battle.victory_seen[s] && v[s] == 0 {
             Some(LossCause::VictoryBuildingLost)
-        } else if battle.retreating[s] && on_field[s] == 0 {
+        } else if counts[s] && on_field[s] == 0 {
             Some(LossCause::Retreated)
         } else {
             None
         };
+    }
+    // A mutual retreat (both ordered on one tick) is over only when both
+    // withdrawals are: the side off the field first waits for the other, and
+    // then neither has won.
+    if counts == [true, true] {
+        for s in 0..2 {
+            if lost[s] == Some(LossCause::Retreated) && lost[1 - s].is_none() {
+                return;
+            }
+        }
     }
     let winner = match (lost[0].is_some(), lost[1].is_some()) {
         (false, false) => return,
@@ -865,17 +900,17 @@ pub fn withdraw(
     mut queues: Query<(&Faction, &mut ProductionQueue)>,
     mut commands: Commands,
 ) {
-    if !battle.retreating.contains(&true) || state.is_over() {
+    if battle.retreat_ordered == [None, None] || state.is_over() {
         return;
     }
     for (f, mut q) in &mut queues {
-        if battle.retreating[faction_slot(*f)] && !q.items.is_empty() {
+        if battle.retreat_ordered[faction_slot(*f)].is_some() && !q.items.is_empty() {
             q.items.clear();
         }
     }
     let mut rows: Vec<_> = units
         .iter()
-        .filter(|(_, _, f, ..)| battle.retreating[faction_slot(**f)])
+        .filter(|(_, _, f, ..)| battle.retreat_ordered[faction_slot(**f)].is_some())
         .collect();
     rows.sort_unstable_by_key(|(e, ..)| e.to_bits());
     let tick = state.tick();

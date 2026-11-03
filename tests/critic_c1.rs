@@ -208,6 +208,34 @@ fn critic_retreat_finishes_on_an_axis_front_with_odd_base() {
     }
 }
 
+/// Probe: both sides retreat on the same tick (the shipped battle AI does this
+/// in 3 of 5 sampled default battles). Neither held the field, so neither can
+/// be reported as the winner with no loss — yet the slower withdrawer is.
+#[test]
+fn critic_a_mutual_retreat_does_not_crown_the_slower_withdrawer() {
+    let setup = BattleSetup::default()
+        .with_general(Faction::A, "general_bulwark")
+        .with_general(Faction::B, "general_logistics");
+    let mut app =
+        headless::ai_vs_ai(content(), &MatchSettings::default().with_battle(setup)).unwrap();
+    app.insert_resource(AiCommanders::default());
+    spawn_unit(&mut app, "bulwark", Faction::A, Vec2::new(-100.0, 0.0));
+    spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(100.0, 0.0));
+    headless::step(&mut app);
+    order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
+    order(&mut app, Order::Retreat { faction: Faction::B }.issued_by(Faction::B));
+    assert!(run(&mut app, 60 * 120).is_some());
+    let st = app.world().resource::<BattleState>();
+    let r = st.result().cloned().unwrap();
+    assert!(st.retreating(Faction::A) && st.retreating(Faction::B));
+    assert!(
+        r.winner.is_none() || r.lost.iter().all(|l| l.is_some()),
+        "both sides withdrew, yet {:?} won with losses {:?}",
+        r.winner,
+        r.lost
+    );
+}
+
 /// Probe: an enemy standing INSIDE a General's radius gets nothing. (The
 /// shipped c1_aura test only checks an enemy outside the radius, so removing
 /// the side filter in `battle::auras` passes it.)

@@ -237,3 +237,49 @@ fn a_skirmish_has_no_retreat() {
     assert_eq!(units_of(&mut app, Faction::A).len(), before, "nobody left the field");
     assert!(app.world().resource::<MatchState>().outcome().is_none());
 }
+
+#[test]
+fn a_mutual_retreat_on_one_tick_has_no_winner_and_both_sides_escapees() {
+    let mut app = quiet_battle();
+    spawn_unit(&mut app, "ravager", Faction::A, Vec2::new(-100.0, 200.0));
+    spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(100.0, -200.0));
+    headless::step(&mut app);
+    let fielded = [units_of(&mut app, Faction::A).len(), units_of(&mut app, Faction::B).len()];
+    order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
+    order(&mut app, Order::Retreat { faction: Faction::B }.issued_by(Faction::B));
+    run_to_outcome(&mut app, 60 * 120);
+    let st = app.world().resource::<BattleState>();
+    assert_eq!(st.retreat_ordered(Faction::A), st.retreat_ordered(Faction::B));
+    let r = st.result().cloned().unwrap();
+    assert_eq!(r.winner, None, "neither side held the field");
+    assert_eq!(r.lost, [Some(LossCause::Retreated), Some(LossCause::Retreated)]);
+    for (s, side) in [Faction::A, Faction::B].into_iter().enumerate() {
+        let got = r.escaped.iter().filter(|e| e.side == side).count();
+        assert_eq!(got, fielded[s], "{side:?}: every unit got away and is listed");
+        assert!(r.report(side).generals.iter().all(|g| g.survived && g.escaped));
+    }
+    // The battle ended when the slower side was off, not the faster.
+    assert_eq!(r.tick, r.escaped.iter().map(|e| e.tick).max().unwrap());
+}
+
+#[test]
+fn of_two_retreats_the_earlier_order_loses_even_if_the_later_side_is_off_first() {
+    let mut app = quiet_battle();
+    // B's soldier stands by B's own edge; A's is deep in B's half.
+    let eb = app.world().resource::<BattleState>().edge(Faction::B);
+    spawn_unit(&mut app, "ripper", Faction::B, eb.point - eb.outward * 20.0);
+    spawn_unit(&mut app, "ravager", Faction::A, Vec2::new(500.0, 0.0));
+    headless::step(&mut app);
+    order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
+    headless::step(&mut app);
+    order(&mut app, Order::Retreat { faction: Faction::B }.issued_by(Faction::B));
+    run_to_outcome(&mut app, 60 * 120);
+    let st = app.world().resource::<BattleState>();
+    let (a, b) = (st.retreat_ordered(Faction::A).unwrap(), st.retreat_ordered(Faction::B).unwrap());
+    assert!(a < b, "A ordered first: {a} vs {b}");
+    let r = st.result().cloned().unwrap();
+    assert_eq!(r.winner, Some(Faction::B), "A conceded first");
+    assert_eq!(r.lost, [Some(LossCause::Retreated), None]);
+    let b_off = r.escaped.iter().filter(|e| e.side == Faction::B).map(|e| e.tick).max().unwrap();
+    assert!(b_off < r.tick, "B was off at {b_off}; the battle waited for A until {}", r.tick);
+}

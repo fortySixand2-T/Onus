@@ -919,7 +919,7 @@ pub fn apply_commands(
                     continue;
                 }
                 if let Some(b) = battle_state.as_mut() {
-                    b.order_retreat(faction);
+                    b.order_retreat(faction, now);
                 }
             }
             // Peeled off above; `signed` never returns a wrapper.
