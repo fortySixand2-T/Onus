@@ -5721,3 +5721,17 @@ threshold.
 **Update (2026-11-02):** the user decided that the General **buffs nearby units** with an aura,
 whose radius and bonus are RON data. That closes the General's-role question. C1 gains an AC
 for it.
+
+**Update 2 (2026-11-02):** the user decided that **each nation's General gives a different kind
+of buff.** The draft gives one aura per nation, matched to its doctrine:
+- your house: Synthesis, which scales with the number of domains mixed nearby;
+- Forgeborn: Bulwark (+ defense and armor);
+- Verdant: Frenzy (faster attacks);
+- Aetherkin: Focus (+ offense);
+- Tollmarch: Logistics (+ speed);
+- the Ashen Reach: Endurance (regeneration).
+
+Auras are RON stat-modifier lists and never touch the nemesis bonus, so the pentagon's hard
+counters survive. The risk is that a strong aura becomes a nation's whole identity in balance
+terms. C2's gate measures each aura against the pentagon and the strength band.
+

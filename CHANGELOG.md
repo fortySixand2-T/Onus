@@ -640,3 +640,4 @@
 - [2026-11-02] Modified: CAMPAIGN_PLAN.md — new C1 campaign battle rules (General, retreat, roster setup, survivors); later milestones renumbered C2–C7; C0 status and carry-over decision
 - [2026-11-02] Modified: FINDINGS.md — F-052: C0 campaign design decisions and recommendations
 - [2026-11-02] Modified: DESIGN_BRIEF.md, CAMPAIGN_PLAN.md, FINDINGS.md — General buffs nearby units (aura, RON data); C1 AC added; F-052 updated
+- [2026-11-02] Modified: DESIGN_BRIEF.md, CAMPAIGN_PLAN.md, FINDINGS.md — each nation's General gives a different aura (Synthesis, Bulwark, Frenzy, Focus, Logistics, Endurance) as RON stat modifiers; C1 AC widened; F-052 update 2

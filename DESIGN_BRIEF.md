@@ -208,6 +208,24 @@ The layout is illustrative only; the exact adjacency is decided in the C4 data.
     aura radius get a bonus. The radius, the stats it touches and its size are RON data, tuned
     by the sim. Keeping him close to the fight helps the army, and that is exactly what puts
     him at risk.
+  - **Each nation's General gives a different kind of buff** *(decided by the user,
+    2026-11-02)*. The aura matches the nation's doctrine, so its army fights differently near
+    its General, and the opponent can read that (P3: the aura is visible on the field).
+    Every aura is a list of stat modifiers in RON, so the kinds are data, not code. The one
+    exception is a special scaling rule for the synthesists. Sizes are tuned by the sim.
+
+    | Nation | Aura | Effect on nearby friendly units | How it plays |
+    |---|---|---|---|
+    | Your house | **Synthesis** | a bonus that grows with the number of *different domains* among the nearby units | rewards a mixed army; a pure army gets almost nothing |
+    | Forgeborn | **Bulwark** | + defense and armor | hold the line; hard to break near the General |
+    | Verdant | **Frenzy** | faster attacks (shorter attack interval) | short, violent trades; the swarm hits harder near him |
+    | Aetherkin | **Focus** | + offense | few units, each hitting harder |
+    | Tollmarch | **Logistics** | + move speed | arrives first, picks fights, gets out; strong for retreats |
+    | The Ashen Reach | **Endurance** | slow HP regeneration | outlasts the enemy; survivors carry more HP between battles |
+
+    *(rec)* An aura changes stats only. It never touches the nemesis bonus, so the pentagon's
+    hard counters stay intact. C2's balance gate checks every aura against the pentagon and
+    the 35–65% strength band.
   - *(rec)* A nation whose General dies gets a weaker replacement General after N rounds.
     **Your own General is the heir**: if he dies, the battle is lost and the heir is wounded
     for N rounds. The campaign is not lost.
@@ -268,6 +286,7 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
   of another domain. It rewards the mixed army the pentagon already wants.
 - **Alloy-only stand-in:** the same.
 - **Disposition:** everyone distrusts you, and the Forgeborn hate you.
+- **General's aura:** Synthesis: a bonus that grows with the number of domains mixed nearby.
 - **Look:** ash grey and ember.
 
 **Forgeborn: the zealots of Machine**
@@ -277,6 +296,7 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 - **Battle personality:** Bulwark and Sentinel, slow and defensive, they hold.
 - **Alloy-only stand-in:** Foundry units cost x% less Alloy.
 - **Disposition:** Hostile to you. They never ally with you until you are big enough to fear.
+- **General's aura:** Bulwark: + defense and armor.
 - **Look:** iron and brass.
 
 **Verdant: the Flesh-shapers**
@@ -286,6 +306,7 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 - **Battle personality:** swarms of Ripper and Ravager. They attack early and often.
 - **Alloy-only stand-in:** Gene-Vats train x% faster.
 - **Disposition:** greedy, and can be bought into an alliance.
+- **General's aura:** Frenzy: faster attacks.
 - **Look:** green and bone.
 
 **Aetherkin: the wardens of Energy**
@@ -295,6 +316,7 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 - **Battle personality:** few, deadly Arclights behind a screen.
 - **Alloy-only stand-in:** Arclight gets +x range.
 - **Disposition:** the most reasonable house. It can be Tied if you avoid the ley-wells.
+- **General's aura:** Focus: + offense.
 - **Look:** violet and white.
 
 **Tollmarch: the merchant city-state (minor, Machine-leaning)**
@@ -303,6 +325,7 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 - **Battle personality:** turtle; economy first.
 - **Alloy-only stand-in:** +x worker carry.
 - **Disposition:** neutral to all. They sell alliances, and switch sides for a better offer.
+- **General's aura:** Logistics: + move speed.
 - **Look:** gold and blue.
 
 **The Ashen Reach: the Rupture remnant (minor)**
@@ -312,6 +335,7 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 - **Alloy-only stand-in:** +x% building HP.
 - **Disposition:** may ally with you if you seek the truth of the Rupture. This is a story
   thread.
+- **General's aura:** Endurance: slow HP regeneration.
 - **Look:** charcoal and red.
 
 ### Still open (C0)
@@ -320,6 +344,8 @@ Alloy-only stand-in trait, used until Biomass and Aether exist.
 - **Whether a General carries his own traits** (veteran Generals).
 - **Siege rules:** does the defender's city keep its damaged buildings between rounds?
 - **Trait caps** for absorbed arts.
+- **Absorbing an aura:** when you take a capital, do you also gain that nation's General aura?
+  This could come as a second General leading a second army.
 - **Data shape:** `nations.ron` and `campaign.ron`, with fields only.
 
 ## Fun hypothesis (what we're actually testing)

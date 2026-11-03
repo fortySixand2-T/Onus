@@ -59,6 +59,7 @@ reviewed by the user, not by the critic, since this is design, not code.
     traits.
   - **Diplomatic disposition:** who it hates, who it would ally with, and how far it can be
     trusted.
+  - **General's aura:** the kind of buff its General gives, matched to its doctrine.
   - **Look:** colour and silhouette cues. Legibility is pillar P3: you must see which nation
     you're facing.
 - [ ] **Trait magnitude bounds.** This settles the brief's open question: how strong can a
@@ -117,8 +118,11 @@ A **skirmish** mode keeps today's rules exactly.
 
 - [ ] **The General:** a unit type in `units.ron`, one per side. When a side's General dies,
   that side loses the battle.
-- [ ] **The General's aura:** friendly units within a radius get a bonus. The radius and the
-  bonus are RON data.
+- [ ] **The General's aura:** friendly units within a radius get a bonus. Each General type
+  carries its own aura, defined in RON as a radius plus a list of stat modifiers (offense,
+  defense, armor, speed, attack interval, HP regeneration). The synthesists add a
+  domain-count scaling rule. Six aura kinds, one per nation (see the brief). An aura never
+  touches the nemesis bonus.
 - [ ] **Retreat:** an `Order`. The side's units head for its entry edge, and the battle ends
   as a retreat once the withdrawal finishes. The outcome records which units got off the
   field.
