@@ -407,7 +407,8 @@ pub enum LossCause {
 
 /// A side's entry edge (C1 AC4): the line through `point` square to
 /// `outward`, the direction away from the enemy. A retreating unit walks
-/// straight out to it and has escaped once it stands on or beyond it.
+/// straight out to it and has escaped once it stands on or beyond it
+/// ([`Edge::reached`]).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Edge {
     pub point: Vec2,
@@ -415,9 +416,24 @@ pub struct Edge {
 }
 
 impl Edge {
+    /// How near the edge counts as on it, in world units. Numerical, not a
+    /// gameplay number: a unit walked onto [`Edge::exit_for`] lands there
+    /// only to float rounding (about 1e-6 on a front that is not
+    /// axis-aligned, or from a base at a non-round coordinate), and without a
+    /// tolerance it would stand a rounding error short forever. A hundredth
+    /// of a world unit is far above that error and far below anything a
+    /// player could see or a unit could cover in a tick.
+    pub const ON_EDGE: f32 = 0.01;
+
     /// How far past the edge `p` stands (negative: still on the field).
     pub fn beyond(&self, p: Vec2) -> f32 {
         (p - self.point).dot(self.outward)
+    }
+
+    /// Has a unit at `p` got off the field: on the edge (within
+    /// [`Edge::ON_EDGE`]) or beyond it?
+    pub fn reached(&self, p: Vec2) -> bool {
+        self.beyond(p) >= -Self::ON_EDGE
     }
 
     /// The nearest point of the edge to `p` — where a retreat from `p` heads.
@@ -865,7 +881,7 @@ pub fn withdraw(
     let tick = state.tick();
     for (e, pos, f, def, health, id, general) in rows {
         let edge = battle.edges[faction_slot(*f)];
-        if edge.beyond(pos.0) >= 0.0 {
+        if edge.reached(pos.0) {
             let hp = health.copied().unwrap_or_else(|| Health::from_def(&content, def.0));
             battle.escaped.push(Escaped {
                 side: *f,

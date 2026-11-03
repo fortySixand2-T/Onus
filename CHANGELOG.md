@@ -707,3 +707,5 @@
 - [2026-11-02] Modified: FINDINGS.md — F-053 addendum (several Generals), F-058 BattleAiJournal, F-059 golden licence
 - [2026-11-02] Modified: FINDINGS.md — F-060 the B3 gate on campaign battles
 - [2026-11-02] Modified: CAMPAIGN_PLAN.md — C1 AC9: B3 half recorded, B5 human re-read still open
+- [2026-11-02] Created: tests/critic_c1.rs — C1 critic probes, landed as red tests ahead of their fixes
+- [2026-11-02] Modified: src/sim/battle.rs — C1 fix: Edge::reached with an ON_EDGE tolerance, so a retreat finishes on any front
