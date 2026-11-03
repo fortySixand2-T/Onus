@@ -168,7 +168,22 @@ impl BattleSetup {
 
     /// Check every name this setup uses against `content`, before anything is
     /// spawned — a typo must refuse the battle, never field a different one.
+    /// HP is checked against the plain pools: a match with no nation.
     pub fn check(&self, content: &Content) -> Result<(), BattleSetupError> {
+        self.check_with(content, None)
+    }
+
+    /// [`check`](Self::check) for a match with the nations `rules` (C2): a
+    /// roster's HP is checked against **its side's** pool, so a nation whose
+    /// traits shrink a pool refuses a roster HP above it rather than fielding
+    /// a unit with more HP than its maximum. Refused, never clamped — a
+    /// silently trimmed roster would hide a campaign bug.
+    pub fn check_with(
+        &self,
+        content: &Content,
+        rules: Option<&NationRules>,
+    ) -> Result<(), BattleSetupError> {
+        let defs = Defs::new(content, rules);
         if content.battle.is_none() {
             return Err(BattleSetupError::NoBattleContent);
         }
@@ -197,7 +212,7 @@ impl BattleSetup {
                         side: *side,
                     });
                 };
-                let max = Health::from_def(content, idx).max;
+                let max = defs.unit_health(*side, idx).max;
                 if let Some(hp) = u.hp.filter(|hp| *hp == 0 || *hp > max) {
                     return Err(bad_hp(&u.id, hp, max));
                 }
@@ -209,7 +224,7 @@ impl BattleSetup {
                         side: *side,
                     });
                 };
-                let max = Health::from_building_def(content, idx).max;
+                let max = defs.building_health(*side, idx).max;
                 if let Some(hp) = b.hp.filter(|hp| *hp == 0 || *hp > max) {
                     return Err(bad_hp(&b.id, hp, max));
                 }

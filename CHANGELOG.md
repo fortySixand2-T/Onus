@@ -761,3 +761,8 @@
 - [2026-11-03] Created: tests/c2_gate.rs — C2 AC4: synthetic gate tests and the shipped nation reading (ignored, release)
 - [2026-11-03] Modified: FINDINGS.md — F-066: the nation gate reading (Fail: Tollmarch's +1 carry), AC4 left unticked
 - [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC4 annotated: gate reads Fail, left unticked (F-066)
+- [2026-11-03] Created: tests/critic_c2.rs — C2 critic probes: traits reach movement/combat/placement; roster HP within its side's pool
+- [2026-11-03] Created: tests/critic_c2_client.rs — C2 critic probes: the no-nation client pick plays the pre-C2 client match hash for hash
+- [2026-11-03] Modified: src/sim/battle.rs — BattleSetup::check_with: roster HP checked against the side's traited pool (refused, never clamped)
+- [2026-11-03] Modified: src/headless.rs — resolve nations before checking a battle setup, and check it with them
+- [2026-11-03] Modified: FINDINGS.md — F-068: roster HP against the traited pool

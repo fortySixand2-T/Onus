@@ -6449,3 +6449,24 @@ plugins). `cargo run` now opens on the pick screen; press Enter to play.
 A replay written from a nation match would replay without its traits. The state hash includes
 the nations (tag 25), so a hash check would fail loudly at tick 0 rather than silently
 diverge.
+
+## F-068 — C2 critic fixes: a roster's HP is checked against its side's traited pool (C2)
+
+**Defect (critic, Medium-High).** `BattleSetup::check` checked a roster's HP against the
+**base** pools, but `spawn_roster` fields it under the side's **traited** pool.
+- A nation whose traits shrink a pool could start a unit above its maximum. A Defense −1
+  sentinel started at 100/80, and a BuildingHp ×0.5 foundry at 5040/2520.
+- That broke the `current <= max` invariant every HP reader assumes.
+
+**Fix.** `BattleSetup::check_with(content, rules)` checks HP against `Defs::unit_health` and
+`Defs::building_health` of the side, and `check` is now `check_with(content, None)`.
+`headless::battle` resolves the nations first, then checks the battle with them, before
+anything is spawned. Out-of-pool HP is **refused** (`BadHp`, naming the side's pool), never
+clamped: a trimmed roster would hide a campaign bug that wrote an HP the side cannot have.
+
+**Gates.** The critic's tests are landed as `tests/critic_c2.rs` and
+`tests/critic_c2_client.rs`.
+- `a_roster_unit_never_starts_above_its_sides_pool` and
+  `a_roster_building_never_starts_above_its_sides_pool` failed before the fix. They now expect
+  the refusal, with the traited max in the error, and an admitted roster at that max with
+  `current <= max`.

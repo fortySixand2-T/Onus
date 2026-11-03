@@ -292,11 +292,14 @@ impl std::error::Error for MatchSetupError {}
 /// [`ai_vs_ai`], refusing a bad battle setup with an error rather than a
 /// panic. Every name is resolved before anything is spawned.
 pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSetupError> {
-    if let Some(b) = &settings.battle {
-        b.check(&content).map_err(MatchSetupError::Battle)?;
-    }
     // Refused here, before anything is spawned (installed further down).
-    NationRules::resolve(&content, &settings.nations).map_err(MatchSetupError::Nation)?;
+    let rules =
+        NationRules::resolve(&content, &settings.nations).map_err(MatchSetupError::Nation)?;
+    // A roster's HP is checked against its side's (traited) pools.
+    if let Some(b) = &settings.battle {
+        b.check_with(&content, rules.as_ref())
+            .map_err(MatchSetupError::Battle)?;
+    }
     // Resolve names *before* anything is spawned, so a refusal costs nothing
     // and cannot leave a half-built match behind.
     let commanders = match &settings.strategies {
