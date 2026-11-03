@@ -280,9 +280,11 @@ fn line_offset(g: SideGround, j: usize, n: usize, spacing: f32) -> Vec2 {
 }
 
 /// Place a side's [`Roster`]: buildings in a line across the base (the first
-/// on it, the rest alternating either side), `building_spacing` apart; units in ranks of `formation_rank` just
-/// behind the Generals' line, `formation_spacing` apart, each further rank one
-/// spacing nearer the base. Buildings first, then units, in list order.
+/// on it, the rest alternating either side), `building_spacing` apart; units
+/// in ranks of `formation_rank` just behind the Generals' line,
+/// `formation_spacing` apart, each further rank one spacing nearer the base,
+/// and no rank nearer the entry edge than one spacing (more units widen the
+/// ranks). Buildings first, then units, in list order.
 fn spawn_roster(
     world: &mut World,
     content: &Content,
@@ -311,8 +313,15 @@ fn spawn_roster(
             e.insert(Health { current: hp, max: full.max });
         }
     }
-    let rank = battle.formation_rank as usize;
     let total = roster.units.len();
+    // Ranks run back from just behind the Generals; the last that fits stands
+    // at least one spacing inside the entry edge. A roster too big for that
+    // many `formation_rank`-wide ranks widens its ranks instead of spilling
+    // off the field.
+    let fit = ((battle.general_front + battle.entry_edge_offset) / battle.formation_spacing)
+        .floor() as usize;
+    let ranks = fit.saturating_sub(1).max(1);
+    let rank = (battle.formation_rank as usize).max(total.div_ceil(ranks));
     for (k, u) in roster.units.iter().enumerate() {
         let idx = content
             .unit_index(&u.id)

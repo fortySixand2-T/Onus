@@ -244,3 +244,38 @@ fn a_damaged_city_falls_sooner() {
     assert_eq!(r.loss(Faction::A), Some(LossCause::VictoryBuildingLost));
     assert_eq!(r.winner, Some(Faction::B));
 }
+
+/// A roster too big for `formation_rank`-wide ranks between the Generals and
+/// the entry edge wraps into wider ranks instead of spilling off the field:
+/// every unit starts at least one `formation_spacing` inside its side's edge,
+/// on a spot of its own.
+#[test]
+fn a_large_roster_starts_entirely_on_the_field() {
+    let c = content();
+    let b = c.battle.as_ref().unwrap();
+    for n in [8usize, 49, 60, 100, 250] {
+        let roster = (0..n).fold(Roster::default().building("hq"), |r, _| r.unit("ravager"));
+        let setup = BattleSetup::default()
+            .with_general(Faction::A, "general_focus")
+            .with_roster(Faction::A, roster)
+            .with_general(Faction::B, "general_bulwark");
+        let mut app = quiet(setup);
+        let edge = app.world().resource::<BattleState>().edge(Faction::A);
+        let units = units_of(&mut app, Faction::A);
+        assert_eq!(units.len(), n);
+        for (_, _, p, _) in &units {
+            assert!(
+                edge.beyond(*p) <= -b.formation_spacing + 1e-3,
+                "{n} units: one starts at {p}, {} from the edge",
+                edge.beyond(*p)
+            );
+        }
+        let mut spots: Vec<(i64, i64)> = units
+            .iter()
+            .map(|(_, _, p, _)| ((p.x * 16.0).round() as i64, (p.y * 16.0).round() as i64))
+            .collect();
+        spots.sort();
+        spots.dedup();
+        assert_eq!(spots.len(), n, "{n} units: two share a spot");
+    }
+}

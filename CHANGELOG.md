@@ -713,3 +713,6 @@
 - [2026-11-02] Modified: src/sim/mod.rs — C1 fix: Order::Retreat records the tick it was applied
 - [2026-11-02] Modified: tests/c1_retreat.rs — C1 fix: mutual and staggered retreat tests
 - [2026-11-02] Modified: tests/c1_aura.rs — C1 fix: the enemy stands inside the aura radius
+- [2026-11-02] Modified: src/sim/battle.rs — C1 fix: a large roster widens its ranks instead of spilling past the entry edge
+- [2026-11-02] Modified: assets/data/units.ron — C1 fix: formation_rank comment notes rank widening
+- [2026-11-02] Modified: tests/c1_roster.rs — C1 fix: a large roster starts entirely on the field

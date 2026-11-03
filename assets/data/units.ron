@@ -182,7 +182,9 @@
         entry_edge_offset: 150.0,  // a side's entry edge runs this far behind its base;
                                    // a retreat (Order::Retreat) leaves the field there
         building_spacing: 160.0,   // a roster's buildings, in a line across the base
-        formation_rank: 8,         // a roster's units per rank, behind the Generals
+        formation_rank: 8,         // a roster's units per rank, behind the Generals; a roster
+                                   // too big to keep its ranks a spacing inside the
+                                   // entry edge widens them
     ),
     // The AI's battle behaviour around its General (C1).
     mvp_general_ai: (
