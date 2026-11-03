@@ -162,7 +162,7 @@ A **skirmish** mode keeps today's rules exactly.
 - [x] `nations.ron` holds the C0 roster. The sim applies traits as data-driven modifiers
   (costs, stats, times, carry), never as code per nation. Selection works through
   `MatchSettings`, the same way strategies do.
-- [ ] **Golden licence:** a "no nation" setting reproduces today's pinned results exactly.
+- [x] **Golden licence:** a "no nation" setting reproduces today's pinned results exactly.
 - [ ] **Batch runner:** add a nation axis. Mirror matchups keep isolating unit balance, and
   cross-nation matchups test faction balance.
 - [ ] **Gate:** a nation criterion. Each nation's cross-nation strength is 35–65%, and the

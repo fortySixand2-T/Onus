@@ -6226,3 +6226,27 @@ three-file harness. Its claims are unchanged: every edit moves the hash, and an 
 hashes the same as the base. This was the only failure in the full debug suite on the AC1 tree.
 
 **Gates:** `tests/c2_nations.rs` (17 tests).
+
+## F-064 — The golden licence: no re-pin, and a no-nation match cannot see the nations (C2)
+
+**Claim.** With no nation named (the default, or `with_nations(None, None)`), a match plays
+exactly as it did before C2. No golden was re-pinned. The pinned tests (b1, b2, b35,
+critic_b2_ac4's state hashes, m5's replays, critic_p2's allocation order, c1_golden) pass
+unchanged in the full debug suite on the AC1 tree.
+
+**What `tests/c2_golden.rs` adds.** The shipped content, and the same content with
+`nations.ron` removed (the content before C2), play the same matches. They match tick for tick
+and hash for hash, with the same AI journal length and end tick, and no `NationRules` resource:
+- seeds 0, 4 and 11 at 1 800 ticks;
+- rush/turtle, mass_ripper/mass_bulwark and synth_triad/mvp at 3 600 ticks;
+- a C1 campaign battle (bulwark and frenzy Generals) at 3 000 ticks;
+- seed 2 rush/mvp played to its decision inside the default cap.
+
+Naming no nation explicitly is the default, hash for hash.
+
+**Red, shown by mutation** (both reverted, on the box):
+- `NationRules::resolve` returns empty rules for `[None, None]`. The skirmish test fails
+  (`NationRules` present). The content comparisons alone cannot see this, since both runs carry
+  the mutation; the pinned state-hash goldens are what guard it.
+- `resolve` falls back to the content's second nation (Forgeborn) when none is named. Four of
+  the five tests fail: skirmish, named strategies, campaign battle and the decided match.

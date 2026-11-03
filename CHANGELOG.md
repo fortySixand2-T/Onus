@@ -740,3 +740,6 @@
 - [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC1 ticked
 - [2026-11-03] Modified: FINDINGS.md — F-063: nations as data
 - [2026-11-03] Modified: tests/b1_strategies.rs — C2: the fingerprint test's base is the shipped strategies through its own three-file harness (nations.ron is now content)
+- [2026-11-03] Created: tests/c2_golden.rs — C2 AC2: a no-nation match plays identically with and without nations.ron
+- [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC2 ticked
+- [2026-11-03] Modified: FINDINGS.md — F-064: the C2 golden licence
