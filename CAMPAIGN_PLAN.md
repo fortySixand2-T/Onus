@@ -152,7 +152,7 @@ A **skirmish** mode keeps today's rules exactly.
 - [x] **Golden licence:** skirmish mode reproduces today's pinned results exactly.
 - [ ] **Balance:** the B3 gate runs on campaign-style battles (General plus retreat), and B5
   is re-read with a human playing them.
-  *(2026-11-02: the B3 half is done and recorded in FINDINGS F-060 (gate Fail on K1, K2 and K3).
+  *(2026-11-02: the B3 half is done and recorded in FINDINGS F-060 (gate Fail on K1 and K3; K2 undetermined after F-061).
   The B5 human re-read is still open, so this box stays unticked.)*
 
 ## C2 — Nations in the 1v1, light traits on Alloy (after B5 Go)

@@ -718,3 +718,5 @@
 - [2026-11-02] Modified: tests/c1_roster.rs — C1 fix: a large roster starts entirely on the field
 - [2026-11-02] Modified: DESIGN_BRIEF.md — C1: an aura buffs friendly non-General units
 - [2026-11-02] Modified: FINDINGS.md — F-061 C1 critic fixes
+- [2026-11-02] Modified: FINDINGS.md — F-060 update 1: B3 re-run after the mutual-retreat rule
+- [2026-11-02] Modified: CAMPAIGN_PLAN.md — C1 AC9 note: the current gate reading

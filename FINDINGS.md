@@ -6066,6 +6066,28 @@ bulwark 11847, frenzy 11849, focus 11829, logistics 10843 and endurance 11384 ti
   fronts point at x = 0 from bases at x = ±750, and the entry edges mirror. **Not investigated
   further in C1.** It is flagged for B5 and the critic.
 
+**Update 1 (2026-11-02, after F-061's mutual-retreat rule). Re-run, same batch and seeds.**
+Status: **Fail** (K1 and K3). **K2 is now undetermined.**
+
+| | first reading | after F-061 |
+|---|---|---|
+| K1 mass_sentinel | 52.1% pass | 53.1% [40.9, 65.4] undetermined |
+| K1 mass_ripper | 87.5% FAIL, dominant | **87.0% [76.6, 95.3] FAIL, dominant** |
+| K1 mass_arclight | 71.9% undetermined | 69.3% [57.1, 80.6] undetermined |
+| K1 mass_bulwark | 28.1% pass | 28.1% [17.1, 40.2] pass |
+| K1 mass_ravager | 10.4% pass, losing | 12.5% [4.4, 22.8] pass, losing |
+| K2 slot A | 47.5% undetermined | 46.7% (n 60) undetermined |
+| K2 left base | **24.2% FAIL** | **46.7% undetermined** |
+| K3 median / band share | 9960 ticks / 0.7% FAIL | 9960 ticks / **0.7% FAIL** (96% below, 3.3% beyond, 0 timeouts) |
+| Loss causes | Generals fell 192, HQ 0, retreated 109 | Generals fell 192, HQ 0, **retreated 157** |
+
+Mean decided lengths per General kind barely moved (10847 to 11860 ticks). The loss causes
+now total 349 over 300 decided matches, so 49 matches had two losers. Before the fix there
+was 1. About 48 battles were **mutual retreats** that the old rule had handed to the slower
+withdrawer. That accounts for the **K2 left-base FAIL in the first reading**: which side's
+withdrawal finished last depended on geometry, not play. With the rule fixed, the seat bias is
+gone. The K1 and K3 readings stand as interpreted above. No content was tuned.
+
 **Not done (AC9).** The B5 human re-read on campaign battles. No content was tuned against
 this reading. Balance changes are data and design decisions for B5.
 
