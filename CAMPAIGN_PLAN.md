@@ -139,7 +139,7 @@ A **skirmish** mode keeps today's rules exactly.
   defense, armor, speed, attack interval, HP regeneration). The synthesists add a
   domain-count scaling rule. Six aura kinds, one per nation (see the brief). An aura never
   touches the nemesis bonus.
-- [ ] **Retreat:** an `Order`. The side's units head for its entry edge, and the battle ends
+- [x] **Retreat:** an `Order`. The side's units head for its entry edge, and the battle ends
   as a retreat once the withdrawal finishes. The outcome records which units got off the
   field.
 - [ ] **Battle setup from a roster.** A side can start with a given army (its General, its

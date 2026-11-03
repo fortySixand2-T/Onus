@@ -30,6 +30,13 @@
 //! Everything is computed from entity-sorted snapshots, so no query order
 //! reaches a bonus.
 //!
+//! ## Retreat
+//! `Order::Retreat` turns a side around: [`withdraw`] walks every one of its
+//! units straight out to its entry edge (behind its base), records each one
+//! that crosses it as **escaped** (with its HP), and stops the side's
+//! production. The battle ends as a retreat once the side has nothing left on
+//! the field; the result lists everyone who got away.
+//!
 //! ## Deciding a battle
 //! [`battle_watch`] latches, at the **start** of a tick, which losses each side
 //! can suffer (it has fielded a General / it has held a victory building) —
@@ -44,12 +51,13 @@
 use bevy::ecs::prelude::*;
 use bevy::math::Vec2;
 
-use crate::sim::combat::{Health, StatBonus};
+use crate::sim::combat::{Engaging, Health, StatBonus};
 use crate::sim::content::{AuraModifier, AuraScaling, AuraStat, Content};
-use crate::sim::economy::{Building, UnitDefIdx};
+use crate::sim::economy::{self, Building, ProductionQueue, UnitDefIdx};
+use crate::sim::replay::SimId;
 use crate::sim::spatial::Faction;
 use crate::sim::victory::count_victory_buildings;
-use crate::sim::{MatchState, Position};
+use crate::sim::{AttackMoveDest, MatchState, MoveTarget, Position};
 
 fn faction_slot(f: Faction) -> usize {
     match f {
@@ -183,7 +191,11 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
             ));
         }
     }
-    world.insert_resource(BattleState::default());
+    let edges = ground.map(|g| Edge {
+        point: g.base - g.front * battle.entry_edge_offset,
+        outward: -g.front,
+    });
+    world.insert_resource(BattleState::new(edges));
     world.insert_resource(AuraField::default());
 }
 
@@ -197,16 +209,58 @@ pub enum LossCause {
     /// It held a victory building (the HQ) and has none left — the skirmish
     /// rule, which a campaign battle keeps.
     VictoryBuildingLost,
+    /// It ordered a retreat, and every unit it had on the field has left it
+    /// (escaped across its entry edge, or fallen on the way).
+    Retreated,
+}
+
+/// A side's entry edge (C1 AC4): the line through `point` square to
+/// `outward`, the direction away from the enemy. A retreating unit walks
+/// straight out to it and has escaped once it stands on or beyond it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Edge {
+    pub point: Vec2,
+    pub outward: Vec2,
+}
+
+impl Edge {
+    /// How far past the edge `p` stands (negative: still on the field).
+    pub fn beyond(&self, p: Vec2) -> f32 {
+        (p - self.point).dot(self.outward)
+    }
+
+    /// The nearest point of the edge to `p` — where a retreat from `p` heads.
+    pub fn exit_for(&self, p: Vec2) -> Vec2 {
+        p - self.outward * self.beyond(p)
+    }
+}
+
+/// A unit that got off the field in a retreat (C1 AC4), as it left.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Escaped {
+    pub side: Faction,
+    /// The unit's sim id (`SimId::UNIDENTIFIED` if it never had one).
+    pub sim_id: SimId,
+    /// Its `UnitDefIdx` (a roster unit or a General).
+    pub unit: usize,
+    pub hp: u32,
+    pub max_hp: u32,
+    pub general: bool,
+    /// The tick it crossed the edge.
+    pub tick: u32,
 }
 
 /// How a battle ended: the winner (`None`: both sides lost on one tick), the
-/// tick, and why each losing side lost.
+/// tick, why each losing side lost, and who got off the field in a retreat.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BattleResult {
     pub winner: Option<Faction>,
     pub tick: u32,
     /// Per faction slot: why that side lost, or `None` if it did not.
     pub lost: [Option<LossCause>; 2],
+    /// Every unit that escaped in a retreat, in the order they crossed (tick,
+    /// then ascending entity bits).
+    pub escaped: Vec<Escaped>,
 }
 
 impl BattleResult {
@@ -218,16 +272,55 @@ impl BattleResult {
 
 /// The battle's own sim state. Present only in a campaign battle — which is
 /// what every battle system is gated on.
-#[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Resource, Debug, Clone, PartialEq)]
 pub struct BattleState {
     /// Per slot: has this side been seen with a General at the start of a tick?
     generals_seen: [bool; 2],
     /// Per slot: has this side been seen with a victory building?
     victory_seen: [bool; 2],
+    /// Per slot: the side's entry edge, where a retreat leaves the field.
+    edges: [Edge; 2],
+    /// Per slot: has this side ordered a retreat?
+    retreating: [bool; 2],
+    /// Everyone who has escaped so far, in crossing order.
+    escaped: Vec<Escaped>,
     result: Option<BattleResult>,
 }
 
 impl BattleState {
+    /// A battle not yet fought, with the sides' entry edges.
+    pub fn new(edges: [Edge; 2]) -> Self {
+        BattleState {
+            generals_seen: [false; 2],
+            victory_seen: [false; 2],
+            edges,
+            retreating: [false; 2],
+            escaped: Vec::new(),
+            result: None,
+        }
+    }
+
+    pub fn edge(&self, side: Faction) -> Edge {
+        self.edges[faction_slot(side)]
+    }
+
+    pub fn retreating(&self, side: Faction) -> bool {
+        self.retreating[faction_slot(side)]
+    }
+
+    /// Everyone who has escaped so far.
+    pub fn escaped(&self) -> &[Escaped] {
+        &self.escaped
+    }
+
+    /// Order `side` off the field (from an `Order::Retreat`). Once ordered, a
+    /// retreat is not called back. A decided battle ignores it.
+    pub(crate) fn order_retreat(&mut self, side: Faction) {
+        if self.result.is_none() {
+            self.retreating[faction_slot(side)] = true;
+        }
+    }
+
     pub fn result(&self) -> Option<&BattleResult> {
         self.result.as_ref()
     }
@@ -248,11 +341,30 @@ impl BattleState {
             None => 0u64,
             Some(LossCause::GeneralsFell) => 1,
             Some(LossCause::VictoryBuildingLost) => 2,
+            Some(LossCause::Retreated) => 3,
+        };
+        let escapes = |w: &mut Vec<u64>, all: &[Escaped]| {
+            w.push(all.len() as u64);
+            for e in all {
+                w.push(faction_slot(e.side) as u64);
+                w.push(e.sim_id.0);
+                w.push(e.unit as u64);
+                w.push(e.hp as u64 | (e.max_hp as u64) << 32);
+                w.push(e.general as u64);
+                w.push(e.tick as u64);
+            }
         };
         let mut w = vec![
             self.generals_seen[0] as u64 | (self.generals_seen[1] as u64) << 1,
             self.victory_seen[0] as u64 | (self.victory_seen[1] as u64) << 1,
+            self.retreating[0] as u64 | (self.retreating[1] as u64) << 1,
         ];
+        for e in &self.edges {
+            for v in [e.point.x, e.point.y, e.outward.x, e.outward.y] {
+                w.push(v.to_bits() as u64);
+            }
+        }
+        escapes(&mut w, &self.escaped);
         match &self.result {
             None => w.push(0),
             Some(r) => {
@@ -264,6 +376,7 @@ impl BattleState {
                 w.push(r.tick as u64);
                 w.push(cause(r.lost[0]));
                 w.push(cause(r.lost[1]));
+                escapes(&mut w, &r.escaped);
             }
         }
         w
@@ -307,6 +420,7 @@ pub fn battle_end(
     mut state: ResMut<MatchState>,
     mut battle: ResMut<BattleState>,
     generals: Query<&Faction, With<General>>,
+    units: Query<&Faction, With<UnitDefIdx>>,
     buildings: Query<(&Building, &Faction)>,
 ) {
     if state.is_over() {
@@ -314,12 +428,23 @@ pub fn battle_end(
     }
     let g = count_generals(&generals);
     let v = count_victory_buildings(&content, &buildings);
+    let mut on_field = [0u32; 2];
+    for f in &units {
+        on_field[faction_slot(*f)] += 1;
+    }
+    // A General who escaped in a retreat did not fall.
+    let mut got_away = [false; 2];
+    for e in battle.escaped.iter().filter(|e| e.general) {
+        got_away[faction_slot(e.side)] = true;
+    }
     let mut lost: [Option<LossCause>; 2] = [None, None];
     for s in 0..2 {
-        lost[s] = if battle.generals_seen[s] && g[s] == 0 {
+        lost[s] = if battle.generals_seen[s] && g[s] == 0 && !got_away[s] {
             Some(LossCause::GeneralsFell)
         } else if battle.victory_seen[s] && v[s] == 0 {
             Some(LossCause::VictoryBuildingLost)
+        } else if battle.retreating[s] && on_field[s] == 0 {
+            Some(LossCause::Retreated)
         } else {
             None
         };
@@ -332,7 +457,77 @@ pub fn battle_end(
     };
     let tick = state.tick();
     state.conclude(winner);
-    battle.result = Some(BattleResult { winner, tick, lost });
+    let escaped = battle.escaped.clone();
+    battle.result = Some(BattleResult {
+        winner,
+        tick,
+        lost,
+        escaped,
+    });
+}
+
+// ---- retreat -----------------------------------------------------------------
+
+/// Carry out every ordered retreat (C1 AC4). Runs right after
+/// `apply_commands`, so a retreat ordered this tick starts this tick — and
+/// overrides any other order given to the side's units, every tick, until
+/// they are off the field. For each unit of a retreating side, in ascending
+/// entity order: on or past its entry edge, it has **escaped** (recorded with
+/// its HP, then removed from the field); otherwise it walks straight out to
+/// the edge, dropping any chase, attack-move or gather job. The side's
+/// production stops (queues are cleared): nothing new joins a withdrawal.
+#[allow(clippy::type_complexity)]
+pub fn withdraw(
+    content: Res<Content>,
+    state: Res<MatchState>,
+    mut battle: ResMut<BattleState>,
+    units: Query<(
+        Entity,
+        &Position,
+        &Faction,
+        &UnitDefIdx,
+        Option<&Health>,
+        Option<&SimId>,
+        Has<General>,
+    )>,
+    mut queues: Query<(&Faction, &mut ProductionQueue)>,
+    mut commands: Commands,
+) {
+    if !battle.retreating.contains(&true) || state.is_over() {
+        return;
+    }
+    for (f, mut q) in &mut queues {
+        if battle.retreating[faction_slot(*f)] && !q.items.is_empty() {
+            q.items.clear();
+        }
+    }
+    let mut rows: Vec<_> = units
+        .iter()
+        .filter(|(_, _, f, ..)| battle.retreating[faction_slot(**f)])
+        .collect();
+    rows.sort_unstable_by_key(|(e, ..)| e.to_bits());
+    let tick = state.tick();
+    for (e, pos, f, def, health, id, general) in rows {
+        let edge = battle.edges[faction_slot(*f)];
+        if edge.beyond(pos.0) >= 0.0 {
+            let hp = health.copied().unwrap_or_else(|| Health::from_def(&content, def.0));
+            battle.escaped.push(Escaped {
+                side: *f,
+                sim_id: id.copied().unwrap_or(SimId::UNIDENTIFIED),
+                unit: def.0,
+                hp: hp.current,
+                max_hp: hp.max,
+                general,
+                tick,
+            });
+            commands.entity(e).despawn();
+        } else {
+            let mut ent = commands.entity(e);
+            ent.insert(MoveTarget(edge.exit_for(pos.0)))
+                .remove::<(Engaging, AttackMoveDest)>();
+            economy::release_gather_job(&mut ent);
+        }
+    }
 }
 
 // ---- auras -----------------------------------------------------------------

@@ -5859,3 +5859,30 @@ different kinds stack, the same kind does not.
 
 **Not yet.** Ranks (`general_ranks`, `aura_mult`) are C4. The aura is not drawn on the field
 (P3 visibility) — that is client work.
+
+## F-055 — Retreat: a signed order, a per-tick withdrawal, escapees recorded with their HP (C1)
+
+**Context.** C1 AC4: retreat is an `Order`; the side's units head for its entry edge; the
+battle ends as a retreat once the withdrawal finishes; the outcome records who got off.
+
+**Decisions.**
+- **`Order::Retreat { faction }`**, signed like `Place` (a commander withdraws only its own
+  army), logged as `LoggedOrder::Retreat` (a new variant, so older logs read unchanged) and
+  digested as tag 6. Without a `BattleState` (a skirmish) it is logged and does nothing.
+  Once ordered, a retreat is not called back.
+- **Entry edge.** The line `mvp_battle.entry_edge_offset` (150) behind the side's base,
+  square to the base-to-front axis. A retreating unit walks straight out to the nearest
+  point of it; on or beyond it, it has **escaped**.
+- **`battle::withdraw`**, right after `apply_commands`, so it overrides any other order every
+  tick (the AI or a player cannot turn a retreating unit around). Ascending entity order. It
+  records each escapee (side, `SimId`, `UnitDefIdx`, HP, max HP, General flag, tick), then
+  despawns it; others get `MoveTarget(exit)` with any chase, attack-move and gather job
+  dropped. Retreating units still hit what comes into reach on the way (combat's normal rule
+  for a moving unit), but never stop to chase. The side's production queues are cleared:
+  nothing new joins a withdrawal. Buildings stay.
+- **Ending.** In `battle_end`: a side with retreat ordered and no unit left on the field has
+  lost with cause `Retreated`. Order of causes: all Generals dead **with none escaped** →
+  `GeneralsFell`; HQ gone → `VictoryBuildingLost`; then `Retreated`. A General who escaped did
+  not fall, so a withdrawal that gets its General out is a retreat, and one whose General is
+  killed on the way is a General lost. `BattleResult.escaped` is the crossing list.
+- **Hash.** Retreat flags, edges and the escapee list are in `BattleState::hash_words`.

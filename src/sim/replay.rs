@@ -262,6 +262,9 @@ pub enum LoggedOrder {
         /// The unit's **id** (`"ripper"`) — see `Place::building`.
         unit: String,
     },
+    /// C1. A variant of its own, so a log written before it existed still
+    /// reads exactly as it did.
+    Retreat { faction: Faction },
 }
 
 fn xy(v: Vec2) -> (f32, f32) {
@@ -323,6 +326,7 @@ impl LoggedOrder {
                 building: id_of(*building).0,
                 unit: content.units.get(*unit)?.id.clone(),
             },
+            Order::Retreat { faction } => LoggedOrder::Retreat { faction: *faction },
             Order::By { .. } => return None,
         })
     }
@@ -338,7 +342,7 @@ impl LoggedOrder {
                 .chain(std::iter::once(node))
                 .map(|i| SimId(*i))
                 .collect(),
-            LoggedOrder::Place { .. } => vec![],
+            LoggedOrder::Place { .. } | LoggedOrder::Retreat { .. } => vec![],
             LoggedOrder::Train { building, .. } => vec![SimId(*building)],
         }
     }
@@ -393,6 +397,7 @@ impl LoggedOrder {
                     .unit_index(unit)
                     .ok_or_else(|| format!("log: no unit `{unit}` in this content"))?,
             },
+            LoggedOrder::Retreat { faction } => Order::Retreat { faction: *faction },
         })
     }
 
@@ -402,7 +407,8 @@ impl LoggedOrder {
         match self {
             LoggedOrder::MoveTo { .. }
             | LoggedOrder::AttackMove { .. }
-            | LoggedOrder::Gather { .. } => vec![],
+            | LoggedOrder::Gather { .. }
+            | LoggedOrder::Retreat { .. } => vec![],
             LoggedOrder::Place { building, .. } => vec![("building", building.as_str())],
             LoggedOrder::Train { unit, .. } => vec![("unit", unit.as_str())],
         }
@@ -417,7 +423,7 @@ impl LoggedOrder {
             }
             LoggedOrder::Gather { node_pos, .. } => vec![node_pos.0, node_pos.1],
             LoggedOrder::Place { pos, .. } => vec![pos.0, pos.1],
-            LoggedOrder::Train { .. } => vec![],
+            LoggedOrder::Train { .. } | LoggedOrder::Retreat { .. } => vec![],
         }
     }
 }
@@ -1266,6 +1272,10 @@ fn command_digest(cmd: &crate::sim::Command, mut id_of: impl FnMut(Entity) -> Si
             ids(&mut mix, units, &mut id_of);
             mix(dest.x.to_bits() as u64);
             mix(dest.y.to_bits() as u64);
+        }
+        Order::Retreat { faction } => {
+            mix(6);
+            mix(faction_bits(*faction));
         }
         // Unreachable: the queue peels `Order::By` at the boundary. Hashed as a
         // distinct value rather than skipped, so it could never be a silent

@@ -566,6 +566,14 @@ pub enum Order {
         building: Entity,
         unit: usize,
     },
+    /// Withdraw `faction`'s whole army from a campaign battle (C1): every
+    /// unit walks to the side's entry edge and leaves the field, and the battle
+    /// ends as a retreat once none is left (see [`battle`]). Like `Place`, it
+    /// names the faction it commands, which must be the signer. A skirmish has
+    /// no retreat: there the order does nothing.
+    Retreat {
+        faction: Faction,
+    },
     /// `order`, signed by the faction that issued it. Built with
     /// [`Order::issued_by`].
     By {
@@ -678,6 +686,8 @@ pub fn apply_commands(
     content: Res<Content>,
     mut stock: ResMut<Stockpiles>,
     mut producers: Query<(&Building, &Faction, &mut ProductionQueue)>,
+    // A campaign battle's state (C1): where a retreat order lands.
+    mut battle_state: Option<ResMut<battle::BattleState>>,
     defs: Query<&UnitDefIdx>,
     owners: Query<&Faction>,
     // **`Res`, not `ResMut`**: naming a thing must never create one. The record
@@ -901,6 +911,15 @@ pub fn apply_commands(
                     economy::enqueue_unit(&content, &mut stock, b.def, *faction, &mut queue, unit);
                 }
             }
+            Order::Retreat { faction } => {
+                // A commander withdraws its own army only.
+                if matches!(attribution, Attribution::By(by) if by != faction) {
+                    continue;
+                }
+                if let Some(b) = battle_state.as_mut() {
+                    b.order_retreat(faction);
+                }
+            }
             // Peeled off above; `signed` never returns a wrapper.
             Order::By { .. } => {}
         }
@@ -985,6 +1004,7 @@ fn nameable(
             content.units.get(unit)?;
             Order::Train { building, unit }
         }
+        Order::Retreat { faction } => Order::Retreat { faction },
         // Peeled at the queue boundary; never reaches here.
         Order::By { issuer, order } => Order::By { issuer, order },
     })

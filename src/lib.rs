@@ -192,6 +192,9 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
                 sim::replay::feed_replay
                     .run_if(resource_exists::<sim::replay::ReplaySource>),
                 sim::apply_commands,
+                // A campaign battle's retreats (C1), right after the orders, so
+                // a retreat overrides whatever else its side was told to do.
+                sim::battle::withdraw.run_if(resource_exists::<sim::battle::BattleState>),
                 sim::economy::production,
                 sim::economy::gather,
                 // A campaign battle's auras (C1): this tick's bonuses, from the

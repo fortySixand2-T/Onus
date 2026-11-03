@@ -670,3 +670,11 @@
 - [2026-11-02] Modified: DESIGN_BRIEF.md — C1: Generals' data sketch matches the RON (attack fields, Regen stat, mvp_battle)
 - [2026-11-02] Created: tests/c1_aura.rs — C1 AC3 tests: auras
 - [2026-11-02] Modified: FINDINGS.md — F-054 auras
+- [2026-11-02] Modified: src/sim/mod.rs — C1: Order::Retreat, applied into the BattleState
+- [2026-11-02] Modified: src/sim/replay.rs — C1: LoggedOrder::Retreat and its command digest
+- [2026-11-02] Modified: src/sim/battle.rs — C1: entry edges, the withdraw system, escapees, LossCause::Retreated
+- [2026-11-02] Modified: src/sim/content.rs — C1: mvp_battle entry_edge_offset
+- [2026-11-02] Modified: assets/data/units.ron — C1: mvp_battle entry_edge_offset
+- [2026-11-02] Modified: src/lib.rs — C1: withdraw after apply_commands, battle-only
+- [2026-11-02] Created: tests/c1_retreat.rs — C1 AC4 tests: retreat
+- [2026-11-02] Modified: FINDINGS.md — F-055 retreat

@@ -459,6 +459,9 @@ pub struct BattleDef {
     pub formation_spacing: f32,
     /// A `Regen` aura heals once every this many ticks.
     pub regen_interval_ticks: u32,
+    /// How far behind its base (away from the enemy) a side's entry edge
+    /// runs — where a retreat leaves the field.
+    pub entry_edge_offset: f32,
 }
 
 // ---- file shapes -----------------------------------------------------------
@@ -1033,6 +1036,7 @@ impl Content {
             for (what, v) in [
                 ("general_front", b.general_front),
                 ("formation_spacing", b.formation_spacing),
+                ("entry_edge_offset", b.entry_edge_offset),
             ] {
                 if !(v.is_finite() && v > 0.0) {
                     return bad(format!("mvp_battle {what} must be finite and positive"));
@@ -1435,7 +1439,8 @@ impl Content {
             h.str("battle")
                 .f32(b.general_front)
                 .f32(b.formation_spacing)
-                .u32(b.regen_interval_ticks);
+                .u32(b.regen_interval_ticks)
+                .f32(b.entry_edge_offset);
         }
 
         let ids = |all: &[String]| {
