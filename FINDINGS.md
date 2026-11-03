@@ -6068,3 +6068,58 @@ bulwark 11847, frenzy 11849, focus 11829, logistics 10843 and endurance 11384 ti
 
 **Not done (AC9).** The B5 human re-read on campaign battles. No content was tuned against
 this reading. Balance changes are data and design decisions for B5.
+
+## F-061 — C1 critic fixes: retreats finish on any front, a mutual retreat has no winner (C1)
+
+**Context.** The C1 critic returned FAIL. Its probes are landed as `tests/critic_c1.rs`.
+
+**1. A retreat now finishes on any front (HIGH).** A retreating unit walks to
+`Edge::exit_for(pos)`, the nearest point of its entry edge, and lands there only up to float
+rounding. When the front is not axis-aligned, or the base is at a non-round coordinate,
+`beyond()` came out near -1e-6. The test `beyond >= 0` then never held, and the unit was
+re-ordered every tick forever. The escape test is now `Edge::reached`: on or beyond the edge
+within `Edge::ON_EDGE = 0.01` world units. This is a numerical tolerance, not a gameplay
+number. It is far above the rounding error and far below a tick's movement or anything
+visible. So it is a named constant in `battle.rs`, not RON. The result is deterministic (pure
+f32 arithmetic on the sim's own state). Gate: `critic_retreat_finishes_on_a_diagonal_front`
+(eight fronts, 10 to 333 degrees) and `critic_retreat_finishes_on_an_axis_front_with_odd_base`.
+
+**2. A mutual retreat crowns no one (MEDIUM). Coordinator's decision, recorded here.**
+`BattleState` now keeps the tick each side ordered its retreat (`retreat_ordered`, hashed).
+- Only the **earliest** order counts. A side that ordered later still withdraws, but it never
+  loses by retreat. The earlier side is the retreating loser once its withdrawal is complete,
+  even if the later side got off first. The battle waits for the earlier side.
+- Two orders on **one tick** are a **mutual retreat**. The battle ends when both withdrawals
+  are complete: `winner: None`, both sides `LossCause::Retreated`, and every escapee of both
+  sides listed. A General falling during the withdrawal still loses that side the battle as
+  `GeneralsFell`, which is checked first, as before.
+- **How C4 reads a mutual retreat:** the attack failed and the defender keeps the city. Both
+  armies survive as the report lists them, so a mutual retreat is a failed siege, not a draw
+  that changes ownership.
+- Gates: `critic_a_mutual_retreat_does_not_crown_the_slower_withdrawer`, and in
+  `tests/c1_retreat.rs`
+  `a_mutual_retreat_on_one_tick_has_no_winner_and_both_sides_escapees` and
+  `of_two_retreats_the_earlier_order_loses_even_if_the_later_side_is_off_first`.
+
+**3 and 4. Aura tests (LOW).** `tests/c1_aura.rs` now places its enemy *inside* the radius
+(it stood outside, so the side filter was untested there).
+`critic_an_enemy_inside_the_radius_gets_no_aura`,
+`critic_synthesis_ignores_enemy_domains` and
+`critic_synthesis_cap_binds_when_below_the_domain_count` (RON max 2, three domains, x2) are in
+the suite.
+
+**5a. A large roster starts on the field.** Ranks ran back one `formation_spacing` each from
+just behind the Generals, so a ninth row (more than 64 units at rank 8) stood behind the
+entry edge. The layout now fits `floor((general_front + entry_edge_offset) /
+formation_spacing) - 1` ranks, at least 1. That is 6 with the shipped numbers, and the last
+rank stands at least one spacing inside the edge. A bigger roster widens every rank to
+`ceil(units / ranks)` instead of adding ranks. Up to 48 units, the layout is unchanged. Gate:
+`a_large_roster_starts_entirely_on_the_field` (8 to 250 units, all on the field, no shared
+spot).
+
+**5b. Auras skip Generals.** This is kept. DESIGN_BRIEF now says so: an aura buffs friendly
+non-General units.
+
+**5c. `BattleSetup` is not in `MatchLog`.** This is left for C4/C6, as F-053's "Not yet" says:
+a battle cannot be replayed from its log until the log carries the setup (Generals, rosters
+and ground). Until then, a battle's log cannot rebuild the battle it recorded.

@@ -716,3 +716,5 @@
 - [2026-11-02] Modified: src/sim/battle.rs — C1 fix: a large roster widens its ranks instead of spilling past the entry edge
 - [2026-11-02] Modified: assets/data/units.ron — C1 fix: formation_rank comment notes rank widening
 - [2026-11-02] Modified: tests/c1_roster.rs — C1 fix: a large roster starts entirely on the field
+- [2026-11-02] Modified: DESIGN_BRIEF.md — C1: an aura buffs friendly non-General units
+- [2026-11-02] Modified: FINDINGS.md — F-061 C1 critic fixes

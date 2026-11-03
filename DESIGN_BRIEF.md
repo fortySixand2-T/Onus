@@ -238,6 +238,8 @@ The layout is illustrative only; the exact adjacency is decided in the C4 data.
     aura radius get a bonus. The radius, the stats it touches and its size are RON data, tuned
     by the sim. Keeping him close to the fight helps the army, and that is exactly what puts
     him at risk.
+    An aura buffs friendly non-General units: a General does not buff himself or another
+    General (C1).
   - **Each nation's General gives a different kind of buff** *(decided by the user,
     2026-11-02)*. The aura matches the nation's doctrine, so its army fights differently near
     its General, and the opponent can read that (P3: the aura is visible on the field).
