@@ -694,6 +694,7 @@
 - [2026-11-02] Created: tests/c1_ai.rs — C1 AC7 tests: the battle AI
 - [2026-11-02] Modified: FINDINGS.md — F-058 the battle AI
 - [2026-11-02] Created: tests/c1_golden.rs — C1 AC8 tests: the campaign layer is inert in a skirmish (golden licence)
+- [2026-11-02] Created: tests/c1_balance.rs — C1 AC9: the B3 gate on campaign-style battles (sanity batch; ignored measurement)
 - [2026-11-02] Modified: src/sim/ai.rs — C1: guard and retreat journaled in their own BattleAiJournal (BattleAiAction); AiAction unchanged
 - [2026-11-02] Modified: src/sim/mod.rs — C1: export BattleAiAction, BattleAiJournal
 - [2026-11-02] Modified: src/sim/battle.rs — C1: install inserts BattleAiJournal; regen check uses is_multiple_of (clippy)
@@ -704,3 +705,5 @@
 - [2026-11-02] Modified: tests/c1_ai.rs — C1: read the BattleAiJournal; expect_err
 - [2026-11-02] Modified: tests/c1_general.rs — C1: expect_err (clippy)
 - [2026-11-02] Modified: FINDINGS.md — F-053 addendum (several Generals), F-058 BattleAiJournal, F-059 golden licence
+- [2026-11-02] Modified: FINDINGS.md — F-060 the B3 gate on campaign battles
+- [2026-11-02] Modified: CAMPAIGN_PLAN.md — C1 AC9: B3 half recorded, B5 human re-read still open

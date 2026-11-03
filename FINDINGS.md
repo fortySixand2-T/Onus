@@ -6007,3 +6007,64 @@ critic_p2 (allocation order). m4c_ai (the AI's skirmish script and journal) pass
   `units.ron` and plays the same skirmishes (seeds 0, 4 and 11 for 1800 ticks; rush vs turtle
   and mass_ripper vs mass_bulwark for 3600) on both contents. The per-tick state hashes, the AI
   journal length and the outcome tick are identical.
+
+## F-060 — The B3 gate on campaign battles: it runs, and it reads Fail on K1, K2 and K3 (C1)
+
+**Context.** C1 AC9 asks for the B3 kill-criteria gate to run on campaign-style battles
+(a General per side, the battle AI's guard and retreat on), and for B5 to be re-read by a
+human playing them. This entry is the first half. **The B5 human re-read is not done; the AC9
+box stays unticked until it is.**
+
+**Method.** `tests/c1_balance.rs` `b3_gate_on_campaign_battles` (ignored; run with
+`cargo test --release --test c1_balance -- --ignored --nocapture`). It uses the B3 pentagon
+batch: the five mass probes, every ordered pair, both orientations, seeds 0–5, so 300 matches.
+Seed k fields the k-th General kind on **both** sides, a mirror of Generals, so every aura is
+played and the strategies are what differs. It uses the skirmish start, the default
+`GateSpec`, the same `KillGate::of` and the same `MatchRecord`s. The suite keeps a small batch
+(`campaign_battles_feed_the_b3_gate_and_every_decision_has_a_battle_cause`, 8 matches) that
+checks every decided match has a battle loss cause for the loser and none for the winner, and
+that the gate reads a battle batch as it reads a skirmish one. Run time was 596 s, release,
+on the box.
+
+**Reading (2026-11-02, the C1 tree).** Status: **Fail**.
+
+| | value | interval | status |
+|---|---|---|---|
+| K1 mass_sentinel | 52.1% | [39.8, 64.4] | pass |
+| K1 mass_ripper | **87.5%** | [77.2, 95.6] | **FAIL, dominant** |
+| K1 mass_arclight | 71.9% | [59.8, 82.9] | undetermined |
+| K1 mass_bulwark | 28.1% | [17.1, 40.2] | pass |
+| K1 mass_ravager | 10.4% | [2.9, 20.3] | pass, losing |
+| K2 slot A | 47.5% (n 60) | | undetermined |
+| K2 left base | **24.2%** | | **FAIL** |
+| K3 decided median | 9960 ticks (2:46) | | |
+| K3 timeouts | 0% | | pass |
+| K3 band share (5–8 min) | **0.7%** | | **FAIL** |
+| K3 below / beyond band | 96% / 3.3% | | reported |
+
+Loss causes over the 300 matches: Generals fell 192, HQ lost 0, retreated 109, timeouts 0. Each
+General kind decided all 50 of its matches. Mean decided lengths were synthesis 11480,
+bulwark 11847, frenzy 11849, focus 11829, logistics 10843 and endurance 11384 ticks.
+
+**What it says.**
+- **K3: battles are short, by construction.** A General stands `general_front` (80) in front of
+  his base, so the first wave that breaks through reaches him well before it could raze an HQ.
+  No battle ended on an HQ. 96% end before the 5-minute mark. The 5–8 minute band was set for
+  a skirmish decided by razing (DESIGN_BRIEF), and whether a campaign battle should meet it is
+  a design question for B5 and C4, not something to tune here.
+- **Retreat is a real outcome.** About a third of losses (109 of 301 loss causes) are the AI
+  withdrawing at 60% of its peak army lost (`retreat_at_army_lost`). That is the outcome a
+  campaign carries forward with survivors (F-057).
+- **K1: mass_ripper dominates**, as it already does in skirmish readings (F-048 shows it at
+  100% in every attack-move candidate). The General layer does not cause it. Ravager is the
+  weak probe here.
+- **K2: the left base won 24% of the 60 mirrors.** Slot A is even (47.5%), so the bias is not
+  faction order. Skirmish readings have shown per-mirror left-base FAILs before (F-048: the
+  sentinel and ravager mirrors at 0%), because a deterministic mirror tends to give the same
+  winner across seeds. With a General as the target, a mirror is decided by a single early
+  fight, which makes that tendency stronger. The battle geometry is symmetric: `SideGround`
+  fronts point at x = 0 from bases at x = ±750, and the entry edges mirror. **Not investigated
+  further in C1.** It is flagged for B5 and the critic.
+
+**Not done (AC9).** The B5 human re-read on campaign battles. No content was tuned against
+this reading. Balance changes are data and design decisions for B5.
