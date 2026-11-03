@@ -36,18 +36,29 @@ balanced and fun. B5 needs a human to play, and that hasn't happened yet. So:
 
 ---
 
-## C0 — Nation and campaign design (paper; starts now)
+## C0 — Nation and campaign design (paper) ✅ done
 
-**Status (2026-11-02):** drafted in `DESIGN_BRIEF.md`, "Campaign design (C0 draft)" (F-052).
-The user decided three things: armies persist (survivors carry over, the dead are lost),
-nations hold cities and battles are fought over them, and a battle is won by killing the enemy
-General or by making the enemy retreat. The rest is a recommendation awaiting review. The
-boxes stay unticked until the user signs off.
+**Status (2026-11-02): ✅ done.** The design is in `DESIGN_BRIEF.md`: "Campaign design"
+plus "Campaign data shape" (F-052, updates 1–7). The user's decisions:
+- armies persist;
+- battles are fought over cities;
+- victory by the General's death or by retreat;
+- per-nation General auras;
+- absorbed Generals, at most 3;
+- veteran Generals;
+- siege damage persists;
+- several armies converge on one battle;
+- march points from the slowest unit's Speed;
+- extra house Generals can be raised;
+- perks apply only to a nation's own armies.
+
+The names (House Vael, Cinderhold) were delegated to me. Items marked *(rec)* stand as the
+design unless the user changes them. C1 waits for the B5 Go.
 
 The output goes into `DESIGN_BRIEF.md`, the one source of truth. Each item is
 reviewed by the user, not by the critic, since this is design, not code.
 
-- [ ] **The nation sheet**, one per nation (the player's house plus 5 neighbours). Each covers:
+- [x] **The nation sheet**, one per nation (the player's house plus 5 neighbours). Each covers:
   - **Identity:** name, the art it holds holy (or none), its doctrine, and its part in the
     Rupture and the heir's fall.
   - **Size:** what "size" means mechanically (see the map decision below).
@@ -62,34 +73,34 @@ reviewed by the user, not by the critic, since this is design, not code.
   - **General's aura:** the kind of buff its General gives, matched to its doctrine.
   - **Look:** colour and silhouette cues. Legibility is pillar P3: you must see which nation
     you're facing.
-- [ ] **Trait magnitude bounds.** This settles the brief's open question: how strong can a
+- [x] **Trait magnitude bounds.** This settles the brief's open question: how strong can a
   domain lean get before it distorts the pentagon? The proposed rule: no trait may move a
   pentagon link out of "holds", or a nation's cross-nation strength outside 35–65%. The
   balance sim checks this from C2 on.
-- [ ] **Campaign map structure:**
+- [x] **Campaign map structure:**
   - Is a nation a single node, or a set of **cities or provinces** with a capital?
   - What does size control?
   - Which nations border which?
   - Is the map fixed or seeded?
-- [ ] **Round structure:**
+- [x] **Round structure:**
   - Who fights whom each round.
   - Turn order.
   - How battles between two AI neighbours are decided. The proposal is to auto-resolve them
     with the real headless battle sim, which is deterministic and already built.
 - [x] **What carries between rounds** (decided 2026-11-02: surviving units and their HP carry over; the dead are lost). The options were nothing, an economy bonus, surviving or veteran units,
   or captured cities' traits.
-- [ ] **Diplomacy rules:**
+- [x] **Diplomacy rules:**
   - The ≤1-ally cap.
   - What betrayal costs.
   - What "2 diplomacy" means: the brief's open question, leaning towards "ties with two
     states".
   - How destabilize works.
-- [ ] **Win, lose and length:**
+- [x] **Win, lose and length:**
   - Domination is the win condition, and the player's loss condition needs defining.
   - The target campaign length in rounds and in hours.
 - [x] **Data shape** (drafted 2026-11-02, `DESIGN_BRIEF.md` "Campaign data shape"). Sketch `assets/data/nations.ron` and `campaign.ron` from the decisions
   above. These are the fields only; no numbers.
-- [ ] Record the decisions in an F-entry, and update this plan's C1–C7 ACs to match.
+- [x] Record the decisions in an F-entry, and update this plan's C1–C7 ACs to match.
 
 ### Draft roster, for the user to react to (not decided)
 

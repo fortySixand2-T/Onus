@@ -5772,5 +5772,9 @@ brief, not in `assets/data`, so the shipped content and its fingerprint are unto
 - **Nation perks apply only to that nation's own armies and cities.** An absorbed General
   brings his aura, but not his old nation's perks.
 
-C0's remaining open item is the names of the player's house and its capital.
+**Update 7 (2026-11-02): C0 closed.** The user delegated the names: **House Vael** for the
+player's house (close to "veil", for the veiled truth of the Rupture), **Cinderhold** for its
+capital, and **the Heir of Vael** for its first General. C0 has no open questions left; its
+boxes are ticked, and the *(rec)* items stand unless the user changes them. Next is C1
+(campaign battle rules), which waits for the B5 Go.
 

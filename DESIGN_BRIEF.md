@@ -159,7 +159,7 @@ Gated behind: the battle loop proving fun and the pentagon balancing first. None
 
 | Nation | Cities | Capital |
 |---|---|---|
-| Your house | 1 | Cinderhold *(placeholder name)* |
+| House Vael (you) | 1 | Cinderhold |
 | Forgeborn | 4 | — |
 | Verdant | 4 | — |
 | Aetherkin | 3 | — |
@@ -359,7 +359,7 @@ transfer through conquest. An absorbed General brings his **aura** to your army,
 old nation's perks: a Forgeborn General leading your army does not make your Foundry units
 cheaper.
 
-**Your house: the synthesists**
+**House Vael: the synthesists (you)**
 - **Art:** none. They practise the forbidden mix.
 - **Cities:** 1.
 - **Lean:** none. **Speciality:** **Synthesis**, a small bonus for units fighting beside units
@@ -418,9 +418,17 @@ cheaper.
 - **General's aura:** Endurance: slow HP regeneration.
 - **Look:** charcoal and red.
 
-### Still open (C0)
+### Names (chosen 2026-11-02)
 
-- The names of your house and its capital.
+The user delegated the naming.
+- **House Vael** is the player's house. *Vael* is close to "veil": the truth of the Rupture
+  is veiled, and the record is ash.
+- **Cinderhold** is its capital and last holding. It is the one city the pure houses left
+  standing after burning the rest, at the edge of the Rupture scar.
+- The heir's General is **the Heir of Vael**.
+
+C0 has no open questions left. Items marked *(rec)* stand as the design until the user
+changes them, or until a sim or play test shows they fail.
 
 ## Campaign data shape (C0 draft, 2026-11-02)
 
@@ -436,7 +444,7 @@ follow the existing RON style (`units.ron`, `strategies.ron`).
 // and an aura. If it dies, its side loses the battle (C1).
 generals: [
     (
-        id: "general_synthesis", name: "The Heir",
+        id: "general_synthesis", name: "Heir of Vael",
         speed: 5, offense: 5, defense: 6, armor: 4,
         aura: (
             radius: 220.0,                          // world units
@@ -474,7 +482,7 @@ rejects one that tries.
 (
     nations: [
         (
-            id: "house", name: "House <unnamed>",
+            id: "house", name: "House Vael",
             domain: None,                               // the synthesists hold no art
             colour: (0.45, 0.42, 0.40), accent: (0.95, 0.45, 0.15),
             general: "general_synthesis",
