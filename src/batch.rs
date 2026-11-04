@@ -45,6 +45,7 @@ use crate::sim::ai::UnknownStrategy;
 use crate::sim::content::Content;
 use crate::sim::economy::Produced;
 use crate::sim::spatial::Faction;
+use crate::sim::three::EconomyMode;
 use crate::sim::MatchState;
 
 /// How one match ended.
@@ -259,6 +260,9 @@ pub struct BatchSettings {
     /// content ships — so a strategy added to `strategies.ron` is picked up
     /// with no code change. An id the content does not have is refused.
     pub only: Option<Vec<String>>,
+    /// The economy every match of the batch plays (C3). Alloy only by
+    /// default, as every batch before C3.
+    pub economy: EconomyMode,
 }
 
 impl Default for BatchSettings {
@@ -268,6 +272,7 @@ impl Default for BatchSettings {
             seed_base: 0,
             tick_cap: headless::DEFAULT_TICK_CAP,
             only: None,
+            economy: EconomyMode::Alloy,
         }
     }
 }
@@ -290,6 +295,12 @@ impl BatchSettings {
 
     pub fn with_only(mut self, only: Vec<String>) -> Self {
         self.only = Some(only);
+        self
+    }
+
+    /// Play every match of the batch on `economy` (C3).
+    pub fn with_economy(mut self, economy: EconomyMode) -> Self {
+        self.economy = economy;
         self
     }
 }
@@ -428,7 +439,8 @@ pub fn run_batch(
                         .with_seed(seed)
                         .with_strategies(a, b)
                         .with_tick_cap(settings.tick_cap)
-                        .with_orientation(orientation);
+                        .with_orientation(orientation)
+                        .with_economy(settings.economy);
                     let record = run_match(content, &match_settings)?;
                     progress(&record);
                     records.push(record);
@@ -800,7 +812,9 @@ pub fn run_fixtures(
         let seed = seed_at(settings.seed_base, k);
         for fixture in fixtures {
             for orientation in Orientation::ALL {
-                let s = fixture.settings(seed, orientation, settings.tick_cap);
+                let s = fixture
+                    .settings(seed, orientation, settings.tick_cap)
+                    .with_economy(settings.economy);
                 let record = NationRecord {
                     nations: [fixture.sides[0].nation.clone(), fixture.sides[1].nation.clone()],
                     record: run_match(content, &s)?,
