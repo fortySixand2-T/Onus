@@ -820,3 +820,12 @@
 - [2026-11-04] Modified: src/sim/mod.rs — apply_commands prices units by the match's economy mode
 - [2026-11-04] Modified: tests/c3_economy.rs — C3 AC3 unit price tests
 - [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC3 (unit prices)
+- [2026-11-04] Modified: src/sim/nation.rs — three_resource_traits list per nation; Cost/Growth/AlloyYield stats; build_in/resolve_in by economy mode; mode load errors; growth/yield tables
+- [2026-11-04] Modified: src/sim/economy.rs — gather mints a nation's AlloyYield bonus in three-resource mode
+- [2026-11-04] Modified: src/sim/three.rs — ThreeEconomy accumulates the per-side yield remainder (hashed)
+- [2026-11-04] Modified: src/sim/content.rs — fingerprint a nation's three-resource traits when present
+- [2026-11-04] Modified: src/headless.rs — resolve nations in the match's economy mode
+- [2026-11-04] Modified: assets/data/nations.ron — each nation's brief lean as three_resource_traits; schema note
+- [2026-11-04] Modified: tests/c3_economy.rs — C3 AC4 lean tests
+- [2026-11-04] Modified: FINDINGS.md — F-077 two trait lists, one per economy
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC4 (real leans)

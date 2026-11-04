@@ -11,6 +11,11 @@
 //! faction [`Stockpiles`]. So at every tick
 //! `stockpile + carried + still-in-deposit` is invariant.
 //!
+//! The one exception is a three-resource match (C3) whose nation has an
+//! `AlloyYield` trait ("richer mines"): its deposits bank a per-mille bonus on
+//! top of the load, minted at the stockpile and accounted in
+//! [`crate::sim::three::ThreeEconomy`]. Alloy-only matches never mint.
+//!
 //! ## Determinism
 //! No wall-clock and no hash maps: stockpiles are a fixed-size array indexed by
 //! faction, definitions are looked up by index into the stable RON order, and
@@ -25,7 +30,7 @@ use std::collections::VecDeque;
 use crate::sim::content::Content;
 use crate::sim::nation::{Defs, NationRules};
 use crate::sim::spatial::Faction;
-use crate::sim::three::Bank;
+use crate::sim::three::{Bank, ThreeEconomy};
 use crate::sim::{GatherTarget, MoveTarget, Position, ResourceNode};
 
 // ---- stockpiles ------------------------------------------------------------
@@ -323,12 +328,14 @@ fn nearest_dropoff(
 /// Drive every gathering worker one tick through walk → harvest → return →
 /// deposit. Runs in `FixedUpdate` before [`crate::sim::movement`] so the
 /// `MoveTarget` it sets is followed on the same tick.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn gather(
     content: Res<Content>,
     // The match's nations (C2): each side's carry and harvest time.
     nations: Option<Res<NationRules>>,
     mut stock: ResMut<Stockpiles>,
+    // The three-resource economy (C3), if this match plays it: the yield bonus.
+    mut three: Option<ResMut<ThreeEconomy>>,
     mut nodes: Query<(&Position, &mut ResourceNode)>,
     buildings: Query<(Entity, &Position, &Building, &Faction)>,
     // `Carrying` is optional here on purpose: the query must *see* every entity
@@ -443,6 +450,12 @@ pub fn gather(
                     // Only what the stockpile accepts leaves the worker's hands.
                     let accepted = stock.add(faction, carrying.0);
                     carrying.0 -= accepted;
+                    if let Some(three) = three.as_deref_mut() {
+                        let milli = defs.yield_milli(faction, def_idx.0);
+                        let bonus = three.yield_bonus(faction, accepted, milli);
+                        // A full stockpile simply refuses the bonus.
+                        let _ = stock.add(faction, bonus);
+                    }
                     if carrying.0 > 0 {
                         // A full stockpile took only part of the load; the rest
                         // stays in hand and the worker waits here with it.

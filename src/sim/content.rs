@@ -694,6 +694,22 @@ impl Fnv {
     }
 }
 
+/// One nation trait, into the fingerprint (C2's form, shared by both lists).
+fn hash_trait(h: &mut Fnv, t: &crate::sim::nation::TraitDef) {
+    use crate::sim::nation::TraitTarget as T;
+    match &t.applies_to {
+        T::Unit(id) => h.u64(0).str(id),
+        T::Barracks(id) => h.u64(1).str(id),
+        T::Workers => h.u64(2),
+        T::CombatUnits => h.u64(3),
+        T::Building(id) => h.u64(4).str(id),
+        T::Buildings => h.u64(5),
+    };
+    h.u64(t.stat as u64);
+    h.bool(t.add.is_some()).u64(t.add.unwrap_or(0) as i64 as u64);
+    h.bool(t.mul.is_some()).u32(t.mul_milli());
+}
+
 /// Why content failed to load. Carries the offending path/message so a startup
 /// failure is diagnosable without a debugger.
 #[derive(Debug)]
@@ -1504,18 +1520,16 @@ impl Content {
                 h.str(&n.general).str(&n.strategy);
                 h.u64(n.traits.len() as u64);
                 for t in &n.traits {
-                    use crate::sim::nation::TraitTarget as T;
-                    match &t.applies_to {
-                        T::Unit(id) => h.u64(0).str(id),
-                        T::Barracks(id) => h.u64(1).str(id),
-                        T::Workers => h.u64(2),
-                        T::CombatUnits => h.u64(3),
-                        T::Building(id) => h.u64(4).str(id),
-                        T::Buildings => h.u64(5),
-                    };
-                    h.u64(t.stat as u64);
-                    h.bool(t.add.is_some()).u64(t.add.unwrap_or(0) as i64 as u64);
-                    h.bool(t.mul.is_some()).u32(t.mul_milli());
+                    hash_trait(&mut h, t);
+                }
+                // C3: mixed in only when present, so a nation without a
+                // three-resource list hashes as it did before C3.
+                if !n.three_resource_traits.is_empty() {
+                    h.str("three_resource_traits")
+                        .u64(n.three_resource_traits.len() as u64);
+                    for t in &n.three_resource_traits {
+                        hash_trait(&mut h, t);
+                    }
                 }
                 // Mixed in only when present, so a nation without one hashes
                 // as it did before the trait kind existed.

@@ -311,7 +311,7 @@ impl std::error::Error for MatchSetupError {}
 pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSetupError> {
     // Refused here, before anything is spawned (installed further down).
     let rules =
-        NationRules::resolve(&content, &settings.nations).map_err(MatchSetupError::Nation)?;
+        NationRules::resolve_in(&content, &settings.nations, settings.economy).map_err(MatchSetupError::Nation)?;
     // A roster's HP is checked against its side's (traited) pools.
     if let Some(b) = &settings.battle {
         b.check_with(&content, rules.as_ref())

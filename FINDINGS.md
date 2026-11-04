@@ -6779,3 +6779,41 @@ the default match must reproduce today's pinned hashes exactly, with no re-pin.
 **What this does not change.** Alloy-only play: no resource is inserted, no system runs, no
 row is hashed, no entity is spawned. `c1_golden`, `c2_golden` and `critic_b35_ac0` pass
 unchanged.
+
+## F-077 — Each nation has two trait lists, one per economy (C3 AC4)
+
+**Context.** C2's traits are Alloy-only stand-ins for the brief's domain leans (F-063 onward).
+C3 must play the real leans in a three-resource match without changing a single Alloy-only
+outcome.
+
+**Decision.**
+- **Two lists.** `NationDef.traits` stays the Alloy-only list. A new optional
+  `three_resource_traits` is played **instead of** it in a three-resource match.
+  `SideRules::build_in(content, nation, mode)` and `NationRules::resolve_in(.., mode)` pick the
+  list. `build` and `resolve` are the Alloy-only ones, as before. `nation::install` reads the
+  world's mode, so the economy is installed first.
+- **Three new stats**, three-resource only, all `mul`:
+  - `Cost`: a unit's brief `cost`, in its own resource.
+  - `Growth`: a growth source's Biomass, kept as a per-building per-mille table and summed per
+    side before rounding (F-076).
+  - `AlloyYield` (>= 1, gatherers only): the Alloy a deposited load banks. The bonus is
+    accumulated per-mille per side in `ThreeEconomy` and minted at the stockpile. It is
+    hashed with the economy's other remainders, and a full stockpile refuses it. This is the
+    one place Alloy is minted rather than moved, and only in a three-resource match.
+- **A trait that cannot act is a load error.** The three new stats in `traits` are refused
+  ("acts only in the three-resource economy"). `AlloyCost` on units in `three_resource_traits`
+  is refused too ("Alloy-only": a unit's Alloy price is not charged there). `AlloyCost` on
+  buildings is allowed in both, since buildings are priced in Alloy in both. The loader builds
+  every nation in both modes.
+- **The shipped leans** (`nations.ron`; magnitudes are subject to the AC8 gate):
+  - House Vael: none (Synthesis plays in both).
+  - Forgeborn: Foundry units `Cost` 0.95, buildings `BuildingHp` 1.15.
+  - Verdant: buildings `Growth` 1.15, Gene-Vats units `TrainTicks` 0.90.
+  - Aetherkin: Aether Spire units `Cost` 0.90, Arclight `AttackRange` +12.
+  - Tollmarch: workers `AlloyYield` 1.10, `GatherTicks` 0.98.
+  - Ashen Reach: buildings `BuildingHp` 1.30.
+- **Fingerprint.** A nation's three-resource list is mixed in only when it is non-empty, so
+  content without one fingerprints as before.
+
+**What this does not change.** Alloy-only play resolves the same list it did in C2, so the
+goldens, `c2_nations` and the nation gate inputs are unchanged.

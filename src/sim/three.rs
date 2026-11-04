@@ -261,16 +261,35 @@ pub struct ThreeEconomy {
     tick: u32,
     /// Per side, per-mille Biomass grown but not yet whole.
     growth_milli: [u32; 2],
+    /// Per side, per-mille Alloy-yield bonus (an `AlloyYield` trait) banked
+    /// but not yet whole.
+    yield_milli: [u32; 2],
 }
 
 impl ThreeEconomy {
     /// The state, as words for the state hash.
-    pub fn hash_words(&self) -> [u64; 3] {
+    pub fn hash_words(&self) -> [u64; 5] {
         [
             self.tick as u64,
             self.growth_milli[0] as u64,
             self.growth_milli[1] as u64,
+            self.yield_milli[0] as u64,
+            self.yield_milli[1] as u64,
         ]
+    }
+
+    /// `faction` banked a load of `amount` Alloy from a gatherer whose yield
+    /// is `milli` per-mille: the whole extra Alloy that bonus is now worth
+    /// (the fraction stays accumulated for the next load).
+    pub fn yield_bonus(&mut self, faction: Faction, amount: u32, milli: u32) -> u32 {
+        let extra = milli.saturating_sub(crate::sim::nation::TraitDef::MULT_SCALE);
+        if extra == 0 || amount == 0 {
+            return 0;
+        }
+        let k = slot(faction);
+        let total = self.yield_milli[k] as u64 + amount as u64 * extra as u64;
+        self.yield_milli[k] = (total % 1000) as u32;
+        (total / 1000) as u32
     }
 }
 

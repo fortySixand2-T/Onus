@@ -549,3 +549,212 @@ fn alloy_only_mode_still_prices_every_unit_in_alloy() {
     let mvp = c.unit("ripper").unwrap().mvp_alloy_cost;
     assert_eq!(banks(&app, Faction::A), minus(before, [mvp, 0, 0]));
 }
+
+// ---- AC4: the real domain leans --------------------------------------------------
+
+use onus::sim::nation::{NationRules, SideRules, TraitDef, TraitStat, TraitTarget};
+use onus::sim::{Carrying, GatherPhase, GatherTarget, ResourceNode};
+
+fn quiet_nations(economy: EconomyMode, a: Option<&str>, b: Option<&str>) -> App {
+    let s = MatchSettings::default()
+        .with_economy(economy)
+        .with_nations(a, b);
+    let mut app = headless::battle(shipped(), &s).expect("builds");
+    app.insert_resource(AiCommanders::new(0, &[]));
+    app
+}
+
+/// The three-resource trait of nation `id` on `stat`, if it has one.
+fn lean(c: &Content, id: &str, stat: TraitStat) -> Option<TraitDef> {
+    c.nations
+        .iter()
+        .find(|n| n.id == id)
+        .unwrap()
+        .three_resource_traits
+        .iter()
+        .find(|t| t.stat == stat)
+        .cloned()
+}
+
+/// `round(v * mul)`, half up, from the RON's float (the brief's rule).
+fn scaled(v: u32, t: &TraitDef) -> u32 {
+    let milli = (t.mul.unwrap() * 1000.0).round() as u64;
+    ((v as u64 * milli + 500) / 1000) as u32
+}
+
+#[test]
+fn every_nation_carries_its_brief_lean_for_the_three_resource_economy() {
+    let c = shipped();
+    // Forgeborn: Foundry units cheaper, sturdier buildings.
+    let t = lean(&c, "forgeborn", TraitStat::Cost).expect("forgeborn: cheaper Foundry units");
+    assert_eq!(t.applies_to, TraitTarget::Barracks("foundry".into()));
+    assert!(t.mul.unwrap() < 1.0);
+    assert!(lean(&c, "forgeborn", TraitStat::BuildingHp).unwrap().mul.unwrap() > 1.0);
+    // Verdant: Biomass grows faster, Gene-Vats train faster.
+    assert!(lean(&c, "verdant", TraitStat::Growth).unwrap().mul.unwrap() > 1.0);
+    let t = lean(&c, "verdant", TraitStat::TrainTicks).unwrap();
+    assert_eq!(t.applies_to, TraitTarget::Barracks("gene_vats".into()));
+    // Aetherkin: cheaper Aether, longer Arclight range.
+    let t = lean(&c, "aetherkin", TraitStat::Cost).expect("aetherkin: cheaper Aether");
+    assert_eq!(t.applies_to, TraitTarget::Barracks("aether_spire".into()));
+    assert!(t.mul.unwrap() < 1.0);
+    assert!(lean(&c, "aetherkin", TraitStat::AttackRange).unwrap().add.unwrap() > 0);
+    // Tollmarch: richer Alloy mines, faster gathering.
+    let t = lean(&c, "tollmarch", TraitStat::AlloyYield).expect("tollmarch: richer mines");
+    assert_eq!(t.applies_to, TraitTarget::Workers);
+    assert!(t.mul.unwrap() > 1.0);
+    assert!(lean(&c, "tollmarch", TraitStat::GatherTicks).unwrap().mul.unwrap() < 1.0);
+    // Ashen Reach: more building HP.
+    assert!(lean(&c, "ashen_reach", TraitStat::BuildingHp).unwrap().mul.unwrap() > 1.0);
+    // House Vael: no lean; Synthesis (both economies).
+    let house = c.nations.iter().find(|n| n.id == "house").unwrap();
+    assert!(house.three_resource_traits.is_empty());
+    assert!(house.synthesis.is_some());
+}
+
+#[test]
+fn verdant_grows_biomass_faster_in_three_resource_mode() {
+    let c = shipped();
+    let t = c.three_resource.clone().unwrap();
+    let growth = lean(&c, "verdant", TraitStat::Growth).unwrap();
+    let (hq_rate, hq_storage) = source(&c, "hq");
+    let mut app = quiet_nations(EconomyMode::ThreeResource, Some("verdant"), None);
+    let k = 40;
+    assert!(t.starting_biomass + k * hq_rate * 2 < hq_storage, "under the cap");
+    headless::tick(&mut app, t.growth.interval_ticks * k);
+    // Accumulated in per-mille: k intervals of `rate * milli`, whole only.
+    let milli = (growth.mul.unwrap() * 1000.0).round() as u32;
+    assert_eq!(
+        biomass(&app, Faction::A),
+        t.starting_biomass + k * hq_rate * milli / 1000
+    );
+    assert_eq!(biomass(&app, Faction::B), t.starting_biomass + k * hq_rate);
+    assert!(biomass(&app, Faction::A) > biomass(&app, Faction::B));
+}
+
+#[test]
+fn aetherkin_pays_less_aether_and_forgeborn_less_alloy_for_their_units() {
+    let c = shipped();
+    for (nation, building, unit, bank) in [
+        ("aetherkin", "aether_spire", "arclight", Bank::Aether),
+        ("forgeborn", "foundry", "sentinel", Bank::Alloy),
+    ] {
+        let t = lean(&c, nation, TraitStat::Cost).unwrap();
+        let price = scaled(c.unit(unit).unwrap().cost.amount, &t);
+        assert!(price < c.unit(unit).unwrap().cost.amount);
+        let mut app = quiet_nations(EconomyMode::ThreeResource, Some(nation), None);
+        grant(&mut app, Faction::A, Bank::Alloy, 2_000);
+        grant(&mut app, Faction::A, Bank::Aether, 500);
+        let at = place(&mut app, Faction::A, building, Vec2::new(150.0, -150.0));
+        let before = app.world().resource::<Stockpiles>().amount(Faction::A, bank);
+        train(&mut app, Faction::A, at, unit);
+        assert_eq!(queued(&app, at), 1);
+        assert_eq!(
+            app.world().resource::<Stockpiles>().amount(Faction::A, bank),
+            before - price,
+            "{nation} pays {price} for a {unit}"
+        );
+    }
+}
+
+#[test]
+fn tollmarch_banks_more_alloy_per_load_in_three_resource_mode_only() {
+    let c = shipped();
+    let rich = lean(&c, "tollmarch", TraitStat::AlloyYield).unwrap();
+    let carry = c.unit("worker").unwrap().mvp_carry_capacity;
+    let loads = 10u32;
+    // Hand one worker a full load at its own HQ, `loads` times, and count
+    // what the bank takes.
+    let banked = |economy: EconomyMode| -> [u32; 2] {
+        let mut app = quiet_nations(economy, Some("tollmarch"), None);
+        let w = c.unit_index("worker").unwrap();
+        let node = {
+            let mut q = app.world_mut().query::<(Entity, &ResourceNode)>();
+            q.iter(app.world()).next().unwrap().0
+        };
+        let mut out = [0; 2];
+        for (k, f) in [Faction::A, Faction::B].into_iter().enumerate() {
+            let base = if f == Faction::A { BASE[0] } else { BASE[1] };
+            let worker = app
+                .world_mut()
+                .spawn((
+                    Position(base),
+                    UnitDefIdx(w),
+                    c.units[w].mvp_kind,
+                    f,
+                    Health::from_def(&c, w),
+                ))
+                .id();
+            let before = app.world().resource::<Stockpiles>().alloy(f);
+            for _ in 0..loads {
+                app.world_mut().entity_mut(worker).insert((
+                    Position(base),
+                    Carrying(carry),
+                    GatherTarget(node),
+                    GatherPhase::ToDropoff,
+                ));
+                headless::tick(&mut app, 1);
+                assert_eq!(app.world().get::<Carrying>(worker).unwrap().0, 0, "deposited");
+            }
+            out[k] = app.world().resource::<Stockpiles>().alloy(f) - before;
+        }
+        out
+    };
+    let milli = (rich.mul.unwrap() * 1000.0).round() as u32;
+    assert_eq!(
+        banked(EconomyMode::ThreeResource),
+        [loads * carry * milli / 1000, loads * carry],
+        "Tollmarch banks its yield, accumulated per-mille; the other side banks its loads"
+    );
+    // Alloy-only: Tollmarch plays its stand-in (faster gathering), and a load
+    // is a load.
+    assert_eq!(banked(EconomyMode::Alloy), [loads * carry, loads * carry]);
+}
+
+#[test]
+fn alloy_only_mode_keeps_the_stand_in_traits_and_three_resource_mode_plays_the_leans() {
+    let c = shipped();
+    let arclight = c.unit_index("arclight").unwrap();
+    let names = [Some("aetherkin".to_string()), Some("verdant".to_string())];
+    let alloy = NationRules::resolve_in(&c, &names, EconomyMode::Alloy).unwrap().unwrap();
+    let three = NationRules::resolve_in(&c, &names, EconomyMode::ThreeResource)
+        .unwrap()
+        .unwrap();
+    // `resolve` is the Alloy-only one, as before C3.
+    let plain = NationRules::resolve(&c, &names).unwrap().unwrap();
+    let a = |r: &NationRules| r.side(Faction::A).unwrap().units[arclight].clone();
+    assert_eq!(a(&plain).cost.amount, a(&alloy).cost.amount);
+    assert_eq!(a(&alloy).cost.amount, c.units[arclight].cost.amount, "no Cost in Alloy");
+    assert!(a(&three).cost.amount < c.units[arclight].cost.amount);
+    // The installed rules follow the match's mode.
+    let app = quiet_nations(EconomyMode::ThreeResource, Some("aetherkin"), None);
+    let r = app.world().resource::<NationRules>();
+    assert_eq!(r.side(Faction::A).unwrap().units[arclight].cost.amount, a(&three).cost.amount);
+}
+
+#[test]
+fn a_trait_that_cannot_act_in_its_list_s_economy_is_refused() {
+    let c = shipped();
+    let k = c.nations.iter().position(|n| n.id == "forgeborn").unwrap();
+    let three_only = TraitDef {
+        applies_to: TraitTarget::Buildings,
+        stat: TraitStat::Growth,
+        add: None,
+        mul: Some(1.1),
+    };
+    let mut bad = c.clone();
+    bad.nations[k].traits.push(three_only);
+    let err = SideRules::build_in(&bad, k, EconomyMode::Alloy).unwrap_err();
+    assert!(err.contains("three-resource"), "{err}");
+
+    let alloy_price = TraitDef {
+        applies_to: TraitTarget::Barracks("foundry".into()),
+        stat: TraitStat::AlloyCost,
+        add: None,
+        mul: Some(0.9),
+    };
+    let mut bad = c.clone();
+    bad.nations[k].three_resource_traits.push(alloy_price);
+    let err = SideRules::build_in(&bad, k, EconomyMode::ThreeResource).unwrap_err();
+    assert!(err.contains("Alloy-only"), "{err}");
+}

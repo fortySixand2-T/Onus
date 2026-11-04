@@ -206,7 +206,7 @@ number lives in RON (`resources.ron`'s `three_resource` block, `nations.ron`).
   `cost` in `units.ron`): Machine units and Workers in Alloy, Ripper and Ravager in Biomass,
   Arclight in Aether. Buildings stay priced in Alloy. An order the side cannot pay in that
   resource is refused and charges nothing.
-- [ ] **Real leans:** in three-resource mode each nation plays its brief traits (lean plus
+- [x] **Real leans:** in three-resource mode each nation plays its brief traits (lean plus
   speciality) from `three_resource_traits` in `nations.ron`, instead of the Alloy-only
   stand-in. Forgeborn: Foundry units cheaper, sturdier buildings. Verdant: Biomass grows
   faster, Gene-Vats train faster. Aetherkin: Arclights cost less Aether, longer Arclight range.
