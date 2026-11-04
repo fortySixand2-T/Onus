@@ -837,3 +837,12 @@
 - [2026-11-04] Modified: tests/m4c_ai.rs — exhaustive match covers the new AiAction variants
 - [2026-11-04] Modified: FINDINGS.md — F-078 three-resource AI
 - [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC5 (AI)
+- [2026-11-04] Modified: src/sim/replay.rs — MatchLog records its economy; apply_log_economy installs or refuses it
+- [2026-11-04] Modified: src/lib.rs — apply_log_economy first in the sim chain under replay
+- [2026-11-04] Modified: src/headless.rs — wells framed by the two HQs (hq_frame)
+- [2026-11-04] Created: tests/c3_golden.rs — C3 AC7 golden licence and economy replay tests
+- [2026-11-04] Modified: tests/m5_replay.rs — content-edit fixture renames gene_vats in resources.ron too
+- [2026-11-04] Modified: tests/critic_b1_ac3.rs — namespace fixture renames gene_vats in resources.ron too
+- [2026-11-04] Modified: tests/critic_m5.rs — shared-id fixture renames Arclight's aether cost with the resource
+- [2026-11-04] Modified: FINDINGS.md — F-079 economy in the match log
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC7 (golden licence)

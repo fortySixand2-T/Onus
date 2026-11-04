@@ -221,7 +221,7 @@ number lives in RON (`resources.ron`'s `three_resource` block, `nations.ron`).
 - [ ] **Client:** the pick screen chooses the economy. The panel shows all three resources,
   and the ley-wells are drawn with their holder. Kept thin; anything that needs a human look on
   the Mac is listed in FINDINGS.
-- [ ] **Golden licence:** the default (Alloy-only) setting reproduces today's pinned results
+- [x] **Golden licence:** the default (Alloy-only) setting reproduces today's pinned results
   exactly: no re-pin. A match log records its economy mode, and a replay applies it or refuses.
 - [ ] **Gates:** the B3 balance gate (K1/K2/K3) and the C2 nation cross gate are re-run on the
   three-resource economy, and the numbers are recorded in FINDINGS. Economy numbers and trait

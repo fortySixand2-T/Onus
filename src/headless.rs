@@ -426,12 +426,14 @@ pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSe
 
     // The ley-wells (C3), **last**: they are new entities, and spawning them
     // anywhere earlier would move every entity after them (F-011). Nothing in
-    // an Alloy-only match.
-    crate::sim::three::spawn_wells(
-        app.world_mut(),
+    // an Alloy-only match. Laid out between the two HQs, as a replay lays
+    // them out (`replay::apply_log_economy`); a side with no HQ (a battle
+    // roster) falls back to its base.
+    let (a, b) = crate::sim::three::hq_frame(app.world_mut()).unwrap_or((
         base_of(Faction::A, settings.orientation),
         base_of(Faction::B, settings.orientation),
-    );
+    ));
+    crate::sim::three::spawn_wells(app.world_mut(), a, b);
 
     app.insert_resource(commanders);
     app.insert_resource(CommandLog::new(settings.seed));

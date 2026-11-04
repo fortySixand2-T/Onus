@@ -6852,3 +6852,43 @@ hold its home well and contest the middle one. Alloy-only AI traces must stay un
 **What this does not change.** Alloy-only: no wells, so there are no posts and every unit is
 Alloy-priced. `b1_matchup`'s journal pins, `m4c_ai`, `critic_m4c`, `c1_ai`, the goldens and
 `c2_nations` all pass unchanged.
+
+## F-079 — A match log records its economy, and a replay applies it or refuses (C3 AC7)
+
+**Context.** The golden licence: the Alloy-only default reproduces today's pinned results, with
+no re-pin, and a match log carries its economy so a replay can play it back or refuse it.
+
+**Decision.**
+- **The log field is optional.** `MatchLog.economy: EconomyMode`, `#[serde(default)]`, and it is
+  skipped when Alloy only. An Alloy-only log is byte for byte what it was before C3, and a
+  pre-C3 log (no field) reads as Alloy only. The sim stamps it the way it stamps the nations
+  (`stamp_content`): from whether `ThreeEconomy` exists on the first stamp. A later difference
+  marks the log `content_changed`.
+- **Content check.** `matches_content` refuses a three-resource log against content without
+  a `three_resource` block, before the fingerprint check, with a message that names the
+  economy. The fingerprint already covers the block when it is present (F-076).
+- **The replay applies the economy at tick 0, before `identify`.** `replay::apply_log_economy`
+  runs right after the gather-claim sweep, where every replay system sits (F-008, pinned by
+  `critic_m5`), and before `identify` and `apply_log_nations`. The wells are entities and must
+  exist when `identify` numbers the field on tick 0 (F-011). In an
+  Alloy-set-up world at tick 0 it installs the economy (`three::install`), re-installs the
+  nations so their three-resource lists apply, and spawns the wells framed by the two HQs
+  (`three::hq_frame`). That is the same layout a headless three-resource match gets, since
+  `headless` now frames its wells by `hq_frame` too, falling back to the bases when a side has
+  no HQ.
+- **Refusals.** A log of the other economy than the world plays is refused when the world is
+  three-resource and the log is Alloy only, and also when the match is already under way
+  (tick > 0). Nothing of a refused log is fed (cursor 0), and nothing is installed.
+
+**Fixture fixes (the full debug suite found them; not pins).**
+- `m5_replay` and `critic_b1_ac3` rename `gene_vats` in `units.ron`. Since AC1,
+  `resources.ron`'s growth sources also name it, so both fixtures now rename that line too.
+- `critic_m5`'s shared-id fixture renames the resource `aether` to `worker`, on the grounds
+  that nothing resolves `aether`. Since AC3, Arclight's `cost` resolves it (load-checked when
+  the `three_resource` block is present), so the fixture renames that reference too. The
+  collision is now tested at a reference site as well.
+
+**Golden status.** No pin moved: c1_golden, c2_golden, critic_b35_ac0, b1_matchup's journal pins,
+m4c, c1_ai, c2_nations, m5_replay, critic_m6, p2_log_writer and b4_attack_move all pass unchanged.
+`tests/c3_golden.rs` adds that an Alloy-only match plays identically with the three-resource
+content and without it (state hash per tick, AI journal and outcome, skirmish and nations).

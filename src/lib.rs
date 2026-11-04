@@ -196,6 +196,12 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
                 // half-claim swept here therefore reaches none of them. Any new
                 // reader of the claim belongs after this system — see F-008.
                 sim::economy::repair_gather_claims,
+                // A replay's starting economy (C3), before `identify`: the
+                // ley-wells it spawns must be numbered on tick 0, as they were
+                // in the recorded world. Replay-only, a no-op after its first
+                // tick, and after the sweep like every replay system (F-008).
+                sim::replay::apply_log_economy
+                    .run_if(resource_exists::<sim::replay::ReplaySource>),
                 // Every thing in the world carries the sim's own stable id, so
                 // the command log and the state hash address entities by
                 // something that does not move when the app's configuration

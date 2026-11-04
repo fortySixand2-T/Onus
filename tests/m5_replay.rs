@@ -2625,6 +2625,8 @@ fn the_shipped_content_loads_and_a_shared_id_across_namespaces_is_legal() {
         &[
             ("units.ron", "id: \"gene_vats\"", "id: \"worker\""),
             ("strategies.ron", "building: \"gene_vats\"", "building: \"worker\""),
+            // C3: the three-resource block's growth source names it too.
+            ("resources.ron", "building: \"gene_vats\"", "building: \"worker\""),
         ],
     );
     assert_eq!(

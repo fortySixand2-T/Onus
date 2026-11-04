@@ -2474,13 +2474,18 @@ fn nothing_in_src_builds_a_content_that_skipped_validation() {
 /// a **unit** sharing an id is legal, loads, and replays — because every
 /// reference site says which kind it means.
 fn shared_id_across_namespaces() -> Result<Content, onus::sim::content::ContentError> {
+    // C3: Arclight's `cost` names `aether`, and the three-resource economy
+    // resolves it, so the rename follows it there: the unit `worker` and the
+    // resource `worker` now meet at a reference site that says which it means.
     let dir = content_dir_with(
         "shared-id",
-        std::fs::read_to_string(data_dir().join("units.ron")).expect("units.ron"),
+        std::fs::read_to_string(data_dir().join("units.ron"))
+            .expect("units.ron")
+            .replacen("resource: \"aether\"", "resource: \"worker\"", 1),
     );
     let rtext = std::fs::read_to_string(data_dir().join("resources.ron")).expect("resources.ron");
-    // `aether` is named by nothing the sim resolves (it is not the currency),
-    // so renaming it to a unit id is a pure cross-namespace collision.
+    // `aether` was named by nothing the sim resolved before C3 (it is not the
+    // currency), so renaming it to a unit id is a cross-namespace collision.
     std::fs::write(
         dir.join("resources.ron"),
         rtext.replacen("id: \"aether\"", "id: \"worker\"", 1),
