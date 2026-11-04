@@ -666,3 +666,218 @@ fn termination(records: &[MatchRecord], m: &WinMatrix, spec: &GateSpec) -> Termi
         all_timeout: d.is_all_timeout(),
     }
 }
+
+// ---- C2: the nation criterion ------------------------------------------------
+//
+// C0's trait-magnitude bound, gated from C2 on: no trait may move a nation's
+// cross-nation strength outside 35-65%, or a pentagon link out of "holds".
+// Read off nation-axis batches ([`crate::batch::NationRecord`]):
+//
+// - **Strength** comes from the [`crate::batch::NationAxis::Cross`] batch: the
+//   same strategy on both sides, two different nations, so the traits are what
+//   differs. A nation's strength is its row mean in the nation matrix (the
+//   records relabelled by nation), judged "within 50% +/- 15 points" on its
+//   interval exactly as K1 is judged, with `(nation pair, strategy, seed)` as
+//   the cluster.
+// - **Pentagon** comes from [`crate::pentagon::nation_pentagon_fixtures`]: each
+//   link's predator probe and prey probe, under every ordered nation pair
+//   (the predator's nation first, mirrors included). Each pair's links are
+//   read by the B3 [`PentagonReport`]; a link that FAILS fails the criterion,
+//   and the criterion PASSes only if every link under every pair holds.
+
+use crate::batch::NationRecord;
+use crate::pentagon::{CycleError, Link, PentagonReport, Verdict};
+
+/// The nation criterion's thresholds. Harness configuration, not content.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NationSpec {
+    /// Lowest cross-nation strength allowed (C0: 35%).
+    pub min_strength: f64,
+    /// Highest cross-nation strength allowed (C0: 65%).
+    pub max_strength: f64,
+    /// Intra-cluster correlation, as [`GateSpec::icc`].
+    pub icc: f64,
+}
+
+impl Default for NationSpec {
+    fn default() -> Self {
+        Self {
+            min_strength: 0.35,
+            max_strength: 0.65,
+            icc: F031_ICC,
+        }
+    }
+}
+
+/// One nation's cross-nation strength.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NationStrengthRow {
+    pub nation: String,
+    /// Opponent nations played.
+    pub opponents: u32,
+    /// Opponents with a decided match behind the mean.
+    pub cells: u32,
+    /// The row mean, judged within `[min_strength, max_strength]`.
+    pub strength: Reading,
+}
+
+/// The pentagon under one ordered nation pair.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PairPentagon {
+    /// The nation fielding each link's predator probe.
+    pub predator_nation: String,
+    /// The nation fielding each link's prey probe.
+    pub prey_nation: String,
+    pub links: Vec<Link>,
+    pub status: Status,
+}
+
+/// The whole nation criterion.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct NationGate {
+    pub spec: NationSpec,
+    pub status: Status,
+    pub strength_status: Status,
+    /// Every nation, in nation-matrix (first appearance) order.
+    pub strength: Vec<NationStrengthRow>,
+    /// Nations whose strength resolves outside the band.
+    pub failing: Vec<String>,
+    pub pentagon_status: Status,
+    /// Every ordered pair played, in record (first appearance) order.
+    pub pentagon: Vec<PairPentagon>,
+}
+
+fn link_status(v: Verdict) -> Status {
+    match v {
+        Verdict::Holds => Status::Pass,
+        Verdict::Fails => Status::Fail,
+        _ => Status::Undetermined,
+    }
+}
+
+impl NationGate {
+    /// Read the criterion off a cross batch and a pentagon batch. Either may
+    /// be empty: its part is then undetermined, never a pass.
+    pub fn of(
+        content: &Content,
+        cross: &[NationRecord],
+        pentagon: &[NationRecord],
+        spec: &NationSpec,
+    ) -> Result<Self, CycleError> {
+        let strength = nation_strength(cross, spec);
+        let strength_status = Status::all(strength.iter().map(|r| r.strength.status));
+        let pairs = pair_pentagons(content, pentagon)?;
+        let pentagon_status = Status::all(pairs.iter().map(|p| p.status));
+        Ok(NationGate {
+            spec: spec.clone(),
+            status: Status::all([strength_status, pentagon_status]),
+            strength_status,
+            failing: strength
+                .iter()
+                .filter(|r| r.strength.status == Status::Fail)
+                .map(|r| r.nation.clone())
+                .collect(),
+            strength,
+            pentagon_status,
+            pentagon: pairs,
+        })
+    }
+}
+
+fn nation_strength(cross: &[NationRecord], spec: &NationSpec) -> Vec<NationStrengthRow> {
+    let records: Vec<MatchRecord> = cross
+        .iter()
+        .filter(|r| !r.is_mirror())
+        .map(NationRecord::by_nation)
+        .collect();
+    let m = WinMatrix::of(&records);
+    let rule = Rule::Within {
+        centre: 0.5 * (spec.min_strength + spec.max_strength),
+        tolerance: 0.5 * (spec.max_strength - spec.min_strength),
+    };
+    // Clusters per cell: distinct (strategy, seed) among the pair's decided
+    // matches, sorted and deduplicated (no map).
+    let clusters_of = |i: usize, j: usize| -> u32 {
+        let (a, b) = (&m.ids()[i], &m.ids()[j]);
+        let mut keys: Vec<(&str, u64)> = cross
+            .iter()
+            .filter(|r| r.record.result.is_decided())
+            .filter(|r| (&r.nations[0] == a && &r.nations[1] == b) || (&r.nations[0] == b && &r.nations[1] == a))
+            .map(|r| (r.record.strategies[0].as_str(), r.record.seed))
+            .collect();
+        keys.sort_unstable();
+        keys.dedup();
+        keys.len() as u32
+    };
+    (0..m.len())
+        .map(|i| {
+            let mut ns = Vec::new();
+            let mut cs = Vec::new();
+            let mut opponents = 0;
+            for j in (0..m.len()).filter(|&j| j != i) {
+                let c = m.cell(i, j).copied().unwrap_or_default();
+                if c.played() == 0 {
+                    continue;
+                }
+                opponents += 1;
+                if c.n_decided > 0 {
+                    ns.push(c.n_decided);
+                    cs.push(clusters_of(i, j));
+                }
+            }
+            NationStrengthRow {
+                nation: m.ids()[i].clone(),
+                opponents,
+                cells: ns.len() as u32,
+                strength: Reading::mean_of(m.row_mean(i).mean, &ns, &cs, spec.icc, rule),
+            }
+        })
+        .collect()
+}
+
+fn pair_pentagons(content: &Content, pentagon: &[NationRecord]) -> Result<Vec<PairPentagon>, CycleError> {
+    if pentagon.is_empty() {
+        return Ok(Vec::new());
+    }
+    let links = PentagonReport::of_records(content, &[])?;
+    // Which link a record plays, and so which slot holds the predator.
+    let assign = |r: &NationRecord| -> Option<(String, String)> {
+        let [x, y] = &r.record.strategies;
+        links.links().iter().find_map(|l| {
+            let (p, q) = (l.predator_strategy.as_ref()?, l.prey_strategy.as_ref()?);
+            if x == p && y == q {
+                Some((r.nations[0].clone(), r.nations[1].clone()))
+            } else if x == q && y == p {
+                Some((r.nations[1].clone(), r.nations[0].clone()))
+            } else {
+                None
+            }
+        })
+    };
+    let mut pairs: Vec<(String, String)> = Vec::new();
+    for r in pentagon {
+        if let Some(pair) = assign(r) {
+            if !pairs.contains(&pair) {
+                pairs.push(pair);
+            }
+        }
+    }
+    pairs
+        .into_iter()
+        .map(|(pn, qn)| {
+            let own: Vec<MatchRecord> = pentagon
+                .iter()
+                .filter(|r| assign(r).as_ref().is_some_and(|(a, b)| *a == pn && *b == qn))
+                .map(|r| r.record.clone())
+                .collect();
+            let report = PentagonReport::of_records(content, &own)?;
+            let links = report.links().to_vec();
+            Ok(PairPentagon {
+                status: Status::all(links.iter().map(|l| link_status(l.verdict))),
+                predator_nation: pn,
+                prey_nation: qn,
+                links,
+            })
+        })
+        .collect()
+}

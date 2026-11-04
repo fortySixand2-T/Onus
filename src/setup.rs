@@ -82,6 +82,54 @@ pub fn setup(mut commands: Commands, content: Res<Content>) {
             Transform::from_translation(pos.extend(0.0)),
         ));
     }
+
+    // The nation pick (C2), last, so nothing above moves in allocation
+    // order (F-011). The match waits on it: the sim's tick gate stays
+    // shut until [`start_match`] has applied the choice, so the nations are in
+    // place before the first tick, exactly as a headless match installs them.
+    commands.insert_resource(NationPick::for_content(&content));
+    let mut gate = TickGate::default();
+    gate.close();
+    commands.insert_resource(gate);
+    commands.spawn((
+        Text::new(""),
+        TextFont {
+            font_size: bevy::text::FontSize::Px(22.0),
+            ..default()
+        },
+        TextColor(Color::srgb(0.95, 0.95, 0.95)),
+        Node {
+            position_type: PositionType::Absolute,
+            left: Val::Px(12.0),
+            top: Val::Px(60.0),
+            ..default()
+        },
+        NationPicker,
+    ));
+    // Each side's nation, by name in its colour (P3): you top-left, the
+    // opponent top-right.
+    for (faction, left) in [(PLAYER_FACTION, true), (Faction::B, false)] {
+        let mut node = Node {
+            position_type: PositionType::Absolute,
+            top: Val::Px(12.0),
+            ..default()
+        };
+        if left {
+            node.left = Val::Px(12.0);
+        } else {
+            node.right = Val::Px(12.0);
+        }
+        commands.spawn((
+            Text::new(""),
+            TextFont {
+                font_size: bevy::text::FontSize::Px(24.0),
+                ..default()
+            },
+            TextColor(BUILDING_COLOR),
+            node,
+            NationLabel(faction),
+        ));
+    }
 }
 
 /// Spawn a faction's HQ: sim state (definition, faction, production queue and
@@ -126,4 +174,25 @@ fn spawn_unit(
             Transform::from_translation(pos.extend(0.0)),
         ))
         .id()
+}
+
+/// Apply the player's nation pick to the match (C2): once, when Enter has been
+/// pressed and before the first tick. The nations go in through the sim's own
+/// setup function (`sim::nation::install`, the one a headless match uses), the
+/// opponent's commander is given its nation's personality, and the tick gate
+/// opens. This is match setup, like `setup` itself — not an order: nothing
+/// has been played yet, and once it has run the pick is closed for good.
+pub fn start_match(world: &mut World) {
+    let pick = world.resource::<NationPick>().clone();
+    let content = world.resource::<Content>().clone();
+    let id = |k: Option<usize>| k.and_then(|k| content.nations.get(k)).map(|n| n.id.clone());
+    let names = [id(pick.player), id(pick.opponent)];
+    crate::sim::nation::install(world, &names).expect("the pick names only loaded nations");
+    if let Some(nation) = pick.opponent.and_then(|k| content.nations.get(k)) {
+        let ai = AiCommanders::matchup(&content, MATCH_SEED, &[(Faction::B, &nation.strategy)])
+            .expect("the loader checked every nation's strategy");
+        world.insert_resource(ai);
+    }
+    world.resource_mut::<NationPick>().phase = PickPhase::Playing;
+    world.resource_mut::<TickGate>().open();
 }

@@ -85,20 +85,46 @@ pub fn build_app() -> App {
                 // drain accumulates for the rest of the session.
                 input::emit_commands
                     .after(input::update_cursor)
-                    .run_if(sim::victory::match_running),
+                    .run_if(sim::victory::match_running)
+                    .run_if(client::match_started),
                 input::emit_build_commands
                     .after(input::update_cursor)
-                    .run_if(sim::victory::match_running),
+                    .run_if(sim::victory::match_running)
+                    .run_if(client::match_started),
                 ui::attach_visuals,
                 ui::sync_transform,
                 ui::draw_selection,
                 ui::update_options_panel,
                 ui::report_rates,
+                ui::draw_nation_marks,
             ),
         );
+    add_nation_pick(&mut app);
     add_sim_systems(&mut app, FixedUpdate);
     add_replay_writer(&mut app, replay_config);
     app
+}
+
+/// Register the pre-match nation pick (C2) on `app`: the keys, applying the
+/// choice to the match, and the labels and colours that show it. **The one
+/// definition**, shared by the shipped app and the headless client tests
+/// (F-004). Needs the `NationPick` that [`setup::setup`] inserts.
+pub fn add_nation_pick(app: &mut App) {
+    app.add_systems(
+        Update,
+        (
+            input::pick_nations.run_if(resource_exists::<NationPick>),
+            setup::start_match
+                .after(input::pick_nations)
+                .run_if(client::nations_chosen),
+            ui::update_nation_labels
+                .after(setup::start_match)
+                .run_if(resource_exists::<NationPick>),
+            ui::tint_buildings
+                .after(setup::start_match)
+                .run_if(resource_exists::<NationPick>),
+        ),
+    );
 }
 
 /// Register the replay writer on `app`. **The one definition of when a match's
@@ -187,6 +213,10 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
                 // them think again would double every one of them.
                 sim::ai::ai_commanders
                     .run_if(not(resource_exists::<sim::replay::ReplaySource>)),
+                // A replay's starting world includes its nations (C2): applied
+                // (or the log refused) before anything of it is fed.
+                sim::replay::apply_log_nations
+                    .run_if(resource_exists::<sim::replay::ReplaySource>),
                 // A replay's only producer: this tick's logged commands, pushed
                 // onto the same queue every other producer writes to.
                 sim::replay::feed_replay

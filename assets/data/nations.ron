@@ -1,0 +1,102 @@
+// nations.ron — the six nations of the campaign (C0's roster, DESIGN_BRIEF
+// "The nations"), as they play in a 1v1 (C2).
+//
+// SCHEMA NOTE (C2).
+//   id / name   — the nation; `id` is what MatchSettings::nations names.
+//   domain      — the art it holds holy, a resources.ron `domain` (None: the
+//                 synthesists hold none).
+//   colour / accent — its look (pillar P3: you must see which nation you
+//                 face), linear RGB in [0, 1]. Client-side only.
+//   general     — the General type it fields (a units.ron `generals` id).
+//   strategy    — its battle personality: the strategies.ron script its AI
+//                 plays. Existing scripts, so the batch's default strategy
+//                 roster is unchanged by this file.
+//   traits      — modifiers on the content its own armies play with, applied
+//                 in this order to that side only (perks never transfer):
+//                 (applies_to: <target>, stat: <stat>, mul: <factor>) or
+//                 (applies_to: <target>, stat: <stat>, add: <whole points>).
+//     targets: Unit("id"), Barracks("building id") (every unit it trains),
+//              Workers, CombatUnits, Building("id"), Buildings
+//     `mul` stats: AlloyCost (units, buildings), TrainTicks, GatherTicks,
+//                  AttackTicks (< 1 is faster), BuildingHp (buildings)
+//     `add` stats: CarryCapacity (gatherers), AttackRange (world units),
+//                  Speed, Offense, Defense, Armor (units; Armor also buildings)
+//   synthesis   — optional, the mixed-army trait: (radius: <world units>,
+//                 modifiers: [aura modifiers, as units.ron's], max: <1..=2>).
+//                 Each of the side's units with a domain gets the modifiers
+//                 x the distinct *other* domains among its own units within
+//                 the radius, capped at max. Mono-domain: nothing.
+//   A `mul` is held as integer per-mille and applied as round(v * m / 1000);
+//   the traited content must still pass every load check (max_stat, reach
+//   within engage_range, ...), or the file is refused.
+//
+// These are the **Alloy-only stand-in** traits (CAMPAIGN_PLAN C0): the real
+// domain leans (Biomass grows faster, cheaper Aether, ...) arrive with C3's
+// three-resource economy. Magnitudes are bounded by the C0 rule — no trait may
+// move a pentagon link out of "holds" or a nation's cross-nation strength
+// outside 35-65% — and checked by the C2 nation gate (FINDINGS F-063 onward).
+(
+    nations: [
+        (
+            id: "house", name: "House Vael",
+            domain: None,
+            colour: (0.45, 0.42, 0.40), accent: (0.95, 0.45, 0.15),   // ash grey, ember
+            general: "general_synthesis",
+            strategy: "synth_triad",
+            traits: [],
+            // Its edge is the mix: every unit gets the modifiers once per
+            // *other* domain among its own units within the radius, up to max.
+            synthesis: (radius: 160.0, modifiers: [ (stat: Offense, add: 1) ], max: 2),
+        ),
+        (
+            id: "forgeborn", name: "Forgeborn",
+            domain: "machine",
+            colour: (0.35, 0.33, 0.30), accent: (0.80, 0.62, 0.25),   // iron, brass
+            general: "general_bulwark",
+            strategy: "mvp",   // Sentinel and Bulwark
+            traits: [
+                (applies_to: Barracks("foundry"), stat: AlloyCost, mul: 0.95),
+            ],
+        ),
+        (
+            id: "verdant", name: "Verdant",
+            domain: "flesh",
+            colour: (0.30, 0.55, 0.25), accent: (0.90, 0.87, 0.75),   // green, bone
+            general: "general_frenzy",
+            strategy: "rush",   // Rippers, early and often
+            traits: [
+                (applies_to: Barracks("gene_vats"), stat: TrainTicks, mul: 0.90),
+            ],
+        ),
+        (
+            id: "aetherkin", name: "Aetherkin",
+            domain: "energy",
+            colour: (0.55, 0.35, 0.80), accent: (0.95, 0.95, 1.00),   // violet, white
+            general: "general_focus",
+            strategy: "mass_arclight",
+            traits: [
+                (applies_to: Unit("arclight"), stat: AttackRange, add: 12),
+            ],
+        ),
+        (
+            id: "tollmarch", name: "Tollmarch",
+            domain: "machine",
+            colour: (0.85, 0.70, 0.20), accent: (0.20, 0.40, 0.85),   // gold, blue
+            general: "general_logistics",
+            strategy: "turtle",   // economy first
+            traits: [
+                (applies_to: Workers, stat: GatherTicks, mul: 0.98),   // gather faster
+            ],
+        ),
+        (
+            id: "ashen_reach", name: "Ashen Reach",
+            domain: None,
+            colour: (0.20, 0.20, 0.22), accent: (0.80, 0.15, 0.12),   // charcoal, red
+            general: "general_endurance",
+            strategy: "turtle",   // defensive
+            traits: [
+                (applies_to: Buildings, stat: BuildingHp, mul: 1.30),
+            ],
+        ),
+    ],
+)

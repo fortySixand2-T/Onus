@@ -6159,3 +6159,565 @@ against 2 x 30) are unaffected. Gates in `tests/c1_roster.rs`:
   refused, and so is the near-boundary case 20 + 39.5 < 60.
 - `a_layout_exactly_two_spacings_deep_loads_and_keeps_every_unit_on_the_field`: 20 + 40 ==
   2 x 30 loads, and 1, 8 and 30 units all start at least one spacing inside the edge.
+
+## F-062 — C2 starts ahead of B5, by the user's decision (C2)
+
+**Context.** `CAMPAIGN_PLAN.md` gates C1 onward on B5 Go, the human play test, which has not
+run. The user overrode that gate for C1 on 2026-11-02 (F-052 onward). On 2026-11-03 the user
+said "start c2".
+
+**Decision.** C2 (nations in the 1v1, light traits on Alloy) starts now, on the same terms as
+C1: B5 still runs when the user can play, and its findings can revise C1, C2 and later
+milestones. The C2 heading in `CAMPAIGN_PLAN.md` now says "started 2026-11-03, ahead of B5 by
+user decision", and the plan's gate section records the override.
+
+**What this does not change.** C1's open AC (the B5 human re-read of campaign battles) stays
+open. Nothing in C2 re-pins a golden: the "no nation" default must reproduce today's results
+exactly (C2 AC2).
+
+## F-063 — Nations as data: how the traits reach the sim (C2 AC1)
+
+**Context.** C2 AC1 asks for `nations.ron` with C0's roster, traits as data-driven modifiers
+(never code per nation), and selection through `MatchSettings`, one nation per side, default none.
+
+**Decisions.**
+- **Traits rewrite a side's copy of the content.** `nation::SideRules::build` clones the roster
+  `UnitDef`s and `BuildingDef`s and applies the nation's traits in file order. Targets are
+  `Unit(id)`, `Barracks(id)` (everything a building trains), `Workers`, `CombatUnits`,
+  `Building(id)` and `Buildings`. Stats are a `mul` (cost, train, gather and attack ticks,
+  building HP) or an `add` (carry, reach, speed, offense, defense, armor). A `mul` is held as
+  integer per-mille and applied as round-half-up(v * m / 1000), with no float in the sim. The
+  traited copy must pass the same load checks as the base content (max_stat, non-zero
+  cost/train/carry, reach within engage and attack-move range, no combat stat on a
+  non-combatant, no carry on a non-gatherer). Otherwise the file is refused at load.
+- **The layer exists only when it is used.** `NationRules` is an optional resource, inserted
+  by `headless::battle` only when a side names a nation (the C1 pattern; critic_p2's "no
+  init_resource" check still holds). Every per-faction read goes through `nation::Defs`. With
+  no `NationRules`, `Defs` returns exactly the old `Content` lookup, so the golden licence
+  (AC2) holds by construction. The per-tick state hash emits a new row tag (`NATIONS = 25`)
+  only when the resource exists, and the content fingerprint mixes in a "nations" section only
+  when `nations.ron` is present.
+- **Stand-in traits (Alloy only):** House none (its edge is the Synthesis aura); Forgeborn
+  foundry units cost x0.90; Verdant gene-vats units train x0.90; Aetherkin Arclight reach +12;
+  Tollmarch workers carry +1; Ashen Reach building HP x1.15. These are first guesses; the AC4
+  gate tunes them.
+- **Strategies are orthogonal.** A nation names its battle-personality script, but
+  `MatchSettings` keeps nations and strategies separate. A side with no named strategy plays the
+  content default whatever its nation, so a nation axis never silently changes a strategy
+  matchup. The batch (AC3) chooses which pairing to run.
+- **Not modelled:** a RepairRate trait (the sim has no repair) and build time (buildings are
+  instant). Diplomatic disposition is campaign-layer data (C5) and is not in this file yet.
+
+**Known gaps.**
+- `MatchLog` records no nations, the same gap as F-061's `BattleSetup`. ~~A replay of a nation
+  match against the wrong content or settings is caught by the state hash on its first tick
+  (the NATIONS rows), not rebuilt.~~ **Overstated, corrected in F-069:** nothing compared
+  hashes during a replay, so the replay ran, unrefused, as a different match (the critic's
+  test diverged at tick 0). The log now records the nations and the replay installs them.
+- `BattleSetup::check` validates a roster building's HP against the base pool, so a campaign
+  roster cannot name HP above the base maximum even for Ashen Reach.
+
+**One older test's premise moved, no value re-pinned.** `tests/b1_strategies.rs`
+`the_fingerprint_covers_every_strategy_and_every_field` compared an edited copy of the content
+(units, resources and a strategies file) against the fingerprint of the **full** shipped content.
+The shipped content now also holds `nations.ron`, which the fingerprint sees (a nation match
+depends on it), so the full content and the three-file copy are different content. The copy
+cannot include `nations.ron` either, because a nation names shipped strategies and would not
+load beside an edited set. The test's base is now the shipped strategies through the same
+three-file harness. Its claims are unchanged: every edit moves the hash, and an untouched copy
+hashes the same as the base. This was the only failure in the full debug suite on the AC1 tree.
+
+**Gates:** `tests/c2_nations.rs` (17 tests).
+
+## F-064 — The golden licence: no re-pin, and a no-nation match cannot see the nations (C2)
+
+**Claim.** With no nation named (the default, or `with_nations(None, None)`), a match plays
+exactly as it did before C2. No golden was re-pinned. The pinned tests (b1, b2, b35,
+critic_b2_ac4's state hashes, m5's replays, critic_p2's allocation order, c1_golden) pass
+unchanged in the full debug suite on the AC1 tree.
+
+**What `tests/c2_golden.rs` adds.** The shipped content, and the same content with
+`nations.ron` removed (the content before C2), play the same matches. They match tick for tick
+and hash for hash, with the same AI journal length and end tick, and no `NationRules` resource:
+- seeds 0, 4 and 11 at 1 800 ticks;
+- rush/turtle, mass_ripper/mass_bulwark and synth_triad/mvp at 3 600 ticks;
+- a C1 campaign battle (bulwark and frenzy Generals) at 3 000 ticks;
+- seed 2 rush/mvp played to its decision inside the default cap.
+
+Naming no nation explicitly is the default, hash for hash.
+
+**Red, shown by mutation** (both reverted, on the box):
+- `NationRules::resolve` returns empty rules for `[None, None]`. The skirmish test fails
+  (`NationRules` present). The content comparisons alone cannot see this, since both runs carry
+  the mutation; the pinned state-hash goldens are what guard it.
+- `resolve` falls back to the content's second nation (Forgeborn) when none is named. Four of
+  the five tests fail: skirmish, named strategies, campaign battle and the decided match.
+
+## F-065 — The batch runner's nation axis: mirror, cross and personality (C2)
+
+**Context.** C2 AC3 asks the batch runner for a nation axis. Mirror matchups should keep
+isolating unit balance, and cross-nation matchups should test faction balance.
+
+**Decisions.**
+- **A nation batch plays fixtures.** A fixture is a nation and a strategy per slot.
+  `batch::run_fixtures` plays each fixture on every seed in both orientations: seed-major, then
+  fixture order, then orientation. It runs sequentially, and checks every name before the first
+  match. `MatchRecord` is unchanged, so every older test and reader still holds. A
+  `NationRecord` carries the record plus the two nation ids.
+  `NationRecord::by_nation` relabels a record's rows by nation, so the nation matrix is read by
+  the same `WinMatrix` and gate arithmetic as the strategy matrix.
+- **Three axes** (`NationAxis`, all lists in content order, filters never reorder):
+  - **mirror**: each nation against itself, on every ordered strategy pair. The traits are
+    the same on both sides and cancel, so this is unit balance under each nation.
+  - **cross**: every ordered pair of different nations, on each strategy played by both
+    sides. The strategy is the control, so this is faction balance from the traits alone.
+  - **personality**: every ordered pair of different nations, each playing its own script
+    (`NationDef::strategy`). This is how a player meets them: traits and script together.
+- **The cross axis, not personality, is faction balance.** Personality strength is mostly
+  strategy strength: F-049's table has the `rush` row at about 11%, and rush is Verdant's
+  script. Trait tuning cannot fix that within C0's bounds, and base stats may not be retuned
+  for C2. Personality is played and reported beside the gate (F-066), but not gated.
+- **The `balance` binary** gains `--nations mirror|cross|personality` and
+  `--only-nations a,b`. It prints the tally, the nation matrix and the strategy matrix of the
+  same records. `--report` is refused with `--nations` (the report file belongs to the strategy
+  batch), and so is `--only-nations` without `--nations`.
+
+**Gates** (`tests/c2_batch.rs`, 12 tests):
+- fixture counts and order for each axis;
+- content order, and filters never reorder;
+- unknown names are refused before any match;
+- every row equals the same match played directly;
+- a re-run is identical;
+- the traitless House mirror equals the plain strategy batch, record for record;
+- traits are visible on the cross axis: Verdant on rush trains 6 rippers by tick 6 000 against
+  House's 5, and the House mirror trains 5 and 5;
+- the nation matrix is read from relabelled records;
+- the binary plays and refuses as documented.
+
+## F-066 — The nation gate: it runs, and it reads Fail. Tollmarch's +1 carry is +50% per trip (C2)
+
+**Context.** C2 AC4 asks for a nation criterion with two parts. Each nation's cross-nation
+strength must be 35–65%, and the pentagon must still hold under every nation pair. Tuning
+happens in `nations.ron` only, inside the brief's bounds, and base unit stats are never
+retuned.
+
+**Decisions.**
+- **`gate::NationGate`** reads two batches through the B3 arithmetic:
+  - **Strength** comes from the **cross** axis (F-065). The same strategy is on both sides, so
+    a nation's row is what its traits are worth. Mirrors and timeouts are excluded. A row is
+    the mean of its cells (`Reading::mean_of`, Wilson with the F-031 design effect, ICC 0.17),
+    judged `Within` 50% ± 15 points. The clusters are the distinct (strategy, seed) per pair.
+    - **Pass** needs the whole interval inside the band.
+    - **Fail** needs the whole interval outside it.
+    - Anything else is undetermined.
+  - **The pentagon** comes from `pentagon::nation_pentagon_fixtures`: every ordered pair of
+    nations (mirrors included) plays each measurable link's probe pair, predator nation
+    against prey nation, in both slots. Each pair's records go through
+    `PentagonReport::of_records`. Holds is Pass, Fails is Fail, and anything else is
+    undetermined. The pentagon passes only if every link holds under every pair.
+  - The gate is `Status::all` of the two parts.
+- **The probes** are the five mass strategies, one per unit, taken from the derived cycle's
+  predator strategies. A mass strategy is the cleanest control: one unit type, so a trait on
+  that unit or its barracks shows up undiluted.
+- **Personality strength** (each nation on its own script) is played and printed, but not
+  gated (F-065). It is strategy-dominated: Verdant's rush is 20%.
+- `tests/c2_gate.rs` has 8 synthetic tests (Pass, a dominant nation, a weak nation, thin
+  samples, mirrors and timeouts excluded, one broken pair, fixture count and order). The
+  shipped reading is `the_shipped_nation_reading`: ignored, release, with `ONUS_C2_SEEDS` and
+  `ONUS_C2_PART`.
+
+**The reading** (release, on the box, 2026-11-03, shipped stand-in traits).
+
+*Cross strength* (gated): 3 seeds, 900 matches, 64 timeouts, 4 367 s. Result: **FAIL**.
+
+| nation | strength | interval | n / n_eff | status |
+|---|---|---|---|---|
+| house | 31.7% | [25.0, 38.7] | 271 / 187 | undetermined |
+| forgeborn | 50.6% | [43.6, 57.6] | 294 / 196 | PASS |
+| verdant | 45.1% | [38.0, 52.3] | 272 / 187 | PASS |
+| aetherkin | 43.3% | [36.2, 50.5] | 272 / 187 | PASS |
+| tollmarch | 94.7% | [90.6, 97.8] | 300 / 199 | **FAIL** |
+| ashen_reach | 34.6% | [27.7, 41.7] | 263 / 184 | undetermined |
+
+The nation matrix (row against column, %, in the same order):
+
+```
+house          --   32   40   38    2   46
+forgeborn      68   --   59   58    2   67
+verdant        60   41   --   48   20   57
+aetherkin      62   42   52   --    2   59
+tollmarch      98   98   80   98   --   98
+ashen_reach    54   33   43   41    2   --
+```
+
+*The pentagon under every nation pair* (gated): 2 seeds, 1 440 matches, 68 timeouts, 4 888 s.
+Result: **FAIL**.
+- It fails in exactly the five pairs where **Tollmarch is the prey of another nation**. There,
+  rav>sen reads 0% (8/8 decided against the predator) in every pair, and sen>rip reads 0% in
+  four of the five (it holds under Forgeborn). Out-gathering by half again overturns a hard
+  counter.
+- With Tollmarch as the predator, and in the Tollmarch mirror, every link holds.
+- Every other link holds in every other pair, except **sen>rip**. That link is undetermined
+  (4 decided, 4 timeouts; 3/5 with Ashen Reach as predator) in 16 pairs, including the
+  traitless House/House mirror. This is F-049's baseline sen>rip, which no trait causes and
+  no trait can fix.
+- Pairs with every link holding: 15 of 36 (5 Fail, 16 undetermined).
+
+*Personality strength* (reported, not gated): 2 seeds, 120 matches, 1 timeout, 316 s.
+- House 37.1%, Forgeborn 80.0%, Verdant 20.0%, Aetherkin 62.5%, Tollmarch 77.5%, Ashen Reach
+  22.9%. All are undetermined.
+- The cells are near 0 or 100: a script pair decides the matchup.
+
+**Why it cannot pass by magnitudes alone.** No tuning was made, so `nations.ron` is unchanged.
+- **Tollmarch.** The brief fixes its stand-in as "+x worker carry", and `CarryCapacity` is an
+  integer `add`. F-029 cut base carry from 10 to 2, so the smallest non-zero x (+1) is a 50%
+  larger load per trip. That is the 94.7% row and the five broken pentagons. The only smaller
+  magnitude is 0, which deletes the perk. Getting under the band needs a decision outside
+  "tune the magnitude":
+  - express "workers carry more" as a `GatherTicks` `mul` (a fine-grained income lever);
+  - pair it with a cost;
+  - or make carry fractional.
+  Any of these is the user's decision.
+- **House Vael.** Its brief stand-in is "Synthesis" (a bonus beside other-domain units). The
+  trait vocabulary cannot express that, so its trait list is `[]` (F-063). Without Tollmarch
+  its row averages about 39% (32, 40, 38, 46 — read off the matrix, unweighted). With
+  intervals near ±7 points that reads undetermined at best. The traitless nation will sit
+  below the traited field until Synthesis exists.
+- **The rest, read off the matrix without the Tollmarch column:**
+  - Forgeborn is about 63%, near the top edge. Its foundry discount (0.90) is the first
+    candidate to soften.
+  - Verdant is about 52% and Aetherkin about 54%.
+  - Ashen Reach is about 43%. Its building HP (1.15) is the candidate to raise.
+  These are the next magnitudes to try once Tollmarch's perk is settled. Tuning them first
+  would be measured against a field Tollmarch distorts.
+- **The pentagon's sen>rip** is undetermined in the traitless mirror. So "holds under every
+  pair" cannot read Pass on today's base content even with every trait at zero. Base stats
+  are out of C2's reach.
+
+AC4 stays **unticked**. The criterion, its tests and the measurement are committed.
+
+## F-067 — The client picks the nations before the first tick, and shows them by colour and name (C2)
+
+**Context.** C2 AC5 asks for two things. The player picks a nation, and sees the opponent's
+nation at a glance (pillar P3: a colour plus a name label). The driver must stay thin: no sim
+logic in `src/ui.rs`, `src/input.rs` or `src/setup.rs`.
+
+**Decisions.**
+- **A pre-match pick, behind the sim's own tick gate.** `setup` inserts a client-side
+  `NationPick` and closes the `TickGate` (M6's gate; `may_tick` gates the whole chain). Nothing
+  is played while the player picks, so the match's tick 0 is still the first tick it plays.
+  - Left/Right cycles your nation and Down/Up the opponent's, through "No nation" and every
+    nation in content order.
+  - Enter marks the pick chosen. `input::pick_nations` only ever writes `NationPick`.
+- **Applying the pick is match setup, not an order.** `setup::start_match` is an exclusive
+  system that runs once, when the pick is chosen and before the first tick:
+  - it installs the nations through `sim::nation::install`, the same function a headless match
+    uses, so the start gets its side's HP pools;
+  - when the opponent has a nation, it gives the opponent's commander that nation's personality
+    (`NationDef::strategy`), seeded from `MATCH_SEED` as before;
+  - it opens the gate.
+  After that the pick is `Playing` and the keys do nothing. "No nation" on both sides inserts
+  no `NationRules` and keeps the default AI, which is the match as it was before C2.
+- **What is shown is read off the sim once playing.** The two labels (you top-left, the
+  opponent top-right) and the building tint read `NationRules::nation_of`; before the start they
+  show the pick. Colour is `nations.ron`'s `colour`. No nation wears the old neutral
+  `BUILDING_COLOR`. Units are filled by kind, so each unit of a side with a nation gets a ring in
+  its nation's colour (`ui::draw_nation_marks`, a `Gizmos` system).
+- **The train line prices what the player's nation pays.** It reads `Defs::roster_unit`, so a
+  Forgeborn foundry shows the discounted price.
+- **Order emitters wait for the start** (`client::match_started`). An order clicked during the
+  pick would otherwise queue for tick 1.
+- **One registration.** `add_nation_pick` is shared by `build_app` and the tests (F-004). The
+  pick's entities and resources are spawned **last** in `setup`, so nothing older moves in
+  allocation order (F-011). `critic_p2`'s ordering guard still holds.
+
+**Gates** (`tests/c2_client.rs`, 7 tests, under `MinimalPlugins` through the shipped `setup`,
+`add_nation_pick` and sim chain):
+- the cycle order and its wrap;
+- the match waits on the pick: the gate is shut, 30 frames play no tick, and there are no rules;
+- the picked nations are the match's nations, and the opponent's AI plays its personality;
+- Ashen Reach's HQ gets the traited pool;
+- once playing, the keys change nothing;
+- both labels carry name and nation colour, and the HQs wear it;
+- no nation on both sides is today's match;
+- the panel's train price is Forgeborn's.
+A mutation demo turned the building tint neutral and kept the default AI: two tests went red.
+
+**Needs a human on the Mac.** The layout and legibility of the labels and picker, whether the
+six colours tell the sides apart on the map, and the unit rings (gizmos need the render
+plugins). `cargo run` now opens on the pick screen; press Enter to play.
+
+**Known gap, not fixed here (outside C2 AC5's files).** The command log carries no nations.
+A replay written from a nation match would replay without its traits. ~~The state hash includes
+the nations (tag 25), so a hash check would fail loudly at tick 0 rather than silently
+diverge.~~ **Overstated, corrected in F-069:** only a caller that compares two hash logs sees
+that divergence. The replay itself accepted the log and played a different match. Fixed in
+F-069: the log names its nations and the replay applies or refuses them.
+
+## F-068 — C2 critic fixes: a roster's HP is checked against its side's traited pool (C2)
+
+**Defect (critic, Medium-High).** `BattleSetup::check` checked a roster's HP against the
+**base** pools, but `spawn_roster` fields it under the side's **traited** pool.
+- A nation whose traits shrink a pool could start a unit above its maximum. A Defense −1
+  sentinel started at 100/80, and a BuildingHp ×0.5 foundry at 5040/2520.
+- That broke the `current <= max` invariant every HP reader assumes.
+
+**Fix.** `BattleSetup::check_with(content, rules)` checks HP against `Defs::unit_health` and
+`Defs::building_health` of the side, and `check` is now `check_with(content, None)`.
+`headless::battle` resolves the nations first, then checks the battle with them, before
+anything is spawned. Out-of-pool HP is **refused** (`BadHp`, naming the side's pool), never
+clamped: a trimmed roster would hide a campaign bug that wrote an HP the side cannot have.
+
+**Gates.** The critic's tests are landed as `tests/critic_c2.rs` and
+`tests/critic_c2_client.rs`.
+- `a_roster_unit_never_starts_above_its_sides_pool` and
+  `a_roster_building_never_starts_above_its_sides_pool` failed before the fix. They now expect
+  the refusal, with the traited max in the error, and an admitted roster at that max with
+  `current <= max`.
+
+## F-069 — C2 critic fixes: a nation match's log records its nations, and a replay rebuilds them (C2)
+
+**Defect (critic, Medium).** `MatchLog` carried the seed, the content fingerprint and the
+commands, but not the nations. A Forgeborn-vs-Tollmarch log replayed into a world built from
+its seed played a no-nation match. Nothing refused it, and it diverged at tick 0. F-063's and
+F-067's notes said the state hash would catch this; it only does for a caller that compares
+two hash logs (both notes are now marked as corrected).
+
+**Fix.**
+- `MatchLog::nations: [Option<String>; 2]`, per faction slot. `#[serde(default)]`, and not
+  written when both are none, so a pre-C2 log reads as a no-nation match and a no-nation match
+  writes the same bytes as before. `LOG_FORMAT_VERSION` stays 2: the change only adds a field.
+- **The sim stamps the field itself** in `replay::stamp_content`, from `NationRules`
+  (`nation::ids`), the same way it stamps the content fingerprint. A log never depends on a
+  caller remembering to stamp it. If the nations change after the first stamp, the log is
+  marked `content_changed` and refused at both boundaries, like a content change.
+- `MatchLog::matches_content` refuses a log naming a nation the content lacks. That check
+  covers the front door (`load_for` / `from_ron_for`) and `feed_replay`'s backstop.
+- **`replay::apply_log_nations`** is an exclusive system that runs once, just before
+  `feed_replay`, when a `ReplaySource` exists. It handles four cases:
+  - It refuses a log that does not match the content.
+  - It accepts a world that already plays the log's nations.
+  - In a world with no nations at tick 0, it installs the log's nations through
+    `nation::install`. This is the path headless setup and the client's `start_match` also use.
+  - It refuses anything else: other nations, or a match already under way. A refused replay
+    feeds nothing.
+
+**Gates.**
+- `tests/critic_c2.rs` `a_nation_match_log_replays_faithfully_or_is_refused` failed before
+  the fix (diverged at tick 0). It now replays faithfully, without a refusal.
+- `tests/c2_nations.rs`:
+  - `a_nation_match_log_names_its_nations_and_replays_them_faithfully` covers both sides
+    (1 200 ticks) and one side. The replay comes hash for hash from a seed-only world, and
+    the replay's own log names the same nations.
+  - `a_no_nation_log_is_written_as_before_and_a_pre_c2_log_reads_as_no_nations`.
+  - `a_log_naming_a_nation_this_content_lacks_is_refused` covers both the front door and the
+    backstop. The refused replay feeds nothing and installs nothing.
+  - `a_log_whose_nations_disagree_with_the_world_is_refused` covers both directions. A world
+    whose setup already named the log's nations is accepted.
+- The M5/M6/P2 replay suites and the c1/c2 goldens pass unchanged.
+
+## F-070 — C2 critic fixes: every trait read site has a test that sees the untraited table (C2)
+
+**Defect (critic, Low-Medium).** Two kinds of read site took a side's traited definitions, but
+no test failed if either was switched back to the untraited `content` lookup:
+- combat's defender side (`src/sim/combat.rs`, `defs.unit(prey_side, ..)` and
+  `defs.building(prey_side, ..)`);
+- the AI's prices (`src/sim/ai.rs`), for the worker, the opening barracks and the army unit.
+
+**Gates, each shown red by its mutation on the box** (every site switched alone to `content`,
+then restored):
+- Unit defender: already guarded. critic_c2's
+  `offense_and_armor_traits_reach_combat_on_both_ends_of_a_hit` fails under the mutation, since
+  A's Armor +1 stops mitigating B's hit.
+- Building defender: `c2_nations` `a_building_armor_trait_mitigates_hits_on_its_side_only`.
+  A sentinel of each side hits the other side's foundry. A's foundry, with a Buildings
+  Armor +1 trait, takes the mitigated hit, and B's takes the plain one.
+- Worker and army price: `the_ai_prices_workers_and_army_at_its_sides_traited_cost`. A's
+  workers and combat units cost ×100, so in 4 000 ticks A never orders either (it still builds
+  a barracks), while B orders both. The worker mutation and the army mutation each fail it.
+- Barracks price: `the_ai_prices_its_barracks_at_its_sides_traited_cost`. A's buildings cost
+  ×100, so A never places a barracks in 4 000 ticks; B does.
+
+No sim code changed: the sites were correct, they were only unguarded.
+
+## F-071 — C2 critic fixes: BuildingHp rounds half up, like every other `mul` (C2)
+
+**Defect (critic, Low).** `nations.ron` documents a `mul` as `round(v * m / 1000)`, applied
+half up. BuildingHp instead composed its per-mille factors with truncating division and then
+truncated the pool. A BuildingHp of 1.004 gave the HQ 8433 HP, where the rule gives
+8433.6 → 8434.
+
+**Fix.** Each building's pool starts at its base (`mvp_defense * building_hp_per_defense`).
+Every BuildingHp trait then scales it in RON order with `scale_milli`, the helper every other
+`mul` stat uses, so each trait rounds once, half up. The shipped Ashen Reach ×1.15 pools are
+exact products (9660, 5796, 4830), so nothing shipped moved, and the goldens and the C2 suites
+pass unchanged.
+
+**Gate.** `c2_nations` `a_building_hp_trait_rounds_half_up_like_every_mul` fails before the
+fix (8433 vs 8434). It covers ×1.004 on every building, where 8400 and 4200 round up and 5040
+rounds down, plus two traits composing in RON order.
+
+## F-072 — Tollmarch's stand-in trait is now faster gathering, not a bigger load (C2, user decision)
+
+**Why.** Tollmarch's stand-in was `Workers CarryCapacity +1`. On a base carry of 2 that is +50%
+Alloy per trip, and it read 94.7% cross-nation strength, the gate's only Fail (F-066). An `add`
+on a value of 2 cannot be tuned in steps smaller than 50%. The user chose a gather-time
+multiplier instead.
+
+**Change.** The brief comes first (DESIGN_BRIEF Tollmarch sheet: speciality "workers gather
+faster", stand-in "workers gather x% faster"), then the data: nations.ron changes Tollmarch's
+trait to `(applies_to: Workers, stat: GatherTicks, mul: 0.90)`. A load takes round(90 × 0.90)
+= 81 ticks instead of 90. The walk is unchanged, so the income gain per trip is under 10%.
+`GatherTicks` already existed as a data-driven trait stat, and `economy::gather` already read
+it through `Defs::roster_unit`. No sim code changed and there is no per-nation code.
+
+**Gates.**
+- `c2_nations` `tollmarch_workers_gather_faster` replaces `tollmarch_workers_carry_more`. It
+  failed against the old RON (no `mul` on the trait). In a Tollmarch-vs-none match, A's
+  longest harvest is 81 ticks and B's is 90, and both sides carry the base load.
+- `c2_golden` (no-nation matches identical to pre-C2 content) passes unchanged.
+
+The gate reading with this trait is in F-074.
+
+## F-073 — House Vael's real trait: the mixed-army (Synthesis) trait kind (C2, user decision)
+
+**Why.** House shipped with `traits: []`. Its edge was the Synthesis aura of its General, and a
+skirmish has no General, so House played the 1v1 with no edge at all. It read 31.7% cross
+strength, below the 35–65% band (F-066). The user chose a real Synthesis trait.
+
+**The trait kind is data, with no per-nation code.**
+- `NationDef::synthesis: Option<SynthesisDef>` holds `radius`, `modifiers` (C1's
+  `AuraModifier`) and `max`.
+- On every tick, each unit of the side **with a domain** gets `modifiers` × the number of
+  distinct domains, **other than its own**, among the side's own non-General units within
+  `radius`, capped at `max`.
+- A mono-domain army gets nothing. Enemies never count. Workers and Generals neither count nor
+  gain, since they have no domain.
+- `#[serde(default)]`: a nation without the line has no such trait.
+
+**Reusing C1.**
+- The domain count is one helper, `battle::distinct_domains`. C1's `PerDistinctDomain` aura
+  now calls it with no exception; the trait calls it with the unit's own domain excepted.
+- The bonus is computed by the same `battle::auras` system into the same `AuraField`, as a kind
+  of its own that stacks with any General's aura. Combat, movement and regen already read the
+  field, so no read site changed.
+- The modifiers are validated by the same check as a General's aura
+  (`content::check_aura_modifiers`, extracted from the aura validation with its messages
+  unchanged). There is no nemesis stat, so the trait cannot touch the hard counters, and
+  `stat: Nemesis` is a load error.
+- Also refused at load: `max` outside `1..=(domains − 1)`, and a radius that is not finite and
+  positive.
+
+**What changes, and when.**
+- `nation::install` inserts the `AuraField` only when a side's nation has the trait, so the
+  aura system runs in a skirmish for that match alone. A no-nation match, or one whose nations
+  lack the trait, is untouched: no field, no new system run, and the same fingerprint.
+- The content fingerprint mixes the trait in only when present.
+
+**Data.** The brief comes first (DESIGN_BRIEF House sheet). In nations.ron, House has
+`synthesis: (radius: 160.0, modifiers: [(stat: Offense, add: 1)], max: 2)`. That is +1 Offense
+per other domain nearby, so +2 for a full Machine/Flesh/Energy mix. House's AI script,
+`synth_triad`, trains Sentinel, Ripper and Arclight in turn, so its army is mixed.
+
+**Gates (`tests/c2_nations.rs`, red before: no `synthesis` field).**
+- `synthesis_is_active_beside_other_domains_and_scales_per_domain`: one other domain gives +1;
+  two give +2, and a second Machine unit adds nothing new; a neighbour beyond the radius
+  doesn't count.
+- `synthesis_is_inactive_in_a_mono_domain_army`: two Machine units and a worker get nothing.
+- `synthesis_counts_no_more_domains_than_its_max`: `max: 1` among three domains gives +1.
+- `synthesis_counts_only_friends_and_only_its_own_side_gains`: a lone A unit among B's mixed
+  units gets nothing, and B, which has no trait, gets nothing.
+- `only_a_synthesis_nation_installs_the_field_and_the_hash_sees_the_trait`.
+- `an_unplayable_synthesis_is_refused_at_load` covers seven cases, Nemesis included.
+- `the_shipped_house_vael_has_the_synthesis_trait`.
+- `c2_golden` (no-nation matches) and the C1 aura suites pass unchanged.
+
+The gate reading with this trait is in F-074.
+
+## F-074 — C2 nation gate after the two user decisions: readings and RON tuning steps (C2)
+
+The coordinator allowed trait magnitudes in `nations.ron` to be tuned so that every nation
+lands in 35–65% cross strength, with each step and its reading recorded here. The bound is
+CAMPAIGN_PLAN's rule: no trait may move a pentagon link out of "holds", or a nation's
+cross-nation strength outside 35–65%. All runs: `tests/c2_gate.rs`, release, 2 build jobs, `nice -n 19`.
+
+**Step 0: the traits as shipped by F-072 and F-073.** House has Synthesis +1 Offense per other domain (max 2,
+radius 160). Tollmarch gathers at ×0.90, Forgeborn's Foundry units cost ×0.90 and Ashen Reach's buildings have ×1.15 HP.
+Cross, 3 seeds, 900 matches, 69 timeouts, 5104 s: **Fail**.
+
+| nation | strength | 95% interval | reading |
+|---|---|---|---|
+| house | 34.1% | [27.3, 41.2] | undetermined |
+| forgeborn | 59.6% | [52.6, 66.5] | undetermined |
+| verdant | 46.5% | [39.4, 53.7] | holds |
+| aetherkin | 49.8% | [42.6, 56.9] | holds |
+| tollmarch | 73.0% | [66.4, 79.2] | **Fail** |
+| ashen_reach | 37.0% | [30.0, 44.2] | undetermined |
+
+Row vs column win %: house 32/40/38/14/46. Forgeborn 68/59/58/47/67. Verdant 60/41/48/27/57.
+Aetherkin 62/42/52/34/59. Tollmarch 86/53/73/66/86. Ashen Reach 54/33/43/41/14.
+
+- Tollmarch's carry trait (F-066) read 94.7%. Faster gathering reads 73.0%, which is less but still too strong.
+- **House's row is the same as before its trait existed** (32, 40, 38, 46 against the four nations
+  that did not change). That is structural, not a magnitude problem. The cross axis plays the five
+  mono-unit `mass_*` probes on both sides, so a House army there never has a second domain. A
+  mixed-army trait is therefore never active on that axis. No Synthesis magnitude can move House's cross
+  number. The only things that move it are the other nations' traits.
+- Personality part, 2 seeds, 120 matches, reported and not gated, 359 s. This is where Synthesis
+  shows: House plays `synth_triad`. Before the trait House read 37.1% (F-066). Now it reads **52.1%**
+  [35.2, 69.1]. The other nations read: Forgeborn 80.0%, Verdant 20.0%, Aetherkin 80.0%, Tollmarch 36.4% and Ashen Reach 31.4%. All are
+  undetermined, with n ≈ 40 each. Personality is dominated by script-vs-script lopsidedness, so it is not a nation measure.
+
+**Step 1: Tollmarch GatherTicks 0.90 → 0.95 (90 → 86 ticks, round half up), Forgeborn Foundry AlloyCost 0.90 → 0.95, Ashen Reach
+BuildingHp 1.15 → 1.30.** Cross, 3 seeds, 900 matches, 94 timeouts, 5332 s: **Fail**.
+
+| nation | strength | 95% interval | reading |
+|---|---|---|---|
+| house | 34.5% | [27.7, 41.6] | undetermined |
+| forgeborn | 52.9% | [45.8, 59.9] | holds |
+| verdant | 47.3% | [40.1, 54.4] | holds |
+| aetherkin | 50.5% | [43.3, 57.7] | holds |
+| tollmarch | 76.3% | [69.8, 82.3] | **Fail** |
+| ashen_reach | 38.5% | [31.4, 45.9] | undetermined |
+
+Matrix rows: house 40/40/38/9/45. Forgeborn 60/51/49/46/58. Verdant 60/49/48/24/55. Aetherkin
+62/51/52/30/58. Tollmarch 91/54/76/70/91. Ashen Reach 55/42/45/42/9.
+
+- Forgeborn moved into the band, from 59.6% to 52.9%.
+- Ashen Reach gained only 1.5 points for +15% building HP. Building HP barely matters when two mass
+  armies meet in the field.
+- **Tollmarch did not come down.** Halving the trait (9 ticks saved down to 4) read 73.0% before and 76.3% now, which is
+  within noise. The mass probes are economy mirrors: both sides run the same script, so any steady income edge
+  decides the race the same way every time, and the size of the edge hardly matters. One tick, 1.1%, is the smallest step
+  `GatherTicks` can take on a base of 90.
+
+**Step 2: Tollmarch GatherTicks 0.95 → 0.98 (90 → 88 ticks).** Everything else is as in step 1. Cross, 3 seeds, 900
+matches, 112 timeouts, 5389 s: **undetermined**. Every nation except House reads Pass.
+
+| nation | strength | 95% interval | reading |
+|---|---|---|---|
+| house | 40.3% | [33.2, 47.6] | undetermined |
+| forgeborn | 55.3% | [48.2, 62.3] | holds |
+| verdant | 52.1% | [44.8, 59.3] | holds |
+| aetherkin | 55.3% | [48.1, 62.5] | holds |
+| tollmarch | 52.4% | [45.2, 59.6] | holds |
+| ashen_reach | 44.7% | [37.4, 52.0] | holds |
+
+Matrix rows: house 40/40/38/38/45. Forgeborn 60/51/49/58/58. Verdant 60/49/48/48/55. Aetherkin
+62/51/52/54/58. Tollmarch 62/42/52/46/60. Ashen Reach 55/42/45/42/40.
+
+- **Tollmarch is a cliff, not a slope.** At 86 gather ticks it reads 76.3%. At 88 it reads 52.4%. Two ticks
+  separate "wins every mirror race" from "in the band". Its row against the other four nations went from
+  91/54/76/70 to 62/42/52/46. 0.98 is the value shipped. A smaller perk (0.99, 89 ticks) is the only step left
+  below it.
+- **House is the one nation not passing.** Its interval [33.2, 47.6] crosses the 35% line. Its row is
+  unchanged against the four nations whose traits did not move (40, 40, 38, 45). It lost to Tollmarch at 38 instead of 9, and that
+  is the whole gain. As step 0 found, the cross probes never field a second domain, so House plays them
+  traitless. No `nations.ron` magnitude of House's own can lift it. It would come into the band only if the other
+  five nations' perks were made weaker until a traitless nation draws even with them. That is a different design call
+  from "tune within the bounds", so it was not made.
+- **Stopped here.** Cross does not read Pass, so the pentagon part was not run, as instructed. That part cannot read
+  Pass in any case: F-066 shows sen>rip undetermined in the traitless House/House mirror, the F-049
+  baseline. **AC4 stays unticked.** Two things are needed, and both are the user's decision:
+  - a cross probe that lets a mixed-army trait act, or a cross-only perk for House;
+  - a pentagon criterion that is not held hostage by the baseline sen>rip link.

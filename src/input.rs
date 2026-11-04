@@ -241,3 +241,32 @@ pub fn emit_build_commands(
         }
     }
 }
+
+/// The pre-match nation pick (C2): arrows cycle your nation and the
+/// opponent's, Enter starts. Only ever writes the client-side [`NationPick`];
+/// applying it to the match is setup's job ([`crate::setup::start_match`]),
+/// once, before the first tick. Once the match is playing the keys do nothing.
+pub fn pick_nations(
+    keys: Res<ButtonInput<KeyCode>>,
+    content: Res<Content>,
+    mut pick: ResMut<NationPick>,
+) {
+    if pick.phase != PickPhase::Picking {
+        return;
+    }
+    let n = content.nations.len();
+    for (key, opponent, forward) in [
+        (NATION_PREV_KEY, false, false),
+        (NATION_NEXT_KEY, false, true),
+        (OPPONENT_PREV_KEY, true, false),
+        (OPPONENT_NEXT_KEY, true, true),
+    ] {
+        if keys.just_pressed(key) {
+            let side = if opponent { &mut pick.opponent } else { &mut pick.player };
+            *side = cycle_nation(*side, n, forward);
+        }
+    }
+    if keys.just_pressed(START_KEY) {
+        pick.phase = PickPhase::Chosen;
+    }
+}

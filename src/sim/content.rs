@@ -516,6 +516,12 @@ struct StrategiesFile {
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NationsFile {
+    nations: Vec<crate::sim::nation::NationDef>,
+}
+
+#[derive(Deserialize)]
 struct ResourcesFile {
     resources: Vec<ResourceDef>,
     mvp_active: Vec<String>,
@@ -553,6 +559,9 @@ pub struct Content {
     pub battle: Option<BattleDef>,
     /// The battle AI's numbers (C1); `None` in content with no campaign layer.
     pub general_ai: Option<GeneralAiDef>,
+    /// The nations (C2), in RON order, from the optional `nations.ron`. Empty
+    /// in content with no nations: then no match can name one.
+    pub nations: Vec<crate::sim::nation::NationDef>,
 }
 
 // ---- content fingerprint ----------------------------------------------------
@@ -740,6 +749,14 @@ impl Content {
         let units_file: UnitsFile = load_ron(&dir.join("units.ron"))?;
         let resources_file: ResourcesFile = load_ron(&dir.join("resources.ron"))?;
         let strategies_file: StrategiesFile = load_ron(&dir.join("strategies.ron"))?;
+        // C2: optional, so content with no nations (every pre-C2 data set a
+        // test keeps) still loads, and loads exactly as it did.
+        let nations_path = dir.join("nations.ron");
+        let nations = if nations_path.exists() {
+            load_ron::<NationsFile>(&nations_path)?.nations
+        } else {
+            Vec::new()
+        };
 
         let mut units = units_file.workers;
         units.extend(units_file.combat);
@@ -771,6 +788,7 @@ impl Content {
             generals: units_file.generals,
             battle: units_file.mvp_battle,
             general_ai: units_file.mvp_general_ai,
+            nations,
         };
         content.synthesise_general_units();
         content.validate()?;
@@ -1002,53 +1020,8 @@ impl Content {
             if !(a.radius.is_finite() && a.radius > 0.0) {
                 return bad(format!("general `{}` aura radius must be finite and positive", g.id));
             }
-            if a.modifiers.is_empty() {
-                return bad(format!("general `{}` aura has no modifiers", g.id));
-            }
-            for (i, m) in a.modifiers.iter().enumerate() {
-                if a.modifiers[..i].iter().any(|n| n.stat == m.stat) {
-                    return bad(format!(
-                        "general `{}` aura lists {:?} twice",
-                        g.id, m.stat
-                    ));
-                }
-                match (m.stat, m.add, m.mul) {
-                    // The attack interval is the one multiplied stat: faster
-                    // attacks, never slower, and never a zero interval.
-                    (AuraStat::AttackTicks, None, Some(mul)) => {
-                        let milli = m.mul_milli();
-                        if !(mul.is_finite()
-                            && mul > 0.0
-                            && (1..AuraModifier::MULT_SCALE).contains(&milli))
-                        {
-                            return bad(format!(
-                                "general `{}` aura AttackTicks mul must be in (0, 1)",
-                                g.id
-                            ));
-                        }
-                    }
-                    (AuraStat::AttackTicks, ..) => {
-                        return bad(format!(
-                            "general `{}` aura AttackTicks takes `mul` only",
-                            g.id
-                        ));
-                    }
-                    (stat, Some(add), None) => {
-                        if add == 0 || add > self.combat.max_stat {
-                            return bad(format!(
-                                "general `{}` aura {stat:?} add must be 1..={}",
-                                g.id, self.combat.max_stat
-                            ));
-                        }
-                    }
-                    (stat, ..) => {
-                        return bad(format!(
-                            "general `{}` aura {stat:?} takes `add` only",
-                            g.id
-                        ));
-                    }
-                }
-            }
+            check_aura_modifiers(&format!("general `{}` aura", g.id), &a.modifiers, &self.combat)
+                .map_err(|msg| ContentError::Invalid { msg })?;
             if let AuraScaling::PerDistinctDomain { max } = a.scaling {
                 if max == 0 || max as usize > self.resources.len() {
                     return bad(format!(
@@ -1351,6 +1324,8 @@ impl Content {
         {
             return bad("mvp_economy ranges must be finite and positive".to_string());
         }
+        // The nations (C2), last: their traits are checked against the rest.
+        crate::sim::nation::validate(self).map_err(|msg| ContentError::Invalid { msg })?;
         Ok(())
     }
 
@@ -1506,6 +1481,47 @@ impl Content {
                 .f32(ai.retreat_at_army_lost);
         }
 
+        // C2: the nations, mixed in only when present (as C1's sections are),
+        // so content with no nations fingerprints exactly as before C2.
+        if !self.nations.is_empty() {
+            h.str("nations").u64(self.nations.len() as u64);
+            for n in &self.nations {
+                h.str(&n.id).str(&n.name).opt_str(&n.domain);
+                for (r, g, b) in [n.colour, n.accent] {
+                    h.f32(r).f32(g).f32(b);
+                }
+                h.str(&n.general).str(&n.strategy);
+                h.u64(n.traits.len() as u64);
+                for t in &n.traits {
+                    use crate::sim::nation::TraitTarget as T;
+                    match &t.applies_to {
+                        T::Unit(id) => h.u64(0).str(id),
+                        T::Barracks(id) => h.u64(1).str(id),
+                        T::Workers => h.u64(2),
+                        T::CombatUnits => h.u64(3),
+                        T::Building(id) => h.u64(4).str(id),
+                        T::Buildings => h.u64(5),
+                    };
+                    h.u64(t.stat as u64);
+                    h.bool(t.add.is_some()).u64(t.add.unwrap_or(0) as i64 as u64);
+                    h.bool(t.mul.is_some()).u32(t.mul_milli());
+                }
+                // Mixed in only when present, so a nation without one hashes
+                // as it did before the trait kind existed.
+                if let Some(syn) = &n.synthesis {
+                    h.str("synthesis").f32(syn.radius).u32(syn.max);
+                    h.u64(syn.modifiers.len() as u64);
+                    for m in &syn.modifiers {
+                        h.u64(m.stat as u64)
+                            .bool(m.add.is_some())
+                            .u32(m.add.unwrap_or(0))
+                            .bool(m.mul.is_some())
+                            .u32(m.mul_milli());
+                    }
+                }
+            }
+        }
+
         let ids = |all: &[String]| {
             if all.is_empty() {
                 "-".to_string()
@@ -1636,6 +1652,51 @@ impl Content {
 }
 
 // L1 unit tests: the lookups are stable and id-keyed (no HashMap ordering).
+/// The modifiers of an aura-shaped bonus — a General's aura (C1) or a nation's
+/// Synthesis trait (C2) — are well formed: at least one, each stat at most
+/// once, `add` in `1..=max_stat`, and `mul` only on the attack interval, in
+/// (0, 1). `who` names the owner in the error.
+pub(crate) fn check_aura_modifiers(
+    who: &str,
+    modifiers: &[AuraModifier],
+    combat: &CombatDef,
+) -> Result<(), String> {
+    if modifiers.is_empty() {
+        return Err(format!("{who} has no modifiers"));
+    }
+    for (i, m) in modifiers.iter().enumerate() {
+        if modifiers[..i].iter().any(|n| n.stat == m.stat) {
+            return Err(format!("{who} lists {:?} twice", m.stat));
+        }
+        match (m.stat, m.add, m.mul) {
+            // The attack interval is the one multiplied stat: faster
+            // attacks, never slower, and never a zero interval.
+            (AuraStat::AttackTicks, None, Some(mul)) => {
+                let milli = m.mul_milli();
+                if !(mul.is_finite() && mul > 0.0 && (1..AuraModifier::MULT_SCALE).contains(&milli))
+                {
+                    return Err(format!("{who} AttackTicks mul must be in (0, 1)"));
+                }
+            }
+            (AuraStat::AttackTicks, ..) => {
+                return Err(format!("{who} AttackTicks takes `mul` only"));
+            }
+            (stat, Some(add), None) => {
+                if add == 0 || add > combat.max_stat {
+                    return Err(format!(
+                        "{who} {stat:?} add must be 1..={}",
+                        combat.max_stat
+                    ));
+                }
+            }
+            (stat, ..) => {
+                return Err(format!("{who} {stat:?} takes `add` only"));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -24,6 +24,7 @@ use crate::sim::battle::{BattleSetup, BattleSetupError, SideGround};
 use crate::sim::combat::{Casualties, Health};
 use crate::sim::content::{Content, ContentError};
 use crate::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
+use crate::sim::nation::{NationRules, UnknownNation};
 use crate::sim::spatial::Faction;
 use crate::sim::{
     AiCommanders, CommandLog, CommandQueue, Position, RateReport, ResourceNode, StateHashLog,
@@ -152,6 +153,14 @@ pub struct MatchSettings {
     /// A campaign battle (C1): the campaign rules layered on this match.
     /// `None` — the default — is the skirmish, exactly as it always played.
     pub battle: Option<BattleSetup>,
+    /// The nation each side plays (C2), indexed by faction slot (A, B).
+    /// `None` — the default — is no nation: the side plays the content as
+    /// written, exactly as before C2. A name is resolved against the content
+    /// at construction and **refused** if unknown. Orthogonal to
+    /// [`MatchSettings::strategies`]: a nation's traits change what a side's
+    /// units cost and do, never which script it plays (a caller wanting the
+    /// nation's own personality names `NationDef::strategy`).
+    pub nations: [Option<String>; 2],
 }
 
 /// The budget for one match: **fifteen minutes of play** — an anti-stalemate
@@ -181,6 +190,7 @@ impl Default for MatchSettings {
             tick_cap: DEFAULT_TICK_CAP,
             orientation: Orientation::Normal,
             battle: None,
+            nations: [None, None],
         }
     }
 }
@@ -210,6 +220,13 @@ impl MatchSettings {
 
     pub fn with_orientation(mut self, orientation: Orientation) -> Self {
         self.orientation = orientation;
+        self
+    }
+
+    /// Name the nation each side plays (C2): `a` for [`Faction::A`], `b` for
+    /// [`Faction::B`]; `None` is no nation.
+    pub fn with_nations(mut self, a: Option<&str>, b: Option<&str>) -> Self {
+        self.nations = [a.map(str::to_string), b.map(str::to_string)];
         self
     }
 
@@ -247,6 +264,7 @@ pub fn ai_vs_ai(content: Content, settings: &MatchSettings) -> Result<App, Unkno
         Ok(app) => Ok(app),
         Err(MatchSetupError::Strategy(e)) => Err(e),
         Err(MatchSetupError::Battle(e)) => panic!("battle setup refused: {e}"),
+        Err(MatchSetupError::Nation(e)) => panic!("nation refused: {e}"),
     }
 }
 
@@ -256,6 +274,7 @@ pub fn ai_vs_ai(content: Content, settings: &MatchSettings) -> Result<App, Unkno
 pub enum MatchSetupError {
     Strategy(UnknownStrategy),
     Battle(BattleSetupError),
+    Nation(UnknownNation),
 }
 
 impl std::fmt::Display for MatchSetupError {
@@ -263,6 +282,7 @@ impl std::fmt::Display for MatchSetupError {
         match self {
             MatchSetupError::Strategy(e) => write!(f, "{e}"),
             MatchSetupError::Battle(e) => write!(f, "{e}"),
+            MatchSetupError::Nation(e) => write!(f, "{e}"),
         }
     }
 }
@@ -272,8 +292,13 @@ impl std::error::Error for MatchSetupError {}
 /// [`ai_vs_ai`], refusing a bad battle setup with an error rather than a
 /// panic. Every name is resolved before anything is spawned.
 pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSetupError> {
+    // Refused here, before anything is spawned (installed further down).
+    let rules =
+        NationRules::resolve(&content, &settings.nations).map_err(MatchSetupError::Nation)?;
+    // A roster's HP is checked against its side's (traited) pools.
     if let Some(b) = &settings.battle {
-        b.check(&content).map_err(MatchSetupError::Battle)?;
+        b.check_with(&content, rules.as_ref())
+            .map_err(MatchSetupError::Battle)?;
     }
     // Resolve names *before* anything is spawned, so a refusal costs nothing
     // and cannot leave a half-built match behind.
@@ -353,6 +378,11 @@ pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSe
             ));
         }
     }
+
+    // The nations (C2), on the start and before a battle's layer: nothing is
+    // inserted when neither side has one.
+    crate::sim::nation::install(app.world_mut(), &settings.nations)
+        .expect("resolved above, before anything was spawned");
 
     // A campaign battle's layer goes on top of the skirmish start (C1).
     if let Some(b) = &settings.battle {

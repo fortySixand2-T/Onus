@@ -33,6 +33,7 @@ use bevy::math::Vec2;
 use crate::sim::battle::{BattleState, General};
 use crate::sim::content::{Content, GeneralAiDef, StrategyDef, WaveOrder};
 use crate::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
+use crate::sim::nation::{Defs, NationRules};
 use crate::sim::spatial::{Faction, SplitMix64};
 use crate::sim::{CommandQueue, GatherTarget, Order, Position, ResourceNode};
 
@@ -329,6 +330,8 @@ pub fn ai_commanders(
     // commander plays exactly the script it always played.
     battle: Option<Res<BattleState>>,
     mut battle_journal: Option<ResMut<BattleAiJournal>>,
+    // The match's nations (C2): what the commander's own side pays.
+    nations: Option<Res<NationRules>>,
     units: Query<(
         Entity,
         &Position,
@@ -388,6 +391,7 @@ pub fn ai_commanders(
             commander,
             tick,
             &content,
+            Defs::new(&content, nations.as_deref()),
             &stock,
             &unit_rows,
             &building_rows,
@@ -407,6 +411,7 @@ fn think(
     c: &mut AiCommander,
     tick: u32,
     content: &Content,
+    defs: Defs,
     stock: &Stockpiles,
     units: &[UnitRow],
     buildings: &[BuildingRow],
@@ -467,8 +472,8 @@ fn think(
 
     if let Some((hq_entity, hq_pos, hq_queued)) = hq {
         economy(
-            c, tick, content, stock, units, buildings, nodes, hq_entity, hq_pos, hq_queued,
-            queue, journal,
+            c, tick, content, defs, stock, units, buildings, nodes, hq_entity, hq_pos,
+            hq_queued, queue, journal,
         );
     } else if battle.is_none() {
         // A skirmish commander without an HQ has no economy and no rally
@@ -565,6 +570,7 @@ fn economy(
     c: &mut AiCommander,
     tick: u32,
     content: &Content,
+    defs: Defs,
     stock: &Stockpiles,
     units: &[UnitRow],
     buildings: &[BuildingRow],
@@ -618,7 +624,7 @@ fn economy(
         .filter(|u| u.faction == me && content.units.get(u.def).is_some_and(|d| d.gathers))
         .count() as u32;
     if let Some(worker) = hq_worker(content, hq_entity, buildings) {
-        let cost = content.units[worker].mvp_alloy_cost;
+        let cost = defs.roster_unit(me, worker).map_or(u32::MAX, |u| u.mvp_alloy_cost);
         let pending = hq_queued as u32;
         if workers_now.saturating_add(pending) < script.worker_target
             && hq_queued == 0
@@ -695,7 +701,7 @@ fn economy(
         if have > walked {
             continue; // this opening is already standing
         }
-        let cost = content.buildings[def].alloy_cost;
+        let cost = defs.building(me, def).map_or(u32::MAX, |b| b.alloy_cost);
         if tick >= opening.at_tick && budget >= cost {
             // It is standing as far as the *next* openings are concerned, even
             // though `apply_commands` has not spawned it yet.
@@ -761,7 +767,7 @@ fn economy(
             .min_by_key(|b| b.queued);
         if let Some(b) = target {
             if (b.queued as u32) < script.queue_depth {
-                let cost = content.units[unit].mvp_alloy_cost;
+                let cost = defs.roster_unit(me, unit).map_or(u32::MAX, |u| u.mvp_alloy_cost);
                 if budget >= cost.saturating_add(reserve) {
                     budget -= cost;
                     c.army_cursor = c.army_cursor.wrapping_add(1);

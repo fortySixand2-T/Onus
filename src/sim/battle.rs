@@ -54,6 +54,7 @@ use bevy::math::Vec2;
 use crate::sim::combat::{Engaging, Health, StatBonus};
 use crate::sim::content::{AuraModifier, AuraScaling, AuraStat, Content};
 use crate::sim::economy::{self, Building, ProductionQueue, UnitDefIdx};
+use crate::sim::nation::{Defs, NationRules};
 use crate::sim::replay::SimId;
 use crate::sim::spatial::Faction;
 use crate::sim::victory::count_victory_buildings;
@@ -167,7 +168,22 @@ impl BattleSetup {
 
     /// Check every name this setup uses against `content`, before anything is
     /// spawned — a typo must refuse the battle, never field a different one.
+    /// HP is checked against the plain pools: a match with no nation.
     pub fn check(&self, content: &Content) -> Result<(), BattleSetupError> {
+        self.check_with(content, None)
+    }
+
+    /// [`check`](Self::check) for a match with the nations `rules` (C2): a
+    /// roster's HP is checked against **its side's** pool, so a nation whose
+    /// traits shrink a pool refuses a roster HP above it rather than fielding
+    /// a unit with more HP than its maximum. Refused, never clamped — a
+    /// silently trimmed roster would hide a campaign bug.
+    pub fn check_with(
+        &self,
+        content: &Content,
+        rules: Option<&NationRules>,
+    ) -> Result<(), BattleSetupError> {
+        let defs = Defs::new(content, rules);
         if content.battle.is_none() {
             return Err(BattleSetupError::NoBattleContent);
         }
@@ -196,7 +212,7 @@ impl BattleSetup {
                         side: *side,
                     });
                 };
-                let max = Health::from_def(content, idx).max;
+                let max = defs.unit_health(*side, idx).max;
                 if let Some(hp) = u.hp.filter(|hp| *hp == 0 || *hp > max) {
                     return Err(bad_hp(&u.id, hp, max));
                 }
@@ -208,7 +224,7 @@ impl BattleSetup {
                         side: *side,
                     });
                 };
-                let max = Health::from_building_def(content, idx).max;
+                let max = defs.building_health(*side, idx).max;
                 if let Some(hp) = b.hp.filter(|hp| *hp == 0 || *hp > max) {
                     return Err(bad_hp(&b.id, hp, max));
                 }
@@ -288,6 +304,7 @@ fn line_offset(g: SideGround, j: usize, n: usize, spacing: f32) -> Vec2 {
 fn spawn_roster(
     world: &mut World,
     content: &Content,
+    defs: Defs,
     battle: &crate::sim::content::BattleDef,
     side: Faction,
     g: SideGround,
@@ -302,7 +319,7 @@ fn spawn_roster(
         // (k = 1, 2, 3, 4 → +1, -1, +2, -2 spacings).
         let step = k.div_ceil(2) as f32;
         let slot = if k % 2 == 1 { step } else { -step };
-        let full = Health::from_building_def(content, def);
+        let full = defs.building_health(side, def);
         let mut e = world.spawn((
             Position(g.base + across * (slot * battle.building_spacing)),
             Building { def },
@@ -333,7 +350,7 @@ fn spawn_roster(
         let in_row = (total - row * rank).min(rank);
         let back = battle.general_front - battle.formation_spacing * (row as f32 + 1.0);
         let at = g.base + g.front * back + line_offset(g, col, in_row, battle.formation_spacing);
-        let full = Health::from_def(content, idx);
+        let full = defs.unit_health(side, idx);
         world.spawn((
             Position(at),
             UnitDefIdx(idx),
@@ -353,6 +370,10 @@ fn spawn_roster(
 /// is a function of the setup alone.
 pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) {
     let content = world.resource::<Content>().clone();
+    // The match's nations (C2), installed before the battle: a roster enters
+    // with its side's pools. Generals take no trait.
+    let rules = world.get_resource::<NationRules>().cloned();
+    let defs = Defs::new(&content, rules.as_ref());
     let battle = content
         .battle
         .as_ref()
@@ -387,7 +408,7 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
             });
         }
         if let Some(roster) = &setup.sides[slot].roster {
-            spawn_roster(world, &content, battle, *side, g, roster);
+            spawn_roster(world, &content, defs, battle, *side, g, roster);
         }
     }
     let edges = ground.map(|g| Edge {
@@ -745,9 +766,10 @@ pub fn battle_watch(
 /// Decide the battle on the state the tick ended in. Runs just before
 /// `victory::match_end`, so on a tick it decides, the skirmish check sees a
 /// decided match and leaves it alone.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn battle_end(
     content: Res<Content>,
+    nations: Option<Res<NationRules>>,
     mut state: ResMut<MatchState>,
     mut battle: ResMut<BattleState>,
     generals: Query<&Faction, With<General>>,
@@ -807,7 +829,12 @@ pub fn battle_end(
     };
     let tick = state.tick();
     state.conclude(winner);
-    let sides = report(&content, &battle, &units, &standing);
+    let sides = report(
+        Defs::new(&content, nations.as_deref()),
+        &battle,
+        &units,
+        &standing,
+    );
     let escaped = battle.escaped.clone();
     battle.result = Some(BattleResult {
         winner,
@@ -824,7 +851,7 @@ pub fn battle_end(
 /// so no query order reaches the report.
 #[allow(clippy::type_complexity)]
 fn report(
-    content: &Content,
+    defs: Defs,
     battle: &BattleState,
     units: &Query<(
         Entity,
@@ -838,7 +865,7 @@ fn report(
 ) -> [SideReport; 2] {
     let mut sides: [SideReport; 2] = Default::default();
     for (_, f, def, health, id, general) in units {
-        let hp = health.copied().unwrap_or_else(|| Health::from_def(content, def.0));
+        let hp = health.copied().unwrap_or_else(|| defs.unit_health(*f, def.0));
         sides[faction_slot(*f)].units.push(UnitReport {
             sim_id: id.copied().unwrap_or(SimId::UNIDENTIFIED),
             unit: def.0,
@@ -861,7 +888,7 @@ fn report(
     for (b, f, health, id) in standing {
         let hp = health
             .copied()
-            .unwrap_or_else(|| Health::from_building_def(content, b.def));
+            .unwrap_or_else(|| defs.building_health(*f, b.def));
         sides[faction_slot(*f)].buildings.push(BuildingReport {
             sim_id: id.copied().unwrap_or(SimId::UNIDENTIFIED),
             building: b.def,
@@ -897,6 +924,7 @@ fn report(
 #[allow(clippy::type_complexity)]
 pub fn withdraw(
     content: Res<Content>,
+    nations: Option<Res<NationRules>>,
     state: Res<MatchState>,
     mut battle: ResMut<BattleState>,
     units: Query<(
@@ -928,7 +956,9 @@ pub fn withdraw(
     for (e, pos, f, def, health, id, general) in rows {
         let edge = battle.edges[faction_slot(*f)];
         if edge.reached(pos.0) {
-            let hp = health.copied().unwrap_or_else(|| Health::from_def(&content, def.0));
+            let hp = health
+                .copied()
+                .unwrap_or_else(|| Defs::new(&content, nations.as_deref()).unit_health(*f, def.0));
             battle.escaped.push(Escaped {
                 side: *f,
                 sim_id: id.copied().unwrap_or(SimId::UNIDENTIFIED),
@@ -999,10 +1029,36 @@ fn apply_modifiers(into: &mut StatBonus, modifiers: &[AuraModifier], factor: u32
     }
 }
 
+/// How many distinct domains the `members` hold, not counting `except` — the
+/// Synthesis count, shared by C1's `PerDistinctDomain` aura (no exception) and
+/// C2's mixed-army trait (the unit's own domain excepted). `domains` is the
+/// number of domains in the content.
+fn distinct_domains(
+    domains: usize,
+    members: impl Iterator<Item = Option<usize>>,
+    except: Option<usize>,
+) -> u32 {
+    let mut seen = vec![false; domains];
+    for d in members.flatten() {
+        if Some(d) != except {
+            if let Some(s) = seen.get_mut(d) {
+                *s = true;
+            }
+        }
+    }
+    seen.iter().filter(|s| **s).count() as u32
+}
+
 /// Compute the [`AuraField`] for this tick. Runs before combat.
+///
+/// Two sources, both from entity-sorted snapshots: every General's aura
+/// (C1), and each side's nation's mixed-army trait (C2,
+/// [`crate::sim::nation::SynthesisDef`]), a kind of its own that stacks with
+/// any aura.
 #[allow(clippy::type_complexity)]
 pub fn auras(
     content: Res<Content>,
+    nations: Option<Res<NationRules>>,
     mut field: ResMut<AuraField>,
     generals: Query<(Entity, &Position, &Faction, &UnitDefIdx), With<General>>,
     units: Query<(Entity, &Position, &Faction, &UnitDefIdx), Without<General>>,
@@ -1011,6 +1067,8 @@ pub fn auras(
     gs.sort_unstable_by_key(|g| g.0);
     let mut us: Vec<_> = units.iter().map(|(e, p, f, d)| (e.to_bits(), p.0, *f, d.0)).collect();
     us.sort_unstable_by_key(|u| u.0);
+    let domain: Vec<Option<usize>> = us.iter().map(|u| content.domain_of(u.3)).collect();
+    let domains = content.resources.len();
 
     // best[u][k]: the strongest factor of kind k reaching unit u.
     let kinds = content.generals.len();
@@ -1032,13 +1090,7 @@ pub fn auras(
         let factor = match g.aura.scaling {
             AuraScaling::Flat => 1,
             AuraScaling::PerDistinctDomain { max } => {
-                let mut seen = vec![false; content.resources.len()];
-                for &i in &in_reach {
-                    if let Some(d) = content.domain_of(us[i].3) {
-                        seen[d] = true;
-                    }
-                }
-                (seen.iter().filter(|s| **s).count() as u32).min(max)
+                distinct_domains(domains, in_reach.iter().map(|&i| domain[i]), None).min(max)
             }
         };
         for &i in &in_reach {
@@ -1047,6 +1099,13 @@ pub fn auras(
         }
     }
 
+    // Each side's mixed-army trait, if its nation has one.
+    let synthesis = |f: Faction| {
+        let i = nations.as_deref()?.nation_of(f)?;
+        content.nations.get(i)?.synthesis.as_ref()
+    };
+    let synthesis = [synthesis(Faction::A), synthesis(Faction::B)];
+
     field.bonuses.clear();
     for (i, u) in us.iter().enumerate() {
         let mut bonus = StatBonus::NONE;
@@ -1054,6 +1113,21 @@ pub fn auras(
             let factor = best[i * kinds + k];
             if factor > 0 {
                 apply_modifiers(&mut bonus, &g.aura.modifiers, factor);
+            }
+        }
+        if let (Some(syn), Some(own)) = (synthesis[faction_slot(u.2)], domain[i]) {
+            let r2 = syn.radius * syn.radius;
+            let others = distinct_domains(
+                domains,
+                us.iter()
+                    .enumerate()
+                    .filter(|&(j, v)| j != i && v.2 == u.2 && v.1.distance_squared(u.1) <= r2)
+                    .map(|(j, _)| domain[j]),
+                Some(own),
+            )
+            .min(syn.max);
+            if others > 0 {
+                apply_modifiers(&mut bonus, &syn.modifiers, others);
             }
         }
         if bonus != StatBonus::NONE {

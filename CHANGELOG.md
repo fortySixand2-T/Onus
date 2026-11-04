@@ -724,3 +724,72 @@
 - [2026-11-03] Modified: src/sim/battle.rs — C1 fix: spawn_roster debug_asserts the validated room for a rank
 - [2026-11-03] Modified: tests/c1_roster.rs — C1 fix: tight layout refused at load; the boundary layout keeps every unit on the field
 - [2026-11-03] Modified: FINDINGS.md — F-061 addendum: the layout guarantee is enforced at load
+- [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 heading: started 2026-11-03 ahead of B5 by user decision; gate section records the override
+- [2026-11-03] Modified: FINDINGS.md — F-062: C2 starts ahead of B5 by the user's decision
+- [2026-11-03] Created: assets/data/nations.ron — C2: the six nations, Generals, strategies, colours and Alloy stand-in traits
+- [2026-11-03] Created: src/sim/nation.rs — C2: NationDef/TraitDef, per-side traited rules (SideRules, NationRules), Defs lookup, install
+- [2026-11-03] Created: tests/c2_nations.rs — C2 AC1: roster, selection, each trait as data, refusals, hash, determinism
+- [2026-11-03] Modified: src/sim/content.rs — C2: load nations.ron if present, validate it, fingerprint it
+- [2026-11-03] Modified: src/sim/mod.rs — C2: nation module; apply_commands and movement read per-side Defs
+- [2026-11-03] Modified: src/sim/combat.rs — C2: damage/speed take the per-side defs; combat reads them
+- [2026-11-03] Modified: src/sim/economy.rs — C2: placement, training, production and gathering read per-side Defs
+- [2026-11-03] Modified: src/sim/ai.rs — C2: the AI prices units and buildings from its own side's Defs
+- [2026-11-03] Modified: src/sim/battle.rs — C2: rosters, reports and withdrawals read per-side Defs
+- [2026-11-03] Modified: src/sim/replay.rs — C2: NATIONS hash rows when nations are in play
+- [2026-11-03] Modified: src/headless.rs — C2: MatchSettings::nations / with_nations, MatchSetupError::Nation, install
+- [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC1 ticked
+- [2026-11-03] Modified: FINDINGS.md — F-063: nations as data
+- [2026-11-03] Modified: tests/b1_strategies.rs — C2: the fingerprint test's base is the shipped strategies through its own three-file harness (nations.ron is now content)
+- [2026-11-03] Created: tests/c2_golden.rs — C2 AC2: a no-nation match plays identically with and without nations.ron
+- [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC2 ticked
+- [2026-11-03] Modified: FINDINGS.md — F-064: the C2 golden licence
+- [2026-11-03] Modified: src/batch.rs — C2 AC3: the nation axis (Fixture, NationAxis, NationRecord, nation_roster, nation_fixtures, run_fixtures, run_nation_batch)
+- [2026-11-03] Modified: src/bin/balance.rs — C2 AC3: --nations mirror|cross|personality and --only-nations, printing the nation matrix
+- [2026-11-03] Created: tests/c2_batch.rs — C2 AC3: nation-axis fixtures, order, refusals, faithfulness, determinism, the binary
+- [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC3 ticked
+- [2026-11-03] Modified: FINDINGS.md — F-065: the batch runner's nation axis
+- [2026-11-03] Modified: src/client.rs — C2 AC5: NationPick, PickPhase, pick keys, cycle_nation, nation_name/color/label text, picker_text, run conditions, NationLabel/NationPicker markers
+- [2026-11-03] Modified: src/input.rs — C2 AC5: pick_nations (the pre-match nation pick keys)
+- [2026-11-03] Modified: src/setup.rs — C2 AC5: pick screen and labels, tick gate shut until start_match applies the pick
+- [2026-11-03] Modified: src/ui.rs — C2 AC5: nation labels, building tint, unit rings, train price at the player's nation cost
+- [2026-11-03] Modified: src/lib.rs — C2 AC5: add_nation_pick; order emitters wait for the start
+- [2026-11-03] Created: tests/c2_client.rs — C2 AC5: the nation pick and its display, headless
+- [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC5 ticked
+- [2026-11-03] Modified: FINDINGS.md — F-067: the client nation pick
+- [2026-11-03] Modified: src/gate.rs — C2 AC4: NationGate, the nation criterion (cross strength 35-65%, the pentagon under every nation pair)
+- [2026-11-03] Modified: src/pentagon.rs — C2 AC4: nation_pentagon_fixtures, every link's probes under every ordered nation pair
+- [2026-11-03] Created: tests/c2_gate.rs — C2 AC4: synthetic gate tests and the shipped nation reading (ignored, release)
+- [2026-11-03] Modified: FINDINGS.md — F-066: the nation gate reading (Fail: Tollmarch's +1 carry), AC4 left unticked
+- [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC4 annotated: gate reads Fail, left unticked (F-066)
+- [2026-11-03] Created: tests/critic_c2.rs — C2 critic probes: traits reach movement/combat/placement; roster HP within its side's pool
+- [2026-11-03] Created: tests/critic_c2_client.rs — C2 critic probes: the no-nation client pick plays the pre-C2 client match hash for hash
+- [2026-11-03] Modified: src/sim/battle.rs — BattleSetup::check_with: roster HP checked against the side's traited pool (refused, never clamped)
+- [2026-11-03] Modified: src/headless.rs — resolve nations before checking a battle setup, and check it with them
+- [2026-11-03] Modified: FINDINGS.md — F-068: roster HP against the traited pool
+- [2026-11-03] Modified: src/sim/replay.rs — MatchLog records each side's nation (serde default, unwritten when none); the sim stamps it; matches_content refuses an unknown nation; new apply_log_nations installs or refuses a replay's nations (critic finding 2)
+- [2026-11-03] Modified: src/sim/nation.rs — nation::ids, each side's nation id for the log
+- [2026-11-03] Modified: src/lib.rs — apply_log_nations runs before feed_replay in a replay
+- [2026-11-03] Modified: tests/critic_c2.rs — restored the critic's nation-replay test
+- [2026-11-03] Modified: tests/c2_nations.rs — tests for the logged nations: faithful replay, pre-C2 logs, unknown and mismatched nations refused
+- [2026-11-03] Modified: FINDINGS.md — F-063/F-067 replay claims marked corrected; added F-069
+- [2026-11-03] Modified: tests/c2_nations.rs — guard tests for the building-defender and AI-price trait read sites (critic finding 3)
+- [2026-11-03] Modified: FINDINGS.md — F-070: the trait read sites' guard tests and their mutations
+- [2026-11-03] Modified: src/sim/nation.rs — BuildingHp pools scale per trait with scale_milli, rounding half up (critic finding 4)
+- [2026-11-03] Modified: tests/c2_nations.rs — BuildingHp rounding test on a value that rounds up
+- [2026-11-03] Modified: FINDINGS.md — F-071: BuildingHp rounding
+- [2026-11-03] Modified: DESIGN_BRIEF.md — Tollmarch sheet: speciality and stand-in are faster gathering (user decision), was +worker carry
+- [2026-11-03] Modified: assets/data/nations.ron — Tollmarch trait: Workers GatherTicks x0.90 (was CarryCapacity +1)
+- [2026-11-03] Modified: tests/c2_nations.rs — tollmarch_workers_gather_faster replaces tollmarch_workers_carry_more
+- [2026-11-03] Modified: FINDINGS.md — F-072: Tollmarch's trait redesign
+- [2026-11-03] Modified: src/sim/nation.rs — SynthesisDef: the data-driven mixed-army trait kind (validated at load; install adds the AuraField only for a nation with one)
+- [2026-11-03] Modified: src/sim/battle.rs — auras computes each side's mixed-army trait; the domain count is one shared helper (distinct_domains)
+- [2026-11-03] Modified: src/sim/content.rs — check_aura_modifiers shared by General auras and the mixed-army trait; fingerprint mixes the trait in when present
+- [2026-11-03] Modified: DESIGN_BRIEF.md — House Vael sheet: its Synthesis is a real nation trait (user decision)
+- [2026-11-03] Modified: assets/data/nations.ron — House Vael: synthesis (radius 160, Offense +1 per other domain, max 2)
+- [2026-11-03] Modified: tests/c2_nations.rs — mixed-army trait tests: active, mono-domain, cap, enemies, field/fingerprint, load refusals, shipped House
+- [2026-11-03] Modified: FINDINGS.md — F-073: the mixed-army trait
+- [2026-11-03] Modified: FINDINGS.md — F-074: C2 nation gate readings after the Tollmarch and House decisions, plus the RON tuning steps
+- [2026-11-03] Modified: assets/data/nations.ron — C2 tuning step 1: Tollmarch GatherTicks 0.90→0.95, Forgeborn Foundry AlloyCost 0.90→0.95, Ashen Reach BuildingHp 1.15→1.30
+- [2026-11-03] Modified: assets/data/nations.ron — C2 tuning step 2: Tollmarch GatherTicks 0.95→0.98 (90→88 ticks)
+- [2026-11-03] Modified: FINDINGS.md — F-074 steps 1 and 2: Tollmarch in band at GatherTicks 0.98; House the only nation not passing cross (structural)
+- [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC4 note: the cross reading after tuning, still unticked

@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use crate::sim::combat::{AttackCooldown, Casualties, Engaging, Health, Target};
 use crate::sim::economy::{Building, Carrying, GatherPhase, ProductionQueue, Stockpiles, UnitDefIdx};
 use crate::sim::content::{Content, ContentFingerprint};
+use crate::sim::nation::{self, NationRules};
 use crate::sim::spatial::Faction;
 use crate::sim::victory::MatchState;
 use crate::sim::{
@@ -501,7 +502,23 @@ pub struct MatchLog {
     /// guard on in-memory logs and on hand-edited ones.
     #[serde(default)]
     pub content_changed: bool,
+    /// Each side's nation (C2), by id, per faction slot (A, B): part of the
+    /// starting world a replay has to rebuild, like the seed. Stamped by the
+    /// sim itself (`replay::stamp_content`), never by the caller; applied by a
+    /// replay through the same `nation::install` every match setup uses
+    /// ([`apply_log_nations`]); refused by
+    /// [`matches_content`](Self::matches_content) when the content lacks one.
+    ///
+    /// `#[serde(default)]` and **not written when neither side has one**: a
+    /// pre-C2 log reads as a no-nation match, and a no-nation match writes the
+    /// same bytes it wrote before C2.
+    #[serde(default, skip_serializing_if = "no_nations")]
+    pub nations: [Option<String>; 2],
     pub commands: Vec<LoggedCommand>,
+}
+
+fn no_nations(n: &[Option<String>; 2]) -> bool {
+    n.iter().all(Option::is_none)
 }
 
 impl Default for MatchLog {
@@ -511,6 +528,7 @@ impl Default for MatchLog {
             seed: 0,
             content: ContentFingerprint::unknown(),
             content_changed: false,
+            nations: [None, None],
             commands: Vec::new(),
         }
     }
@@ -707,6 +725,17 @@ impl MatchLog {
                 }
             }
         }
+        // The nations are part of the starting world: one this content does not
+        // have cannot be installed, so the match it names cannot be rebuilt.
+        for (side, id) in [Faction::A, Faction::B].iter().zip(&self.nations) {
+            let Some(id) = id else { continue };
+            if !content.nations.iter().any(|n| &n.id == id) {
+                return Err(format!(
+                    "log: side {side:?} played nation `{id}`, which this content \
+                     does not have"
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -848,6 +877,32 @@ impl CommandLog {
         }
     }
 
+    /// Does this log already name exactly these nations?
+    fn names_nations(&self, now: [Option<&str>; 2]) -> bool {
+        self.log
+            .nations
+            .iter()
+            .zip(now)
+            .all(|(have, now)| have.as_deref() == now)
+    }
+
+    /// Record the match's nations. The first stamp (`first`: the log has not
+    /// been stamped with any content yet) simply records them. A later one
+    /// that **differs** means the nations changed while this match was being
+    /// recorded — the commands before and after were taken under different
+    /// starting worlds, which no replay can rebuild — so the log is marked as
+    /// describing no single match ([`MatchLog::content_changed`]), refused at
+    /// both boundaries like a content change.
+    pub(crate) fn stamp_nations(&mut self, now: [Option<&str>; 2], first: bool) {
+        if self.names_nations(now) {
+            return;
+        }
+        self.log.nations = now.map(|n| n.map(str::to_string));
+        if !first {
+            self.log.content_changed = true;
+        }
+    }
+
     pub(crate) fn record_unnameable(&mut self, n: u32) {
         self.unnameable = self.unnameable.saturating_add(n);
     }
@@ -897,6 +952,9 @@ pub struct ReplaySource {
     /// to the content the sim is running. Set once, on the first tick; while it
     /// is set nothing is ever fed.
     rejection: Option<String>,
+    /// Has [`apply_log_nations`] looked at this log yet? It acts once, on the
+    /// first tick the replay is in the world.
+    nations_checked: bool,
 }
 
 impl ReplaySource {
@@ -914,6 +972,7 @@ impl ReplaySource {
             discarded: 0,
             unresolved: 0,
             rejection: None,
+            nations_checked: false,
         }
     }
 
@@ -965,8 +1024,22 @@ impl ReplaySource {
 /// in a fixture cannot know the content, and a log that has to be stamped by
 /// its caller is a log that will eventually go unstamped — which is the exact
 /// shape of defect this milestone keeps paying for.
-pub fn stamp_content(content: Res<Content>, log: Option<ResMut<CommandLog>>) {
+///
+/// It stamps the match's **nations** (C2) the same way and for the same reason:
+/// they are part of the starting world a replay has to rebuild. Compared every
+/// tick (two string compares, no allocation unless they differ), so a nation
+/// installed after the first stamp poisons the log rather than going unrecorded.
+pub fn stamp_content(
+    content: Res<Content>,
+    rules: Option<Res<NationRules>>,
+    log: Option<ResMut<CommandLog>>,
+) {
     let Some(mut log) = log else { return };
+    let now = nation::ids(&content, rules.as_deref());
+    if !log.names_nations(now) {
+        let first = !log.log().content.is_known();
+        log.stamp_nations(now, first);
+    }
     // The fingerprint is a walk over the whole content, so it is computed when
     // it can have changed and not on every tick: the first time this log is
     // seen (a fixture may install a fresh log mid-match), and whenever the
@@ -1019,6 +1092,64 @@ pub fn record_unplayed(
             &content,
             |e| ids.id_of(e).unwrap_or(SimId::UNIDENTIFIED),
         );
+    }
+}
+
+/// Rebuild the recorded match's nations (C2) before a replay feeds anything.
+///
+/// The log's [`nations`](MatchLog::nations) are part of its starting world, as
+/// its seed is. Acting once, on the replay's first tick in the world:
+///
+/// - a log that does not belong to this content (an unknown nation included)
+///   is refused here, exactly as [`feed_replay`]'s backstop would refuse it,
+///   so nothing is installed for a log that will never be fed;
+/// - the world already plays the log's nations (a setup that named them):
+///   nothing to do;
+/// - the world plays **no** nations and the match has not started (tick 0):
+///   they are installed through [`nation::install`] — the one path headless
+///   setup and the client also use, so the replay's world is theirs;
+/// - anything else (the world plays other nations, or the match is already
+///   under way, when installing would rebuild a different match): refused.
+pub fn apply_log_nations(world: &mut World) {
+    let Some(src) = world.get_resource::<ReplaySource>() else {
+        return;
+    };
+    if src.nations_checked || src.rejection.is_some() {
+        return;
+    }
+    let wanted = src.log.nations.clone();
+    let verdict = {
+        let content = world.resource::<Content>();
+        let have = nation::ids(content, world.get_resource::<NationRules>());
+        let same = have
+            .iter()
+            .zip(&wanted)
+            .all(|(have, want)| *have == want.as_deref());
+        match src.log.matches_content(content) {
+            Err(why) => Err(why),
+            Ok(()) if same => Ok(false),
+            Ok(())
+                if have.iter().all(Option::is_none)
+                    && world.resource::<MatchState>().tick() == 0 =>
+            {
+                Ok(true)
+            }
+            Ok(()) => Err(format!(
+                "log: recorded with nations {wanted:?}, but this world plays {have:?} \
+                 — a replay would play a different match, so it is refused rather \
+                 than run"
+            )),
+        }
+    };
+    let verdict = match verdict {
+        Ok(true) => nation::install(world, &wanted).map_err(|e| format!("log: {e}")),
+        Ok(false) => Ok(()),
+        Err(why) => Err(why),
+    };
+    let mut src = world.resource_mut::<ReplaySource>();
+    src.nations_checked = true;
+    if let Err(why) = verdict {
+        src.rejection = Some(why);
     }
 }
 
@@ -1180,6 +1311,9 @@ mod tag {
     /// hashes exactly as it did before these tags existed.
     pub const GENERAL: u64 = 23;
     pub const BATTLE_STATE: u64 = 24;
+    /// C2. Each side's nation: present only when a side has one, so a match
+    /// with no nation hashes exactly as it did before the tag existed.
+    pub const NATIONS: u64 = 25;
 }
 
 /// A 64-bit digest of one command the sim is holding. Everything about it that
@@ -1557,6 +1691,15 @@ pub fn state_hash(world: &mut World) -> u64 {
     if let Some(battle) = world.get_resource::<crate::sim::battle::BattleState>() {
         for (i, word) in battle.hash_words().into_iter().enumerate() {
             rows.push((slot, tag::BATTLE_STATE, i as u64, word));
+        }
+    }
+    // The nations (C2), only when a side has one. Each side's nation index
+    // (`u64::MAX`: none); the traited tables are a function of it and of the
+    // content, which the log's fingerprint already pins.
+    if let Some(n) = world.get_resource::<crate::sim::nation::NationRules>() {
+        for (i, f) in [Faction::A, Faction::B].into_iter().enumerate() {
+            let nation = n.nation_of(f).map_or(u64::MAX, |k| k as u64);
+            rows.push((slot, tag::NATIONS, i as u64, nation));
         }
     }
 

@@ -474,7 +474,15 @@ fn the_shipped_strategies_file_loads_through_the_same_harness() {
 /// proves the hash actually changes.)
 #[test]
 fn the_fingerprint_covers_every_strategy_and_every_field() {
-    let base = content().fingerprint();
+    // The base is the shipped strategies through the same harness as every
+    // edit (units + resources + strategies). Since C2 the shipped content also
+    // holds `nations.ron`, which this harness does not copy (a nation names
+    // shipped strategies, so it could not load beside an edited set), and
+    // which the fingerprint rightly sees: comparing a copy to the full
+    // shipped content would compare different content.
+    let base = load_with_strategies("fp-base", &shipped_strategies())
+        .expect("the shipped set loads")
+        .fingerprint();
     let edits = [
         ("think_interval_ticks: 30", "think_interval_ticks: 31"),
         ("worker_target: 6", "worker_target: 7"),
