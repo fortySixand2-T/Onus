@@ -1,7 +1,7 @@
 //! C2 AC1 — **nations as data**: `assets/data/nations.ron` holds C0's six
 //! nations with their General types, a nation's traits are data-driven
 //! modifiers on the content its side plays with (costs, unit stats, training
-//! time, worker carry, building HP), and a match names one nation per side
+//! time, worker gather time, building HP), and a match names one nation per side
 //! through `MatchSettings`, the way it names strategies.
 
 use std::path::PathBuf;
@@ -255,24 +255,34 @@ fn verdant_trains_gene_vats_units_faster() {
 }
 
 #[test]
-fn tollmarch_workers_carry_more() {
+fn tollmarch_workers_gather_faster() {
     let c = shipped();
-    let add = nation_add(&c, "tollmarch", 0) as u32;
+    let mul = nation_mul(&c, "tollmarch", 0);
     let worker = c.unit_index("worker").unwrap();
-    let base = c.units[worker].mvp_carry_capacity;
+    let base = c.units[worker].mvp_gather_ticks;
+    let fast = traited(base, mul);
+    assert!(fast < base, "a gather-time multiplier below 1");
+    let carry = c.units[worker].mvp_carry_capacity;
     // Both sides play the same script; only the nation differs.
     let s = MatchSettings::default().with_nations(Some("tollmarch"), None);
     let mut app = headless::battle(shipped(), &s).unwrap();
+    let mut longest = [0u32; 2];
     let mut most = [0u32; 2];
     for _ in 0..900 {
         headless::step(&mut app);
-        let mut q = app.world_mut().query::<(&Faction, &Carrying)>();
-        for (f, carry) in q.iter(app.world()) {
+        let mut q = app
+            .world_mut()
+            .query::<(&Faction, &Carrying, Option<&onus::sim::economy::GatherPhase>)>();
+        for (f, load, phase) in q.iter(app.world()) {
             let k = if *f == Faction::A { 0 } else { 1 };
-            most[k] = most[k].max(carry.0);
+            most[k] = most[k].max(load.0);
+            if let Some(onus::sim::economy::GatherPhase::Harvesting { ticks_left }) = phase {
+                longest[k] = longest[k].max(*ticks_left);
+            }
         }
     }
-    assert_eq!(most, [base + add, base], "a full load per side");
+    assert_eq!(longest, [fast, base], "a load takes Tollmarch's gather time, its side only");
+    assert_eq!(most, [carry, carry], "the load itself is unchanged");
 }
 
 #[test]

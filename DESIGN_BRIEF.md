@@ -403,9 +403,12 @@ cheaper.
 
 **Tollmarch: the merchant city-state (minor, Machine-leaning)**
 - **Cities:** 2.
-- **Lean:** richer Alloy mines. **Speciality:** workers carry more.
+- **Lean:** richer Alloy mines. **Speciality:** workers gather faster.
 - **Battle personality:** turtle; economy first.
-- **Alloy-only stand-in:** +x worker carry.
+- **Alloy-only stand-in:** workers gather x% faster (a gather-time multiplier, `GatherTicks`
+  below 1). *(Changed 2026-11-03, user decision: was +x worker carry. +1 on a base carry of 2
+  is +50% per trip and read 94.7% cross-nation strength, F-066. A multiplier tunes in small
+  steps.)*
 - **Disposition:** neutral to all. They sell alliances, and switch sides for a better offer.
 - **General's aura:** Logistics: + move speed.
 - **Look:** gold and blue.

@@ -6556,3 +6556,25 @@ pass unchanged.
 **Gate.** `c2_nations` `a_building_hp_trait_rounds_half_up_like_every_mul` fails before the
 fix (8433 vs 8434). It covers ×1.004 on every building, where 8400 and 4200 round up and 5040
 rounds down, plus two traits composing in RON order.
+
+## F-072 — Tollmarch's stand-in trait is now faster gathering, not a bigger load (C2, user decision)
+
+**Why.** Tollmarch's stand-in was `Workers CarryCapacity +1`. On a base carry of 2 that is +50%
+Alloy per trip, and it read 94.7% cross-nation strength, the gate's only Fail (F-066). An `add`
+on a value of 2 cannot be tuned in steps smaller than 50%. The user chose a gather-time
+multiplier instead.
+
+**Change.** The brief comes first (DESIGN_BRIEF Tollmarch sheet: speciality "workers gather
+faster", stand-in "workers gather x% faster"), then the data: nations.ron changes Tollmarch's
+trait to `(applies_to: Workers, stat: GatherTicks, mul: 0.90)`. A load takes round(90 × 0.90)
+= 81 ticks instead of 90. The walk is unchanged, so the income gain per trip is under 10%.
+`GatherTicks` already existed as a data-driven trait stat, and `economy::gather` already read
+it through `Defs::roster_unit`. No sim code changed and there is no per-nation code.
+
+**Gates.**
+- `c2_nations` `tollmarch_workers_gather_faster` replaces `tollmarch_workers_carry_more`. It
+  failed against the old RON (no `mul` on the trait). In a Tollmarch-vs-none match, A's
+  longest harvest is 81 ticks and B's is 90, and both sides carry the base load.
+- `c2_golden` (no-nation matches identical to pre-C2 content) passes unchanged.
+
+The gate reading with this trait is in F-074.

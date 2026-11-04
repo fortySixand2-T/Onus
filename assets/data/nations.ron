@@ -77,7 +77,7 @@
             general: "general_logistics",
             strategy: "turtle",   // economy first
             traits: [
-                (applies_to: Workers, stat: CarryCapacity, add: 1),
+                (applies_to: Workers, stat: GatherTicks, mul: 0.90),   // gather faster
             ],
         ),
         (

@@ -777,3 +777,7 @@
 - [2026-11-03] Modified: src/sim/nation.rs — BuildingHp pools scale per trait with scale_milli, rounding half up (critic finding 4)
 - [2026-11-03] Modified: tests/c2_nations.rs — BuildingHp rounding test on a value that rounds up
 - [2026-11-03] Modified: FINDINGS.md — F-071: BuildingHp rounding
+- [2026-11-03] Modified: DESIGN_BRIEF.md — Tollmarch sheet: speciality and stand-in are faster gathering (user decision), was +worker carry
+- [2026-11-03] Modified: assets/data/nations.ron — Tollmarch trait: Workers GatherTicks x0.90 (was CarryCapacity +1)
+- [2026-11-03] Modified: tests/c2_nations.rs — tollmarch_workers_gather_faster replaces tollmarch_workers_carry_more
+- [2026-11-03] Modified: FINDINGS.md — F-072: Tollmarch's trait redesign
