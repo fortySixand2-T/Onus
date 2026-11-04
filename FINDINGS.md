@@ -6721,3 +6721,23 @@ Matrix rows: house 40/40/38/38/45. Forgeborn 60/51/49/58/58. Verdant 60/49/48/48
   baseline. **AC4 stays unticked.** Two things are needed, and both are the user's decision:
   - a cross probe that lets a mixed-army trait act, or a cross-only perk for House;
   - a pentagon criterion that is not held hostage by the baseline sen>rip link.
+
+## F-075 — C3 starts ahead of B5, by the user's decision (C3)
+
+**Context.** `CAMPAIGN_PLAN.md` gates C1 onward on B5 Go, the human play test, which has not
+run. The user overrode that gate for C1 on 2026-11-02 (F-052 onward) and for C2 on 2026-11-03
+(F-062). On 2026-11-04 the user said "start c3".
+
+**Decision.** C3 (the three-resource economy: Biomass grown, Aether channelled) starts now, on
+the same terms as C1 and C2: B5 still runs when the user can play, and its findings can revise
+C1, C2, C3 and later milestones. The C3 heading in `CAMPAIGN_PLAN.md` now says "started
+2026-11-04, ahead of B5 by user decision", the plan's gate section records the override, and
+C3's acceptance criteria are written down as checkboxes.
+
+The three-resource economy is opt-in (`MatchSettings`, the client's pick), like nations and
+battles. The default stays Alloy-only.
+
+**What this does not change.** C1's open AC (the B5 human re-read) and C2's open AC (the nation
+cross gate, F-074) stay open. Nothing in C3 re-pins a golden: the Alloy-only default must
+reproduce today's results exactly (C3 golden licence). The Alloy-only stand-in traits keep
+working in Alloy-only mode.

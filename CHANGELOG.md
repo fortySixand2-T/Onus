@@ -793,3 +793,5 @@
 - [2026-11-03] Modified: assets/data/nations.ron — C2 tuning step 2: Tollmarch GatherTicks 0.95→0.98 (90→88 ticks)
 - [2026-11-03] Modified: FINDINGS.md — F-074 steps 1 and 2: Tollmarch in band at GatherTicks 0.98; House the only nation not passing cross (structural)
 - [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC4 note: the cross reading after tuning, still unticked
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — C3 started ahead of B5 by user decision: heading, gate override, acceptance criteria
+- [2026-11-04] Modified: FINDINGS.md — F-075: C3 starts ahead of B5 by the user's decision
