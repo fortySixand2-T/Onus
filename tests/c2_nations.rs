@@ -642,3 +642,110 @@ fn a_log_whose_nations_disagree_with_the_world_is_refused() {
     let rep = replay(log, [Some("forgeborn"), Some("tollmarch")], 60);
     assert_eq!(rep.world().resource::<ReplaySource>().rejection(), None);
 }
+
+// ---- every trait read site is guarded (critic finding 3) ---------------------
+
+/// The defender's side of a hit on a **building** reads the building's side's
+/// table: an Armor trait on side A's buildings mitigates a no-nation
+/// attacker's hit. (The unit defender is guarded by critic_c2's
+/// `offense_and_armor_traits_reach_combat_on_both_ends_of_a_hit`.)
+#[test]
+fn a_building_armor_trait_mitigates_hits_on_its_side_only() {
+    let c = one_trait("bld_armor", "(applies_to: Buildings, stat: Armor, add: 1)").expect("loads");
+    let s = MatchSettings::default().with_nations(Some("x"), None);
+    let mut app = headless::battle(c.clone(), &s).expect("builds");
+    app.insert_resource(AiCommanders::new(0, &[]));
+    let foundry = c.building_index("foundry").unwrap();
+    // Far from both bases, so nothing but the one attacker is near it.
+    let spots = [Vec2::new(-750.0, 650.0), Vec2::new(750.0, 650.0)];
+    for (f, at) in [Faction::A, Faction::B].into_iter().zip(spots) {
+        push(&mut app, Order::Place { faction: f, building: foundry, pos: at }, f);
+    }
+    headless::step(&mut app);
+    let targets = [
+        building_of(&mut app, Faction::A, foundry).expect("A placed it"),
+        building_of(&mut app, Faction::B, foundry).expect("B placed it"),
+    ];
+    // One sentinel of the *other* side beside each foundry.
+    let sentinel = c.unit_index("sentinel").unwrap();
+    let attackers = [Faction::B, Faction::A];
+    for (i, f) in attackers.into_iter().enumerate() {
+        let at = spots[i] + Vec2::new(0.0, 60.0);
+        let hp = Health::from_def(&c, sentinel);
+        app.world_mut()
+            .spawn((Position(at), UnitDefIdx(sentinel), c.units[sentinel].mvp_kind, f, hp));
+    }
+    let hp = |app: &App, e: Entity| app.world().get::<Health>(e).unwrap().current;
+    let full = [hp(&app, targets[0]), hp(&app, targets[1])];
+    let mut took = [0u32; 2];
+    for _ in 0..600 {
+        headless::step(&mut app);
+        for k in 0..2 {
+            if took[k] == 0 {
+                took[k] = full[k] - hp(&app, targets[k]);
+            }
+        }
+        if took.iter().all(|t| *t > 0) {
+            break;
+        }
+    }
+    let plain = onus::sim::combat::damage_to_building_between(
+        &c,
+        &c.units[sentinel],
+        &c.buildings[foundry],
+        onus::sim::combat::StatBonus::NONE,
+    );
+    let rules = app.world().resource::<NationRules>().clone();
+    let armored = Defs::new(&c, Some(&rules)).building(Faction::A, foundry).unwrap();
+    let mitigated = onus::sim::combat::damage_to_building_between(
+        &c,
+        &c.units[sentinel],
+        armored,
+        onus::sim::combat::StatBonus::NONE,
+    );
+    assert!(mitigated < plain && mitigated > 0, "the trait changes the hit");
+    assert_eq!(took, [mitigated, plain], "A's foundry takes the traited hit, B's the plain one");
+}
+
+/// What one side's commander did in the first `ticks` of a match where side A
+/// plays nation `x`.
+fn ai_actions(c: &Content, ticks: u32) -> [Vec<onus::sim::ai::AiAction>; 2] {
+    let s = MatchSettings::default().with_seed(3).with_nations(Some("x"), None);
+    let mut app = headless::ai_vs_ai(c.clone(), &s).unwrap();
+    headless::tick(&mut app, ticks);
+    let j = app.world().resource::<onus::sim::AiJournal>();
+    [Faction::A, Faction::B].map(|f| j.for_faction(f).into_iter().map(|(_, a)| a).collect())
+}
+
+/// The commander prices what it orders from **its own side's** table: a
+/// worker and an army it cannot afford under its traits are never ordered, by
+/// it, while the other side orders both.
+#[test]
+fn the_ai_prices_workers_and_army_at_its_sides_traited_cost() {
+    use onus::sim::ai::AiAction;
+    let c = one_trait(
+        "ai_units_dear",
+        "(applies_to: Workers, stat: AlloyCost, mul: 100.0),
+         (applies_to: CombatUnits, stat: AlloyCost, mul: 100.0)",
+    )
+    .expect("loads");
+    let [a, b] = ai_actions(&c, 4_000);
+    let worker = |x: &AiAction| matches!(x, AiAction::TrainWorker { .. });
+    let army = |x: &AiAction| matches!(x, AiAction::TrainArmy { .. });
+    let barracks = |x: &AiAction| matches!(x, AiAction::PlaceBarracks { .. });
+    assert!(b.iter().any(worker) && b.iter().any(army), "the window is long enough: {b:?}");
+    assert!(a.iter().any(barracks), "A still builds, so it could train: {a:?}");
+    assert!(!a.iter().any(worker), "A priced a worker at the base cost: {a:?}");
+    assert!(!a.iter().any(army), "A priced its army at the base cost: {a:?}");
+}
+
+#[test]
+fn the_ai_prices_its_barracks_at_its_sides_traited_cost() {
+    use onus::sim::ai::AiAction;
+    let c = one_trait("ai_bld_dear", "(applies_to: Buildings, stat: AlloyCost, mul: 100.0)")
+        .expect("loads");
+    let [a, b] = ai_actions(&c, 4_000);
+    let barracks = |x: &AiAction| matches!(x, AiAction::PlaceBarracks { .. });
+    assert!(b.iter().any(barracks), "the window is long enough: {b:?}");
+    assert!(!a.iter().any(barracks), "A priced a barracks at the base cost: {a:?}");
+}

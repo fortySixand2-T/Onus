@@ -6515,3 +6515,27 @@ two hash logs (both notes are now marked as corrected).
   - `a_log_whose_nations_disagree_with_the_world_is_refused` covers both directions. A world
     whose setup already named the log's nations is accepted.
 - The M5/M6/P2 replay suites and the c1/c2 goldens pass unchanged.
+
+## F-070 — C2 critic fixes: every trait read site has a test that sees the untraited table (C2)
+
+**Defect (critic, Low-Medium).** Two kinds of read site took a side's traited definitions, but
+no test failed if either was switched back to the untraited `content` lookup:
+- combat's defender side (`src/sim/combat.rs`, `defs.unit(prey_side, ..)` and
+  `defs.building(prey_side, ..)`);
+- the AI's prices (`src/sim/ai.rs`), for the worker, the opening barracks and the army unit.
+
+**Gates, each shown red by its mutation on the box** (every site switched alone to `content`,
+then restored):
+- Unit defender: already guarded. critic_c2's
+  `offense_and_armor_traits_reach_combat_on_both_ends_of_a_hit` fails under the mutation, since
+  A's Armor +1 stops mitigating B's hit.
+- Building defender: `c2_nations` `a_building_armor_trait_mitigates_hits_on_its_side_only`.
+  A sentinel of each side hits the other side's foundry. A's foundry, with a Buildings
+  Armor +1 trait, takes the mitigated hit, and B's takes the plain one.
+- Worker and army price: `the_ai_prices_workers_and_army_at_its_sides_traited_cost`. A's
+  workers and combat units cost ×100, so in 4 000 ticks A never orders either (it still builds
+  a barracks), while B orders both. The worker mutation and the army mutation each fail it.
+- Barracks price: `the_ai_prices_its_barracks_at_its_sides_traited_cost`. A's buildings cost
+  ×100, so A never places a barracks in 4 000 ticks; B does.
+
+No sim code changed: the sites were correct, they were only unguarded.

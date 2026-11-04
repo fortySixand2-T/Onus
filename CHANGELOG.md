@@ -772,3 +772,5 @@
 - [2026-11-03] Modified: tests/critic_c2.rs — restored the critic's nation-replay test
 - [2026-11-03] Modified: tests/c2_nations.rs — tests for the logged nations: faithful replay, pre-C2 logs, unknown and mismatched nations refused
 - [2026-11-03] Modified: FINDINGS.md — F-063/F-067 replay claims marked corrected; added F-069
+- [2026-11-03] Modified: tests/c2_nations.rs — guard tests for the building-defender and AI-price trait read sites (critic finding 3)
+- [2026-11-03] Modified: FINDINGS.md — F-070: the trait read sites' guard tests and their mutations
