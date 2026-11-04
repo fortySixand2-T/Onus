@@ -788,3 +788,8 @@
 - [2026-11-03] Modified: assets/data/nations.ron — House Vael: synthesis (radius 160, Offense +1 per other domain, max 2)
 - [2026-11-03] Modified: tests/c2_nations.rs — mixed-army trait tests: active, mono-domain, cap, enemies, field/fingerprint, load refusals, shipped House
 - [2026-11-03] Modified: FINDINGS.md — F-073: the mixed-army trait
+- [2026-11-03] Modified: FINDINGS.md — F-074: C2 nation gate readings after the Tollmarch and House decisions, plus the RON tuning steps
+- [2026-11-03] Modified: assets/data/nations.ron — C2 tuning step 1: Tollmarch GatherTicks 0.90→0.95, Forgeborn Foundry AlloyCost 0.90→0.95, Ashen Reach BuildingHp 1.15→1.30
+- [2026-11-03] Modified: assets/data/nations.ron — C2 tuning step 2: Tollmarch GatherTicks 0.95→0.98 (90→88 ticks)
+- [2026-11-03] Modified: FINDINGS.md — F-074 steps 1 and 2: Tollmarch in band at GatherTicks 0.98; House the only nation not passing cross (structural)
+- [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC4 note: the cross reading after tuning, still unticked

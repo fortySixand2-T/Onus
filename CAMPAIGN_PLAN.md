@@ -171,6 +171,11 @@ A **skirmish** mode keeps today's rules exactly.
   minimum carry trait (+1 on a base of 2) is 94.7% cross strength and breaks the pentagon
   wherever it is prey. That cannot be tuned by magnitude, so this box stays unticked
   pending the user's decision.)*
+  *(Later, 2026-11-03: Tollmarch's trait is now faster gathering (×0.98) and House has
+  Synthesis. Cross reads **undetermined** (F-074). Five nations read Pass. House reads
+  40.3% [33.2, 47.6]: the mono-domain cross probes never let its mixed-army trait act. The
+  pentagon was not run, and its baseline sen>rip link can't read Pass (F-066). Still
+  unticked, pending the user.)*
 - [x] **Client:** pick a nation, and see the opponent's nation at a glance (P3).
 
 ## C3 — The three-resource economy (Biomass grown, Aether channelled)

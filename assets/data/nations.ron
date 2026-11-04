@@ -55,7 +55,7 @@
             general: "general_bulwark",
             strategy: "mvp",   // Sentinel and Bulwark
             traits: [
-                (applies_to: Barracks("foundry"), stat: AlloyCost, mul: 0.90),
+                (applies_to: Barracks("foundry"), stat: AlloyCost, mul: 0.95),
             ],
         ),
         (
@@ -85,7 +85,7 @@
             general: "general_logistics",
             strategy: "turtle",   // economy first
             traits: [
-                (applies_to: Workers, stat: GatherTicks, mul: 0.90),   // gather faster
+                (applies_to: Workers, stat: GatherTicks, mul: 0.98),   // gather faster
             ],
         ),
         (
@@ -95,7 +95,7 @@
             general: "general_endurance",
             strategy: "turtle",   // defensive
             traits: [
-                (applies_to: Buildings, stat: BuildingHp, mul: 1.15),
+                (applies_to: Buildings, stat: BuildingHp, mul: 1.30),
             ],
         ),
     ],

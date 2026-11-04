@@ -6633,3 +6633,91 @@ per other domain nearby, so +2 for a full Machine/Flesh/Energy mix. House's AI s
 - `c2_golden` (no-nation matches) and the C1 aura suites pass unchanged.
 
 The gate reading with this trait is in F-074.
+
+## F-074 — C2 nation gate after the two user decisions: readings and RON tuning steps (C2)
+
+The coordinator allowed trait magnitudes in `nations.ron` to be tuned so that every nation
+lands in 35–65% cross strength, with each step and its reading recorded here. The bound is
+CAMPAIGN_PLAN's rule: no trait may move a pentagon link out of "holds", or a nation's
+cross-nation strength outside 35–65%. All runs: `tests/c2_gate.rs`, release, 2 build jobs, `nice -n 19`.
+
+**Step 0: the traits as shipped by F-072 and F-073.** House has Synthesis +1 Offense per other domain (max 2,
+radius 160). Tollmarch gathers at ×0.90, Forgeborn's Foundry units cost ×0.90 and Ashen Reach's buildings have ×1.15 HP.
+Cross, 3 seeds, 900 matches, 69 timeouts, 5104 s: **Fail**.
+
+| nation | strength | 95% interval | reading |
+|---|---|---|---|
+| house | 34.1% | [27.3, 41.2] | undetermined |
+| forgeborn | 59.6% | [52.6, 66.5] | undetermined |
+| verdant | 46.5% | [39.4, 53.7] | holds |
+| aetherkin | 49.8% | [42.6, 56.9] | holds |
+| tollmarch | 73.0% | [66.4, 79.2] | **Fail** |
+| ashen_reach | 37.0% | [30.0, 44.2] | undetermined |
+
+Row vs column win %: house 32/40/38/14/46. Forgeborn 68/59/58/47/67. Verdant 60/41/48/27/57.
+Aetherkin 62/42/52/34/59. Tollmarch 86/53/73/66/86. Ashen Reach 54/33/43/41/14.
+
+- Tollmarch's carry trait (F-066) read 94.7%. Faster gathering reads 73.0%, which is less but still too strong.
+- **House's row is the same as before its trait existed** (32, 40, 38, 46 against the four nations
+  that did not change). That is structural, not a magnitude problem. The cross axis plays the five
+  mono-unit `mass_*` probes on both sides, so a House army there never has a second domain. A
+  mixed-army trait is therefore never active on that axis. No Synthesis magnitude can move House's cross
+  number. The only things that move it are the other nations' traits.
+- Personality part, 2 seeds, 120 matches, reported and not gated, 359 s. This is where Synthesis
+  shows: House plays `synth_triad`. Before the trait House read 37.1% (F-066). Now it reads **52.1%**
+  [35.2, 69.1]. The other nations read: Forgeborn 80.0%, Verdant 20.0%, Aetherkin 80.0%, Tollmarch 36.4% and Ashen Reach 31.4%. All are
+  undetermined, with n ≈ 40 each. Personality is dominated by script-vs-script lopsidedness, so it is not a nation measure.
+
+**Step 1: Tollmarch GatherTicks 0.90 → 0.95 (90 → 86 ticks, round half up), Forgeborn Foundry AlloyCost 0.90 → 0.95, Ashen Reach
+BuildingHp 1.15 → 1.30.** Cross, 3 seeds, 900 matches, 94 timeouts, 5332 s: **Fail**.
+
+| nation | strength | 95% interval | reading |
+|---|---|---|---|
+| house | 34.5% | [27.7, 41.6] | undetermined |
+| forgeborn | 52.9% | [45.8, 59.9] | holds |
+| verdant | 47.3% | [40.1, 54.4] | holds |
+| aetherkin | 50.5% | [43.3, 57.7] | holds |
+| tollmarch | 76.3% | [69.8, 82.3] | **Fail** |
+| ashen_reach | 38.5% | [31.4, 45.9] | undetermined |
+
+Matrix rows: house 40/40/38/9/45. Forgeborn 60/51/49/46/58. Verdant 60/49/48/24/55. Aetherkin
+62/51/52/30/58. Tollmarch 91/54/76/70/91. Ashen Reach 55/42/45/42/9.
+
+- Forgeborn moved into the band, from 59.6% to 52.9%.
+- Ashen Reach gained only 1.5 points for +15% building HP. Building HP barely matters when two mass
+  armies meet in the field.
+- **Tollmarch did not come down.** Halving the trait (9 ticks saved down to 4) read 73.0% before and 76.3% now, which is
+  within noise. The mass probes are economy mirrors: both sides run the same script, so any steady income edge
+  decides the race the same way every time, and the size of the edge hardly matters. One tick, 1.1%, is the smallest step
+  `GatherTicks` can take on a base of 90.
+
+**Step 2: Tollmarch GatherTicks 0.95 → 0.98 (90 → 88 ticks).** Everything else is as in step 1. Cross, 3 seeds, 900
+matches, 112 timeouts, 5389 s: **undetermined**. Every nation except House reads Pass.
+
+| nation | strength | 95% interval | reading |
+|---|---|---|---|
+| house | 40.3% | [33.2, 47.6] | undetermined |
+| forgeborn | 55.3% | [48.2, 62.3] | holds |
+| verdant | 52.1% | [44.8, 59.3] | holds |
+| aetherkin | 55.3% | [48.1, 62.5] | holds |
+| tollmarch | 52.4% | [45.2, 59.6] | holds |
+| ashen_reach | 44.7% | [37.4, 52.0] | holds |
+
+Matrix rows: house 40/40/38/38/45. Forgeborn 60/51/49/58/58. Verdant 60/49/48/48/55. Aetherkin
+62/51/52/54/58. Tollmarch 62/42/52/46/60. Ashen Reach 55/42/45/42/40.
+
+- **Tollmarch is a cliff, not a slope.** At 86 gather ticks it reads 76.3%. At 88 it reads 52.4%. Two ticks
+  separate "wins every mirror race" from "in the band". Its row against the other four nations went from
+  91/54/76/70 to 62/42/52/46. 0.98 is the value shipped. A smaller perk (0.99, 89 ticks) is the only step left
+  below it.
+- **House is the one nation not passing.** Its interval [33.2, 47.6] crosses the 35% line. Its row is
+  unchanged against the four nations whose traits did not move (40, 40, 38, 45). It lost to Tollmarch at 38 instead of 9, and that
+  is the whole gain. As step 0 found, the cross probes never field a second domain, so House plays them
+  traitless. No `nations.ron` magnitude of House's own can lift it. It would come into the band only if the other
+  five nations' perks were made weaker until a traitless nation draws even with them. That is a different design call
+  from "tune within the bounds", so it was not made.
+- **Stopped here.** Cross does not read Pass, so the pentagon part was not run, as instructed. That part cannot read
+  Pass in any case: F-066 shows sen>rip undetermined in the traitless House/House mirror, the F-049
+  baseline. **AC4 stays unticked.** Two things are needed, and both are the user's decision:
+  - a cross probe that lets a mixed-army trait act, or a cross-only perk for House;
+  - a pentagon criterion that is not held hostage by the baseline sen>rip link.
