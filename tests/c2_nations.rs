@@ -749,3 +749,44 @@ fn the_ai_prices_its_barracks_at_its_sides_traited_cost() {
     assert!(b.iter().any(barracks), "the window is long enough: {b:?}");
     assert!(!a.iter().any(barracks), "A priced a barracks at the base cost: {a:?}");
 }
+
+// ---- BuildingHp rounds the way every other `mul` does (critic finding 4) -----
+
+#[test]
+fn a_building_hp_trait_rounds_half_up_like_every_mul() {
+    // 1.004 puts every shipped pool on a fraction: 8400 -> 8433.6 (up),
+    // 5040 -> 5060.16 (down), 4200 -> 4216.8 (up).
+    let c = one_trait("bhp_round", "(applies_to: Buildings, stat: BuildingHp, mul: 1.004)")
+        .expect("loads");
+    let r = x_defs(&c);
+    let d = Defs::new(&c, Some(&r));
+    let per = c.combat.building_hp_per_defense;
+    let mut rounded_up = 0;
+    for (i, b) in c.buildings.iter().enumerate() {
+        let base = b.mvp_defense * per;
+        let got = d.building_health(Faction::A, i).max;
+        assert_eq!(got, traited(base, 1.004), "{}: round half up", b.id);
+        if (base as f64 * 1.004).fract() >= 0.5 {
+            assert_eq!(got, (base as f64 * 1.004).floor() as u32 + 1, "{}", b.id);
+            rounded_up += 1;
+        }
+        assert_eq!(d.building_health(Faction::B, i).max, base, "B untouched");
+    }
+    assert!(rounded_up > 0, "the fixture has a pool that rounds up");
+
+    // Two of them compose in RON order, each rounding once, as AlloyCost does.
+    let c = one_trait(
+        "bhp_compose",
+        "(applies_to: Building(\"hq\"), stat: BuildingHp, mul: 1.004),
+         (applies_to: Buildings, stat: BuildingHp, mul: 1.004)",
+    )
+    .expect("loads");
+    let r = x_defs(&c);
+    let d = Defs::new(&c, Some(&r));
+    let hq = c.building_index("hq").unwrap();
+    let base = c.buildings[hq].mvp_defense * c.combat.building_hp_per_defense;
+    assert_eq!(
+        d.building_health(Faction::A, hq).max,
+        traited(traited(base, 1.004), 1.004)
+    );
+}

@@ -197,7 +197,12 @@ impl SideRules {
             .ok_or_else(|| format!("no nation at index {nation}"))?;
         let mut units = content.units.clone();
         let mut buildings = content.buildings.clone();
-        let mut pool_milli = vec![TraitDef::MULT_SCALE as u64; buildings.len()];
+        // Each building's HP pool, scaled by every BuildingHp trait in RON order,
+        // each rounding once half up (`scale_milli`) like every other `mul`.
+        let mut building_pools: Vec<u32> = buildings
+            .iter()
+            .map(|b| b.mvp_defense.saturating_mul(content.combat.building_hp_per_defense))
+            .collect();
         for (k, t) in n.traits.iter().enumerate() {
             let who = format!("nation `{}` trait {k} ({:?} {:?})", n.id, t.stat, t.applies_to);
             check_form(t).map_err(|e| format!("{who}: {e}"))?;
@@ -214,8 +219,7 @@ impl SideRules {
                         TraitStat::AlloyCost => b.alloy_cost = scale_milli(b.alloy_cost, t.mul_milli()),
                         TraitStat::Armor => b.mvp_armor = add_points(b.mvp_armor, t.add)?,
                         TraitStat::BuildingHp => {
-                            pool_milli[i] = pool_milli[i] * t.mul_milli() as u64
-                                / TraitDef::MULT_SCALE as u64
+                            building_pools[i] = scale_milli(building_pools[i], t.mul_milli())
                         }
                         _ => unreachable!("check_form admits only building stats here"),
                     }
@@ -270,14 +274,6 @@ impl SideRules {
                 }
             }
         }
-        let building_pools = buildings
-            .iter()
-            .zip(&pool_milli)
-            .map(|(b, &m)| {
-                let base = b.mvp_defense as u64 * content.combat.building_hp_per_defense as u64;
-                (base * m / TraitDef::MULT_SCALE as u64).min(u32::MAX as u64) as u32
-            })
-            .collect();
         let side = SideRules {
             nation,
             units,

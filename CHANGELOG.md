@@ -774,3 +774,6 @@
 - [2026-11-03] Modified: FINDINGS.md — F-063/F-067 replay claims marked corrected; added F-069
 - [2026-11-03] Modified: tests/c2_nations.rs — guard tests for the building-defender and AI-price trait read sites (critic finding 3)
 - [2026-11-03] Modified: FINDINGS.md — F-070: the trait read sites' guard tests and their mutations
+- [2026-11-03] Modified: src/sim/nation.rs — BuildingHp pools scale per trait with scale_milli, rounding half up (critic finding 4)
+- [2026-11-03] Modified: tests/c2_nations.rs — BuildingHp rounding test on a value that rounds up
+- [2026-11-03] Modified: FINDINGS.md — F-071: BuildingHp rounding

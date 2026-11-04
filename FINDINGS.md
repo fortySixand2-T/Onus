@@ -6539,3 +6539,20 @@ then restored):
   ×100, so A never places a barracks in 4 000 ticks; B does.
 
 No sim code changed: the sites were correct, they were only unguarded.
+
+## F-071 — C2 critic fixes: BuildingHp rounds half up, like every other `mul` (C2)
+
+**Defect (critic, Low).** `nations.ron` documents a `mul` as `round(v * m / 1000)`, applied
+half up. BuildingHp instead composed its per-mille factors with truncating division and then
+truncated the pool. A BuildingHp of 1.004 gave the HQ 8433 HP, where the rule gives
+8433.6 → 8434.
+
+**Fix.** Each building's pool starts at its base (`mvp_defense * building_hp_per_defense`).
+Every BuildingHp trait then scales it in RON order with `scale_milli`, the helper every other
+`mul` stat uses, so each trait rounds once, half up. The shipped Ashen Reach ×1.15 pools are
+exact products (9660, 5796, 4830), so nothing shipped moved, and the goldens and the C2 suites
+pass unchanged.
+
+**Gate.** `c2_nations` `a_building_hp_trait_rounds_half_up_like_every_mul` fails before the
+fix (8433 vs 8434). It covers ×1.004 on every building, where 8400 and 4200 round up and 5040
+rounds down, plus two traits composing in RON order.
