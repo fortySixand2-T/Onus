@@ -26,6 +26,7 @@ use crate::sim::content::{Content, ContentError};
 use crate::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use crate::sim::nation::{NationRules, UnknownNation};
 use crate::sim::spatial::Faction;
+use crate::sim::three::{EconomyMode, EconomyRefused};
 use crate::sim::{
     AiCommanders, CommandLog, CommandQueue, Position, RateReport, ResourceNode, StateHashLog,
 };
@@ -161,6 +162,12 @@ pub struct MatchSettings {
     /// units cost and do, never which script it plays (a caller wanting the
     /// nation's own personality names `NationDef::strategy`).
     pub nations: [Option<String>; 2],
+    /// The economy the match plays (C3). `Alloy` — the default — is the
+    /// Alloy-only economy every milestone before C3 shipped, exactly as it
+    /// played. `ThreeResource` adds grown Biomass and channelled Aether
+    /// ([`crate::sim::three`]); refused at construction when the content has
+    /// no `three_resource` block.
+    pub economy: EconomyMode,
 }
 
 /// The budget for one match: **fifteen minutes of play** — an anti-stalemate
@@ -191,6 +198,7 @@ impl Default for MatchSettings {
             orientation: Orientation::Normal,
             battle: None,
             nations: [None, None],
+            economy: EconomyMode::Alloy,
         }
     }
 }
@@ -230,6 +238,12 @@ impl MatchSettings {
         self
     }
 
+    /// Play this match on `economy` (C3).
+    pub fn with_economy(mut self, economy: EconomyMode) -> Self {
+        self.economy = economy;
+        self
+    }
+
     /// Play this match as a campaign battle (C1).
     pub fn with_battle(mut self, battle: BattleSetup) -> Self {
         self.battle = Some(battle);
@@ -265,6 +279,7 @@ pub fn ai_vs_ai(content: Content, settings: &MatchSettings) -> Result<App, Unkno
         Err(MatchSetupError::Strategy(e)) => Err(e),
         Err(MatchSetupError::Battle(e)) => panic!("battle setup refused: {e}"),
         Err(MatchSetupError::Nation(e)) => panic!("nation refused: {e}"),
+        Err(MatchSetupError::Economy(e)) => panic!("{e}"),
     }
 }
 
@@ -275,6 +290,7 @@ pub enum MatchSetupError {
     Strategy(UnknownStrategy),
     Battle(BattleSetupError),
     Nation(UnknownNation),
+    Economy(EconomyRefused),
 }
 
 impl std::fmt::Display for MatchSetupError {
@@ -283,6 +299,7 @@ impl std::fmt::Display for MatchSetupError {
             MatchSetupError::Strategy(e) => write!(f, "{e}"),
             MatchSetupError::Battle(e) => write!(f, "{e}"),
             MatchSetupError::Nation(e) => write!(f, "{e}"),
+            MatchSetupError::Economy(e) => write!(f, "{e}"),
         }
     }
 }
@@ -299,6 +316,12 @@ pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSe
     if let Some(b) = &settings.battle {
         b.check_with(&content, rules.as_ref())
             .map_err(MatchSetupError::Battle)?;
+    }
+    // The economy (C3), refused here too: its block must exist.
+    if !settings.economy.is_alloy() && content.three_resource.is_none() {
+        return Err(MatchSetupError::Economy(EconomyRefused(
+            "this content has no `three_resource` block".to_string(),
+        )));
     }
     // Resolve names *before* anything is spawned, so a refusal costs nothing
     // and cannot leave a half-built match behind.
@@ -378,6 +401,11 @@ pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSe
             ));
         }
     }
+
+    // The economy (C3), on the start and before the nations (a nation's
+    // traits depend on it): nothing is inserted for Alloy-only.
+    crate::sim::three::install(app.world_mut(), settings.economy)
+        .map_err(MatchSetupError::Economy)?;
 
     // The nations (C2), on the start and before a battle's layer: nothing is
     // inserted when neither side has one.

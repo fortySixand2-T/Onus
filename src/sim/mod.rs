@@ -20,6 +20,7 @@ pub mod nation;
 pub mod pathfind;
 pub mod replay;
 pub mod spatial;
+pub mod three;
 pub mod victory;
 pub use ai::{
     AiAction, AiCommander, AiCommanders, AiJournal, BattleAiAction, BattleAiJournal, UnknownStrategy,

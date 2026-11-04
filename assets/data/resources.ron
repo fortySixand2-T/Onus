@@ -33,4 +33,24 @@
         gather_range: 40.0,
         deposit_range: 48.0,
     ),
+
+    // SCHEMA NOTE (C3): the three-resource economy, opt-in per match
+    // (MatchSettings::economy, the client's pick). An Alloy-only match never
+    // reads this block. In a three-resource match units are paid in their
+    // `cost` resource (units.ron) and buildings stay priced in Alloy.
+    //   starting_biomass / starting_aether — each side's banks at match start
+    //   growth — Biomass (Grown): every `interval_ticks` ticks each standing
+    //     source building grows `per_interval` Biomass for its side, up to the
+    //     side's storage cap, the sum of its standing sources' `storage`.
+    three_resource: (
+        starting_biomass: 100,
+        starting_aether: 0,
+        growth: (
+            interval_ticks: 60,   // one landing per second at 60 Hz
+            sources: [
+                (building: "hq",        per_interval: 1, storage: 200),   // a floor every side has
+                (building: "gene_vats", per_interval: 2, storage: 250),   // build Vats to grow more
+            ],
+        ),
+    ),
 )

@@ -25,6 +25,7 @@ use std::collections::VecDeque;
 use crate::sim::content::Content;
 use crate::sim::nation::{Defs, NationRules};
 use crate::sim::spatial::Faction;
+use crate::sim::three::Bank;
 use crate::sim::{GatherTarget, MoveTarget, Position, ResourceNode};
 
 // ---- stockpiles ------------------------------------------------------------
@@ -38,9 +39,15 @@ fn faction_slot(f: Faction) -> usize {
 
 /// Banked Alloy per faction. A fixed-size array (not a map) so iteration order
 /// can never influence a sim outcome.
+///
+/// C3 adds a Biomass and an Aether bank per faction. They stay at 0 in an
+/// Alloy-only match (nothing ever adds to them there), and they are hashed
+/// only in a three-resource match ([`crate::sim::three`]).
 #[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Stockpiles {
     alloy: [u32; 2],
+    biomass: [u32; 2],
+    aether: [u32; 2],
 }
 
 impl Stockpiles {
@@ -48,11 +55,61 @@ impl Stockpiles {
     pub fn starting(amount: u32) -> Self {
         Self {
             alloy: [amount, amount],
+            ..Default::default()
         }
     }
 
     pub fn alloy(&self, f: Faction) -> u32 {
         self.alloy[faction_slot(f)]
+    }
+
+    /// Banked Biomass (C3; 0 in an Alloy-only match).
+    pub fn biomass(&self, f: Faction) -> u32 {
+        self.biomass[faction_slot(f)]
+    }
+
+    /// Banked Aether (C3; 0 in an Alloy-only match).
+    pub fn aether(&self, f: Faction) -> u32 {
+        self.aether[faction_slot(f)]
+    }
+
+    fn bank_mut(&mut self, f: Faction, bank: Bank) -> &mut u32 {
+        let s = faction_slot(f);
+        match bank {
+            Bank::Alloy => &mut self.alloy[s],
+            Bank::Biomass => &mut self.biomass[s],
+            Bank::Aether => &mut self.aether[s],
+        }
+    }
+
+    /// What `f` holds in `bank`.
+    pub fn amount(&self, f: Faction, bank: Bank) -> u32 {
+        match bank {
+            Bank::Alloy => self.alloy(f),
+            Bank::Biomass => self.biomass(f),
+            Bank::Aether => self.aether(f),
+        }
+    }
+
+    /// [`Stockpiles::add`] into any bank: returns the amount accepted.
+    #[must_use]
+    pub fn add_in(&mut self, f: Faction, bank: Bank, amount: u32) -> u32 {
+        let slot = self.bank_mut(f, bank);
+        let accepted = amount.min(u32::MAX - *slot);
+        *slot += accepted;
+        accepted
+    }
+
+    /// [`Stockpiles::try_spend`] from any bank: all or nothing.
+    #[must_use]
+    pub fn try_spend_in(&mut self, f: Faction, bank: Bank, amount: u32) -> bool {
+        let slot = self.bank_mut(f, bank);
+        if *slot >= amount {
+            *slot -= amount;
+            true
+        } else {
+            false
+        }
     }
 
     /// Bank as much of `amount` as the counter can actually hold and return the

@@ -192,7 +192,7 @@ The three-resource economy is **opt-in**, chosen through `MatchSettings` (and th
 the way nations and battles are. The default stays Alloy-only and plays exactly as today. Every
 number lives in RON (`resources.ron`'s `three_resource` block, `nations.ron`).
 
-- [ ] **Biomass:** passive, storage-capped, grown by building Gene-Vats. Each side's HQ grows a
+- [x] **Biomass:** passive, storage-capped, grown by building Gene-Vats. Each side's HQ grows a
   small floor and each Gene-Vats adds growth and storage. Growth lands every `interval_ticks`
   and stops at the side's storage cap: the sum of its standing buildings' `storage`. Rates,
   storage and the starting Biomass are RON.

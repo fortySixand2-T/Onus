@@ -636,6 +636,11 @@ impl<'a> Defs<'a> {
         }
     }
 
+    /// `faction`'s per-mille factor on the Biomass building `i` grows (C3).
+    pub fn growth_milli(&self, _faction: Faction, _i: usize) -> u32 {
+        TraitDef::MULT_SCALE
+    }
+
     /// A full HP pool for unit `i` of `faction`.
     pub fn unit_health(&self, faction: Faction, i: usize) -> Health {
         match self.side(faction) {

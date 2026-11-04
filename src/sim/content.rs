@@ -526,6 +526,9 @@ struct ResourcesFile {
     resources: Vec<ResourceDef>,
     mvp_active: Vec<String>,
     mvp_economy: EconomyDef,
+    /// C3: optional, so content without it loads (and fingerprints) as before.
+    #[serde(default)]
+    three_resource: Option<crate::sim::three::ThreeResourceDef>,
 }
 
 // ---- the loaded content ----------------------------------------------------
@@ -562,6 +565,10 @@ pub struct Content {
     /// The nations (C2), in RON order, from the optional `nations.ron`. Empty
     /// in content with no nations: then no match can name one.
     pub nations: Vec<crate::sim::nation::NationDef>,
+    /// The three-resource economy's numbers (C3), from `resources.ron`'s
+    /// optional `three_resource` block. `None`: the content can only play
+    /// Alloy-only matches.
+    pub three_resource: Option<crate::sim::three::ThreeResourceDef>,
 }
 
 // ---- content fingerprint ----------------------------------------------------
@@ -789,6 +796,7 @@ impl Content {
             battle: units_file.mvp_battle,
             general_ai: units_file.mvp_general_ai,
             nations,
+            three_resource: resources_file.three_resource,
         };
         content.synthesise_general_units();
         content.validate()?;
@@ -1324,6 +1332,9 @@ impl Content {
         {
             return bad("mvp_economy ranges must be finite and positive".to_string());
         }
+        // The three-resource block (C3), before the nations: their traits are
+        // checked against it.
+        crate::sim::three::validate(self).map_err(|msg| ContentError::Invalid { msg })?;
         // The nations (C2), last: their traits are checked against the rest.
         crate::sim::nation::validate(self).map_err(|msg| ContentError::Invalid { msg })?;
         Ok(())
@@ -1519,6 +1530,21 @@ impl Content {
                             .u32(m.mul_milli());
                     }
                 }
+            }
+        }
+
+        // C3: the three-resource block, mixed in only when present (as C1's
+        // and C2's sections are), so content without it fingerprints exactly
+        // as before C3.
+        if let Some(t) = &self.three_resource {
+            h.str("three_resource")
+                .u32(t.starting_biomass)
+                .u32(t.starting_aether);
+            h.str("growth")
+                .u32(t.growth.interval_ticks)
+                .u64(t.growth.sources.len() as u64);
+            for g in &t.growth.sources {
+                h.str(&g.building).u32(g.per_interval).u32(g.storage);
             }
         }
 

@@ -227,6 +227,10 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
                 sim::battle::withdraw.run_if(resource_exists::<sim::battle::BattleState>),
                 sim::economy::production,
                 sim::economy::gather,
+                // The three-resource economy (C3): Biomass grows. Only in a
+                // three-resource match; an Alloy-only one has no
+                // `ThreeEconomy`, so this never runs there.
+                sim::three::grow.run_if(resource_exists::<sim::three::ThreeEconomy>),
                 // A campaign battle's auras (C1): this tick's bonuses, from the
                 // positions the fighting starts at. Battle-only.
                 sim::battle::auras.run_if(resource_exists::<sim::battle::AuraField>),

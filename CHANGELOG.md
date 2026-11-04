@@ -795,3 +795,14 @@
 - [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC4 note: the cross reading after tuning, still unticked
 - [2026-11-04] Modified: CAMPAIGN_PLAN.md — C3 started ahead of B5 by user decision: heading, gate override, acceptance criteria
 - [2026-11-04] Modified: FINDINGS.md — F-075: C3 starts ahead of B5 by the user's decision
+- [2026-11-04] Created: src/sim/three.rs — C3 three-resource economy module: EconomyMode, Bank, the RON block's types and checks, ThreeEconomy, install, Biomass growth
+- [2026-11-04] Modified: src/sim/economy.rs — Stockpiles gain Biomass and Aether banks (amount/add_in/try_spend_in)
+- [2026-11-04] Modified: src/sim/content.rs — optional `three_resource` block: loaded, validated, fingerprinted only when present
+- [2026-11-04] Modified: src/sim/nation.rs — Defs::growth_milli (1000 until C3 AC4)
+- [2026-11-04] Modified: src/sim/mod.rs — register the `three` module
+- [2026-11-04] Modified: src/sim/replay.rs — state-hash rows for the Biomass/Aether banks and ThreeEconomy, three-resource matches only
+- [2026-11-04] Modified: src/headless.rs — MatchSettings::economy (default Alloy) and with_economy; economy installed before the nations
+- [2026-11-04] Modified: src/lib.rs — three::grow in the sim chain after gather, three-resource matches only
+- [2026-11-04] Modified: assets/data/resources.ron — `three_resource` block: starting banks and Biomass growth sources (HQ floor, Gene-Vats)
+- [2026-11-04] Created: tests/c3_economy.rs — C3 AC1 Biomass tests
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC1 (Biomass)

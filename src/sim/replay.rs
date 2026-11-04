@@ -1314,6 +1314,8 @@ mod tag {
     /// C2. Each side's nation: present only when a side has one, so a match
     /// with no nation hashes exactly as it did before the tag existed.
     pub const NATIONS: u64 = 25;
+    /// C3: the three-resource banks and economy state (three-resource only).
+    pub const THREE_ECONOMY: u64 = 26;
 }
 
 /// A 64-bit digest of one command the sim is holding. Everything about it that
@@ -1700,6 +1702,26 @@ pub fn state_hash(world: &mut World) -> u64 {
         for (i, f) in [Faction::A, Faction::B].into_iter().enumerate() {
             let nation = n.nation_of(f).map_or(u64::MAX, |k| k as u64);
             rows.push((slot, tag::NATIONS, i as u64, nation));
+        }
+    }
+
+    // The three-resource economy (C3), only in a three-resource match: its
+    // two new banks per side, and its own state. The Alloy row above is
+    // unchanged, so an Alloy-only match hashes exactly as before C3.
+    if let Some(three) = world.get_resource::<crate::sim::three::ThreeEconomy>() {
+        let words = three.hash_words();
+        if let Some(stock) = world.get_resource::<Stockpiles>() {
+            for (i, f) in [Faction::A, Faction::B].into_iter().enumerate() {
+                rows.push((
+                    slot,
+                    tag::THREE_ECONOMY,
+                    i as u64,
+                    (stock.biomass(f) as u64) << 32 | stock.aether(f) as u64,
+                ));
+            }
+        }
+        for (i, w) in words.into_iter().enumerate() {
+            rows.push((slot, tag::THREE_ECONOMY, 16 + i as u64, w));
         }
     }
 
