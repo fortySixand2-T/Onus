@@ -846,3 +846,11 @@
 - [2026-11-04] Modified: tests/critic_m5.rs — shared-id fixture renames Arclight's aether cost with the resource
 - [2026-11-04] Modified: FINDINGS.md — F-079 economy in the match log
 - [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC7 (golden licence)
+- [2026-11-04] Modified: src/client.rs — economy pick, well colours, three-bank and price text
+- [2026-11-04] Modified: src/input.rs — E toggles the pick's economy
+- [2026-11-04] Modified: src/setup.rs — start_match installs the economy, nations, then wells
+- [2026-11-04] Modified: src/ui.rs — panel shows three banks and bank-tagged prices; wells drawn by holder
+- [2026-11-04] Modified: src/lib.rs — register show_wells and draw_well_rings
+- [2026-11-04] Created: tests/c3_client.rs — C3 AC6 client tests
+- [2026-11-04] Modified: FINDINGS.md — F-080 client and Mac checks
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC6 (client)

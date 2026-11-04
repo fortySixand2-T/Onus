@@ -97,6 +97,8 @@ pub fn build_app() -> App {
                 ui::update_options_panel,
                 ui::report_rates,
                 ui::draw_nation_marks,
+                ui::show_wells,
+                ui::draw_well_rings,
             ),
         );
     add_nation_pick(&mut app);

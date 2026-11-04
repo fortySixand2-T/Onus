@@ -6892,3 +6892,52 @@ no re-pin, and a match log carries its economy so a replay can play it back or r
 m4c, c1_ai, c2_nations, m5_replay, critic_m6, p2_log_writer and b4_attack_move all pass unchanged.
 `tests/c3_golden.rs` adds that an Alloy-only match plays identically with the three-resource
 content and without it (state hash per tick, AI journal and outcome, skirmish and nations).
+
+## F-080 — The client picks the economy, shows the three banks and draws the wells (C3 AC6)
+
+**Decision. Kept thin.**
+- **The pick.** `NationPick.economy` defaults to Alloy only. `E` (`ECONOMY_KEY`) toggles it on
+  the pick screen. The screen shows an `[E] Economy: ...` line only when the content has a
+  `three_resource` block, and without one the toggle stays on Alloy only. Like the nations,
+  it is client state until Enter.
+- **The start.** `start_match` hands the choice to the sim's own setup functions, in the order
+  a headless match uses: `three::install`, then `nation::install` (so the nations get their
+  three-resource lists), then `three::spawn_wells` framed by `three::hq_frame`, last. All of
+  it runs before the first tick, and the tick gate is still shut. No order and no input reach
+  the sim.
+- **The panel.** The bank line reads `Alloy: n` in an Alloy-only match, as before, and
+  `Alloy: a   Biomass: b   Aether: c` in a three-resource one. Training prices come from
+  `Defs::unit_price`, so they are what the player's nation pays and in which bank. Alloy only
+  shows the bare number as before (`(90)`); three-resource shows it with its bank (`(40 Biomass)`).
+- **The wells.** `ui::show_wells` (Update) gives each well a sprite the first time it sees it.
+  After that it sets the sprite's colour from the sim's `WellState` through `client::well_color`:
+  - empty: violet;
+  - held: the holder's nation colour, or its side colour (you blue, the opponent red) when the
+    side has no nation;
+  - contested: white.
+
+  `ui::draw_well_rings` draws the `hold_radius` in the same colour (gizmos). Both read the sim
+  and write nothing back.
+
+**Tests.** `tests/c3_client.rs`, headless under `MinimalPlugins` through the shipped `setup`,
+pick systems and sim chain:
+- the toggle, and content without the block;
+- an Alloy start is today's match (no economy, no wells, today's bank line);
+- a three-resource start installs the banks, the nations' three-resource tables and one
+  well per site at its framed position;
+- the panel's three banks and a Ripper priced in Biomass;
+- every well's sprite colour follows its state, and the palette is four distinct colours;
+- a well turns A's colour when an A unit stands on it, and contested when a B unit joins.
+
+**Human checks on the Mac (`cargo run`). The box cannot show a window.**
+1. The pick screen shows `[E] Economy: Alloy only`, and E flips it to `Three resources` and back.
+2. With Alloy only, the match looks and plays as before: no wells, and the panel shows only `Alloy:`.
+3. With three resources, three violet well squares sit along and across the line between the
+   HQs, each with a ring of its hold radius.
+4. Walk a unit onto a well: the square and ring take your nation's colour, and Aether climbs
+   in the panel. The opponent's keeper turns its home well its colour. When both sides stand on
+   one, it turns white.
+5. The bank line `Alloy / Biomass / Aether` fits in the panel. Biomass grows on its own and
+   stops at the cap.
+6. Select a Gene-Vats or an Aether Spire: the train line prices Rippers in Biomass and Arclights
+   in Aether, and the colours tell the sides and the empty and contested states apart.

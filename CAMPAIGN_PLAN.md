@@ -218,7 +218,7 @@ number lives in RON (`resources.ron`'s `three_resource` block, `nations.ron`).
   to contest and hold the middle well (and back to its home well when an enemy takes it), and
   pays each unit in its own resource. The detachment sizes are RON. Alloy-only AI traces are
   unchanged.
-- [ ] **Client:** the pick screen chooses the economy. The panel shows all three resources,
+- [x] **Client:** the pick screen chooses the economy. The panel shows all three resources,
   and the ley-wells are drawn with their holder. Kept thin; anything that needs a human look on
   the Mac is listed in FINDINGS.
 - [x] **Golden licence:** the default (Alloy-only) setting reproduces today's pinned results
