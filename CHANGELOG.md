@@ -806,3 +806,12 @@
 - [2026-11-04] Modified: assets/data/resources.ron — `three_resource` block: starting banks and Biomass growth sources (HQ floor, Gene-Vats)
 - [2026-11-04] Created: tests/c3_economy.rs — C3 AC1 Biomass tests
 - [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC1 (Biomass)
+- [2026-11-04] Modified: src/sim/three.rs — ley-wells: WellsDef/WellSite, LeyWell, spawn_wells, hq_frame, channel (hold, pause, restart)
+- [2026-11-04] Modified: src/sim/content.rs — fingerprint the wells block
+- [2026-11-04] Modified: src/sim/replay.rs — state-hash rows for each ley-well (tag 27)
+- [2026-11-04] Modified: src/headless.rs — spawn the ley-wells last in a three-resource match
+- [2026-11-04] Modified: src/lib.rs — three::channel in the sim chain after grow
+- [2026-11-04] Modified: assets/data/resources.ron — wells: hold radius, rate, three point-symmetric sites
+- [2026-11-04] Modified: tests/c3_economy.rs — C3 AC2 ley-well tests
+- [2026-11-04] Modified: FINDINGS.md — F-076: the three-resource economy as an opt-in mode; Biomass and Aether rules
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC2 (Aether)

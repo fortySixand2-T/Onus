@@ -1546,6 +1546,14 @@ impl Content {
             for g in &t.growth.sources {
                 h.str(&g.building).u32(g.per_interval).u32(g.storage);
             }
+            h.str("wells")
+                .f32(t.wells.hold_radius)
+                .u32(t.wells.interval_ticks)
+                .u32(t.wells.per_interval)
+                .u64(t.wells.sites.len() as u64);
+            for site in &t.wells.sites {
+                h.f32(site.along).f32(site.side);
+            }
         }
 
         let ids = |all: &[String]| {

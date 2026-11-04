@@ -52,5 +52,24 @@
                 (building: "gene_vats", per_interval: 2, storage: 250),   // build Vats to grow more
             ],
         ),
+        //   wells — Aether (Channeled): ley-wells placed relative to the two HQs,
+        //     `along` the line from side A's HQ to side B's (0..1) and `side`
+        //     world units across it (left of A->B). Keep the layout
+        //     point-symmetric ((along, side) and (1 - along, -side)) so neither
+        //     side has the better map. A side holds a well while one of its
+        //     units or buildings is within `hold_radius` and no enemy's is; a
+        //     held well banks `per_interval` Aether every `interval_ticks` of
+        //     holding (paused while empty or contested, restarted when the
+        //     holder changes).
+        wells: (
+            hold_radius: 110.0,
+            interval_ticks: 60,
+            per_interval: 2,
+            sites: [
+                (along: 0.2, side: -220.0),   // side A's home well
+                (along: 0.8, side: 220.0),    // side B's home well
+                (along: 0.5, side: 0.0),      // the contested middle
+            ],
+        ),
     ),
 )

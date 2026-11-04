@@ -231,6 +231,9 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
                 // three-resource match; an Alloy-only one has no
                 // `ThreeEconomy`, so this never runs there.
                 sim::three::grow.run_if(resource_exists::<sim::three::ThreeEconomy>),
+                // ...and the held ley-wells channel Aether, from the positions
+                // the tick's fighting starts at.
+                sim::three::channel.run_if(resource_exists::<sim::three::ThreeEconomy>),
                 // A campaign battle's auras (C1): this tick's bonuses, from the
                 // positions the fighting starts at. Battle-only.
                 sim::battle::auras.run_if(resource_exists::<sim::battle::AuraField>),

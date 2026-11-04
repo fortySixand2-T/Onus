@@ -1316,6 +1316,8 @@ mod tag {
     pub const NATIONS: u64 = 25;
     /// C3: the three-resource banks and economy state (three-resource only).
     pub const THREE_ECONOMY: u64 = 26;
+    /// C3: a ley-well (three-resource only).
+    pub const LEY_WELL: u64 = 27;
 }
 
 /// A 64-bit digest of one command the sim is holding. Everything about it that
@@ -1724,6 +1726,10 @@ pub fn state_hash(world: &mut World) -> u64 {
             rows.push((slot, tag::THREE_ECONOMY, 16 + i as u64, w));
         }
     }
+    collect!(&crate::sim::three::LeyWell, |e, c| {
+        let [site, state] = c.hash_words();
+        [row(e, tag::LEY_WELL, site, state)]
+    });
 
     rows.sort_unstable();
 

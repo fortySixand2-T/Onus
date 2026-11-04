@@ -6741,3 +6741,41 @@ battles. The default stays Alloy-only.
 cross gate, F-074) stay open. Nothing in C3 re-pins a golden: the Alloy-only default must
 reproduce today's results exactly (C3 golden licence). The Alloy-only stand-in traits keep
 working in Alloy-only mode.
+
+## F-076 — The three-resource economy is a mode a match opts into (C3 AC1, AC2)
+
+**Context.** C3 adds Biomass (grown) and Aether (channelled) beside Alloy. The golden licence says
+the default match must reproduce today's pinned hashes exactly, with no re-pin.
+
+**Decision.**
+- **A mode, not a content switch.** `EconomyMode { Alloy (default), ThreeResource }` is a field
+  of `MatchSettings`, like `nations` and `battle`. The numbers live in an optional
+  `three_resource` block in `resources.ron`. They are mixed into the content fingerprint only
+  when the block is present, as C1's and C2's sections are.
+- **The resource is the mode.** `three::install` inserts a `ThreeEconomy` resource, and every
+  three-resource system (`grow`, `channel`) runs with `run_if(resource_exists::<ThreeEconomy>)`.
+  It is installed before the nations, because a nation's traits depend on the mode (AC4).
+- **The banks.** `Stockpiles` gains a Biomass and an Aether array per faction. The Alloy
+  `STOCKPILES` state-hash row is untouched. The new banks, the economy's tick and its growth
+  remainders are hashed under a new tag (26), and each well under another (27), only when
+  `ThreeEconomy` exists. An Alloy-only match therefore emits exactly the rows it emitted
+  before C3.
+- **Wells spawn last.** Entity order is part of a match (F-011). The wells are spawned after
+  everything else in setup (after a battle's layer too), and only in three-resource mode.
+- **Biomass.** Every `growth.interval_ticks` (60), each standing source building grows its
+  `per_interval` for its side: the HQ 1 (a floor), each Gene-Vats 2. Growth stops at the
+  side's storage cap, the sum of its sources' `storage` (HQ 200, Vats 250). Growth is summed in
+  per-mille, so a nation's growth factor (AC4) never rounds per building. Starting banks are
+  Biomass 100 and Aether 0.
+- **Aether.** Three ley-wells at RON sites in the frame of the two HQs: `along` the line from
+  A's HQ to B's, and `side` units across it. A home well each at (0.2, -220) and (0.8, 220),
+  and the contested middle at (0.5, 0). The layout is point-symmetric, so both orientations of
+  one map get the same wells, and the same RON lays the wells out on the client's map
+  (different HQ positions) too. "Held" means at least one of the side's units or buildings is
+  within `hold_radius` (110) and no enemy unit or building is. A held well banks 2 Aether per
+  60 ticks of holding. Progress pauses while the well is empty or contested, and restarts from
+  zero when the holder changes.
+
+**What this does not change.** Alloy-only play: no resource is inserted, no system runs, no
+row is hashed, no entity is spawned. `c1_golden`, `c2_golden` and `critic_b35_ac0` pass
+unchanged.

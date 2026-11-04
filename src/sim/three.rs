@@ -20,17 +20,27 @@
 //! nation's per-mille factor, so growth is accumulated in per-mille and only
 //! whole Biomass is banked.
 //!
+//! ## Aether (channelled)
+//! Ley-wells stand where the RON's sites put them, relative to the two HQs.
+//! A side **holds** a well while at least one of its units or buildings is
+//! within `hold_radius` of it and no enemy unit or building is. A held well
+//! banks `per_interval` Aether to its holder every `interval_ticks` ticks of
+//! holding. Progress pauses while the well is empty or contested, and
+//! restarts from zero when the holder changes.
+//!
 //! ## Determinism
 //! Fixed-size per-side arrays, sums (which no order can change), integer
 //! arithmetic in the per-tick path, and the tick counted by the sim itself.
 
 use bevy::ecs::prelude::*;
+use bevy::math::Vec2;
 use serde::{Deserialize, Serialize};
 
 use crate::sim::content::{Acquisition, Content};
 use crate::sim::economy::{Building, Stockpiles};
 use crate::sim::nation::{Defs, NationRules};
 use crate::sim::spatial::Faction;
+use crate::sim::{Position, UnitDefIdx};
 
 // ---- the mode ----------------------------------------------------------------
 
@@ -96,6 +106,7 @@ pub struct ThreeResourceDef {
     /// Aether each side starts a three-resource match with.
     pub starting_aether: u32,
     pub growth: GrowthDef,
+    pub wells: WellsDef,
 }
 
 /// How Biomass grows.
@@ -118,6 +129,41 @@ pub struct GrowthSource {
     pub per_interval: u32,
     /// Storage each standing building adds to its side's cap.
     pub storage: u32,
+}
+
+/// How Aether is channelled: the ley-wells and what holding one yields.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WellsDef {
+    /// World units: a side holds a well while at least one of its units or
+    /// buildings is this close and no enemy one is.
+    pub hold_radius: f32,
+    /// Ticks of holding per landing.
+    pub interval_ticks: u32,
+    /// Aether a held well banks to its holder per interval.
+    pub per_interval: u32,
+    /// Where the wells stand, in the frame of the two HQs.
+    pub sites: Vec<WellSite>,
+}
+
+/// One ley-well's place, relative to the two HQs (so every map, and both
+/// orientations of one, get the same layout): `along` the line from side A's
+/// HQ to side B's (0 at A, 1 at B), then `side` world units across it, to the
+/// left of A→B. A layout meant to be fair is **point-symmetric**: for every
+/// site `(along, side)` there is one at `(1 - along, -side)`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WellSite {
+    pub along: f32,
+    pub side: f32,
+}
+
+impl WellSite {
+    /// Where this site stands between HQs `a` (side A's) and `b`.
+    pub fn at(&self, a: Vec2, b: Vec2) -> Vec2 {
+        let d = (b - a).normalize_or_zero();
+        a + (b - a) * self.along + Vec2::new(-d.y, d.x) * self.side
+    }
 }
 
 impl ThreeResourceDef {
@@ -180,6 +226,24 @@ pub(crate) fn validate(content: &Content) -> Result<(), String> {
             return Err(format!(
                 "{who}: growth source `{}` needs per_interval and storage > 0",
                 s.building
+            ));
+        }
+    }
+    let w = &t.wells;
+    if !(w.hold_radius.is_finite() && w.hold_radius > 0.0) {
+        return Err(format!("{who}: wells hold_radius must be finite and positive"));
+    }
+    if w.interval_ticks == 0 || w.per_interval == 0 {
+        return Err(format!("{who}: wells interval_ticks and per_interval must be > 0"));
+    }
+    if w.sites.is_empty() {
+        return Err(format!("{who}: wells needs at least one site"));
+    }
+    for (k, site) in w.sites.iter().enumerate() {
+        if !(site.along.is_finite() && (0.0..=1.0).contains(&site.along) && site.side.is_finite())
+        {
+            return Err(format!(
+                "{who}: well site {k} needs along in [0, 1] and a finite side"
             ));
         }
     }
@@ -312,6 +376,166 @@ pub fn grow(
         let grown = whole.min(room).min(u32::MAX as u64) as u32;
         if grown > 0 {
             let _ = stock.add_in(f, Bank::Biomass, grown);
+        }
+    }
+}
+
+// ---- Aether ------------------------------------------------------------------------
+
+/// Who holds a well this tick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WellState {
+    /// Nobody is within the radius.
+    Empty,
+    /// Only this side is.
+    Held(Faction),
+    /// Both sides are.
+    Contested,
+}
+
+/// A ley-well (C3): sim state, positioned by [`Position`], spawned only in a
+/// three-resource match ([`spawn_wells`]).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LeyWell {
+    /// Index into the RON's `wells.sites`.
+    site: usize,
+    /// The side whose holding `progress` counts (kept while the well is empty
+    /// or contested, so a holder that comes back picks up where it was).
+    holder: Option<Faction>,
+    /// Ticks of holding towards the next landing.
+    progress: u32,
+    /// This tick's state.
+    state: WellState,
+}
+
+impl LeyWell {
+    pub fn site(&self) -> usize {
+        self.site
+    }
+
+    pub fn state(&self) -> WellState {
+        self.state
+    }
+
+    pub fn holder(&self) -> Option<Faction> {
+        self.holder
+    }
+
+    pub fn progress(&self) -> u32 {
+        self.progress
+    }
+
+    /// The well, as two words for the state hash.
+    pub fn hash_words(&self) -> [u64; 2] {
+        let holder = match self.holder {
+            None => 0,
+            Some(Faction::A) => 1,
+            Some(Faction::B) => 2,
+        };
+        let state = match self.state {
+            WellState::Empty => 0,
+            WellState::Held(Faction::A) => 1,
+            WellState::Held(Faction::B) => 2,
+            WellState::Contested => 3,
+        };
+        [
+            self.site as u64,
+            (holder << 40) | (state << 32) | self.progress as u64,
+        ]
+    }
+}
+
+/// Spawn the content's ley-wells between side A's HQ at `a` and side B's at
+/// `b`, in site order. Call **last** in a match's setup, after everything else
+/// is spawned (entity order is part of a match, F-011). Does nothing in an
+/// Alloy-only world.
+pub fn spawn_wells(world: &mut World, a: Vec2, b: Vec2) {
+    if !is_three(world) {
+        return;
+    }
+    let Some(t) = world.resource::<Content>().three_resource.clone() else {
+        return;
+    };
+    for (site, s) in t.wells.sites.iter().enumerate() {
+        world.spawn((
+            Position(s.at(a, b)),
+            LeyWell {
+                site,
+                holder: None,
+                progress: 0,
+                state: WellState::Empty,
+            },
+        ));
+    }
+}
+
+/// The two HQs a world's wells are laid out between: each side's victory
+/// building (the lowest entity of it, should a side have several). `None`
+/// when a side has none.
+pub fn hq_frame(world: &mut World) -> Option<(Vec2, Vec2)> {
+    let content = world.resource::<Content>().clone();
+    let mut q = world.query::<(Entity, &Position, &Building, &Faction)>();
+    let mut best: [Option<(u64, Vec2)>; 2] = [None, None];
+    for (e, p, b, f) in q.iter(world) {
+        if !content.buildings.get(b.def).is_some_and(|d| d.victory) {
+            continue;
+        }
+        let s = slot(*f);
+        if best[s].is_none_or(|(bits, _)| e.to_bits() < bits) {
+            best[s] = Some((e.to_bits(), p.0));
+        }
+    }
+    Some((best[0]?.1, best[1]?.1))
+}
+
+/// What can hold a well: a unit or a building.
+pub type Holds = Or<(With<UnitDefIdx>, With<Building>)>;
+
+/// Channel Aether: decide who holds each well this tick, advance its holder's
+/// progress, and bank `per_interval` to the holder on each full interval.
+pub fn channel(
+    content: Res<Content>,
+    mut stock: ResMut<Stockpiles>,
+    mut wells: Query<(Entity, &Position, &mut LeyWell)>,
+    presence: Query<(&Position, &Faction), Holds>,
+) {
+    let Some(t) = &content.three_resource else {
+        return;
+    };
+    let w = &t.wells;
+    let r2 = w.hold_radius * w.hold_radius;
+    // Who stands where: positions per side. Only "is anyone near" is asked of
+    // it, which no order can change.
+    let mut near: [Vec<Vec2>; 2] = [Vec::new(), Vec::new()];
+    for (p, f) in &presence {
+        near[slot(*f)].push(p.0);
+    }
+    // Stable order: ascending entity, so the banking order never depends on
+    // the query's.
+    let mut order: Vec<Entity> = wells.iter().map(|(e, ..)| e).collect();
+    order.sort_unstable_by_key(|e| e.to_bits());
+    for e in order {
+        let Ok((_, pos, mut well)) = wells.get_mut(e) else {
+            continue;
+        };
+        let here = SIDES.map(|f| near[slot(f)].iter().any(|p| p.distance_squared(pos.0) <= r2));
+        well.state = match here {
+            [true, true] => WellState::Contested,
+            [true, false] => WellState::Held(Faction::A),
+            [false, true] => WellState::Held(Faction::B),
+            [false, false] => WellState::Empty,
+        };
+        let WellState::Held(f) = well.state else {
+            continue;
+        };
+        if well.holder != Some(f) {
+            well.holder = Some(f);
+            well.progress = 0;
+        }
+        well.progress += 1;
+        if well.progress >= w.interval_ticks {
+            well.progress = 0;
+            let _ = stock.add_in(f, Bank::Aether, w.per_interval);
         }
     }
 }

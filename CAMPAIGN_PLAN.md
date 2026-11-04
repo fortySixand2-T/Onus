@@ -196,7 +196,7 @@ number lives in RON (`resources.ron`'s `three_resource` block, `nations.ron`).
   small floor and each Gene-Vats adds growth and storage. Growth lands every `interval_ticks`
   and stops at the side's storage cap: the sum of its standing buildings' `storage`. Rates,
   storage and the starting Biomass are RON.
-- [ ] **Aether:** channelled from ley-wells placed on the map from RON (positions along and
+- [x] **Aether:** channelled from ley-wells placed on the map from RON (positions along and
   across the line between the two HQs, so every map and both orientations get the same layout).
   A side **holds** a well while at least one of its units or buildings is within `hold_radius`
   and no enemy unit or building is. A held well banks `per_interval` Aether to its holder every

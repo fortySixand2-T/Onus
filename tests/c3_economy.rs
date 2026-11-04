@@ -7,8 +7,12 @@ use std::path::PathBuf;
 
 use onus::headless::{self, MatchSettings};
 use onus::sim::content::Content;
-use onus::sim::three::{EconomyMode, ThreeEconomy};
-use onus::sim::{AiCommanders, Building, CommandQueue, Faction, Order, Stockpiles};
+use onus::headless::Orientation;
+use onus::sim::three::{EconomyMode, LeyWell, ThreeEconomy, WellState};
+use onus::sim::{
+    AiCommanders, Building, CommandQueue, Faction, Health, Order, Position, Stockpiles,
+    UnitDefIdx,
+};
 
 fn data_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data")
@@ -184,4 +188,204 @@ fn a_three_resource_match_is_deterministic_and_hashes_its_banks() {
         .resource_mut::<Stockpiles>()
         .add_in(Faction::A, onus::sim::three::Bank::Biomass, 1);
     assert_ne!(before, onus::sim::state_hash(app.world_mut()));
+}
+
+// ---- AC2: Aether from ley-wells ------------------------------------------------
+
+/// Where the RON puts site `(along, side)` between two HQs, worked out here
+/// independently of the sim: along the line from A's HQ to B's, then across
+/// it (to the left of A→B).
+fn site_at(a: Vec2, b: Vec2, along: f32, side: f32) -> Vec2 {
+    let d = (b - a).normalize();
+    a + (b - a) * along + Vec2::new(-d.y, d.x) * side
+}
+
+/// Every well, by site index: `(position, well)`.
+fn wells(app: &mut App) -> Vec<(Vec2, LeyWell)> {
+    let mut q = app.world_mut().query::<(&Position, &LeyWell)>();
+    let mut v: Vec<(Vec2, LeyWell)> = q.iter(app.world()).map(|(p, w)| (p.0, *w)).collect();
+    v.sort_by_key(|(_, w)| w.site());
+    v
+}
+
+fn aether(app: &App, f: Faction) -> u32 {
+    app.world().resource::<Stockpiles>().aether(f)
+}
+
+/// A worker of `f` standing at `at` (a non-combatant: two of them on one well
+/// never fight, so a test of who holds it is not a test of combat).
+fn worker_at(app: &mut App, f: Faction, at: Vec2) -> Entity {
+    let c = app.world().resource::<Content>().clone();
+    let w = c.unit_index("worker").unwrap();
+    app.world_mut()
+        .spawn((
+            Position(at),
+            UnitDefIdx(w),
+            c.units[w].mvp_kind,
+            f,
+            Health::from_def(&c, w),
+        ))
+        .id()
+}
+
+fn middle_well(app: &mut App) -> Vec2 {
+    let c = app.world().resource::<Content>().clone();
+    let t = c.three_resource.unwrap();
+    let k = t
+        .wells
+        .sites
+        .iter()
+        .position(|s| s.along == 0.5 && s.side == 0.0)
+        .expect("a well in the middle of the map");
+    wells(app)[k].0
+}
+
+#[test]
+fn three_resource_matches_place_the_ron_ley_wells_between_the_hqs() {
+    let c = shipped();
+    let t = c.three_resource.clone().unwrap();
+    assert!(t.wells.sites.len() >= 3, "a home well each and a contested one");
+
+    let mut alloy = quiet(EconomyMode::Alloy);
+    assert!(wells(&mut alloy).is_empty(), "an Alloy-only match has no well");
+
+    for orientation in Orientation::ALL {
+        let s = MatchSettings::default()
+            .with_economy(EconomyMode::ThreeResource)
+            .with_orientation(orientation);
+        let mut app = headless::battle(shipped(), &s).unwrap();
+        let (a, b) = match orientation {
+            Orientation::Normal => (BASE[0], BASE[1]),
+            Orientation::Swapped => (BASE[1], BASE[0]),
+        };
+        let got = wells(&mut app);
+        assert_eq!(got.len(), t.wells.sites.len());
+        for (k, site) in t.wells.sites.iter().enumerate() {
+            let want = site_at(a, b, site.along, site.side);
+            assert!(
+                got[k].0.distance(want) < 1e-3,
+                "{orientation:?} site {k}: {} vs {want}",
+                got[k].0
+            );
+            assert_eq!(got[k].1.state(), WellState::Empty);
+        }
+        // The layout is the same map either way round: every well of one
+        // orientation stands where a well of the other does.
+        let normal: Vec<Vec2> = t
+            .wells
+            .sites
+            .iter()
+            .map(|s| site_at(BASE[0], BASE[1], s.along, s.side))
+            .collect();
+        for (p, _) in &got {
+            assert!(normal.iter().any(|q| q.distance(*p) < 1e-3), "{p} is a site");
+        }
+    }
+}
+
+#[test]
+fn a_held_well_channels_aether_to_its_holder_every_interval() {
+    let c = shipped();
+    let t = c.three_resource.clone().unwrap();
+    let w = &t.wells;
+    let mut app = quiet(EconomyMode::ThreeResource);
+    let mid = middle_well(&mut app);
+    // At the edge of the radius still holds.
+    worker_at(&mut app, Faction::A, mid + Vec2::new(w.hold_radius - 1.0, 0.0));
+    headless::tick(&mut app, w.interval_ticks - 1);
+    assert_eq!(aether(&app, Faction::A), t.starting_aether);
+    headless::tick(&mut app, 1);
+    assert_eq!(aether(&app, Faction::A), t.starting_aether + w.per_interval);
+    assert_eq!(aether(&app, Faction::B), t.starting_aether);
+    headless::tick(&mut app, w.interval_ticks * 2);
+    assert_eq!(aether(&app, Faction::A), t.starting_aether + 3 * w.per_interval);
+    let k = t.wells.sites.iter().position(|s| s.along == 0.5).unwrap();
+    assert_eq!(wells(&mut app)[k].1.state(), WellState::Held(Faction::A));
+
+    // Outside the radius holds nothing.
+    let mut app = quiet(EconomyMode::ThreeResource);
+    let mid = middle_well(&mut app);
+    worker_at(&mut app, Faction::B, mid + Vec2::new(0.0, w.hold_radius + 1.0));
+    headless::tick(&mut app, w.interval_ticks * 2);
+    assert_eq!(aether(&app, Faction::B), t.starting_aether);
+}
+
+#[test]
+fn a_contested_or_empty_well_channels_nothing_and_its_progress_pauses() {
+    let c = shipped();
+    let t = c.three_resource.clone().unwrap();
+    let w = &t.wells;
+    let k = t.wells.sites.iter().position(|s| s.along == 0.5).unwrap();
+    let half = w.interval_ticks / 2;
+
+    let mut app = quiet(EconomyMode::ThreeResource);
+    let mid = middle_well(&mut app);
+    // A holds for half an interval...
+    let a = worker_at(&mut app, Faction::A, mid);
+    headless::tick(&mut app, half);
+    // ...then B arrives: contested, nobody banks, however long.
+    let b = worker_at(&mut app, Faction::B, mid + Vec2::new(5.0, 0.0));
+    headless::tick(&mut app, w.interval_ticks * 3);
+    assert_eq!(wells(&mut app)[k].1.state(), WellState::Contested);
+    assert_eq!(aether(&app, Faction::A), t.starting_aether);
+    assert_eq!(aether(&app, Faction::B), t.starting_aether);
+    // B leaves: A holds again and finishes the interval it had started.
+    app.world_mut().despawn(b);
+    headless::tick(&mut app, w.interval_ticks - half - 1);
+    assert_eq!(aether(&app, Faction::A), t.starting_aether);
+    headless::tick(&mut app, 1);
+    assert_eq!(aether(&app, Faction::A), t.starting_aether + w.per_interval);
+
+    // A leaves: empty, paused (the holder is kept, the clock stops).
+    headless::tick(&mut app, half);
+    app.world_mut().despawn(a);
+    headless::tick(&mut app, w.interval_ticks * 3);
+    assert_eq!(wells(&mut app)[k].1.state(), WellState::Empty);
+    assert_eq!(aether(&app, Faction::A), t.starting_aether + w.per_interval);
+    worker_at(&mut app, Faction::A, mid);
+    headless::tick(&mut app, w.interval_ticks - half - 1);
+    assert_eq!(aether(&app, Faction::A), t.starting_aether + w.per_interval);
+    headless::tick(&mut app, 1);
+    assert_eq!(aether(&app, Faction::A), t.starting_aether + 2 * w.per_interval);
+}
+
+#[test]
+fn a_change_of_holder_restarts_the_progress() {
+    let c = shipped();
+    let t = c.three_resource.clone().unwrap();
+    let w = &t.wells;
+    let half = w.interval_ticks / 2;
+    let mut app = quiet(EconomyMode::ThreeResource);
+    let mid = middle_well(&mut app);
+    let a = worker_at(&mut app, Faction::A, mid);
+    headless::tick(&mut app, half);
+    app.world_mut().despawn(a);
+    worker_at(&mut app, Faction::B, mid);
+    // B's interval starts when B takes it: A's half counts for nothing.
+    headless::tick(&mut app, w.interval_ticks - 1);
+    assert_eq!(aether(&app, Faction::B), t.starting_aether);
+    headless::tick(&mut app, 1);
+    assert_eq!(aether(&app, Faction::B), t.starting_aether + w.per_interval);
+    assert_eq!(aether(&app, Faction::A), t.starting_aether);
+}
+
+#[test]
+fn a_building_holds_a_well_like_a_unit() {
+    let c = shipped();
+    let t = c.three_resource.clone().unwrap();
+    let w = &t.wells;
+    let spire = c.building_index("aether_spire").unwrap();
+    let mut app = quiet(EconomyMode::ThreeResource);
+    let mid = middle_well(&mut app);
+    push(
+        &mut app,
+        Order::Place {
+            faction: Faction::B,
+            building: spire,
+            pos: mid + Vec2::new(0.0, 20.0),
+        },
+        Faction::B,
+    );
+    headless::tick(&mut app, w.interval_ticks + 2);
+    assert_eq!(aether(&app, Faction::B), t.starting_aether + w.per_interval);
 }

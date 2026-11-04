@@ -424,6 +424,15 @@ pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSe
         crate::sim::battle::install(app.world_mut(), b, ground);
     }
 
+    // The ley-wells (C3), **last**: they are new entities, and spawning them
+    // anywhere earlier would move every entity after them (F-011). Nothing in
+    // an Alloy-only match.
+    crate::sim::three::spawn_wells(
+        app.world_mut(),
+        base_of(Faction::A, settings.orientation),
+        base_of(Faction::B, settings.orientation),
+    );
+
     app.insert_resource(commanders);
     app.insert_resource(CommandLog::new(settings.seed));
     if settings.hashing {
