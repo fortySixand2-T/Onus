@@ -829,3 +829,11 @@
 - [2026-11-04] Modified: tests/c3_economy.rs — C3 AC4 lean tests
 - [2026-11-04] Modified: FINDINGS.md — F-077 two trait lists, one per economy
 - [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC4 (real leans)
+- [2026-11-04] Modified: src/sim/ai.rs — three-resource AI: per-bank budgets, sticky keeper/guard well detachments, Keep/Guard actions
+- [2026-11-04] Modified: src/sim/three.rs — ThreeAiDef (keepers, guards) in the three_resource block
+- [2026-11-04] Modified: src/sim/content.rs — fingerprint the AI detachment sizes
+- [2026-11-04] Modified: assets/data/resources.ron — three_resource.ai detachment sizes
+- [2026-11-04] Created: tests/c3_ai.rs — C3 AC5 AI tests
+- [2026-11-04] Modified: tests/m4c_ai.rs — exhaustive match covers the new AiAction variants
+- [2026-11-04] Modified: FINDINGS.md — F-078 three-resource AI
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC5 (AI)

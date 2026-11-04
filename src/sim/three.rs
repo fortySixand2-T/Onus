@@ -107,6 +107,21 @@ pub struct ThreeResourceDef {
     pub starting_aether: u32,
     pub growth: GrowthDef,
     pub wells: WellsDef,
+    /// What the scripted AI details to the wells (AC5).
+    pub ai: ThreeAiDef,
+}
+
+/// The AI's well detachments in a three-resource match.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThreeAiDef {
+    /// Gatherers kept standing on the side's home well (its lowest-entity
+    /// gatherers), out of mining.
+    pub keepers: u32,
+    /// Combat units detailed to contest the middle well (its lowest-entity
+    /// fighters), out of the attack waves; called back to the home well when
+    /// an enemy reaches it.
+    pub guards: u32,
 }
 
 /// How Biomass grows.

@@ -213,7 +213,7 @@ number lives in RON (`resources.ron`'s `three_resource` block, `nations.ron`).
   Tollmarch: richer Alloy mines (more Alloy banked per load), faster gathering. Ashen Reach:
   more building HP. House Vael: Synthesis. The Alloy-only stand-ins keep working in Alloy-only
   mode, unchanged. A trait that cannot act in the mode its list is played in is a load error.
-- [ ] **AI:** in three-resource mode the AI runs the three-resource economy. It builds its
+- [x] **AI:** in three-resource mode the AI runs the three-resource economy. It builds its
   Gene-Vats (its script's openings), keeps a worker on its home well, sends a guard detachment
   to contest and hold the middle well (and back to its home well when an enemy takes it), and
   pays each unit in its own resource. The detachment sizes are RON. Alloy-only AI traces are

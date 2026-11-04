@@ -1568,6 +1568,7 @@ impl Content {
             for site in &t.wells.sites {
                 h.f32(site.along).f32(site.side);
             }
+            h.str("ai").u32(t.ai.keepers).u32(t.ai.guards);
         }
 
         let ids = |all: &[String]| {

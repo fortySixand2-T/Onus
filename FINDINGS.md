@@ -6817,3 +6817,38 @@ outcome.
 
 **What this does not change.** Alloy-only play resolves the same list it did in C2, so the
 goldens, `c2_nations` and the nation gate inputs are unchanged.
+
+## F-078 — The AI in the three-resource economy: per-bank budgets and sticky well detachments (C3 AC5)
+
+**Context.** In a three-resource match the scripted AI must pay each unit in its own resource,
+hold its home well and contest the middle one. Alloy-only AI traces must stay unchanged.
+
+**Decision.**
+- **Per-bank budgets.** A decision's budget is per bank (Alloy, Biomass, Aether). A unit is
+  priced through `Defs::unit_price`: Alloy in an Alloy-only match, its own resource in a
+  three-resource one. Buildings are always Alloy. The opening reservation (B4, F-041) is Alloy
+  held for a barracks, so it holds back only Alloy-priced units. In Alloy-only every unit is
+  Alloy-priced, so the commander decides number for number as before. The Gene-Vats come from
+  the script's openings, as every barracks does.
+- **Detachments from RON.** `three_resource.ai: (keepers: 1, guards: 2)`.
+  - **Keepers.** Gatherers kept standing on the home well, which is the well nearest the HQ.
+    They are out of mining and out of the `worker_target` count, so the economy replaces them.
+  - **Guards.** Fighters (never a General) sent to the nearest well that is neither home nor
+    the enemy's home: the middle. They go back to the home well while an enemy is on it, which
+    means it is contested or held by the enemy. A keeper standing there turns an enemy's take
+    into a contest. Guards are out of the attack waves. They move by attack-move, so they fight
+    on the way.
+  - A unit within `hold_radius / 2` of its well, or already ordered there, is not re-ordered.
+- **Sticky, not "lowest entity".** In Bevy 0.19 `Entity::to_bits` does not order by spawn: the
+  newest entity sorts first. Picking "the lowest-bits worker" every decision therefore relieved
+  the keeper each time a worker was trained. That was 4 keepers in 2400 ticks, each walking
+  out while the last walked back. The detachments are now commander state (`AiCommander.keepers`
+  and `.guards`). A member stays until it dies or stops fitting, and vacancies are filled in
+  the stable entity order. This is deterministic and not hashed; the AI is not replayed, its
+  orders are.
+- **Trace.** Two new `AiAction`s, `Keep { unit, well }` and `Guard { well, force }`. They are
+  emitted only in a three-resource match.
+
+**What this does not change.** Alloy-only: no wells, so there are no posts and every unit is
+Alloy-priced. `b1_matchup`'s journal pins, `m4c_ai`, `critic_m4c`, `c1_ai`, the goldens and
+`c2_nations` all pass unchanged.

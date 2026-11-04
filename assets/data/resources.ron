@@ -71,5 +71,11 @@
                 (along: 0.5, side: 0.0),      // the contested middle
             ],
         ),
+        //   ai — the scripted AI's well detachments: `keepers` gatherers kept
+        //     standing on its home well (the well nearest its HQ), `guards`
+        //     fighters sent to contest the nearest other well that is not the
+        //     enemy's home (the middle), and back to the home well while an
+        //     enemy is on it. Both are taken from its lowest-entity units.
+        ai: (keepers: 1, guards: 2),
     ),
 )

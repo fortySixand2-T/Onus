@@ -35,7 +35,10 @@ use crate::sim::content::{Content, GeneralAiDef, StrategyDef, WaveOrder};
 use crate::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use crate::sim::nation::{Defs, NationRules};
 use crate::sim::spatial::{Faction, SplitMix64};
-use crate::sim::{CommandQueue, GatherTarget, Order, Position, ResourceNode};
+use crate::sim::three::{Bank, EconomyMode, LeyWell, ThreeEconomy, ThreeResourceDef, WellState};
+use crate::sim::{
+    AttackMoveDest, CommandQueue, GatherTarget, MoveTarget, Order, Position, ResourceNode,
+};
 
 // ---- the action trace -------------------------------------------------------
 
@@ -56,6 +59,11 @@ pub enum AiAction {
     /// Sent `force` combat units at the enemy HQ (in a battle with no enemy
     /// HQ, at the enemy's first General).
     Attack { dest: Vec2, force: u32 },
+    /// Three-resource only (C3): sent a keeper to stand on its home ley-well.
+    Keep { unit: Entity, well: Entity },
+    /// Three-resource only (C3): sent `force` of its guard detachment to a
+    /// ley-well (the middle one, or home while an enemy is on it).
+    Guard { well: Entity, force: u32 },
 }
 
 /// A decision only a campaign battle's commander takes (C1). Kept out of
@@ -126,6 +134,11 @@ pub struct AiCommander {
     /// Campaign battle (C1): the most combat units it has seen on the field
     /// at one decision — what its losses are measured against.
     peak_army: u32,
+    /// Three-resource (C3): the gatherers it keeps on its home well, held
+    /// until they fall (so a new worker never relieves a keeper already there).
+    keepers: Vec<Entity>,
+    /// Three-resource (C3): its well guard detachment, held likewise.
+    guards: Vec<Entity>,
 }
 
 impl AiCommander {
@@ -170,6 +183,8 @@ impl AiCommander {
             army_cursor: 0,
             next_attack_tick: 0,
             peak_army: 0,
+            keepers: Vec::new(),
+            guards: Vec::new(),
         }
     }
 
@@ -288,7 +303,21 @@ struct UnitRow {
     faction: Faction,
     on_a_job: bool,
     general: bool,
+    /// Where it is already ordered to: its attack-move's destination, else
+    /// its move target.
+    dest: Option<Vec2>,
 }
+
+/// One ley-well (C3), as the commander sees it.
+struct WellRow {
+    entity: Entity,
+    pos: Vec2,
+    state: WellState,
+}
+
+/// The three-resource world a commander plans its wells over: the RON block
+/// and every well, by entity.
+type WellsView<'a> = Option<(&'a ThreeResourceDef, &'a [WellRow])>;
 
 struct BuildingRow {
     entity: Entity,
@@ -332,6 +361,9 @@ pub fn ai_commanders(
     mut battle_journal: Option<ResMut<BattleAiJournal>>,
     // The match's nations (C2): what the commander's own side pays.
     nations: Option<Res<NationRules>>,
+    // The three-resource economy (C3), if this match plays it: what each unit
+    // is paid in, and the ley-wells it details keepers and guards to.
+    three: Option<Res<ThreeEconomy>>,
     units: Query<(
         Entity,
         &Position,
@@ -339,9 +371,12 @@ pub fn ai_commanders(
         &Faction,
         Option<&GatherTarget>,
         Has<General>,
+        Option<&MoveTarget>,
+        Option<&AttackMoveDest>,
     )>,
     buildings: Query<(Entity, &Position, &Building, &Faction, &ProductionQueue)>,
     nodes: Query<(Entity, &Position), With<ResourceNode>>,
+    wells: Query<(Entity, &Position, &LeyWell)>,
 ) {
     if ai.0.is_empty() {
         return;
@@ -350,13 +385,14 @@ pub fn ai_commanders(
     // ---- snapshot, in a stable order ---------------------------------------
     let mut unit_rows: Vec<UnitRow> = units
         .iter()
-        .map(|(entity, pos, def, faction, job, general)| UnitRow {
+        .map(|(entity, pos, def, faction, job, general, to, attack_to)| UnitRow {
             entity,
             pos: pos.0,
             def: def.0,
             faction: *faction,
             on_a_job: job.is_some(),
             general,
+            dest: attack_to.map(|d| d.0).or(to.map(|t| t.0)),
         })
         .collect();
     unit_rows.sort_unstable_by_key(|r| r.entity.to_bits());
@@ -376,6 +412,28 @@ pub fn ai_commanders(
     let mut node_rows: Vec<(Entity, Vec2)> = nodes.iter().map(|(e, p)| (e, p.0)).collect();
     node_rows.sort_unstable_by_key(|(e, _)| e.to_bits());
 
+    // The three-resource economy (C3): only when the match plays it. An
+    // Alloy-only commander sees no wells and prices everything in Alloy, so
+    // it decides exactly as before C3.
+    let economy = if three.is_some() {
+        EconomyMode::ThreeResource
+    } else {
+        EconomyMode::Alloy
+    };
+    let mut well_rows: Vec<WellRow> = wells
+        .iter()
+        .map(|(entity, p, w)| WellRow {
+            entity,
+            pos: p.0,
+            state: w.state(),
+        })
+        .collect();
+    well_rows.sort_unstable_by_key(|w| w.entity.to_bits());
+    let wells_view: WellsView = three
+        .as_ref()
+        .and(content.three_resource.as_ref())
+        .map(|t| (t, well_rows.as_slice()));
+
     // The battle AI's numbers apply only in a battle (and only if the content
     // has them — `validate` insists on them wherever there are Generals).
     let battle = battle.as_deref().zip(content.general_ai.as_ref());
@@ -391,11 +449,12 @@ pub fn ai_commanders(
             commander,
             tick,
             &content,
-            Defs::new(&content, nations.as_deref()),
+            Defs::new(&content, nations.as_deref()).in_economy(economy),
             &stock,
             &unit_rows,
             &building_rows,
             &node_rows,
+            wells_view,
             battle,
             battle_journal.as_deref_mut(),
             &mut queue,
@@ -416,6 +475,7 @@ fn think(
     units: &[UnitRow],
     buildings: &[BuildingRow],
     nodes: &[(Entity, Vec2)],
+    wells: WellsView,
     battle: Option<(&BattleState, &GeneralAiDef)>,
     mut battle_journal: Option<&mut BattleAiJournal>,
     queue: &mut CommandQueue,
@@ -442,12 +502,29 @@ fn think(
         .find(|b| b.faction == me && content.buildings.get(b.def).is_some_and(|def| def.victory))
         .map(|b| (b.entity, b.pos, b.queued));
 
+    // Its well detachments (C3): none in an Alloy-only match.
+    let posts = match (wells, hq) {
+        (Some((t, w)), Some((_, hq_pos, _))) => {
+            let enemy_hq = buildings
+                .iter()
+                .find(|b| {
+                    b.faction != me
+                        && content.buildings.get(b.def).is_some_and(|def| def.victory)
+                })
+                .map(|b| b.pos);
+            Posts::assign(c, content, t, w, units, hq_pos, enemy_hq)
+        }
+        _ => Posts::default(),
+    };
+
     // Its fighters: combat units of the roster (never a General, never a
     // gatherer) — the wave, the guard, and what a retreat is measured on.
+    // A well guard (C3) is detailed to its well, not to the army.
     let force: Vec<Entity> = units
         .iter()
         .filter(|u| u.faction == me && content.units.get(u.def).is_some_and(|d| d.offense > 0))
         .map(|u| u.entity)
+        .filter(|e| !posts.guards.contains(e))
         .collect();
 
     // ---- 0. campaign battle: retreat on the RON threshold (C1) -------------
@@ -472,9 +549,10 @@ fn think(
 
     if let Some((hq_entity, hq_pos, hq_queued)) = hq {
         economy(
-            c, tick, content, defs, stock, units, buildings, nodes, hq_entity, hq_pos,
-            hq_queued, queue, journal,
+            c, tick, content, defs, stock, units, buildings, nodes, &posts.keepers, hq_entity,
+            hq_pos, hq_queued, queue, journal,
         );
+        posts.order(tick, me, units, queue, journal);
     } else if battle.is_none() {
         // A skirmish commander without an HQ has no economy and no rally
         // point. (A battle side may field an army with no city: it still
@@ -575,6 +653,7 @@ fn economy(
     units: &[UnitRow],
     buildings: &[BuildingRow],
     nodes: &[(Entity, Vec2)],
+    keepers: &[Entity],
     hq_entity: Entity,
     hq_pos: Vec2,
     hq_queued: usize,
@@ -588,14 +667,21 @@ fn economy(
         journal.0.push((tick, me, a));
     };
 
-    // What it can still spend this decision. Orders are all-or-nothing and
-    // charged by the sim, but the commander tracks its own budget so one
-    // decision never commits the same Alloy twice.
-    let mut budget = stock.alloy(me);
+    // What it can still spend this decision, per bank. Orders are
+    // all-or-nothing and charged by the sim, but the commander tracks its own
+    // budget so one decision never commits the same resource twice. A unit is
+    // paid from the bank of its price (`Defs::unit_price`): Alloy for every
+    // unit in an Alloy-only match, its own resource in a three-resource one
+    // (C3). Buildings are Alloy in both.
+    let mut budget = Budget::of(stock, me);
 
     // ---- 1. mine: every idle gatherer gets a deposit -----------------------
+    // (A keeper, C3, stands on its well instead.)
     if !nodes.is_empty() {
-        for u in units.iter().filter(|u| u.faction == me && !u.on_a_job) {
+        for u in units
+            .iter()
+            .filter(|u| u.faction == me && !u.on_a_job && !keepers.contains(&u.entity))
+        {
             if !content.units.get(u.def).is_some_and(|d| d.gathers) {
                 continue;
             }
@@ -619,18 +705,20 @@ fn economy(
     }
 
     // ---- 2. workers: keep `worker_target` on the field ---------------------
+    // (A keeper is not mining, so it does not count.)
     let workers_now = units
         .iter()
         .filter(|u| u.faction == me && content.units.get(u.def).is_some_and(|d| d.gathers))
+        .filter(|u| !keepers.contains(&u.entity))
         .count() as u32;
     if let Some(worker) = hq_worker(content, hq_entity, buildings) {
-        let cost = defs.roster_unit(me, worker).map_or(u32::MAX, |u| u.mvp_alloy_cost);
+        let (bank, cost) = defs.unit_price(me, worker).unwrap_or((Bank::Alloy, u32::MAX));
         let pending = hq_queued as u32;
         if workers_now.saturating_add(pending) < script.worker_target
             && hq_queued == 0
-            && budget >= cost
+            && budget.get(bank) >= cost
         {
-            budget -= cost;
+            budget.take(bank, cost);
             order(
                 queue,
                 journal,
@@ -702,11 +790,11 @@ fn economy(
             continue; // this opening is already standing
         }
         let cost = defs.building(me, def).map_or(u32::MAX, |b| b.alloy_cost);
-        if tick >= opening.at_tick && budget >= cost {
+        if tick >= opening.at_tick && budget.get(Bank::Alloy) >= cost {
             // It is standing as far as the *next* openings are concerned, even
             // though `apply_commands` has not spawned it yet.
             tech[slot].1 = have + 1;
-            budget -= cost;
+            budget.take(Bank::Alloy, cost);
             // The only thing chance decides: which way the barracks goes.
             let angle = c.rng.range_f32(0.0, std::f32::consts::TAU);
             let pos = hq_pos + Vec2::new(angle.cos(), angle.sin()) * opening.offset;
@@ -767,9 +855,12 @@ fn economy(
             .min_by_key(|b| b.queued);
         if let Some(b) = target {
             if (b.queued as u32) < script.queue_depth {
-                let cost = defs.roster_unit(me, unit).map_or(u32::MAX, |u| u.mvp_alloy_cost);
-                if budget >= cost.saturating_add(reserve) {
-                    budget -= cost;
+                let (bank, cost) = defs.unit_price(me, unit).unwrap_or((Bank::Alloy, u32::MAX));
+                // The reserve is Alloy held for an opening: it holds back
+                // only a unit paid in Alloy (every unit, in Alloy-only).
+                let held = if bank == Bank::Alloy { reserve } else { 0 };
+                if budget.get(bank) >= cost.saturating_add(held) {
+                    budget.take(bank, cost);
                     c.army_cursor = c.army_cursor.wrapping_add(1);
                     order(
                         queue,
@@ -787,6 +878,169 @@ fn economy(
     // `budget` has done its job (one decision never commits the same Alloy
     // twice); the attack spends nothing.
     let _ = budget;
+}
+
+/// What a commander can still spend this decision, per bank.
+struct Budget([u32; 3]);
+
+impl Budget {
+    fn of(stock: &Stockpiles, me: Faction) -> Self {
+        Budget([stock.alloy(me), stock.biomass(me), stock.aether(me)])
+    }
+
+    fn slot(bank: Bank) -> usize {
+        match bank {
+            Bank::Alloy => 0,
+            Bank::Biomass => 1,
+            Bank::Aether => 2,
+        }
+    }
+
+    fn get(&self, bank: Bank) -> u32 {
+        self.0[Self::slot(bank)]
+    }
+
+    fn take(&mut self, bank: Bank, n: u32) {
+        let v = &mut self.0[Self::slot(bank)];
+        *v = v.saturating_sub(n);
+    }
+}
+
+// ---- the ley-wells (C3) -------------------------------------------------------
+
+/// A commander's well detachments for one decision. Empty in an Alloy-only
+/// match (and with no HQ to call a well home), so nothing below acts there.
+#[derive(Default)]
+struct Posts {
+    /// Its home well: the well nearest its HQ (ties by entity).
+    home: Option<(Entity, Vec2)>,
+    /// Where its guards go: the home well while an enemy is on it, else the
+    /// nearest well that is neither its home nor the enemy's (the middle).
+    guard_well: Option<(Entity, Vec2)>,
+    /// Within this of a well a unit is on it and is left alone.
+    near: f32,
+    /// Its keepers: `ai.keepers` gatherers ([`detail`]).
+    keepers: Vec<Entity>,
+    /// Its guards: `ai.guards` fighters, never a General ([`detail`]).
+    guards: Vec<Entity>,
+}
+
+impl Posts {
+    fn assign(
+        c: &mut AiCommander,
+        content: &Content,
+        t: &ThreeResourceDef,
+        wells: &[WellRow],
+        units: &[UnitRow],
+        hq_pos: Vec2,
+        enemy_hq: Option<Vec2>,
+    ) -> Self {
+        let me = c.faction;
+        let all: Vec<(Entity, Vec2)> = wells.iter().map(|w| (w.entity, w.pos)).collect();
+        let Some(home) = nearest(&all, hq_pos) else {
+            return Posts::default();
+        };
+        let enemy_home = enemy_hq.and_then(|p| nearest(&all, p)).map(|(e, _)| e);
+        let others: Vec<(Entity, Vec2)> = all
+            .iter()
+            .copied()
+            .filter(|(e, _)| *e != home.0 && Some(*e) != enemy_home)
+            .collect();
+        // "An enemy is on it": the enemy holds it or contests it (a keeper
+        // standing there turns an enemy's take into a contest).
+        let enemy_at_home = wells.iter().any(|w| {
+            w.entity == home.0
+                && match w.state {
+                    WellState::Contested => true,
+                    WellState::Held(f) => f != me,
+                    WellState::Empty => false,
+                }
+        });
+        let guard_well = if enemy_at_home {
+            Some(home)
+        } else {
+            nearest(&others, hq_pos).or(Some(home))
+        };
+        let keepers = detail(&mut c.keepers, t.ai.keepers, units, |u| {
+            u.faction == me && content.units.get(u.def).is_some_and(|d| d.gathers)
+        });
+        let guards = detail(&mut c.guards, t.ai.guards, units, |u| {
+            u.faction == me && !u.general && content.units.get(u.def).is_some_and(|d| d.offense > 0)
+        });
+        Posts {
+            home: Some(home),
+            guard_well,
+            near: t.wells.hold_radius / 2.0,
+            keepers,
+            guards,
+        }
+    }
+
+    /// Whether `u` needs an order to `to`: not already on it, nor on its way.
+    fn needs(&self, u: &UnitRow, to: Vec2) -> bool {
+        u.pos.distance(to) > self.near && u.dest != Some(to)
+    }
+
+    /// Send every keeper home and the guards to their well, sparing any
+    /// already there or on the way.
+    fn order(
+        &self,
+        tick: u32,
+        me: Faction,
+        units: &[UnitRow],
+        queue: &mut CommandQueue,
+        journal: &mut AiJournal,
+    ) {
+        let row = |e: Entity| units.iter().find(|u| u.entity == e);
+        if let Some((well, pos)) = self.home {
+            for &k in &self.keepers {
+                if row(k).is_some_and(|u| self.needs(u, pos)) {
+                    queue.0.push_back(Order::MoveTo { units: vec![k], dest: pos }.issued_by(me));
+                    journal.0.push((tick, me, AiAction::Keep { unit: k, well }));
+                }
+            }
+        }
+        if let Some((well, pos)) = self.guard_well {
+            let going: Vec<Entity> = self
+                .guards
+                .iter()
+                .copied()
+                .filter(|&g| row(g).is_some_and(|u| self.needs(u, pos)))
+                .collect();
+            if !going.is_empty() {
+                let force = going.len() as u32;
+                queue.0.push_back(
+                    Order::AttackMove {
+                        units: going,
+                        dest: pos,
+                    }
+                    .issued_by(me),
+                );
+                journal.0.push((tick, me, AiAction::Guard { well, force }));
+            }
+        }
+    }
+}
+
+/// Keep a detachment of `n`: the members still standing (and still fit) stay,
+/// and vacancies are filled from `units` in their stable (entity) order.
+fn detail(
+    held: &mut Vec<Entity>,
+    n: u32,
+    units: &[UnitRow],
+    fits: impl Fn(&UnitRow) -> bool,
+) -> Vec<Entity> {
+    held.retain(|e| units.iter().any(|u| u.entity == *e && fits(u)));
+    held.truncate(n as usize);
+    for u in units.iter().filter(|u| fits(u)) {
+        if held.len() >= n as usize {
+            break;
+        }
+        if !held.contains(&u.entity) {
+            held.push(u.entity);
+        }
+    }
+    held.clone()
 }
 
 /// The gatherer this HQ can train: the first unit in its RON `produces` list
