@@ -781,3 +781,10 @@
 - [2026-11-03] Modified: assets/data/nations.ron — Tollmarch trait: Workers GatherTicks x0.90 (was CarryCapacity +1)
 - [2026-11-03] Modified: tests/c2_nations.rs — tollmarch_workers_gather_faster replaces tollmarch_workers_carry_more
 - [2026-11-03] Modified: FINDINGS.md — F-072: Tollmarch's trait redesign
+- [2026-11-03] Modified: src/sim/nation.rs — SynthesisDef: the data-driven mixed-army trait kind (validated at load; install adds the AuraField only for a nation with one)
+- [2026-11-03] Modified: src/sim/battle.rs — auras computes each side's mixed-army trait; the domain count is one shared helper (distinct_domains)
+- [2026-11-03] Modified: src/sim/content.rs — check_aura_modifiers shared by General auras and the mixed-army trait; fingerprint mixes the trait in when present
+- [2026-11-03] Modified: DESIGN_BRIEF.md — House Vael sheet: its Synthesis is a real nation trait (user decision)
+- [2026-11-03] Modified: assets/data/nations.ron — House Vael: synthesis (radius 160, Offense +1 per other domain, max 2)
+- [2026-11-03] Modified: tests/c2_nations.rs — mixed-army trait tests: active, mono-domain, cap, enemies, field/fingerprint, load refusals, shipped House
+- [2026-11-03] Modified: FINDINGS.md — F-073: the mixed-army trait

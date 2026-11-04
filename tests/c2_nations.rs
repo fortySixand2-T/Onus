@@ -9,6 +9,8 @@ use std::path::PathBuf;
 use bevy::prelude::*;
 
 use onus::headless::{self, MatchSettings, MatchSetupError};
+use onus::sim::battle::AuraField;
+use onus::sim::combat::StatBonus;
 use onus::sim::content::Content;
 use onus::sim::economy::{Building, Produced};
 use onus::sim::nation::{self, Defs, NationRules, UnknownNation};
@@ -799,4 +801,159 @@ fn a_building_hp_trait_rounds_half_up_like_every_mul() {
         d.building_health(Faction::A, hq).max,
         traited(traited(base, 1.004), 1.004)
     );
+}
+
+// ---- the mixed-army trait: House Vael's Synthesis (C2, user decision) --------
+
+/// Content whose one nation `x` has no stat traits and the given mixed-army
+/// trait (`synthesis: (...)` RON, or "" for none).
+fn with_synthesis(name: &str, syn: &str) -> Result<Content, String> {
+    let line = if syn.is_empty() { String::new() } else { format!("synthesis: {syn},") };
+    let text = format!(
+        r#"(nations: [(id: "x", name: "X", domain: None, colour: (0.1,0.2,0.3),
+            accent: (0.4,0.5,0.6), general: "general_focus", strategy: "mvp",
+            traits: [], {line})])"#
+    );
+    Content::load_from_dir(&with_nations(name, &text)).map_err(|e| e.to_string())
+}
+
+const SYN: &str = "(radius: 120.0, modifiers: [(stat: Offense, add: 1), (stat: Armor, add: 1)], max: 2)";
+
+/// A skirmish where A plays `x`, with no commanders; `units` are spawned on
+/// an open stretch of the map and the field is read after one tick.
+fn synthesis_field(c: &Content, units: &[(Faction, &str, Vec2)]) -> Vec<StatBonus> {
+    let s = MatchSettings::default().with_nations(Some("x"), None);
+    let mut app = headless::battle(c.clone(), &s).expect("builds");
+    app.insert_resource(AiCommanders::new(0, &[]));
+    let es: Vec<Entity> = units
+        .iter()
+        .map(|&(f, id, at)| {
+            let u = c.unit_index(id).unwrap();
+            let hp = Health::from_def(c, u);
+            app.world_mut()
+                .spawn((Position(Vec2::new(0.0, 650.0) + at), UnitDefIdx(u), c.units[u].mvp_kind, f, hp))
+                .id()
+        })
+        .collect();
+    headless::step(&mut app);
+    let field = app.world().get_resource::<AuraField>().expect("a synthesis nation has the field");
+    es.iter().map(|e| field.get(*e)).collect()
+}
+
+fn bonus(n: u32) -> StatBonus {
+    StatBonus { offense: n, armor: n, ..StatBonus::NONE }
+}
+
+#[test]
+fn synthesis_is_active_beside_other_domains_and_scales_per_domain() {
+    let c = with_synthesis("syn_mixed", SYN).expect("loads");
+    use Faction::A;
+    // A sentinel (Machine) and a ripper (Flesh): one other domain each.
+    let two = synthesis_field(&c, &[(A, "sentinel", Vec2::ZERO), (A, "ripper", Vec2::new(30.0, 0.0))]);
+    assert_eq!(two, [bonus(1), bonus(1)]);
+    // Add an arclight (Energy): two other domains each. A second machine unit
+    // adds no domain to the first, but gives the others nothing new either.
+    let three = synthesis_field(
+        &c,
+        &[
+            (A, "sentinel", Vec2::ZERO),
+            (A, "ripper", Vec2::new(30.0, 0.0)),
+            (A, "arclight", Vec2::new(0.0, 30.0)),
+            (A, "bulwark", Vec2::new(30.0, 30.0)),
+        ],
+    );
+    assert_eq!(three, [bonus(2), bonus(2), bonus(2), bonus(2)]);
+    // Out of the radius, a neighbour does not count.
+    let far = synthesis_field(&c, &[(A, "sentinel", Vec2::ZERO), (A, "ripper", Vec2::new(200.0, 0.0))]);
+    assert_eq!(far, [StatBonus::NONE, StatBonus::NONE]);
+}
+
+#[test]
+fn synthesis_is_inactive_in_a_mono_domain_army() {
+    let c = with_synthesis("syn_mono", SYN).expect("loads");
+    use Faction::A;
+    // Two Machine units and a worker (no domain): nothing to mix.
+    let f = synthesis_field(
+        &c,
+        &[
+            (A, "sentinel", Vec2::ZERO),
+            (A, "bulwark", Vec2::new(30.0, 0.0)),
+            (A, "worker", Vec2::new(0.0, 30.0)),
+        ],
+    );
+    assert_eq!(f, [StatBonus::NONE; 3]);
+}
+
+#[test]
+fn synthesis_counts_no_more_domains_than_its_max() {
+    let c = with_synthesis(
+        "syn_cap",
+        "(radius: 120.0, modifiers: [(stat: Offense, add: 1), (stat: Armor, add: 1)], max: 1)",
+    )
+    .expect("loads");
+    use Faction::A;
+    let f = synthesis_field(
+        &c,
+        &[
+            (A, "sentinel", Vec2::ZERO),
+            (A, "ripper", Vec2::new(30.0, 0.0)),
+            (A, "arclight", Vec2::new(0.0, 30.0)),
+        ],
+    );
+    assert_eq!(f, [bonus(1); 3], "two other domains, capped at one");
+}
+
+#[test]
+fn synthesis_counts_only_friends_and_only_its_own_side_gains() {
+    let c = with_synthesis("syn_enemy", SYN).expect("loads");
+    use Faction::{A, B};
+    // A's sentinel stands among B's ripper and arclight: enemies, no mix.
+    // B (no nation) is mixed but has no such trait.
+    let f = synthesis_field(
+        &c,
+        &[
+            (A, "sentinel", Vec2::ZERO),
+            (B, "ripper", Vec2::new(30.0, 0.0)),
+            (B, "arclight", Vec2::new(0.0, 30.0)),
+        ],
+    );
+    assert_eq!(f, [StatBonus::NONE; 3]);
+}
+
+#[test]
+fn only_a_synthesis_nation_installs_the_field_and_the_hash_sees_the_trait() {
+    // A nation without the trait leaves the skirmish as it was: no field.
+    let plain = with_synthesis("syn_none", "").expect("loads");
+    let s = MatchSettings::default().with_nations(Some("x"), None);
+    let app = headless::battle(plain.clone(), &s).unwrap();
+    assert!(!app.world().contains_resource::<AuraField>());
+    // The trait is content: the fingerprint sees it.
+    let syn = with_synthesis("syn_some", SYN).unwrap();
+    assert_ne!(plain.fingerprint().hash(), syn.fingerprint().hash());
+}
+
+#[test]
+fn an_unplayable_synthesis_is_refused_at_load() {
+    for (name, syn) in [
+        ("syn_max0", "(radius: 120.0, modifiers: [(stat: Offense, add: 1)], max: 0)"),
+        ("syn_max3", "(radius: 120.0, modifiers: [(stat: Offense, add: 1)], max: 3)"),
+        ("syn_r0", "(radius: 0.0, modifiers: [(stat: Offense, add: 1)], max: 1)"),
+        ("syn_empty", "(radius: 120.0, modifiers: [], max: 1)"),
+        ("syn_twice", "(radius: 120.0, modifiers: [(stat: Armor, add: 1), (stat: Armor, add: 1)], max: 1)"),
+        ("syn_ticks_add", "(radius: 120.0, modifiers: [(stat: AttackTicks, add: 1)], max: 1)"),
+        ("syn_nemesis", "(radius: 120.0, modifiers: [(stat: Nemesis, add: 1)], max: 1)"),
+    ] {
+        assert!(with_synthesis(name, syn).is_err(), "{name} must be refused");
+    }
+}
+
+#[test]
+fn the_shipped_house_vael_has_the_synthesis_trait() {
+    let c = shipped();
+    let house = c.nations.iter().find(|n| n.id == "house").unwrap();
+    let syn = house.synthesis.as_ref().expect("House's edge is the mixed army");
+    assert!(syn.max >= 1 && !syn.modifiers.is_empty());
+    for n in c.nations.iter().filter(|n| n.id != "house") {
+        assert!(n.synthesis.is_none(), "{} has no mixed-army trait", n.id);
+    }
 }

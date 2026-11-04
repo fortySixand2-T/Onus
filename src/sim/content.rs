@@ -1020,53 +1020,8 @@ impl Content {
             if !(a.radius.is_finite() && a.radius > 0.0) {
                 return bad(format!("general `{}` aura radius must be finite and positive", g.id));
             }
-            if a.modifiers.is_empty() {
-                return bad(format!("general `{}` aura has no modifiers", g.id));
-            }
-            for (i, m) in a.modifiers.iter().enumerate() {
-                if a.modifiers[..i].iter().any(|n| n.stat == m.stat) {
-                    return bad(format!(
-                        "general `{}` aura lists {:?} twice",
-                        g.id, m.stat
-                    ));
-                }
-                match (m.stat, m.add, m.mul) {
-                    // The attack interval is the one multiplied stat: faster
-                    // attacks, never slower, and never a zero interval.
-                    (AuraStat::AttackTicks, None, Some(mul)) => {
-                        let milli = m.mul_milli();
-                        if !(mul.is_finite()
-                            && mul > 0.0
-                            && (1..AuraModifier::MULT_SCALE).contains(&milli))
-                        {
-                            return bad(format!(
-                                "general `{}` aura AttackTicks mul must be in (0, 1)",
-                                g.id
-                            ));
-                        }
-                    }
-                    (AuraStat::AttackTicks, ..) => {
-                        return bad(format!(
-                            "general `{}` aura AttackTicks takes `mul` only",
-                            g.id
-                        ));
-                    }
-                    (stat, Some(add), None) => {
-                        if add == 0 || add > self.combat.max_stat {
-                            return bad(format!(
-                                "general `{}` aura {stat:?} add must be 1..={}",
-                                g.id, self.combat.max_stat
-                            ));
-                        }
-                    }
-                    (stat, ..) => {
-                        return bad(format!(
-                            "general `{}` aura {stat:?} takes `add` only",
-                            g.id
-                        ));
-                    }
-                }
-            }
+            check_aura_modifiers(&format!("general `{}` aura", g.id), &a.modifiers, &self.combat)
+                .map_err(|msg| ContentError::Invalid { msg })?;
             if let AuraScaling::PerDistinctDomain { max } = a.scaling {
                 if max == 0 || max as usize > self.resources.len() {
                     return bad(format!(
@@ -1551,6 +1506,19 @@ impl Content {
                     h.bool(t.add.is_some()).u64(t.add.unwrap_or(0) as i64 as u64);
                     h.bool(t.mul.is_some()).u32(t.mul_milli());
                 }
+                // Mixed in only when present, so a nation without one hashes
+                // as it did before the trait kind existed.
+                if let Some(syn) = &n.synthesis {
+                    h.str("synthesis").f32(syn.radius).u32(syn.max);
+                    h.u64(syn.modifiers.len() as u64);
+                    for m in &syn.modifiers {
+                        h.u64(m.stat as u64)
+                            .bool(m.add.is_some())
+                            .u32(m.add.unwrap_or(0))
+                            .bool(m.mul.is_some())
+                            .u32(m.mul_milli());
+                    }
+                }
             }
         }
 
@@ -1684,6 +1652,51 @@ impl Content {
 }
 
 // L1 unit tests: the lookups are stable and id-keyed (no HashMap ordering).
+/// The modifiers of an aura-shaped bonus — a General's aura (C1) or a nation's
+/// Synthesis trait (C2) — are well formed: at least one, each stat at most
+/// once, `add` in `1..=max_stat`, and `mul` only on the attack interval, in
+/// (0, 1). `who` names the owner in the error.
+pub(crate) fn check_aura_modifiers(
+    who: &str,
+    modifiers: &[AuraModifier],
+    combat: &CombatDef,
+) -> Result<(), String> {
+    if modifiers.is_empty() {
+        return Err(format!("{who} has no modifiers"));
+    }
+    for (i, m) in modifiers.iter().enumerate() {
+        if modifiers[..i].iter().any(|n| n.stat == m.stat) {
+            return Err(format!("{who} lists {:?} twice", m.stat));
+        }
+        match (m.stat, m.add, m.mul) {
+            // The attack interval is the one multiplied stat: faster
+            // attacks, never slower, and never a zero interval.
+            (AuraStat::AttackTicks, None, Some(mul)) => {
+                let milli = m.mul_milli();
+                if !(mul.is_finite() && mul > 0.0 && (1..AuraModifier::MULT_SCALE).contains(&milli))
+                {
+                    return Err(format!("{who} AttackTicks mul must be in (0, 1)"));
+                }
+            }
+            (AuraStat::AttackTicks, ..) => {
+                return Err(format!("{who} AttackTicks takes `mul` only"));
+            }
+            (stat, Some(add), None) => {
+                if add == 0 || add > combat.max_stat {
+                    return Err(format!(
+                        "{who} {stat:?} add must be 1..={}",
+                        combat.max_stat
+                    ));
+                }
+            }
+            (stat, ..) => {
+                return Err(format!("{who} {stat:?} takes `add` only"));
+            }
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

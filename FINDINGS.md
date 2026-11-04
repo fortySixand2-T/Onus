@@ -6578,3 +6578,58 @@ it through `Defs::roster_unit`. No sim code changed and there is no per-nation c
 - `c2_golden` (no-nation matches identical to pre-C2 content) passes unchanged.
 
 The gate reading with this trait is in F-074.
+
+## F-073 — House Vael's real trait: the mixed-army (Synthesis) trait kind (C2, user decision)
+
+**Why.** House shipped with `traits: []`. Its edge was the Synthesis aura of its General, and a
+skirmish has no General, so House played the 1v1 with no edge at all. It read 31.7% cross
+strength, below the 35–65% band (F-066). The user chose a real Synthesis trait.
+
+**The trait kind is data, with no per-nation code.**
+- `NationDef::synthesis: Option<SynthesisDef>` holds `radius`, `modifiers` (C1's
+  `AuraModifier`) and `max`.
+- On every tick, each unit of the side **with a domain** gets `modifiers` × the number of
+  distinct domains, **other than its own**, among the side's own non-General units within
+  `radius`, capped at `max`.
+- A mono-domain army gets nothing. Enemies never count. Workers and Generals neither count nor
+  gain, since they have no domain.
+- `#[serde(default)]`: a nation without the line has no such trait.
+
+**Reusing C1.**
+- The domain count is one helper, `battle::distinct_domains`. C1's `PerDistinctDomain` aura
+  now calls it with no exception; the trait calls it with the unit's own domain excepted.
+- The bonus is computed by the same `battle::auras` system into the same `AuraField`, as a kind
+  of its own that stacks with any General's aura. Combat, movement and regen already read the
+  field, so no read site changed.
+- The modifiers are validated by the same check as a General's aura
+  (`content::check_aura_modifiers`, extracted from the aura validation with its messages
+  unchanged). There is no nemesis stat, so the trait cannot touch the hard counters, and
+  `stat: Nemesis` is a load error.
+- Also refused at load: `max` outside `1..=(domains − 1)`, and a radius that is not finite and
+  positive.
+
+**What changes, and when.**
+- `nation::install` inserts the `AuraField` only when a side's nation has the trait, so the
+  aura system runs in a skirmish for that match alone. A no-nation match, or one whose nations
+  lack the trait, is untouched: no field, no new system run, and the same fingerprint.
+- The content fingerprint mixes the trait in only when present.
+
+**Data.** The brief comes first (DESIGN_BRIEF House sheet). In nations.ron, House has
+`synthesis: (radius: 160.0, modifiers: [(stat: Offense, add: 1)], max: 2)`. That is +1 Offense
+per other domain nearby, so +2 for a full Machine/Flesh/Energy mix. House's AI script,
+`synth_triad`, trains Sentinel, Ripper and Arclight in turn, so its army is mixed.
+
+**Gates (`tests/c2_nations.rs`, red before: no `synthesis` field).**
+- `synthesis_is_active_beside_other_domains_and_scales_per_domain`: one other domain gives +1;
+  two give +2, and a second Machine unit adds nothing new; a neighbour beyond the radius
+  doesn't count.
+- `synthesis_is_inactive_in_a_mono_domain_army`: two Machine units and a worker get nothing.
+- `synthesis_counts_no_more_domains_than_its_max`: `max: 1` among three domains gives +1.
+- `synthesis_counts_only_friends_and_only_its_own_side_gains`: a lone A unit among B's mixed
+  units gets nothing, and B, which has no trait, gets nothing.
+- `only_a_synthesis_nation_installs_the_field_and_the_hash_sees_the_trait`.
+- `an_unplayable_synthesis_is_refused_at_load` covers seven cases, Nemesis included.
+- `the_shipped_house_vael_has_the_synthesis_trait`.
+- `c2_golden` (no-nation matches) and the C1 aura suites pass unchanged.
+
+The gate reading with this trait is in F-074.

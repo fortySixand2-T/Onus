@@ -35,7 +35,7 @@ use bevy::ecs::prelude::*;
 use serde::Deserialize;
 
 use crate::sim::combat::Health;
-use crate::sim::content::{BuildingDef, Content, UnitDef};
+use crate::sim::content::{AuraModifier, BuildingDef, Content, UnitDef};
 use crate::sim::spatial::Faction;
 
 // ---- definitions -----------------------------------------------------------
@@ -61,6 +61,30 @@ pub struct NationDef {
     pub strategy: String,
     /// The modifiers its armies get, applied in this order.
     pub traits: Vec<TraitDef>,
+    /// Its **mixed-army** trait, if it has one: see [`SynthesisDef`].
+    /// `#[serde(default)]`: a nation without the line has no such trait.
+    #[serde(default)]
+    pub synthesis: Option<SynthesisDef>,
+}
+
+/// A mixed-army trait (C2), the nation-level form of C1's Synthesis aura: on
+/// every tick, each of the side's units **with a domain** gets `modifiers` ×
+/// the number of distinct domains, **other than its own**, among the side's
+/// own units within `radius` of it, capped at `max`. A mono-domain army gets
+/// nothing; an enemy never counts; a General and a domainless unit (a worker)
+/// neither counts nor gains. It is a bonus like an aura's ([`AuraModifier`]
+/// stats; there is no nemesis stat, so it can never touch the hard counters),
+/// computed into the same [`crate::sim::battle::AuraField`] by
+/// [`crate::sim::battle::auras`], and stacks with any General's aura as a kind
+/// of its own.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SynthesisDef {
+    /// World units.
+    pub radius: f32,
+    pub modifiers: Vec<AuraModifier>,
+    /// The cap on the domain count, `1..=(domains - 1)`.
+    pub max: u32,
 }
 
 /// What a trait applies to.
@@ -417,6 +441,17 @@ pub(crate) fn validate(content: &Content) -> Result<(), String> {
                 return Err(format!("nation `{}` {what} must be in [0, 1]", n.id));
             }
         }
+        if let Some(syn) = &n.synthesis {
+            let who = format!("nation `{}` synthesis", n.id);
+            if !(syn.radius.is_finite() && syn.radius > 0.0) {
+                return Err(format!("{who} radius must be finite and positive"));
+            }
+            crate::sim::content::check_aura_modifiers(&who, &syn.modifiers, &content.combat)?;
+            let others = content.resources.len().saturating_sub(1);
+            if syn.max == 0 || syn.max as usize > others {
+                return Err(format!("{who} max must be 1..={others} (the other domains)"));
+            }
+        }
         SideRules::build(content, i)?;
     }
     Ok(())
@@ -539,7 +574,17 @@ pub fn install(world: &mut World, names: &[Option<String>; 2]) -> Result<(), Unk
             }
         }
     }
+    // A mixed-army trait is computed into the aura field, so a skirmish with
+    // one needs the field (a campaign battle installs it anyway). Only then:
+    // a nation without one leaves the world as it was.
+    let synthesis = SIDES
+        .iter()
+        .filter_map(|f| rules.nation_of(*f))
+        .any(|i| content.nations[i].synthesis.is_some());
     world.insert_resource(rules);
+    if synthesis && !world.contains_resource::<crate::sim::battle::AuraField>() {
+        world.init_resource::<crate::sim::battle::AuraField>();
+    }
     Ok(())
 }
 

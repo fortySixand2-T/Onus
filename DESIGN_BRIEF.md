@@ -366,7 +366,12 @@ cheaper.
 - **Cities:** 1.
 - **Lean:** none. **Speciality:** **Synthesis**, a small bonus for units fighting beside units
   of another domain. It rewards the mixed army the pentagon already wants.
-- **Alloy-only stand-in:** the same.
+- **Alloy-only stand-in:** the same, as a nation trait (the mixed-army trait in `nations.ron`,
+  C2, user decision 2026-11-03). Each of House's units with a domain gets a small stat bonus
+  for every *other* domain among its own units nearby, up to a cap. Radius, modifiers and cap
+  are RON data. A mono-domain army gets nothing, enemies never count, and like every aura it
+  never touches the nemesis bonus. It stacks with the Heir of Vael's Synthesis aura, which
+  needs the General on the field. The trait works in a plain skirmish too.
 - **Disposition:** everyone distrusts you, and the Forgeborn hate you.
 - **General's aura:** Synthesis: a bonus that grows with the number of domains mixed nearby.
 - **Look:** ash grey and ember.
@@ -497,7 +502,9 @@ rejects one that tries.
             colour: (0.45, 0.42, 0.40), accent: (0.95, 0.45, 0.15),
             general: "general_synthesis",
             strategy: "house",                          // a strategies.ron entry: the AI personality
-            traits: [],                                 // its edge is the Synthesis aura
+            traits: [],
+            // The mixed-army trait (C2): per other domain nearby, capped.
+            synthesis: (radius: 160.0, modifiers: [ (stat: Offense, add: 1) ], max: 2),
             disposition: (towards: [], ally_bias: 0, betrayal_tolerance: 1),
         ),
         (

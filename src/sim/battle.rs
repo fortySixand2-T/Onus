@@ -1029,10 +1029,36 @@ fn apply_modifiers(into: &mut StatBonus, modifiers: &[AuraModifier], factor: u32
     }
 }
 
+/// How many distinct domains the `members` hold, not counting `except` — the
+/// Synthesis count, shared by C1's `PerDistinctDomain` aura (no exception) and
+/// C2's mixed-army trait (the unit's own domain excepted). `domains` is the
+/// number of domains in the content.
+fn distinct_domains(
+    domains: usize,
+    members: impl Iterator<Item = Option<usize>>,
+    except: Option<usize>,
+) -> u32 {
+    let mut seen = vec![false; domains];
+    for d in members.flatten() {
+        if Some(d) != except {
+            if let Some(s) = seen.get_mut(d) {
+                *s = true;
+            }
+        }
+    }
+    seen.iter().filter(|s| **s).count() as u32
+}
+
 /// Compute the [`AuraField`] for this tick. Runs before combat.
+///
+/// Two sources, both from entity-sorted snapshots: every General's aura
+/// (C1), and each side's nation's mixed-army trait (C2,
+/// [`crate::sim::nation::SynthesisDef`]), a kind of its own that stacks with
+/// any aura.
 #[allow(clippy::type_complexity)]
 pub fn auras(
     content: Res<Content>,
+    nations: Option<Res<NationRules>>,
     mut field: ResMut<AuraField>,
     generals: Query<(Entity, &Position, &Faction, &UnitDefIdx), With<General>>,
     units: Query<(Entity, &Position, &Faction, &UnitDefIdx), Without<General>>,
@@ -1041,6 +1067,8 @@ pub fn auras(
     gs.sort_unstable_by_key(|g| g.0);
     let mut us: Vec<_> = units.iter().map(|(e, p, f, d)| (e.to_bits(), p.0, *f, d.0)).collect();
     us.sort_unstable_by_key(|u| u.0);
+    let domain: Vec<Option<usize>> = us.iter().map(|u| content.domain_of(u.3)).collect();
+    let domains = content.resources.len();
 
     // best[u][k]: the strongest factor of kind k reaching unit u.
     let kinds = content.generals.len();
@@ -1062,13 +1090,7 @@ pub fn auras(
         let factor = match g.aura.scaling {
             AuraScaling::Flat => 1,
             AuraScaling::PerDistinctDomain { max } => {
-                let mut seen = vec![false; content.resources.len()];
-                for &i in &in_reach {
-                    if let Some(d) = content.domain_of(us[i].3) {
-                        seen[d] = true;
-                    }
-                }
-                (seen.iter().filter(|s| **s).count() as u32).min(max)
+                distinct_domains(domains, in_reach.iter().map(|&i| domain[i]), None).min(max)
             }
         };
         for &i in &in_reach {
@@ -1077,6 +1099,13 @@ pub fn auras(
         }
     }
 
+    // Each side's mixed-army trait, if its nation has one.
+    let synthesis = |f: Faction| {
+        let i = nations.as_deref()?.nation_of(f)?;
+        content.nations.get(i)?.synthesis.as_ref()
+    };
+    let synthesis = [synthesis(Faction::A), synthesis(Faction::B)];
+
     field.bonuses.clear();
     for (i, u) in us.iter().enumerate() {
         let mut bonus = StatBonus::NONE;
@@ -1084,6 +1113,21 @@ pub fn auras(
             let factor = best[i * kinds + k];
             if factor > 0 {
                 apply_modifiers(&mut bonus, &g.aura.modifiers, factor);
+            }
+        }
+        if let (Some(syn), Some(own)) = (synthesis[faction_slot(u.2)], domain[i]) {
+            let r2 = syn.radius * syn.radius;
+            let others = distinct_domains(
+                domains,
+                us.iter()
+                    .enumerate()
+                    .filter(|&(j, v)| j != i && v.2 == u.2 && v.1.distance_squared(u.1) <= r2)
+                    .map(|(j, _)| domain[j]),
+                Some(own),
+            )
+            .min(syn.max);
+            if others > 0 {
+                apply_modifiers(&mut bonus, &syn.modifiers, others);
             }
         }
         if bonus != StatBonus::NONE {

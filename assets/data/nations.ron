@@ -21,6 +21,11 @@
 //                  AttackTicks (< 1 is faster), BuildingHp (buildings)
 //     `add` stats: CarryCapacity (gatherers), AttackRange (world units),
 //                  Speed, Offense, Defense, Armor (units; Armor also buildings)
+//   synthesis   — optional, the mixed-army trait: (radius: <world units>,
+//                 modifiers: [aura modifiers, as units.ron's], max: <1..=2>).
+//                 Each of the side's units with a domain gets the modifiers
+//                 x the distinct *other* domains among its own units within
+//                 the radius, capped at max. Mono-domain: nothing.
 //   A `mul` is held as integer per-mille and applied as round(v * m / 1000);
 //   the traited content must still pass every load check (max_stat, reach
 //   within engage_range, ...), or the file is refused.
@@ -38,7 +43,10 @@
             colour: (0.45, 0.42, 0.40), accent: (0.95, 0.45, 0.15),   // ash grey, ember
             general: "general_synthesis",
             strategy: "synth_triad",
-            traits: [],   // its edge is the Synthesis aura (its General's)
+            traits: [],
+            // Its edge is the mix: every unit gets the modifiers once per
+            // *other* domain among its own units within the radius, up to max.
+            synthesis: (radius: 160.0, modifiers: [ (stat: Offense, add: 1) ], max: 2),
         ),
         (
             id: "forgeborn", name: "Forgeborn",
