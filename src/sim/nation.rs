@@ -37,6 +37,7 @@ use serde::Deserialize;
 use crate::sim::combat::Health;
 use crate::sim::content::{AuraModifier, BuildingDef, Content, UnitDef};
 use crate::sim::spatial::Faction;
+use crate::sim::three::{Bank, EconomyMode};
 
 // ---- definitions -----------------------------------------------------------
 
@@ -596,11 +597,43 @@ pub fn install(world: &mut World, names: &[Option<String>; 2]) -> Result<(), Unk
 pub struct Defs<'a> {
     pub content: &'a Content,
     rules: Option<&'a NationRules>,
+    /// The economy the match plays (C3): what a unit is priced in.
+    economy: EconomyMode,
 }
 
 impl<'a> Defs<'a> {
+    /// The definitions of an Alloy-only match (see [`Defs::in_economy`]).
     pub fn new(content: &'a Content, rules: Option<&'a NationRules>) -> Self {
-        Self { content, rules }
+        Self {
+            content,
+            rules,
+            economy: EconomyMode::Alloy,
+        }
+    }
+
+    /// The same definitions, in a match playing `economy` (C3).
+    pub fn in_economy(mut self, economy: EconomyMode) -> Self {
+        self.economy = economy;
+        self
+    }
+
+    /// The economy these definitions are priced for.
+    pub fn economy(&self) -> EconomyMode {
+        self.economy
+    }
+
+    /// What `faction` pays to train roster unit `i`, and from which bank.
+    /// Alloy-only: its `mvp_alloy_cost` in Alloy, as every milestone before C3.
+    /// Three-resource (C3): its brief `cost`, in the bank of that resource.
+    pub fn unit_price(&self, faction: Faction, i: usize) -> Option<(Bank, u32)> {
+        let u = self.roster_unit(faction, i)?;
+        match self.economy {
+            EconomyMode::Alloy => Some((Bank::Alloy, u.mvp_alloy_cost)),
+            EconomyMode::ThreeResource => Some((
+                Bank::of_resource(self.content, &u.cost.resource)?,
+                u.cost.amount,
+            )),
+        }
     }
 
     /// Plain content: no nation on either side.

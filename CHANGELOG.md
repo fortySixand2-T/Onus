@@ -815,3 +815,8 @@
 - [2026-11-04] Modified: tests/c3_economy.rs — C3 AC2 ley-well tests
 - [2026-11-04] Modified: FINDINGS.md — F-076: the three-resource economy as an opt-in mode; Biomass and Aether rules
 - [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC2 (Aether)
+- [2026-11-04] Modified: src/sim/nation.rs — Defs carries the economy mode; Defs::unit_price (Alloy-only: mvp_alloy_cost in Alloy; three-resource: brief cost in its bank)
+- [2026-11-04] Modified: src/sim/economy.rs — enqueue_unit_with charges the unit's price in its bank
+- [2026-11-04] Modified: src/sim/mod.rs — apply_commands prices units by the match's economy mode
+- [2026-11-04] Modified: tests/c3_economy.rs — C3 AC3 unit price tests
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC3 (unit prices)

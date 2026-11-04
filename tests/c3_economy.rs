@@ -389,3 +389,163 @@ fn a_building_holds_a_well_like_a_unit() {
     headless::tick(&mut app, w.interval_ticks + 2);
     assert_eq!(aether(&app, Faction::B), t.starting_aether + w.per_interval);
 }
+
+// ---- AC3: units are paid in their brief resource ------------------------------
+
+use onus::sim::three::Bank;
+use onus::sim::ProductionQueue;
+
+/// Give `f` `n` more of `bank`, directly (a test's shortcut to a rich side).
+fn grant(app: &mut App, f: Faction, bank: Bank, n: u32) {
+    let _ = app
+        .world_mut()
+        .resource_mut::<Stockpiles>()
+        .add_in(f, bank, n);
+}
+
+fn banks(app: &App, f: Faction) -> [u32; 3] {
+    let s = app.world().resource::<Stockpiles>();
+    [s.alloy(f), s.biomass(f), s.aether(f)]
+}
+
+/// Place building `id` for `f` near its base and return it, after one tick.
+fn place(app: &mut App, f: Faction, id: &str, offset: Vec2) -> Entity {
+    let c = app.world().resource::<Content>().clone();
+    let def = c.building_index(id).unwrap();
+    let base = if f == Faction::A { BASE[0] } else { BASE[1] };
+    push(
+        app,
+        Order::Place {
+            faction: f,
+            building: def,
+            pos: base + offset,
+        },
+        f,
+    );
+    headless::tick(app, 1);
+    let mut q = app.world_mut().query::<(Entity, &Building, &Faction)>();
+    let mut v: Vec<Entity> = q
+        .iter(app.world())
+        .filter(|(_, b, g)| b.def == def && **g == f)
+        .map(|(e, ..)| e)
+        .collect();
+    v.sort_by_key(|e| e.to_bits());
+    *v.last().expect("placed")
+}
+
+fn train(app: &mut App, f: Faction, at: Entity, unit: &str) {
+    let u = app.world().resource::<Content>().unit_index(unit).unwrap();
+    push(app, Order::Train { building: at, unit: u }, f);
+    headless::tick(app, 1);
+}
+
+fn queued(app: &App, at: Entity) -> usize {
+    app.world().get::<ProductionQueue>(at).unwrap().items.len()
+}
+
+/// `[alloy, biomass, aether]` with `amount` in the slot of `resource`.
+fn priced(c: &Content, unit: &str) -> [u32; 3] {
+    let u = c.unit(unit).unwrap();
+    let mut v = [0; 3];
+    let k = match Bank::of_resource(c, &u.cost.resource).unwrap() {
+        Bank::Alloy => 0,
+        Bank::Biomass => 1,
+        Bank::Aether => 2,
+    };
+    v[k] = u.cost.amount;
+    v
+}
+
+fn minus(a: [u32; 3], b: [u32; 3]) -> [u32; 3] {
+    [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
+}
+
+#[test]
+fn the_brief_prices_units_in_their_own_resource() {
+    let c = shipped();
+    let bank = |id: &str| Bank::of_resource(&c, &c.unit(id).unwrap().cost.resource).unwrap();
+    for id in ["worker", "bulwark", "sentinel"] {
+        assert_eq!(bank(id), Bank::Alloy, "{id}");
+    }
+    for id in ["ripper", "ravager"] {
+        assert_eq!(bank(id), Bank::Biomass, "{id}");
+    }
+    assert_eq!(bank("arclight"), Bank::Aether);
+}
+
+#[test]
+fn in_three_resource_mode_each_unit_charges_its_own_bank_and_buildings_charge_alloy() {
+    let c = shipped();
+    let mut app = quiet(EconomyMode::ThreeResource);
+    grant(&mut app, Faction::A, Bank::Alloy, 2_000);
+    grant(&mut app, Faction::A, Bank::Biomass, 500);
+    grant(&mut app, Faction::A, Bank::Aether, 500);
+
+    let before = banks(&app, Faction::A);
+    let vats = place(&mut app, Faction::A, "gene_vats", Vec2::new(0.0, -150.0));
+    let cost = c.building("gene_vats").unwrap().alloy_cost;
+    assert_eq!(banks(&app, Faction::A), minus(before, [cost, 0, 0]), "buildings: Alloy");
+    let spire = place(&mut app, Faction::A, "aether_spire", Vec2::new(150.0, -150.0));
+    let foundry = place(&mut app, Faction::A, "foundry", Vec2::new(-150.0, -150.0));
+    let hq = {
+        let hq = c.building_index("hq").unwrap();
+        let mut q = app.world_mut().query::<(Entity, &Building, &Faction)>();
+        q.iter(app.world())
+            .find(|(_, b, f)| b.def == hq && **f == Faction::A)
+            .unwrap()
+            .0
+    };
+
+    for (at, unit) in [
+        (vats, "ripper"),
+        (vats, "ravager"),
+        (spire, "arclight"),
+        (foundry, "sentinel"),
+        (foundry, "bulwark"),
+        (hq, "worker"),
+    ] {
+        let before = banks(&app, Faction::A);
+        let q = queued(&app, at);
+        train(&mut app, Faction::A, at, unit);
+        assert_eq!(queued(&app, at), q + 1, "{unit} queued");
+        assert_eq!(
+            banks(&app, Faction::A),
+            minus(before, priced(&c, unit)),
+            "{unit} is charged its cost, in its own resource"
+        );
+    }
+}
+
+#[test]
+fn a_unit_its_side_cannot_pay_for_in_its_resource_is_refused_and_charges_nothing() {
+    let c = shipped();
+    let t = c.three_resource.clone().unwrap();
+    let mut app = quiet(EconomyMode::ThreeResource);
+    grant(&mut app, Faction::A, Bank::Alloy, 2_000);
+    let spire = place(&mut app, Faction::A, "aether_spire", Vec2::new(150.0, -150.0));
+    assert!(t.starting_aether < c.unit("arclight").unwrap().cost.amount);
+    // Plenty of Alloy and Biomass, too little Aether: refused.
+    let before = banks(&app, Faction::A);
+    train(&mut app, Faction::A, spire, "arclight");
+    assert_eq!(queued(&app, spire), 0);
+    assert_eq!(banks(&app, Faction::A), before);
+    // Exactly enough: accepted, and the bank is emptied.
+    let need = c.unit("arclight").unwrap().cost.amount - before[2];
+    grant(&mut app, Faction::A, Bank::Aether, need);
+    train(&mut app, Faction::A, spire, "arclight");
+    assert_eq!(queued(&app, spire), 1);
+    assert_eq!(banks(&app, Faction::A)[2], 0);
+}
+
+#[test]
+fn alloy_only_mode_still_prices_every_unit_in_alloy() {
+    let c = shipped();
+    let mut app = quiet(EconomyMode::Alloy);
+    grant(&mut app, Faction::A, Bank::Alloy, 2_000);
+    let vats = place(&mut app, Faction::A, "gene_vats", Vec2::new(0.0, -150.0));
+    let before = banks(&app, Faction::A);
+    train(&mut app, Faction::A, vats, "ripper");
+    assert_eq!(queued(&app, vats), 1);
+    let mvp = c.unit("ripper").unwrap().mvp_alloy_cost;
+    assert_eq!(banks(&app, Faction::A), minus(before, [mvp, 0, 0]));
+}

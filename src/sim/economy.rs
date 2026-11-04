@@ -524,8 +524,8 @@ pub fn enqueue_unit(
 }
 
 /// [`enqueue_unit`] at the price and training time of `faction`'s own
-/// definitions (C2). What a building can train is the content's, never a
-/// trait's.
+/// definitions (C2), in the bank the match's economy prices it in (C3). What
+/// a building can train is the content's, never a trait's.
 pub fn enqueue_unit_with(
     defs: Defs,
     stock: &mut Stockpiles,
@@ -534,13 +534,17 @@ pub fn enqueue_unit_with(
     queue: &mut ProductionQueue,
     unit: usize,
 ) -> bool {
-    let Some(def) = defs.roster_unit(faction, unit) else {
+    let (Some(def), Some((bank, price))) =
+        (defs.roster_unit(faction, unit), defs.unit_price(faction, unit))
+    else {
         return false;
     };
     if !defs.content.produces(building_def, unit) {
         return false;
     }
-    if !stock.try_spend(faction, def.mvp_alloy_cost) {
+    // Alloy-only: `mvp_alloy_cost` in Alloy. Three-resource (C3): the brief
+    // `cost`, in its own resource's bank. Either way, all or nothing.
+    if !stock.try_spend_in(faction, bank, price) {
         return false;
     }
     queue.items.push_back(QueuedUnit {

@@ -202,7 +202,7 @@ number lives in RON (`resources.ron`'s `three_resource` block, `nations.ron`).
   and no enemy unit or building is. A held well banks `per_interval` Aether to its holder every
   `interval_ticks` ticks of holding. Holding progress pauses while the well is empty or
   contested, and restarts when the holder changes. Radius, rate and sites are RON.
-- [ ] **Unit prices:** in three-resource mode units are paid in their brief resource (the
+- [x] **Unit prices:** in three-resource mode units are paid in their brief resource (the
   `cost` in `units.ron`): Machine units and Workers in Alloy, Ripper and Ravager in Biomass,
   Arclight in Aether. Buildings stay priced in Alloy. An order the side cannot pay in that
   resource is refused and charges nothing.
