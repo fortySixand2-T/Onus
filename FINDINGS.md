@@ -7110,3 +7110,33 @@ the moment the army reaches its size, so there is almost never a surplus. The AI
 in a three-resource Sentinel mirror, both sides still guard the middle well and send an attack wave
 within 20000 ticks. It fails before the fix (no wave) and passes after. Every other C3 suite passes.
 With the fix, the traced seed is decided at about 48000 ticks: B destroys A's HQ.
+
+**Full B3 re-read with the fix** (5 mass probes, 2 seeds, 100 matches, 1095 s, RON as F-081).
+
+| | F-081 (before) | F-083 (guard fix) |
+|---|---|---|
+| timeouts | 13% FAIL | **15% FAIL** |
+| K1 | undetermined, none dominant | undetermined, none dominant (bulwark 50.0, sentinel 31.2, ripper 71.9, ravager 71.9, arclight 25.0) |
+| K2 | undetermined | undetermined (slot A 53.8%, n 13) |
+| K3 median / band share | 28363 / 43.7% | 32054 / 41.2% undetermined (2% below, 63% beyond) |
+
+Timeouts per cell, out of 4 (rows Bulwark, Sentinel, Ripper, Ravager, Arclight; columns in the same order):
+
+| | Bulwark | Sentinel | Ripper | Ravager | Arclight |
+|---|---|---|---|---|---|
+| Bulwark | 4 | 1 | 0 | 1 | 0 |
+| Sentinel | 2 | 3 | 4 | 0 | 0 |
+| Ripper | 0 | 0 | 0 | 0 | 0 |
+| Ravager | 0 | 0 | 0 | 0 | 0 |
+| Arclight | 0 | 0 | 0 | 0 | 0 |
+
+- **The grinder is gone.** The Ripper and Ravager mirrors no longer time out (1 and 4 of 4 before),
+  and no Biomass- or Aether-paid row times out at all. Ripper's K1 recovers from 25% to 71.9% now
+  that its army forms.
+- **The overall timeout rate did not fall.** What is left is entirely in the Alloy-paid Machine rows
+  (Bulwark and Sentinel): every timeout the matrix shows (14 tallied by cell). That is the second stall above, which predates C3. Both
+  sides reach `attack_at_army` on the same tick, the waves annihilate in mid-field, and the extra
+  Foundries spend the income. A three-resource economy number cannot reach it (those units pay
+  Alloy), and the C3 AI fix does not touch it.
+- **Next lever (the user's call; strategy RON, not economy):** the mass-Machine scripts' late Foundries
+  and `worker_target`, or the Alloy-only mirror stall as a B-series question. K3 stays **Fail** until then.
