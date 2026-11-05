@@ -45,10 +45,7 @@ fn assert_grid_eq_brute_all(units: &[Unit], min: Vec2, max: Vec2, cells: &[f32])
             // The counted variant must agree too (it backs the speedup proof).
             let (be, _) = brute_force_nearest_enemy_counted(units, i);
             let (ge, _) = g_auto.nearest_enemy_counted(units, i);
-            assert_eq!(
-                be, ge,
-                "counted variant disagrees at unit {i} (cell={cell})"
-            );
+            assert_eq!(be, ge, "counted variant disagrees at unit {i} (cell={cell})");
         }
     }
 }
@@ -70,10 +67,7 @@ fn assert_grid_fixed_eq_brute(units: &[Unit], min: Vec2, max: Vec2, cells: &[f32
             );
             let (be, _) = brute_force_nearest_enemy_counted(units, i);
             let (ge, _) = g.nearest_enemy_counted(units, i);
-            assert_eq!(
-                be, ge,
-                "counted variant disagrees at unit {i} (cell={cell})"
-            );
+            assert_eq!(be, ge, "counted variant disagrees at unit {i} (cell={cell})");
         }
     }
 }
@@ -95,12 +89,9 @@ fn differential_extreme_and_negative_coords() {
     let cells = [0.5f32, 3.0, 17.0, 250.0, 5000.0];
     for seed in 0..80u64 {
         let n = 30 + (seed as usize % 11) * 30; // 30..330
-                                                // Wildly off-origin, negative / mixed-sign boxes, various magnitudes.
+        // Wildly off-origin, negative / mixed-sign boxes, various magnitudes.
         let (min, max) = match seed % 4 {
-            0 => (
-                Vec2::new(-1_000_000.0, -1_000_000.0),
-                Vec2::new(-999_700.0, -999_700.0),
-            ),
+            0 => (Vec2::new(-1_000_000.0, -1_000_000.0), Vec2::new(-999_700.0, -999_700.0)),
             1 => (Vec2::new(-50.0, -50.0), Vec2::new(50.0, 50.0)),
             2 => (Vec2::new(1e5, -1e5), Vec2::new(1e5 + 300.0, -1e5 + 300.0)),
             _ => (Vec2::new(-3.0, -3.0), Vec2::new(3.0, 3.0)),
@@ -126,11 +117,7 @@ fn differential_units_on_exact_cell_boundaries() {
     let mut rng = SplitMix64::new(0xB0341);
     for gx in 0..=16 {
         for gy in 0..=16 {
-            let f = if rng.next_u64() & 1 == 0 {
-                Faction::A
-            } else {
-                Faction::B
-            };
+            let f = if rng.next_u64() & 1 == 0 { Faction::A } else { Faction::B };
             units.push(unit(gx as f32 * cell, gy as f32 * cell, f));
         }
     }
@@ -147,20 +134,12 @@ fn differential_many_units_same_point() {
     let mut rng = SplitMix64::new(0x5A_5A);
     // 60 units all at the origin, random factions.
     for _ in 0..60 {
-        let f = if rng.next_u64() & 1 == 0 {
-            Faction::A
-        } else {
-            Faction::B
-        };
+        let f = if rng.next_u64() & 1 == 0 { Faction::A } else { Faction::B };
         units.push(unit(0.0, 0.0, f));
     }
     // A second identical stack somewhere else, plus a lone far enemy.
     for _ in 0..40 {
-        let f = if rng.next_u64() & 1 == 0 {
-            Faction::A
-        } else {
-            Faction::B
-        };
+        let f = if rng.next_u64() & 1 == 0 { Faction::A } else { Faction::B };
         units.push(unit(123.0, -77.0, f));
     }
     units.push(unit(150.0, 90.0, Faction::A)); // a lone far-ish enemy, still in a sane box
@@ -196,8 +175,8 @@ fn tie_break_smallest_index_exact_equidistance() {
         (-4.0, -3.0),
     ];
     let mut units = vec![unit(0.0, 0.0, Faction::A)]; // index 0 = query
-                                                      // Interleave friendlies (same faction, ignored) and equidistant enemies so
-                                                      // the smallest-index enemy is not simply index 1.
+    // Interleave friendlies (same faction, ignored) and equidistant enemies so
+    // the smallest-index enemy is not simply index 1.
     for (k, &(x, y)) in d5.iter().enumerate() {
         // a nearer-looking friendly (must be ignored by faction filter)
         units.push(unit(x * 0.1, y * 0.1, Faction::A));
@@ -222,11 +201,7 @@ fn tie_break_smallest_index_exact_equidistance() {
             Vec2::new(-5.0, -5.0),
             Vec2::new(5.0, 5.0),
         );
-        assert_eq!(
-            gf.nearest_enemy(&units, 0),
-            expected,
-            "fixed-bounds tie-break drift cell={cell}"
-        );
+        assert_eq!(gf.nearest_enemy(&units, 0), expected, "fixed-bounds tie-break drift cell={cell}");
     }
 }
 
@@ -261,11 +236,7 @@ fn tie_break_random_equidistant_rings() {
         let expected = brute_force_nearest_enemy(&units, 0);
         for cell in [1.0f32, 2.0, 2.5, 5.0, 6.0] {
             let g = SpatialGrid::build(&units, cell);
-            assert_eq!(
-                g.nearest_enemy(&units, 0),
-                expected,
-                "seed={seed} cell={cell}"
-            );
+            assert_eq!(g.nearest_enemy(&units, 0), expected, "seed={seed} cell={cell}");
         }
     }
 }
@@ -290,11 +261,7 @@ fn differential_units_far_outside_tight_bounds() {
             let far = 30_000.0;
             let x = rng.range_f32(-far, far);
             let y = rng.range_f32(-far, far);
-            let f = if rng.next_u64() & 1 == 0 {
-                Faction::A
-            } else {
-                Faction::B
-            };
+            let f = if rng.next_u64() & 1 == 0 { Faction::A } else { Faction::B };
             units.push(unit(x, y, f));
         }
         // 50x50 and 20x20 grids ⇒ almost everything clamps to edge cells.
@@ -353,10 +320,7 @@ fn differential_single_enemy_among_friendlies() {
             brute_force_nearest_enemy(&units, n),
             "lone enemy's nearest (an A) must match brute (seed={seed})"
         );
-        assert!(
-            g.nearest_enemy(&units, n).is_some(),
-            "the lone B has 300 enemies"
-        );
+        assert!(g.nearest_enemy(&units, n).is_some(), "the lone B has 300 enemies");
     }
 }
 
@@ -379,11 +343,7 @@ fn differential_tight_clusters() {
             for _ in 0..50 {
                 let x = c.x + rng.range_f32(-0.5, 0.5); // extremely tight
                 let y = c.y + rng.range_f32(-0.5, 0.5);
-                let f = if rng.next_u64() & 1 == 0 {
-                    Faction::A
-                } else {
-                    Faction::B
-                };
+                let f = if rng.next_u64() & 1 == 0 { Faction::A } else { Faction::B };
                 units.push(unit(x, y, f));
             }
         }
@@ -412,16 +372,8 @@ fn differential_large_n() {
         let gf = SpatialGrid::build_with_bounds(&units, cell, min, max);
         for i in 0..units.len() {
             let expected = brute_force_nearest_enemy(&units, i);
-            assert_eq!(
-                g.nearest_enemy(&units, i),
-                expected,
-                "auto N=5000 seed={seed} i={i}"
-            );
-            assert_eq!(
-                gf.nearest_enemy(&units, i),
-                expected,
-                "fixed N=5000 seed={seed} i={i}"
-            );
+            assert_eq!(g.nearest_enemy(&units, i), expected, "auto N=5000 seed={seed} i={i}");
+            assert_eq!(gf.nearest_enemy(&units, i), expected, "fixed N=5000 seed={seed} i={i}");
         }
     }
 }
@@ -441,10 +393,7 @@ fn edge_empty_build_does_not_panic() {
 fn edge_single_unit_none() {
     let units = [unit(3.0, -4.0, Faction::A)];
     for cell in [0.1f32, 1.0, 1000.0] {
-        assert_eq!(
-            SpatialGrid::build(&units, cell).nearest_enemy(&units, 0),
-            None
-        );
+        assert_eq!(SpatialGrid::build(&units, cell).nearest_enemy(&units, 0), None);
     }
 }
 
@@ -458,11 +407,7 @@ fn edge_all_one_faction_none() {
     ];
     let g = SpatialGrid::build(&units, 7.0);
     for i in 0..units.len() {
-        assert_eq!(
-            g.nearest_enemy(&units, i),
-            None,
-            "all-one-faction must be None at {i}"
-        );
+        assert_eq!(g.nearest_enemy(&units, i), None, "all-one-faction must be None at {i}");
     }
 }
 
@@ -478,14 +423,8 @@ fn edge_duplicate_positions_opposite_factions() {
     let g = SpatialGrid::build(&units, 3.0);
     assert_eq!(g.nearest_enemy(&units, 0), Some(1));
     assert_eq!(g.nearest_enemy(&units, 1), Some(0));
-    assert_eq!(
-        brute_force_nearest_enemy(&units, 0),
-        g.nearest_enemy(&units, 0)
-    );
-    assert_eq!(
-        brute_force_nearest_enemy(&units, 1),
-        g.nearest_enemy(&units, 1)
-    );
+    assert_eq!(brute_force_nearest_enemy(&units, 0), g.nearest_enemy(&units, 0));
+    assert_eq!(brute_force_nearest_enemy(&units, 1), g.nearest_enemy(&units, 1));
 }
 
 // ---------------------------------------------------------------------------
@@ -496,12 +435,7 @@ fn edge_duplicate_positions_opposite_factions() {
 
 #[test]
 fn determinism_independent_of_insertion_order() {
-    let base = layout_in(
-        400,
-        0xABCDEF,
-        Vec2::new(-300.0, -300.0),
-        Vec2::new(300.0, 300.0),
-    );
+    let base = layout_in(400, 0xABCDEF, Vec2::new(-300.0, -300.0), Vec2::new(300.0, 300.0));
     // Add deliberate exact-duplicate and equidistant structure so tie-breaks bite.
     let mut units = base.clone();
     units.push(unit(0.0, 0.0, Faction::A));
@@ -600,10 +534,7 @@ fn speedup_work_grows_sublinearly_vs_brute() {
     let grid_ratio = grid2 as f64 / grid1 as f64;
 
     // Brute must show near-quadratic total growth (well above 3x for a 2x N).
-    assert!(
-        brute_ratio > 3.0,
-        "brute work should grow ~quadratically (ratio={brute_ratio:.2})"
-    );
+    assert!(brute_ratio > 3.0, "brute work should grow ~quadratically (ratio={brute_ratio:.2})");
     // Grid growth must be far tamer than brute's.
     assert!(
         grid_ratio < brute_ratio * 0.6,

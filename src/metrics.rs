@@ -323,10 +323,7 @@ fn exact_mean(cells: &[&Cell]) -> Option<f64> {
     if cells.is_empty() {
         return None;
     }
-    let dens: Vec<u64> = cells
-        .iter()
-        .map(|c| WIN as u64 * c.n_decided as u64)
-        .collect();
+    let dens: Vec<u64> = cells.iter().map(|c| WIN as u64 * c.n_decided as u64).collect();
     let mut num = Big::from(0);
     for (i, c) in cells.iter().enumerate() {
         let mut term = Big::from(c.half_wins as u64);
@@ -726,10 +723,7 @@ mod tests {
         for (wins, n, lo, hi) in cases {
             let (got_lo, got_hi) = decided(wins, n).wilson_interval().expect("decided");
             assert_eq!(
-                (
-                    (1000.0 * got_lo).round() / 10.0,
-                    (1000.0 * got_hi).round() / 10.0
-                ),
+                ((1000.0 * got_lo).round() / 10.0, (1000.0 * got_hi).round() / 10.0),
                 (lo, hi),
                 "{wins}/{n}"
             );
@@ -748,11 +742,7 @@ mod tests {
             n_decided: 0,
             n_timeout: 9,
         };
-        assert_eq!(
-            all_timeout.wilson_interval(),
-            None,
-            "undecided is not 50/50"
-        );
+        assert_eq!(all_timeout.wilson_interval(), None, "undecided is not 50/50");
 
         // Eight decided draws: the rate is exactly 0.5 and the interval is the
         // same one 4-of-8 wins gets — a dead-even cell, not a readable one.
@@ -766,10 +756,7 @@ mod tests {
 
         for (wins, n) in [(0, 1), (1, 1), (0, 300), (300, 300)] {
             let (lo, hi) = decided(wins, n).wilson_interval().expect("decided");
-            assert!(
-                (0.0..=1.0).contains(&lo) && (0.0..=1.0).contains(&hi),
-                "{wins}/{n}"
-            );
+            assert!((0.0..=1.0).contains(&lo) && (0.0..=1.0).contains(&hi), "{wins}/{n}");
             assert!(lo <= hi);
         }
         // The interval contains its own point estimate, and narrows with n.

@@ -25,7 +25,9 @@ use onus::sim::combat::{Casualties, Health};
 use onus::sim::content::Content;
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use onus::sim::spatial::Faction;
-use onus::sim::{CommandQueue, MatchOutcome, MatchState, Position, RateReport, UnitKind};
+use onus::sim::{
+    CommandQueue, MatchOutcome, MatchState, Position, RateReport, UnitKind,
+};
 
 // ---- harness ----------------------------------------------------------------
 
@@ -73,9 +75,7 @@ fn tick(app: &mut App, n: u32) {
 
 /// What the player sees.
 fn panel(app: &mut App) -> String {
-    let mut q = app
-        .world_mut()
-        .query_filtered::<&Text, With<OptionsPanel>>();
+    let mut q = app.world_mut().query_filtered::<&Text, With<OptionsPanel>>();
     q.iter(app.world())
         .next()
         .map(|t| t.0.clone())
@@ -148,10 +148,7 @@ fn assert_shows_selection(app: &mut App) {
          assertion would prove nothing about a change: {text:?}"
     );
     for phrase in [RESULT_WIN, RESULT_LOSS, RESULT_DRAW, RESULT_INPUT_OFF] {
-        assert!(
-            !text.contains(phrase),
-            "a running match already claims a result: {text:?}"
-        );
+        assert!(!text.contains(phrase), "a running match already claims a result: {text:?}");
     }
 }
 
@@ -179,10 +176,7 @@ fn destroying_the_enemy_hq_tells_the_player_they_won() {
     step(&mut f.app);
 
     let text = panel(&mut f.app);
-    assert!(
-        text.contains(RESULT_WIN),
-        "the win is not on the panel: {text:?}"
-    );
+    assert!(text.contains(RESULT_WIN), "the win is not on the panel: {text:?}");
     assert!(!text.contains(RESULT_LOSS) && !text.contains(RESULT_DRAW));
     assert!(
         text.contains(RESULT_INPUT_OFF),
@@ -204,10 +198,7 @@ fn losing_your_hq_tells_the_player_they_lost() {
     step(&mut f.app);
 
     let text = panel(&mut f.app);
-    assert!(
-        text.contains(RESULT_LOSS),
-        "the loss is not on the panel: {text:?}"
-    );
+    assert!(text.contains(RESULT_LOSS), "the loss is not on the panel: {text:?}");
     assert!(!text.contains(RESULT_WIN) && !text.contains(RESULT_DRAW));
     assert!(text.contains(RESULT_INPUT_OFF));
     assert!(!text.contains("right-click"));
@@ -225,10 +216,7 @@ fn losing_both_hqs_on_one_tick_is_reported_as_a_draw() {
     step(&mut f.app);
 
     let text = panel(&mut f.app);
-    assert!(
-        text.contains(RESULT_DRAW),
-        "the draw is not on the panel: {text:?}"
-    );
+    assert!(text.contains(RESULT_DRAW), "the draw is not on the panel: {text:?}");
     assert!(
         !text.contains(RESULT_WIN) && !text.contains(RESULT_LOSS),
         "a draw was reported as a win or a loss: {text:?}"
@@ -285,10 +273,7 @@ fn the_result_says_when_and_derives_it_from_the_sims_own_timestep() {
     };
     let (fast, fast_tick) = decide_at(60.0);
     let (slow, slow_tick) = decide_at(30.0);
-    assert_eq!(
-        fast_tick, slow_tick,
-        "the fixture decided on different ticks"
-    );
+    assert_eq!(fast_tick, slow_tick, "the fixture decided on different ticks");
     assert!(
         fast.contains(&format!("tick {fast_tick}")),
         "the panel does not name the deciding tick: {fast:?}"
@@ -296,14 +281,8 @@ fn the_result_says_when_and_derives_it_from_the_sims_own_timestep() {
     // 120 ticks is two seconds at 60 Hz and four at 30 Hz — the *same* tick
     // count reading as different match time is the whole point: the figure comes
     // from the sim's timestep, and nothing else could produce both.
-    assert!(
-        fast.contains("0:02"),
-        "60 Hz: 120 ticks is 0:02, got {fast:?}"
-    );
-    assert!(
-        slow.contains("0:04"),
-        "30 Hz: 120 ticks is 0:04, got {slow:?}"
-    );
+    assert!(fast.contains("0:02"), "60 Hz: 120 ticks is 0:02, got {fast:?}");
+    assert!(slow.contains("0:04"), "30 Hz: 120 ticks is 0:04, got {slow:?}");
 }
 
 /// The pure formatter, on its own: the clock, and the three headlines.
@@ -351,10 +330,7 @@ fn a_running_match_still_shows_everything_the_panel_showed_before() {
     f.app.world_mut().despawn(f.theirs);
     step(&mut f.app);
     let text = panel(&mut f.app);
-    assert!(
-        text.contains(RESULT_WIN) && !text.contains("in production"),
-        "{text:?}"
-    );
+    assert!(text.contains(RESULT_WIN) && !text.contains("in production"), "{text:?}");
 }
 
 /// The panel is presentation: showing a result must not touch sim state. The
@@ -448,9 +424,6 @@ fn the_sim_knows_nothing_about_the_panel() {
 #[test]
 fn the_fixture_selects_a_real_unit() {
     let mut f = contested(60.0);
-    let mut q = f
-        .app
-        .world_mut()
-        .query_filtered::<&UnitKind, With<Selected>>();
+    let mut q = f.app.world_mut().query_filtered::<&UnitKind, With<Selected>>();
     assert_eq!(q.iter(f.app.world()).count(), 1);
 }

@@ -27,10 +27,8 @@ use bevy::math::Vec2;
 use serde::{Deserialize, Serialize};
 
 use crate::sim::combat::{AttackCooldown, Casualties, Engaging, Health, Target};
+use crate::sim::economy::{Building, Carrying, GatherPhase, ProductionQueue, Stockpiles, UnitDefIdx};
 use crate::sim::content::{Content, ContentFingerprint};
-use crate::sim::economy::{
-    Building, Carrying, GatherPhase, ProductionQueue, Stockpiles, UnitDefIdx,
-};
 use crate::sim::nation::{self, NationRules};
 use crate::sim::spatial::Faction;
 use crate::sim::three::{self, EconomyMode, ThreeEconomy};
@@ -268,9 +266,7 @@ pub enum LoggedOrder {
     },
     /// C1. A variant of its own, so a log written before it existed still
     /// reads exactly as it did.
-    Retreat {
-        faction: Faction,
-    },
+    Retreat { faction: Faction },
 }
 
 fn xy(v: Vec2) -> (f32, f32) {
@@ -1612,12 +1608,7 @@ pub fn state_hash(world: &mut World) -> u64 {
     }
 
     collect!(&Position, |e, c| {
-        [row(
-            e,
-            tag::POSITION,
-            c.0.x.to_bits() as u64,
-            c.0.y.to_bits() as u64,
-        )]
+        [row(e, tag::POSITION, c.0.x.to_bits() as u64, c.0.y.to_bits() as u64)]
     });
     collect!(&Health, |e, c| {
         [row(e, tag::HEALTH, c.current as u64, c.max as u64)]
@@ -1628,7 +1619,9 @@ pub fn state_hash(world: &mut World) -> u64 {
     collect!(&UnitDefIdx, |e, c| {
         [row(e, tag::UNIT_DEF, c.0 as u64, 0)]
     });
-    collect!(&UnitKind, |e, c| { [row(e, tag::UNIT_KIND, *c as u64, 0)] });
+    collect!(&UnitKind, |e, c| {
+        [row(e, tag::UNIT_KIND, *c as u64, 0)]
+    });
     collect!(&Carrying, |e, c| { [row(e, tag::CARRYING, c.0 as u64, 0)] });
     // A claim on another entity is hashed by *that* entity's `SimId`, for the
     // same reason the key is: raw entity bits are not comparable across runs.
@@ -1651,20 +1644,10 @@ pub fn state_hash(world: &mut World) -> u64 {
         [row(e, tag::GATHER_PHASE, which, ticks)]
     });
     collect!(&MoveTarget, |e, c| {
-        [row(
-            e,
-            tag::MOVE_TARGET,
-            c.0.x.to_bits() as u64,
-            c.0.y.to_bits() as u64,
-        )]
+        [row(e, tag::MOVE_TARGET, c.0.x.to_bits() as u64, c.0.y.to_bits() as u64)]
     });
     collect!(&AttackMoveDest, |e, c| {
-        [row(
-            e,
-            tag::ATTACK_MOVE_DEST,
-            c.0.x.to_bits() as u64,
-            c.0.y.to_bits() as u64,
-        )]
+        [row(e, tag::ATTACK_MOVE_DEST, c.0.x.to_bits() as u64, c.0.y.to_bits() as u64)]
     });
     collect!(&Building, |e, c| {
         [row(e, tag::BUILDING, c.def as u64, 0)]

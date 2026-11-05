@@ -191,10 +191,8 @@ impl TraitStat {
     fn acts_in(self, economy: EconomyMode, buildings: bool) -> Result<(), String> {
         match (self, economy) {
             (TraitStat::Cost | TraitStat::Growth | TraitStat::AlloyYield, EconomyMode::Alloy) => {
-                Err(
-                    "acts only in the three-resource economy, not in an Alloy-only list"
-                        .to_string(),
-                )
+                Err("acts only in the three-resource economy, not in an Alloy-only list"
+                    .to_string())
             }
             (TraitStat::AlloyCost, EconomyMode::ThreeResource) if !buildings => Err(
                 "a unit's Alloy price is Alloy-only: in the three-resource economy use `Cost`"
@@ -269,11 +267,7 @@ impl SideRules {
     /// in RON order, to clones of the content's definitions. Errors name the
     /// trait that produced an unplayable value, or that cannot act in the
     /// economy its list is played in.
-    pub fn build_in(
-        content: &Content,
-        nation: usize,
-        economy: EconomyMode,
-    ) -> Result<Self, String> {
+    pub fn build_in(content: &Content, nation: usize, economy: EconomyMode) -> Result<Self, String> {
         let n = content
             .nations
             .get(nation)
@@ -288,10 +282,7 @@ impl SideRules {
         // each rounding once half up (`scale_milli`) like every other `mul`.
         let mut building_pools: Vec<u32> = buildings
             .iter()
-            .map(|b| {
-                b.mvp_defense
-                    .saturating_mul(content.combat.building_hp_per_defense)
-            })
+            .map(|b| b.mvp_defense.saturating_mul(content.combat.building_hp_per_defense))
             .collect();
         let mut growth_milli = vec![TraitDef::MULT_SCALE; buildings.len()];
         let mut yield_milli = vec![TraitDef::MULT_SCALE; units.len()];
@@ -321,9 +312,7 @@ impl SideRules {
                 for i in targets {
                     let b = &mut buildings[i];
                     match t.stat {
-                        TraitStat::AlloyCost => {
-                            b.alloy_cost = scale_milli(b.alloy_cost, t.mul_milli())
-                        }
+                        TraitStat::AlloyCost => b.alloy_cost = scale_milli(b.alloy_cost, t.mul_milli()),
                         TraitStat::Armor => b.mvp_armor = add_points(b.mvp_armor, t.add)?,
                         TraitStat::BuildingHp => {
                             building_pools[i] = scale_milli(building_pools[i], t.mul_milli())
@@ -348,12 +337,10 @@ impl SideRules {
                             .filter_map(|u| content.unit_index(u))
                             .collect()
                     }
-                    TraitTarget::Workers => {
-                        (0..units.len()).filter(|&i| units[i].gathers).collect()
+                    TraitTarget::Workers => (0..units.len()).filter(|&i| units[i].gathers).collect(),
+                    TraitTarget::CombatUnits => {
+                        (0..units.len()).filter(|&i| content.units[i].offense > 0).collect()
                     }
-                    TraitTarget::CombatUnits => (0..units.len())
-                        .filter(|&i| content.units[i].offense > 0)
-                        .collect(),
                     TraitTarget::Building(_) | TraitTarget::Buildings => unreachable!(),
                 };
                 if targets.is_empty() {
@@ -364,9 +351,7 @@ impl SideRules {
                     let m = t.mul_milli();
                     match t.stat {
                         TraitStat::AlloyCost => u.mvp_alloy_cost = scale_milli(u.mvp_alloy_cost, m),
-                        TraitStat::TrainTicks => {
-                            u.mvp_train_ticks = scale_milli(u.mvp_train_ticks, m)
-                        }
+                        TraitStat::TrainTicks => u.mvp_train_ticks = scale_milli(u.mvp_train_ticks, m),
                         TraitStat::GatherTicks => {
                             u.mvp_gather_ticks = scale_milli(u.mvp_gather_ticks, m)
                         }
@@ -400,8 +385,7 @@ impl SideRules {
             growth_milli,
             yield_milli,
         };
-        side.check(content)
-            .map_err(|e| format!("nation `{}`: {e}", n.id))?;
+        side.check(content).map_err(|e| format!("nation `{}`: {e}", n.id))?;
         Ok(side)
     }
 
@@ -422,9 +406,7 @@ impl SideRules {
                 return Err(format!("building `{}` would have no HP", b.id));
             }
         }
-        for ((u, base), &yield_milli) in
-            self.units.iter().zip(&content.units).zip(&self.yield_milli)
-        {
+        for ((u, base), &yield_milli) in self.units.iter().zip(&content.units).zip(&self.yield_milli) {
             if u.mvp_alloy_cost == 0 {
                 return Err(format!("unit `{}` would cost no Alloy", u.id));
             }
@@ -481,10 +463,7 @@ impl SideRules {
                 || u.mvp_attack_ticks != base.mvp_attack_ticks
                 || u.mvp_attack_range != base.mvp_attack_range
             {
-                return Err(format!(
-                    "unit `{}` is a non-combatant: no combat trait",
-                    u.id
-                ));
+                return Err(format!("unit `{}` is a non-combatant: no combat trait", u.id));
             }
         }
         Ok(())
@@ -531,22 +510,13 @@ fn add_points(v: u32, add: Option<i32>) -> Result<u32, String> {
 pub(crate) fn validate(content: &Content) -> Result<(), String> {
     for (i, n) in content.nations.iter().enumerate() {
         if let Some(j) = content.nations[..i].iter().position(|m| m.id == n.id) {
-            return Err(format!(
-                "duplicate nation id `{}` at positions {j} and {i}",
-                n.id
-            ));
+            return Err(format!("duplicate nation id `{}` at positions {j} and {i}", n.id));
         }
         if content.general_index(&n.general).is_none() {
-            return Err(format!(
-                "nation `{}` names unknown general `{}`",
-                n.id, n.general
-            ));
+            return Err(format!("nation `{}` names unknown general `{}`", n.id, n.general));
         }
         if content.strategy_index(&n.strategy).is_none() {
-            return Err(format!(
-                "nation `{}` names unknown strategy `{}`",
-                n.id, n.strategy
-            ));
+            return Err(format!("nation `{}` names unknown strategy `{}`", n.id, n.strategy));
         }
         if let Some(d) = &n.domain {
             if !content.resources.iter().any(|r| &r.domain == d) {
@@ -554,10 +524,7 @@ pub(crate) fn validate(content: &Content) -> Result<(), String> {
             }
         }
         for (what, (r, g, b)) in [("colour", n.colour), ("accent", n.accent)] {
-            if ![r, g, b]
-                .iter()
-                .all(|v| v.is_finite() && (0.0..=1.0).contains(v))
-            {
+            if ![r, g, b].iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v)) {
                 return Err(format!("nation `{}` {what} must be in [0, 1]", n.id));
             }
         }
@@ -569,9 +536,7 @@ pub(crate) fn validate(content: &Content) -> Result<(), String> {
             crate::sim::content::check_aura_modifiers(&who, &syn.modifiers, &content.combat)?;
             let others = content.resources.len().saturating_sub(1);
             if syn.max == 0 || syn.max as usize > others {
-                return Err(format!(
-                    "{who} max must be 1..={others} (the other domains)"
-                ));
+                return Err(format!("{who} max must be 1..={others} (the other domains)"));
             }
         }
         // Both lists, each in the economy it is played in.
@@ -601,11 +566,7 @@ pub struct UnknownNation {
 
 impl std::fmt::Display for UnknownNation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "unknown nation `{}` for side {:?}",
-            self.id, self.faction
-        )
+        write!(f, "unknown nation `{}` for side {:?}", self.id, self.faction)
     }
 }
 

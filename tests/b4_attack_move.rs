@@ -36,9 +36,7 @@ use onus::sim::content::{Content, WaveOrder};
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use onus::sim::replay::{CommandLog, LoggedOrder, ReplaySource, StateHashLog};
 use onus::sim::spatial::Faction;
-use onus::sim::{
-    AiCommanders, AttackMoveDest, CommandQueue, MoveTarget, Order, Position, RateReport,
-};
+use onus::sim::{AiCommanders, AttackMoveDest, CommandQueue, MoveTarget, Order, Position, RateReport};
 
 // ---- harness ----------------------------------------------------------------
 
@@ -85,27 +83,16 @@ fn spawn_unit(app: &mut App, id: &str, faction: Faction, pos: Vec2) -> Entity {
 fn spawn_building(app: &mut App, id: &str, faction: Faction, pos: Vec2) -> Entity {
     let (def, hp) = {
         let c = app.world().resource::<Content>();
-        let def = c
-            .building_index(id)
-            .unwrap_or_else(|| panic!("building `{id}`"));
+        let def = c.building_index(id).unwrap_or_else(|| panic!("building `{id}`"));
         (def, Health::from_building_def(c, def))
     };
     app.world_mut()
-        .spawn((
-            Position(pos),
-            Building { def },
-            faction,
-            ProductionQueue::default(),
-            hp,
-        ))
+        .spawn((Position(pos), Building { def }, faction, ProductionQueue::default(), hp))
         .id()
 }
 
 fn order(app: &mut App, o: Order) {
-    app.world_mut()
-        .resource_mut::<CommandQueue>()
-        .0
-        .push_back(o);
+    app.world_mut().resource_mut::<CommandQueue>().0.push_back(o);
 }
 
 fn pos(app: &App, e: Entity) -> Option<Vec2> {
@@ -155,16 +142,9 @@ fn hold(app: &mut App, sentry: Entity, side: Faction) {
 /// already in reach (a `MoveTo` unit) walks past it, and only engagement can
 /// make the two fight.
 fn walk_past_offset(c: &Content, attacker: &str, sentry: &str) -> f32 {
-    let reach = c
-        .unit(attacker)
-        .unwrap()
-        .mvp_attack_range
-        .max(c.unit(sentry).unwrap().mvp_attack_range);
+    let reach = c.unit(attacker).unwrap().mvp_attack_range.max(c.unit(sentry).unwrap().mvp_attack_range);
     let engage = c.combat.engage_range;
-    assert!(
-        reach < engage,
-        "the fixture needs attack reach < engage_range"
-    );
+    assert!(reach < engage, "the fixture needs attack reach < engage_range");
     (reach + engage) / 2.0
 }
 
@@ -201,22 +181,14 @@ fn an_attack_moving_unit_engages_an_armed_enemy_a_move_to_unit_walks_past() {
         let p = pos(&app, mover).expect("the mover is never in reach of the sentry");
         assert_eq!(p.y, 0.0, "a MoveTo unit left its line of march");
         assert!(!engaging(&app, mover), "a MoveTo unit engaged");
-        assert_eq!(
-            attack_dest(&app, mover),
-            None,
-            "a MoveTo carries no attack-move"
-        );
+        assert_eq!(attack_dest(&app, mover), None, "a MoveTo carries no attack-move");
         if p == dest {
             arrived = true;
             break;
         }
     }
     assert!(arrived, "the MoveTo unit never reached its destination");
-    assert_eq!(
-        hp(&app, sentry),
-        Some(sentry_max),
-        "the MoveTo unit hit the sentry"
-    );
+    assert_eq!(hp(&app, sentry), Some(sentry_max), "the MoveTo unit hit the sentry");
 
     // ---- attack-move: the same march engages the sentry ----------------
     let mut app = sim_app();
@@ -244,14 +216,8 @@ fn an_attack_moving_unit_engages_an_armed_enemy_a_move_to_unit_walks_past() {
             break;
         }
     }
-    assert!(
-        chased,
-        "the attack-mover never engaged the armed sentry in engage_range"
-    );
-    assert!(
-        left_line,
-        "the attack-mover never left its line to close on the sentry"
-    );
+    assert!(chased, "the attack-mover never engaged the armed sentry in engage_range");
+    assert!(left_line, "the attack-mover never left its line to close on the sentry");
     assert!(hurt, "the attack-mover never hit the sentry");
 }
 
@@ -267,14 +233,7 @@ fn an_attack_moving_unit_resumes_its_march_and_reaches_dest_after_the_fight() {
     let mut app = sim_app();
     // A group, so the fight is decided by numbers and not by a stat line.
     let group: Vec<Entity> = (0..4)
-        .map(|i| {
-            spawn_unit(
-                &mut app,
-                ATTACKER,
-                Faction::A,
-                Vec2::new(0.0, -10.0 * i as f32),
-            )
-        })
+        .map(|i| spawn_unit(&mut app, ATTACKER, Faction::A, Vec2::new(0.0, -10.0 * i as f32)))
         .collect();
     let sentry = spawn_unit(&mut app, SENTRY, Faction::B, sentry_at);
     order(
@@ -300,32 +259,19 @@ fn an_attack_moving_unit_resumes_its_march_and_reaches_dest_after_the_fight() {
             sentry_died_at = Some(t);
         }
         let living: Vec<Entity> = group.iter().copied().filter(|u| alive(&app, *u)).collect();
-        if sentry_died_at.is_some()
-            && !living.is_empty()
-            && living.iter().all(|u| pos(&app, *u) == Some(dest))
-        {
+        if sentry_died_at.is_some() && !living.is_empty() && living.iter().all(|u| pos(&app, *u) == Some(dest)) {
             done_at = Some(t);
             break;
         }
     }
-    assert!(
-        sentry_died_at.is_some(),
-        "the group never killed the sentry"
-    );
-    assert!(
-        max_y > 0.0,
-        "the group never left its line: it did not fight, it walked"
-    );
+    assert!(sentry_died_at.is_some(), "the group never killed the sentry");
+    assert!(max_y > 0.0, "the group never left its line: it did not fight, it walked");
     let done = done_at.expect("after the fight the survivors never reached dest");
     assert!(done > sentry_died_at.unwrap());
     // Arrival completes the order: nothing left to march to, no stale chase.
     step(&mut app);
     for &u in group.iter().filter(|u| alive(&app, **u)) {
-        assert_eq!(
-            attack_dest(&app, u),
-            None,
-            "an arrived attack-mover still holds its order"
-        );
+        assert_eq!(attack_dest(&app, u), None, "an arrived attack-mover still holds its order");
         assert!(!engaging(&app, u));
         assert_eq!(app.world().get::<MoveTarget>(u).map(|m| m.0), None);
     }
@@ -339,20 +285,12 @@ fn an_attack_moving_unit_resumes_its_march_and_reaches_dest_after_the_fight() {
 fn priority_fixture(app: &mut App) -> (Entity, Entity, Entity, Entity) {
     let (reach, engage) = {
         let c = app.world().resource::<Content>();
-        (
-            c.unit(ATTACKER).unwrap().mvp_attack_range,
-            c.combat.engage_range,
-        )
+        (c.unit(ATTACKER).unwrap().mvp_attack_range, c.combat.engage_range)
     };
     let me = spawn_unit(app, ATTACKER, Faction::A, Vec2::ZERO);
     let worker = spawn_unit(app, "worker", Faction::B, Vec2::new(reach / 2.0, 0.0));
     let bld = spawn_building(app, "foundry", Faction::B, Vec2::new(0.0, -reach * 0.75));
-    let armed = spawn_unit(
-        app,
-        SENTRY,
-        Faction::B,
-        Vec2::new(0.0, (reach + engage) / 2.0),
-    );
+    let armed = spawn_unit(app, SENTRY, Faction::B, Vec2::new(0.0, (reach + engage) / 2.0));
     (me, worker, bld, armed)
 }
 
@@ -370,11 +308,7 @@ fn an_attack_moving_unit_prefers_an_armed_unit_over_a_nearer_worker_or_building(
         .issued_by(Faction::A),
     );
     step(&mut app);
-    assert_eq!(
-        target(&app, me),
-        Some(armed),
-        "attack-move picked a non-combatant first"
-    );
+    assert_eq!(target(&app, me), Some(armed), "attack-move picked a non-combatant first");
     // Fight until the armed unit is gone (or it is): the worker and building
     // take nothing from the attack-mover while an armed enemy is in range.
     for _ in 0..5_000 {
@@ -387,16 +321,8 @@ fn an_attack_moving_unit_prefers_an_armed_unit_over_a_nearer_worker_or_building(
             assert_eq!(target(&app, me), Some(armed));
         }
     }
-    assert_eq!(
-        hp(&app, worker),
-        Some(w_max),
-        "the worker was hit while an armed unit stood"
-    );
-    assert_eq!(
-        hp(&app, bld),
-        Some(b_max),
-        "the building was hit while an armed unit stood"
-    );
+    assert_eq!(hp(&app, worker), Some(w_max), "the worker was hit while an armed unit stood");
+    assert_eq!(hp(&app, bld), Some(b_max), "the building was hit while an armed unit stood");
 }
 
 /// The control: an **idle** unit keeps the pure nearest-target rule (Step 1
@@ -418,14 +344,7 @@ fn an_attack_moving_wave_still_razes_the_hq_when_nothing_armed_is_left() {
     let hq = spawn_building(&mut app, "hq", Faction::B, hq_at);
     let miner = spawn_unit(&mut app, "worker", Faction::B, hq_at + Vec2::new(0.0, 40.0));
     let wave: Vec<Entity> = (0..4)
-        .map(|i| {
-            spawn_unit(
-                &mut app,
-                ATTACKER,
-                Faction::A,
-                Vec2::new(0.0, 10.0 * i as f32),
-            )
-        })
+        .map(|i| spawn_unit(&mut app, ATTACKER, Faction::A, Vec2::new(0.0, 10.0 * i as f32)))
         .collect();
     order(
         &mut app,
@@ -441,10 +360,7 @@ fn an_attack_moving_wave_still_razes_the_hq_when_nothing_armed_is_left() {
         }
         step(&mut app);
     }
-    assert!(
-        !alive(&app, hq),
-        "an attack-move wave with nothing armed against it left the HQ standing"
-    );
+    assert!(!alive(&app, hq), "an attack-move wave with nothing armed against it left the HQ standing");
     let _ = miner;
 }
 
@@ -455,14 +371,7 @@ fn a_move_to_or_gather_order_ends_an_attack_move() {
     let mut app = sim_app();
     let u = spawn_unit(&mut app, ATTACKER, Faction::A, Vec2::ZERO);
     let dest = Vec2::new(3_000.0, 0.0);
-    order(
-        &mut app,
-        Order::AttackMove {
-            units: vec![u],
-            dest,
-        }
-        .issued_by(Faction::A),
-    );
+    order(&mut app, Order::AttackMove { units: vec![u], dest }.issued_by(Faction::A));
     step(&mut app);
     assert_eq!(attack_dest(&app, u), Some(dest));
     assert_eq!(app.world().get::<MoveTarget>(u).map(|m| m.0), Some(dest));
@@ -476,15 +385,8 @@ fn a_move_to_or_gather_order_ends_an_attack_move() {
         .issued_by(Faction::A),
     );
     step(&mut app);
-    assert_eq!(
-        attack_dest(&app, u),
-        None,
-        "a MoveTo did not replace the attack-move"
-    );
-    assert_eq!(
-        app.world().get::<MoveTarget>(u).map(|m| m.0),
-        Some(elsewhere)
-    );
+    assert_eq!(attack_dest(&app, u), None, "a MoveTo did not replace the attack-move");
+    assert_eq!(app.world().get::<MoveTarget>(u).map(|m| m.0), Some(elsewhere));
 }
 
 /// A `MoveTo` unit with an armed enemy inside `engage_range` (but outside its
@@ -499,14 +401,7 @@ fn move_to_stays_a_pure_move_beside_an_enemy_in_engage_range() {
     // The sentry stands beside the *start*, so it is in engage range on tick 1.
     let sentry = spawn_unit(&mut app, SENTRY, Faction::B, Vec2::new(0.0, off));
     let dest = Vec2::new(1_000.0, 0.0);
-    order(
-        &mut app,
-        Order::MoveTo {
-            units: vec![u],
-            dest,
-        }
-        .issued_by(Faction::A),
-    );
+    order(&mut app, Order::MoveTo { units: vec![u], dest }.issued_by(Faction::A));
     let speed = onus::sim::combat::move_speed(&c, c.unit_index(ATTACKER).unwrap()) / 60.0;
     let mut last_x = 0.0f32;
     for _ in 0..5_000 {
@@ -519,10 +414,7 @@ fn move_to_stays_a_pure_move_beside_an_enemy_in_engage_range() {
             break;
         }
         // It never stops to fight: full speed every tick.
-        assert!(
-            (p.x - last_x - speed).abs() < 1e-3,
-            "a MoveTo unit slowed or stopped"
-        );
+        assert!((p.x - last_x - speed).abs() < 1e-3, "a MoveTo unit slowed or stopped");
         last_x = p.x;
     }
     assert_eq!(pos(&app, u), Some(dest));
@@ -538,21 +430,14 @@ fn move_to_stays_a_pure_move_beside_an_enemy_in_engage_range() {
 fn every_shipped_strategy_ships_wave_order_attack_move() {
     let c = content();
     for s in &c.strategies {
-        assert_eq!(
-            s.wave_order,
-            WaveOrder::AttackMove,
-            "strategy `{}`: step 2b ships attack_move",
-            s.id
-        );
+        assert_eq!(s.wave_order, WaveOrder::AttackMove, "strategy `{}`: step 2b ships attack_move", s.id);
     }
     assert_eq!(c.ai.wave_order, WaveOrder::AttackMove);
 }
 
 /// A scratch content dir: the shipped files, with `strategies.ron` rewritten.
 fn scratch_content(name: &str, edit: impl Fn(&str) -> String) -> PathBuf {
-    let out = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join(name);
+    let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target").join(name);
     std::fs::create_dir_all(&out).expect("scratch dir");
     for file in ["units.ron", "resources.ron"] {
         std::fs::copy(data_dir().join(file), out.join(file)).expect("copy");
@@ -569,12 +454,8 @@ fn a_missing_wave_order_is_a_load_error_not_a_default() {
         assert_ne!(s, t, "the shipped set has no wave_order to strip");
         s
     });
-    let err =
-        Content::load_from_dir(&dir).expect_err("a strategy with no wave_order must not load");
-    assert!(
-        format!("{err:?}").contains("wave_order"),
-        "the error does not name the field: {err:?}"
-    );
+    let err = Content::load_from_dir(&dir).expect_err("a strategy with no wave_order must not load");
+    assert!(format!("{err:?}").contains("wave_order"), "the error does not name the field: {err:?}");
 }
 
 #[test]
@@ -582,20 +463,14 @@ fn attack_move_parses_from_the_ron_and_moves_the_fingerprint() {
     // Since step 2b the shipped file itself is the all-`attack_move` set, so
     // the parse is read from it and the contrast is a rewrite back to `move`.
     let am = content();
-    assert!(am
-        .strategies
-        .iter()
-        .all(|s| s.wave_order == WaveOrder::AttackMove));
+    assert!(am.strategies.iter().all(|s| s.wave_order == WaveOrder::AttackMove));
     let dir = scratch_content("b4_am_all_move", |t| {
         let s = t.replace("wave_order: attack_move,", "wave_order: move,");
         assert_ne!(s, t, "the shipped set has no attack_move to rewrite");
         s
     });
     let mv = Content::load_from_dir(&dir).expect("move is a valid wave order");
-    assert!(mv
-        .strategies
-        .iter()
-        .all(|s| s.wave_order == WaveOrder::Move));
+    assert!(mv.strategies.iter().all(|s| s.wave_order == WaveOrder::Move));
     assert_ne!(
         am.fingerprint().hash(),
         mv.fingerprint().hash(),
@@ -667,11 +542,7 @@ fn an_attack_move_match_is_deterministic_and_replays_tick_for_tick() {
 
     // It is not the move match under another name.
     let mv = run(content_with_wave_order(WaveOrder::Move), AM_TICKS);
-    assert_ne!(
-        hashes(&mv),
-        ha,
-        "the wave order changed nothing in this match"
-    );
+    assert_ne!(hashes(&mv), ha, "the wave order changed nothing in this match");
 
     // Replayed from its own log with the AI stood down: identical per tick.
     let log = a.world().resource::<CommandLog>().log().clone();
@@ -682,11 +553,7 @@ fn an_attack_move_match_is_deterministic_and_replays_tick_for_tick() {
     rep.insert_resource(CommandLog::new(log.seed));
     rep.insert_resource(ReplaySource::new(log));
     headless::tick(&mut rep, AM_TICKS);
-    assert_eq!(
-        hashes(&rep),
-        ha,
-        "the attack-move log did not replay tick for tick"
-    );
+    assert_eq!(hashes(&rep), ha, "the attack-move log did not replay tick for tick");
 }
 
 // ---- step 2: the mechanism's own number, `mvp_combat.attack_move_range` -----
@@ -713,9 +580,7 @@ fn sim_app_with(c: Content) -> App {
 
 /// The shipped data with `units.ron` edited by `edit`.
 fn scratch_units(name: &str, edit: impl Fn(&str) -> String) -> PathBuf {
-    let out = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join(name);
+    let out = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target").join(name);
     std::fs::create_dir_all(&out).expect("scratch dir");
     for file in ["strategies.ron", "resources.ron"] {
         std::fs::copy(data_dir().join(file), out.join(file)).expect("copy");
@@ -749,10 +614,7 @@ fn with_attack_move_range(text: &str, value: &str) -> String {
 /// The longest attack reach of any unit: an attack-mover must at least be able
 /// to fight what it can already hit.
 fn longest_reach(c: &Content) -> f32 {
-    c.units
-        .iter()
-        .map(|u| u.mvp_attack_range)
-        .fold(0.0, f32::max)
+    c.units.iter().map(|u| u.mvp_attack_range).fold(0.0, f32::max)
 }
 
 #[test]
@@ -763,11 +625,7 @@ fn attack_move_range_is_a_required_combat_number() {
             .filter(|l| !l.trim_start().starts_with("attack_move_range:"))
             .collect::<Vec<_>>()
             .join("\n");
-        assert_ne!(
-            s.len(),
-            t.len(),
-            "units.ron has no attack_move_range to strip"
-        );
+        assert_ne!(s.len(), t.len(), "units.ron has no attack_move_range to strip");
         s
     });
     let err = Content::load_from_dir(&dir).expect_err("no attack_move_range must not load");
@@ -787,24 +645,17 @@ fn attack_move_range_out_of_bounds_is_refused() {
         ("above_leash", format!("{above:.1}")),
         ("nan", "NaN".to_string()),
     ] {
-        let dir = scratch_units(&format!("b4_am_range_{tag}"), |t| {
-            with_attack_move_range(t, &v)
-        });
+        let dir = scratch_units(&format!("b4_am_range_{tag}"), |t| with_attack_move_range(t, &v));
         let err = Content::load_from_dir(&dir)
             .expect_err(&format!("attack_move_range {v} ({tag}) must not load"));
-        assert!(
-            format!("{err:?}").contains("attack_move_range"),
-            "{tag}: {err:?}"
-        );
+        assert!(format!("{err:?}").contains("attack_move_range"), "{tag}: {err:?}");
     }
     // Both bounds are inclusive.
     for (tag, v) in [
         ("at_reach", format!("{:.1}", longest_reach(&c))),
         ("at_leash", format!("{:.1}", c.combat.pursue_range)),
     ] {
-        let dir = scratch_units(&format!("b4_am_range_{tag}"), |t| {
-            with_attack_move_range(t, &v)
-        });
+        let dir = scratch_units(&format!("b4_am_range_{tag}"), |t| with_attack_move_range(t, &v));
         let got = Content::load_from_dir(&dir).unwrap_or_else(|e| panic!("{tag}: {e:?}"));
         assert_ne!(got.fingerprint().hash(), 0);
     }
@@ -829,10 +680,7 @@ fn an_attack_mover_acquires_only_inside_attack_move_range() {
     let shipped = content();
     let lo = longest_reach(&shipped);
     let engage = shipped.combat.engage_range;
-    assert!(
-        lo < engage,
-        "the fixture needs longest reach < engage_range"
-    );
+    assert!(lo < engage, "the fixture needs longest reach < engage_range");
     let off = (lo + engage) / 2.0;
     let dest = Vec2::new(2.0 * shipped.combat.pursue_range + 400.0, 0.0);
     let sentry_at = Vec2::new(dest.x / 2.0, off);
@@ -866,14 +714,8 @@ fn an_attack_mover_acquires_only_inside_attack_move_range() {
     };
 
     let (chased, arrived) = march(lo);
-    assert!(
-        !chased,
-        "an attack-mover engaged a sentry outside attack_move_range ({lo})"
-    );
+    assert!(!chased, "an attack-mover engaged a sentry outside attack_move_range ({lo})");
     assert!(arrived, "the attack-mover never reached dest");
     let (chased, _) = march(engage);
-    assert!(
-        chased,
-        "an attack-mover with the range at engage_range did not engage"
-    );
+    assert!(chased, "an attack-mover with the range at engage_range did not engage");
 }

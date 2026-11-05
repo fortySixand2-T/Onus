@@ -266,7 +266,13 @@ impl Reading {
     /// parts are Wilson's and the normal interval at `mean` on
     /// `n_eff = k² / Σ w_i`, computed in closed form. `n_eff` is reported as
     /// `k² / Σ w_i` in every case.
-    pub fn mean_of(mean: Option<f64>, ns: &[u32], clusters: &[u32], icc: f64, rule: Rule) -> Self {
+    pub fn mean_of(
+        mean: Option<f64>,
+        ns: &[u32],
+        clusters: &[u32],
+        icc: f64,
+        rule: Rule,
+    ) -> Self {
         let w: Vec<f64> = ns
             .iter()
             .zip(clusters)
@@ -279,10 +285,9 @@ impl Reading {
         let n_eff = if inv > 0.0 { k * k / inv } else { 0.0 };
         let equal = w.windows(2).all(|p| p[0] == p[1]);
         let interval = match mean {
-            Some(p) if n_eff > 0.0 && equal => Some(hull(
-                wilson_bounds(p, n_eff),
-                normal(p, p * (1.0 - p) / n_eff),
-            )),
+            Some(p) if n_eff > 0.0 && equal => {
+                Some(hull(wilson_bounds(p, n_eff), normal(p, p * (1.0 - p) / n_eff)))
+            }
             Some(p) if n_eff > 0.0 => Some(hull(
                 worst_case_score_interval(p, &w),
                 normal(p, max_mean_variance(p, &w)),
@@ -312,10 +317,7 @@ pub fn max_mean_variance(mu: f64, w: &[f64]) -> f64 {
         return 0.0;
     }
     let target = mu * k;
-    let rates = |lambda: f64| {
-        w.iter()
-            .map(move |&wi| ((1.0 - lambda / wi) / 2.0).clamp(0.0, 1.0))
-    };
+    let rates = |lambda: f64| w.iter().map(move |&wi| ((1.0 - lambda / wi) / 2.0).clamp(0.0, 1.0));
     let top = w.iter().cloned().fold(0.0, f64::max);
     let (mut lo, mut hi) = (-top, top);
     for _ in 0..200 {
@@ -327,11 +329,7 @@ pub fn max_mean_variance(mu: f64, w: &[f64]) -> f64 {
         }
     }
     let lambda = 0.5 * (lo + hi);
-    w.iter()
-        .zip(rates(lambda))
-        .map(|(wi, p)| wi * p * (1.0 - p))
-        .sum::<f64>()
-        / (k * k)
+    w.iter().zip(rates(lambda)).map(|(wi, p)| wi * p * (1.0 - p)).sum::<f64>() / (k * k)
 }
 
 /// `p ± z·√var`, clamped to `[0, 1]`.
@@ -467,12 +465,8 @@ pub struct KillGate {
 type Key = (usize, usize, u64);
 
 fn key(m: &WinMatrix, r: &MatchRecord) -> Key {
-    let a = m
-        .index(&r.strategies[0])
-        .expect("matrix built from these records");
-    let b = m
-        .index(&r.strategies[1])
-        .expect("matrix built from these records");
+    let a = m.index(&r.strategies[0]).expect("matrix built from these records");
+    let b = m.index(&r.strategies[1]).expect("matrix built from these records");
     (a.min(b), a.max(b), r.seed)
 }
 
@@ -500,12 +494,7 @@ impl KillGate {
     }
 }
 
-fn strength(
-    content: &Content,
-    records: &[MatchRecord],
-    m: &WinMatrix,
-    spec: &GateSpec,
-) -> Strength {
+fn strength(content: &Content, records: &[MatchRecord], m: &WinMatrix, spec: &GateSpec) -> Strength {
     let decided_keys = distinct(
         records
             .iter()
@@ -537,13 +526,7 @@ fn strength(
                     continue;
                 }
                 let cl = clusters_of(i, j);
-                let cell = Reading::proportion(
-                    c.half_wins as u64,
-                    c.n_decided,
-                    cl,
-                    spec.icc,
-                    Rule::AtMost(0.5),
-                );
+                let cell = Reading::proportion(c.half_wins as u64, c.n_decided, cl, spec.icc, Rule::AtMost(0.5));
                 let (lo, hi) = cell.interval.expect("decided");
                 wins_all &= lo > 0.5;
                 loses_all &= hi < 0.5;
@@ -551,18 +534,10 @@ fn strength(
                 cs.push(cl);
             }
             let mean = m.row_mean(i);
-            let strength = Reading::mean_of(
-                mean.mean,
-                &ns,
-                &cs,
-                spec.icc,
-                Rule::AtMost(spec.max_strength),
-            );
+            let strength = Reading::mean_of(mean.mean, &ns, &cs, spec.icc, Rule::AtMost(spec.max_strength));
             let decided_opponents = ns.len() as u32;
             let loses_every_matchup = opponents > 0 && decided_opponents == opponents && loses_all;
-            let row_below_mirror_bar = strength
-                .interval
-                .is_some_and(|(_, hi)| hi < 1.0 - spec.max_strength);
+            let row_below_mirror_bar = strength.interval.is_some_and(|(_, hi)| hi < 1.0 - spec.max_strength);
             StrengthRow {
                 strategy: id.clone(),
                 unit: content
@@ -579,10 +554,7 @@ fn strength(
         })
         .collect();
     let names = |f: &dyn Fn(&StrengthRow) -> bool| -> Vec<String> {
-        rows.iter()
-            .filter(|r| f(r))
-            .map(|r| r.strategy.clone())
-            .collect()
+        rows.iter().filter(|r| f(r)).map(|r| r.strategy.clone()).collect()
     };
     Strength {
         status: Status::all(rows.iter().map(|r| r.strength.status)),
@@ -622,8 +594,7 @@ fn seat_bias(records: &[MatchRecord], m: &WinMatrix, spec: &GateSpec) -> SeatBia
     let per_mirror: Vec<MirrorRow> = (0..m.len())
         .filter_map(|i| {
             let id = &m.ids()[i];
-            let own: Vec<&&MatchRecord> =
-                mirrors.iter().filter(|r| &r.strategies[0] == id).collect();
+            let own: Vec<&&MatchRecord> = mirrors.iter().filter(|r| &r.strategies[0] == id).collect();
             let played = m.cell(i, i).map(|c| c.played()).unwrap_or(0);
             if played == 0 {
                 return None;
@@ -632,14 +603,7 @@ fn seat_bias(records: &[MatchRecord], m: &WinMatrix, spec: &GateSpec) -> SeatBia
             let n = own.len() as u32;
             let read = |of: &dyn Fn(&MatchRecord) -> u64| {
                 let s: u64 = own.iter().map(|r| of(r)).sum();
-                Reading::proportion_at_least(
-                    s,
-                    n,
-                    clusters,
-                    spec.icc,
-                    spec.mirror_design_effect,
-                    rule,
-                )
+                Reading::proportion_at_least(s, n, clusters, spec.icc, spec.mirror_design_effect, rule)
             };
             Some(MirrorRow {
                 strategy: id.clone(),
@@ -652,11 +616,9 @@ fn seat_bias(records: &[MatchRecord], m: &WinMatrix, spec: &GateSpec) -> SeatBia
     // PASSes only if the pool and every mirror resolve PASS. An open mirror
     // holds K2 undetermined — too little data never reads PASS (F-038).
     let status = Status::all(
-        [slot_a.status, left_spawn.status].into_iter().chain(
-            per_mirror
-                .iter()
-                .flat_map(|r| [r.slot_a.status, r.left_spawn.status]),
-        ),
+        [slot_a.status, left_spawn.status]
+            .into_iter()
+            .chain(per_mirror.iter().flat_map(|r| [r.slot_a.status, r.left_spawn.status])),
     );
     SeatBias {
         status,
@@ -680,8 +642,7 @@ fn termination(records: &[MatchRecord], m: &WinMatrix, spec: &GateSpec) -> Termi
         .len() as u32
     };
     let all = clusters(false);
-    let of_all =
-        |count: u32, rule| Reading::proportion(2 * count as u64, d.total, all, spec.icc, rule);
+    let of_all = |count: u32, rule| Reading::proportion(2 * count as u64, d.total, all, spec.icc, rule);
     let below = of_all(d.below_band, Rule::AtMost(0.5));
     let beyond = of_all(d.above_band + d.timeouts, Rule::AtMost(0.5));
     let timeout_rate = of_all(d.timeouts, Rule::AtMost(spec.max_timeout_rate));
@@ -841,10 +802,7 @@ fn nation_strength(cross: &[NationRecord], spec: &NationSpec) -> Vec<NationStren
         let mut keys: Vec<(&str, u64)> = cross
             .iter()
             .filter(|r| r.record.result.is_decided())
-            .filter(|r| {
-                (&r.nations[0] == a && &r.nations[1] == b)
-                    || (&r.nations[0] == b && &r.nations[1] == a)
-            })
+            .filter(|r| (&r.nations[0] == a && &r.nations[1] == b) || (&r.nations[0] == b && &r.nations[1] == a))
             .map(|r| (r.record.strategies[0].as_str(), r.record.seed))
             .collect();
         keys.sort_unstable();
@@ -877,10 +835,7 @@ fn nation_strength(cross: &[NationRecord], spec: &NationSpec) -> Vec<NationStren
         .collect()
 }
 
-fn pair_pentagons(
-    content: &Content,
-    pentagon: &[NationRecord],
-) -> Result<Vec<PairPentagon>, CycleError> {
+fn pair_pentagons(content: &Content, pentagon: &[NationRecord]) -> Result<Vec<PairPentagon>, CycleError> {
     if pentagon.is_empty() {
         return Ok(Vec::new());
     }
@@ -912,11 +867,7 @@ fn pair_pentagons(
         .map(|(pn, qn)| {
             let own: Vec<MatchRecord> = pentagon
                 .iter()
-                .filter(|r| {
-                    assign(r)
-                        .as_ref()
-                        .is_some_and(|(a, b)| *a == pn && *b == qn)
-                })
+                .filter(|r| assign(r).as_ref().is_some_and(|(a, b)| *a == pn && *b == qn))
                 .map(|r| r.record.clone())
                 .collect();
             let report = PentagonReport::of_records(content, &own)?;

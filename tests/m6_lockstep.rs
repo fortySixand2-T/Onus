@@ -395,10 +395,7 @@ fn a_tick_does_not_advance_while_a_peers_turn_is_missing() {
     step_both(&mut a, &mut b, 8);
     let stalled_at = tick_of(&a);
     let hashes_at = hashes_of(&a).0.len();
-    assert!(
-        stalled_at > 0,
-        "nothing ran before the stall, so this proves nothing"
-    );
+    assert!(stalled_at > 0, "nothing ran before the stall, so this proves nothing");
     // The last turn B sent is for its own tick plus the delay; A may run that
     // far and **not one tick further**.
     let last_turn_b_sent = tick_of(&b) + test_config().turn_delay_ticks;
@@ -418,11 +415,7 @@ fn a_tick_does_not_advance_while_a_peers_turn_is_missing() {
     for _ in 0..30 {
         step(&mut a);
     }
-    assert_eq!(
-        tick_of(&a),
-        frozen,
-        "the tick counter advanced on a stalled tick"
-    );
+    assert_eq!(tick_of(&a), frozen, "the tick counter advanced on a stalled tick");
     assert_eq!(
         hashes_of(&a).0.len(),
         frozen_hashes,
@@ -454,11 +447,7 @@ fn two_talking_peers_never_stall() {
             "the peers drifted apart: {ta} vs {tb}"
         );
     }
-    assert!(
-        tick_of(&a) > 40,
-        "the peers barely advanced: {}",
-        tick_of(&a)
-    );
+    assert!(tick_of(&a) > 40, "the peers barely advanced: {}", tick_of(&a));
     assert!(a.world().resource::<TickGate>().is_open());
     assert!(link_of(&a).failure().is_none() && link_of(&b).failure().is_none());
 }
@@ -583,15 +572,9 @@ fn peers_exchange_state_hashes_and_agree() {
 fn an_injected_divergence_is_caught_by_the_hash_exchange() {
     let (mut a, mut b) = pair_of_peers(7, test_config());
     step_both(&mut a, &mut b, 20);
-    assert!(
-        link_of(&a).failure().is_none(),
-        "it failed before the injection"
-    );
+    assert!(link_of(&a).failure().is_none(), "it failed before the injection");
     let agreed_before = link_of(&a).hashes_agreed();
-    assert!(
-        agreed_before > 0,
-        "no hash was ever compared, so this proves nothing"
-    );
+    assert!(agreed_before > 0, "no hash was ever compared, so this proves nothing");
 
     // Move one unit on B only. Nothing in the protocol did this; the two sims
     // are simply no longer the same sim.
@@ -799,11 +782,7 @@ fn a_closed_gate_holds_the_whole_chain() {
     let before = (
         tick_of(&app),
         hashes_of(&app).0.len(),
-        app.world()
-            .resource::<CommandLog>()
-            .log()
-            .content
-            .is_known(),
+        app.world().resource::<CommandLog>().log().content.is_known(),
         app.world().resource::<SimIds>().issued(),
     );
     assert!(before.0 > 0 && before.1 > 0, "the fixture never ran");
@@ -816,11 +795,7 @@ fn a_closed_gate_holds_the_whole_chain() {
         (
             tick_of(&app),
             hashes_of(&app).0.len(),
-            app.world()
-                .resource::<CommandLog>()
-                .log()
-                .content
-                .is_known(),
+            app.world().resource::<CommandLog>().log().content.is_known(),
             app.world().resource::<SimIds>().issued(),
         ),
         before,

@@ -86,10 +86,7 @@ fn wilson_matches_two_independent_oracles_for_every_cell_up_to_n_120() {
                     "{half_wins}/2 of {n}: src [{lo:.10}, {hi:.10}] vs {name} [{olo:.10}, {ohi:.10}]"
                 );
             }
-            assert!(
-                lo <= p + 1e-12 && p <= hi + 1e-12,
-                "{half_wins}/2 of {n}: p outside"
-            );
+            assert!(lo <= p + 1e-12 && p <= hi + 1e-12, "{half_wins}/2 of {n}: p outside");
             assert!((0.0..=1.0).contains(&lo) && (0.0..=1.0).contains(&hi));
         }
     }
@@ -100,20 +97,10 @@ fn wilson_matches_two_independent_oracles_for_every_cell_up_to_n_120() {
 fn wilson_is_symmetric_about_a_half() {
     for n in 1u32..=80 {
         for h in 0..=2 * n {
-            let a = Cell {
-                half_wins: h,
-                n_decided: n,
-                n_timeout: 0,
-            }
-            .wilson_interval()
-            .unwrap();
-            let b = Cell {
-                half_wins: 2 * n - h,
-                n_decided: n,
-                n_timeout: 0,
-            }
-            .wilson_interval()
-            .unwrap();
+            let a = Cell { half_wins: h, n_decided: n, n_timeout: 0 }.wilson_interval().unwrap();
+            let b = Cell { half_wins: 2 * n - h, n_decided: n, n_timeout: 0 }
+                .wilson_interval()
+                .unwrap();
             assert!((a.0 - (1.0 - b.1)).abs() < 1e-12 && (a.1 - (1.0 - b.0)).abs() < 1e-12);
         }
     }
@@ -122,26 +109,13 @@ fn wilson_is_symmetric_about_a_half() {
 #[test]
 fn timeouts_never_create_an_interval_or_move_one() {
     for t in [0u32, 1, 9, 1000] {
-        let c = Cell {
-            half_wins: 0,
-            n_decided: 0,
-            n_timeout: t,
-        };
+        let c = Cell { half_wins: 0, n_decided: 0, n_timeout: t };
         assert_eq!(c.rate(), None, "{t} timeouts: no rate, never 0.5");
         assert_eq!(c.wilson_interval(), None, "{t} timeouts: no interval");
     }
-    let base = Cell {
-        half_wins: 9,
-        n_decided: 6,
-        n_timeout: 0,
-    }
-    .wilson_interval();
+    let base = Cell { half_wins: 9, n_decided: 6, n_timeout: 0 }.wilson_interval();
     for t in [1u32, 50, 10_000] {
-        let c = Cell {
-            half_wins: 9,
-            n_decided: 6,
-            n_timeout: t,
-        };
+        let c = Cell { half_wins: 9, n_decided: 6, n_timeout: t };
         assert_eq!(c.wilson_interval(), base, "timeouts are not sample");
     }
 }
@@ -169,28 +143,16 @@ fn sentinel_vs_ripper(half_wins: u32, n: u32, timeouts: u32) -> Vec<MatchRecord>
     let mut out = Vec::new();
     for i in 0..wins {
         if i % 2 == 0 {
-            out.push(rec(
-                "mass_sentinel",
-                "mass_ripper",
-                MatchResult::Decided(Faction::A),
-            ));
+            out.push(rec("mass_sentinel", "mass_ripper", MatchResult::Decided(Faction::A)));
         } else {
-            out.push(rec(
-                "mass_ripper",
-                "mass_sentinel",
-                MatchResult::Decided(Faction::B),
-            ));
+            out.push(rec("mass_ripper", "mass_sentinel", MatchResult::Decided(Faction::B)));
         }
     }
     for _ in 0..draws {
         out.push(rec("mass_sentinel", "mass_ripper", MatchResult::MutualLoss));
     }
     for _ in 0..losses {
-        out.push(rec(
-            "mass_ripper",
-            "mass_sentinel",
-            MatchResult::Decided(Faction::A),
-        ));
+        out.push(rec("mass_ripper", "mass_sentinel", MatchResult::Decided(Faction::A)));
     }
     for _ in 0..timeouts {
         out.push(rec("mass_sentinel", "mass_ripper", MatchResult::Timeout));
@@ -217,10 +179,7 @@ fn verdict_is_exactly_the_oracle_interval_classification_for_every_cell_up_to_n_
         for h in 0..=2 * n {
             let p = h as f64 / (2.0 * n as f64);
             let (lo, hi) = oracle_quadratic(p, n as f64);
-            assert!(
-                (lo - 0.5).abs() > 1e-7 && (hi - 0.5).abs() > 1e-7,
-                "too close to call"
-            );
+            assert!((lo - 0.5).abs() > 1e-7 && (hi - 0.5).abs() > 1e-7, "too close to call");
             let want = if lo > 0.5 {
                 Verdict::Holds
             } else if hi < 0.5 {
@@ -233,10 +192,7 @@ fn verdict_is_exactly_the_oracle_interval_classification_for_every_cell_up_to_n_
                 assert_eq!(l.n_decided, n);
                 assert_eq!(l.n_timeout, timeouts);
                 assert_eq!(l.rate, Some(p));
-                assert_eq!(
-                    l.verdict, want,
-                    "{h}/2 of {n} (+{timeouts} timeouts), [{lo}, {hi}]"
-                );
+                assert_eq!(l.verdict, want, "{h}/2 of {n} (+{timeouts} timeouts), [{lo}, {hi}]");
                 // A verdict is never stronger than its interval allows.
                 let (ilo, ihi) = l.interval.expect("decided");
                 match l.verdict {
@@ -291,11 +247,7 @@ fn zero_decided_is_undefined_never_half_and_n_one_is_undetermined() {
     for (h, rate) in [(2u32, 1.0), (0, 0.0), (1, 0.5)] {
         let l = sentinel_link(&content, &sentinel_vs_ripper(h, 1, 3));
         assert_eq!(l.rate, Some(rate));
-        assert_eq!(
-            l.verdict,
-            Verdict::Undetermined,
-            "one match is no verdict ({rate})"
-        );
+        assert_eq!(l.verdict, Verdict::Undetermined, "one match is no verdict ({rate})");
     }
     // An all-undefined report is not balanced.
     let report = PentagonReport::of(&content, &WinMatrix::of(&[])).expect("cycle");
@@ -440,10 +392,7 @@ fn differential(roster: &[String], seeds: &[u64]) -> Vec<String> {
 }
 
 fn seeds(default: &[u64]) -> Vec<u64> {
-    match std::env::var("CRITIC_SEEDS")
-        .ok()
-        .and_then(|s| s.parse::<u32>().ok())
-    {
+    match std::env::var("CRITIC_SEEDS").ok().and_then(|s| s.parse::<u32>().ok()) {
         Some(k) => (0..k).map(|i| seed_at(0x0C21_7B35, i)).collect(),
         None => default.to_vec(),
     }
@@ -486,14 +435,10 @@ fn first_attack_mirror(content: &Content, id: &str, seed: u64) -> Option<(u32, u
     for _ in 0..DEFAULT_TICK_CAP {
         headless::step(&mut app);
         let j = app.world().resource::<AiJournal>();
-        if let Some(hit) = j
-            .for_faction(Faction::A)
-            .into_iter()
-            .find_map(|(t, a)| match a {
-                AiAction::Attack { force, .. } => Some((t, force)),
-                _ => None,
-            })
-        {
+        if let Some(hit) = j.for_faction(Faction::A).into_iter().find_map(|(t, a)| match a {
+            AiAction::Attack { force, .. } => Some((t, force)),
+            _ => None,
+        }) {
             return Some(hit);
         }
         if app.world().resource::<MatchState>().is_over() {

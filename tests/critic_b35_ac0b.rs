@@ -58,18 +58,10 @@ fn entry(
     s.push_str(&format!("            id: \"{id}\",\n"));
     s.push_str(&format!("            think_interval_ticks: {think},\n"));
     s.push_str(&format!("            worker_target: {worker_target},\n"));
-    s.push_str(&format!(
-        "            barracks: [\n{}\n            ],\n",
-        openings.join("\n")
-    ));
-    s.push_str(&format!(
-        "            army: [\n{}\n            ],\n",
-        army.join("\n")
-    ));
+    s.push_str(&format!("            barracks: [\n{}\n            ],\n", openings.join("\n")));
+    s.push_str(&format!("            army: [\n{}\n            ],\n", army.join("\n")));
     s.push_str(&format!("            attack_at_army: {attack_at_army},\n"));
-    s.push_str(&format!(
-        "            attack_interval_ticks: {attack_interval},\n"
-    ));
+    s.push_str(&format!("            attack_interval_ticks: {attack_interval},\n"));
     s.push_str(&format!("            attack_spread: {spread:?},\n"));
     s.push_str(&format!("            queue_depth: {queue_depth},\n"));
     s.push_str("            wave_order: move,\n");
@@ -311,11 +303,7 @@ fn critic_every_other_refusal_still_refuses() {
     let cases: Vec<(&str, String)> = vec![
         (
             "unknown building",
-            one(ok_entry(
-                "s",
-                &[("nonesuch", 300, 130.0)],
-                &[("sentinel", 1)],
-            )),
+            one(ok_entry("s", &[("nonesuch", 300, 130.0)], &[("sentinel", 1)])),
         ),
         (
             "the victory building as a barracks",
@@ -335,11 +323,7 @@ fn critic_every_other_refusal_still_refuses() {
         ),
         (
             "an unknown unit",
-            one(ok_entry(
-                "s",
-                &[("foundry", 300, 130.0)],
-                &[("nosuchunit", 1)],
-            )),
+            one(ok_entry("s", &[("foundry", 300, 130.0)], &[("nosuchunit", 1)])),
         ),
         (
             "no barracks at all",
@@ -367,11 +351,7 @@ fn critic_every_other_refusal_still_refuses() {
         ),
         (
             "an army count of zero",
-            one(ok_entry(
-                "s",
-                &[("foundry", 300, 130.0)],
-                &[("sentinel", 0)],
-            )),
+            one(ok_entry("s", &[("foundry", 300, 130.0)], &[("sentinel", 0)])),
         ),
         (
             "queue_depth 0",
@@ -479,16 +459,15 @@ fn critic_every_other_refusal_still_refuses() {
                 &[("sentinel", u32::MAX), ("bulwark", 2)],
             )),
         ),
-        ("an empty strategy set", file_of("s", &[])),
+        (
+            "an empty strategy set",
+            file_of("s", &[]),
+        ),
         (
             "a default naming no strategy",
             file_of(
                 "ghost",
-                &[ok_entry(
-                    "s",
-                    &[("foundry", 300, 130.0)],
-                    &[("sentinel", 1)],
-                )],
+                &[ok_entry("s", &[("foundry", 300, 130.0)], &[("sentinel", 1)])],
             ),
         ),
         (
@@ -544,7 +523,10 @@ fn critic_repeated_openings_are_accepted() {
             ],
         ),
     ] {
-        let text = file_of("s", &[ok_entry("s", &openings, &[("sentinel", 1)])]);
+        let text = file_of(
+            "s",
+            &[ok_entry("s", &openings, &[("sentinel", 1)])],
+        );
         assert!(
             load(&format!("accept_{name}"), &text).is_ok(),
             "repeated openings ({name}) must load"
@@ -774,11 +756,7 @@ fn critic_unaffordable_placements_consume_no_randomness() {
     let pr = placements(&rich, Faction::A);
     let pp = placements(&poor, Faction::A);
     assert_eq!(pr.len(), 3, "the rich commander places all three");
-    assert_eq!(
-        pp.len(),
-        1,
-        "{stock} Alloy buys exactly one foundry: {pp:?}"
-    );
+    assert_eq!(pp.len(), 1, "{stock} Alloy buys exactly one foundry: {pp:?}");
     assert_eq!(
         pp[0].2, pr[0].2,
         "the first placement's direction is the same draw in both runs — the two \
@@ -807,13 +785,7 @@ fn critic_a_skipped_expensive_opening_does_not_eat_the_draw() {
         &[ok_entry("s", &[("foundry", 0, 100.0)], &[("sentinel", 1)])],
     );
     let mut a = solo(loaded("rng_skip_two", &two), 0x5EED, "s", stock, false);
-    let mut b = solo(
-        loaded("rng_skip_one", &just_foundry),
-        0x5EED,
-        "s",
-        stock,
-        false,
-    );
+    let mut b = solo(loaded("rng_skip_one", &just_foundry), 0x5EED, "s", stock, false);
     tick(&mut a, 120);
     tick(&mut b, 120);
     let pa = placements(&a, Faction::A);

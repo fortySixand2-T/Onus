@@ -37,14 +37,7 @@ fn shipped() -> Content {
     headless::content().expect("content loads")
 }
 
-fn rec(
-    a: &str,
-    b: &str,
-    seed: u64,
-    o: Orientation,
-    result: MatchResult,
-    ticks: u32,
-) -> MatchRecord {
+fn rec(a: &str, b: &str, seed: u64, o: Orientation, result: MatchResult, ticks: u32) -> MatchRecord {
     MatchRecord {
         strategies: [a.to_string(), b.to_string()],
         seed,
@@ -61,46 +54,11 @@ fn batch() -> Vec<MatchRecord> {
     let min = 60 * SIM_HZ;
     let mut v = Vec::new();
     for seed in 0..3 {
-        v.push(rec(
-            "mass_sentinel",
-            "mass_ripper",
-            seed,
-            Orientation::Normal,
-            A,
-            6 * min,
-        ));
-        v.push(rec(
-            "mass_ripper",
-            "mass_sentinel",
-            seed,
-            Orientation::Swapped,
-            B,
-            3 * min,
-        ));
-        v.push(rec(
-            "mass_ripper",
-            "mass_sentinel",
-            seed,
-            Orientation::Normal,
-            A,
-            9 * min,
-        ));
-        v.push(rec(
-            "mass_sentinel",
-            "mass_sentinel",
-            seed,
-            Orientation::Normal,
-            MatchResult::MutualLoss,
-            7 * min,
-        ));
-        v.push(rec(
-            "mass_ripper",
-            "mass_ripper",
-            seed,
-            Orientation::Swapped,
-            CAPPED,
-            15 * min,
-        ));
+        v.push(rec("mass_sentinel", "mass_ripper", seed, Orientation::Normal, A, 6 * min));
+        v.push(rec("mass_ripper", "mass_sentinel", seed, Orientation::Swapped, B, 3 * min));
+        v.push(rec("mass_ripper", "mass_sentinel", seed, Orientation::Normal, A, 9 * min));
+        v.push(rec("mass_sentinel", "mass_sentinel", seed, Orientation::Normal, MatchResult::MutualLoss, 7 * min));
+        v.push(rec("mass_ripper", "mass_ripper", seed, Orientation::Swapped, CAPPED, 15 * min));
     }
     v
 }
@@ -117,11 +75,7 @@ fn the_report_round_trips_through_ron() {
     let text = r.to_ron().expect("serializes");
     let back = BalanceReport::from_ron(&text).expect("parses");
     assert_eq!(back, r);
-    assert_eq!(
-        back.to_ron().unwrap(),
-        text,
-        "and re-serializes to the same bytes"
-    );
+    assert_eq!(back.to_ron().unwrap(), text, "and re-serializes to the same bytes");
 }
 
 #[test]
@@ -137,10 +91,7 @@ fn the_report_round_trips_through_a_file() {
         .map(|e| e.unwrap().path())
         .filter(|p| p != &path)
         .collect();
-    assert!(
-        leftovers.is_empty(),
-        "no temp file left behind: {leftovers:?}"
-    );
+    assert!(leftovers.is_empty(), "no temp file left behind: {leftovers:?}");
     std::fs::remove_dir_all(&dir).unwrap();
 }
 
@@ -163,10 +114,7 @@ fn the_report_carries_the_matrix_pentagon_length_and_gate() {
         for j in 0..m.len() {
             let c = m.cell(i, j).copied().unwrap_or_default();
             let got = &r.matrix.cells[i][j];
-            assert_eq!(
-                (got.half_wins, got.n_decided, got.n_timeout),
-                (c.half_wins, c.n_decided, c.n_timeout)
-            );
+            assert_eq!((got.half_wins, got.n_decided, got.n_timeout), (c.half_wins, c.n_decided, c.n_timeout));
             assert_eq!(got.rate, c.rate());
             assert_eq!(got.interval, c.wilson_interval());
         }
@@ -175,40 +123,22 @@ fn the_report_carries_the_matrix_pentagon_length_and_gate() {
 
     assert_eq!(r.pentagon.links.len(), 5, "the shipped cycle");
     assert_eq!(r.pentagon.cycle_error, None);
-    let measured: Vec<_> = r
-        .pentagon
-        .links
-        .iter()
-        .filter(|l| l.rate.is_some())
-        .collect();
+    let measured: Vec<_> = r.pentagon.links.iter().filter(|l| l.rate.is_some()).collect();
     assert_eq!(measured.len(), 1, "only sentinel > ripper was played");
     assert_eq!(measured[0].predator, "sentinel");
-    assert!(
-        measured[0].interval.is_some(),
-        "a verdict is never quoted without its interval"
-    );
+    assert!(measured[0].interval.is_some(), "a verdict is never quoted without its interval");
 
-    assert_eq!(
-        (r.length.total, r.length.decided, r.length.timeouts),
-        (15, 12, 3)
-    );
+    assert_eq!((r.length.total, r.length.decided, r.length.timeouts), (15, 12, 3));
     assert_eq!(r.length.in_band, 6, "the 6:00 and 7:00 matches");
 
-    assert_eq!(
-        r.gate,
-        onus::gate::KillGate::of(&content, &recs, &Default::default())
-    );
+    assert_eq!(r.gate, onus::gate::KillGate::of(&content, &recs, &Default::default()));
     assert_ne!(r.gate.status, Status::Pass, "15 matches decide nothing");
 }
 
 #[test]
 fn the_report_is_a_function_of_the_records() {
-    let a = BalanceReport::of(&shipped(), &settings(), &batch())
-        .to_ron()
-        .unwrap();
-    let b = BalanceReport::of(&shipped(), &settings(), &batch())
-        .to_ron()
-        .unwrap();
+    let a = BalanceReport::of(&shipped(), &settings(), &batch()).to_ron().unwrap();
+    let b = BalanceReport::of(&shipped(), &settings(), &batch()).to_ron().unwrap();
     assert_eq!(a, b);
 }
 
@@ -254,8 +184,7 @@ fn an_all_timeout_report_says_fail_and_all_timeout() {
 #[test]
 fn the_artifact_is_gitignored() {
     assert_eq!(DEFAULT_REPORT_PATH, "balance_report.ron");
-    let ignore =
-        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/.gitignore")).unwrap();
+    let ignore = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/.gitignore")).unwrap();
     assert!(
         ignore.lines().any(|l| l.trim() == "/balance_report.ron"),
         ".gitignore must list /balance_report.ron:\n{ignore}"
@@ -274,30 +203,17 @@ fn the_binary_writes_the_report_it_prints() {
         .arg(&path)
         .output()
         .expect("binary runs");
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let stdout = String::from_utf8_lossy(&out.stdout);
     let r = BalanceReport::read(&path).expect("the binary wrote a readable report");
     std::fs::remove_file(&path).unwrap();
     assert_eq!(r.outcomes.matches, 8);
     assert_eq!(r.settings.tick_cap, 1);
-    assert_eq!(
-        r.settings.only,
-        Some(vec!["rush".to_string(), "turtle".to_string()])
-    );
+    assert_eq!(r.settings.only, Some(vec!["rush".to_string(), "turtle".to_string()]));
     assert!(r.gate.termination.all_timeout);
     assert_eq!(r.gate.status, Status::Fail);
-    assert!(
-        stdout.contains(&r.to_string()),
-        "stdout carries the report's tables:\n{stdout}"
-    );
-    assert!(
-        stdout.contains(&format!("report       {}", path.display())),
-        "{stdout}"
-    );
+    assert!(stdout.contains(&r.to_string()), "stdout carries the report's tables:\n{stdout}");
+    assert!(stdout.contains(&format!("report       {}", path.display())), "{stdout}");
 }
 
 #[test]
@@ -321,10 +237,7 @@ fn an_unwritable_report_path_fails_the_run() {
         .arg(&path)
         .output()
         .expect("binary runs");
-    assert!(
-        !out.status.success(),
-        "a report that was not written must not exit 0"
-    );
+    assert!(!out.status.success(), "a report that was not written must not exit 0");
     assert!(String::from_utf8_lossy(&out.stderr).contains("report"));
 }
 
@@ -343,25 +256,12 @@ fn without_report_the_binary_prints_the_tables_and_writes_no_file() {
     let written = dir.join(DEFAULT_REPORT_PATH).exists();
     let leftovers = std::fs::read_dir(&dir).unwrap().count();
     std::fs::remove_dir_all(&dir).unwrap();
-    assert!(
-        out.status.success(),
-        "{}",
-        String::from_utf8_lossy(&out.stderr)
-    );
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert!(!written, "no --report, no file");
-    assert_eq!(
-        leftovers, 0,
-        "nothing at all written into the working directory"
-    );
+    assert_eq!(leftovers, 0, "nothing at all written into the working directory");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(
-        stdout.contains("kill gate"),
-        "the tables still print:\n{stdout}"
-    );
-    assert!(
-        !stdout.contains("report       "),
-        "no report line without a report:\n{stdout}"
-    );
+    assert!(stdout.contains("kill gate"), "the tables still print:\n{stdout}");
+    assert!(!stdout.contains("report       "), "no report line without a report:\n{stdout}");
 }
 
 /// A strictly weak strategy is tagged in the table and named in the report,
@@ -379,16 +279,9 @@ fn a_strictly_weak_strategy_is_tagged_in_the_table_and_named_in_the_report() {
     let r = BalanceReport::of(&shipped(), &BatchSettings::default(), &recs);
     assert_eq!(r.gate.strength.losing, ["rush"]);
     let back = BalanceReport::from_ron(&r.to_ron().unwrap()).unwrap();
-    assert_eq!(
-        back.gate.strength.losing,
-        ["rush"],
-        "the RON carries the name"
-    );
+    assert_eq!(back.gate.strength.losing, ["rush"], "the RON carries the name");
     let text = r.to_string();
-    let row = text
-        .lines()
-        .find(|l| l.trim_start().starts_with("rush "))
-        .expect("rush row");
+    let row = text.lines().find(|l| l.trim_start().starts_with("rush ")).expect("rush row");
     assert!(row.contains("LOSING"), "{row}");
     assert!(text.contains("losing (named, not gated): rush"), "{text}");
 }

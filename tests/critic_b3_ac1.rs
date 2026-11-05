@@ -35,8 +35,7 @@ fn n(a: &str, b: &str, result: MatchResult) -> MatchRecord {
 }
 
 fn c(m: &WinMatrix, row: &str, col: &str) -> Cell {
-    *m.get(row, col)
-        .unwrap_or_else(|| panic!("({row},{col}) exists"))
+    *m.get(row, col).unwrap_or_else(|| panic!("({row},{col}) exists"))
 }
 
 fn rate(m: &WinMatrix, row: &str, col: &str) -> Option<f64> {
@@ -117,28 +116,11 @@ fn mirrors_feed_only_the_diagonal_exactly_once() {
     let d = c(&m, "i", "i");
     assert_eq!(d.n_decided, 4, "four decided mirrors, not eight");
     assert_eq!(d.n_timeout, 1);
-    assert_eq!(
-        d.half_wins, 3,
-        "slot A's half-wins: win + loss + loss + draw"
-    );
+    assert_eq!(d.half_wins, 3, "slot A's half-wins: win + loss + loss + draw");
     assert_eq!(m.diagonal(m.index("i").unwrap()), Some(3.0 / 8.0));
     // Off-diagonal cells see only the one cross record.
-    assert_eq!(
-        c(&m, "i", "j"),
-        Cell {
-            half_wins: 2,
-            n_decided: 1,
-            n_timeout: 0
-        }
-    );
-    assert_eq!(
-        c(&m, "j", "i"),
-        Cell {
-            half_wins: 0,
-            n_decided: 1,
-            n_timeout: 0
-        }
-    );
+    assert_eq!(c(&m, "i", "j"), Cell { half_wins: 2, n_decided: 1, n_timeout: 0 });
+    assert_eq!(c(&m, "j", "i"), Cell { half_wins: 0, n_decided: 1, n_timeout: 0 });
     // Row means ignore the diagonal entirely.
     assert_eq!(m.row_mean(m.index("i").unwrap()).mean, Some(1.0));
     assert_eq!(m.row_mean(m.index("i").unwrap()).cells, 1);
@@ -167,27 +149,9 @@ fn uneven_slot_and_orientation_counts_combine_exactly() {
     let ij = c(&m, "i", "j");
     let ji = c(&m, "j", "i");
     // i: 2 wins + 1 loss + half + half = 3 wins over 5 decided.
-    assert_eq!(
-        ij,
-        Cell {
-            half_wins: 6,
-            n_decided: 5,
-            n_timeout: 1
-        }
-    );
-    assert_eq!(
-        ji,
-        Cell {
-            half_wins: 4,
-            n_decided: 5,
-            n_timeout: 1
-        }
-    );
-    assert_eq!(
-        ij.half_wins + ji.half_wins,
-        2 * ij.n_decided,
-        "integer complementarity"
-    );
+    assert_eq!(ij, Cell { half_wins: 6, n_decided: 5, n_timeout: 1 });
+    assert_eq!(ji, Cell { half_wins: 4, n_decided: 5, n_timeout: 1 });
+    assert_eq!(ij.half_wins + ji.half_wins, 2 * ij.n_decided, "integer complementarity");
     assert_eq!(ij.rate().unwrap() + ji.rate().unwrap(), 1.0);
     assert_eq!(ij.rate(), Some(0.6));
 }
@@ -210,20 +174,8 @@ fn a_row_whose_only_defined_cell_is_its_mirror_has_no_mean() {
     assert_eq!(rate(&m, "i", "j"), None);
     assert_eq!(rate(&m, "k", "i"), None);
     // j and k each have exactly one defined off-diagonal cell.
-    assert_eq!(
-        m.row_mean(m.index("j").unwrap()),
-        onus::metrics::RowMean {
-            mean: Some(1.0),
-            cells: 1
-        }
-    );
-    assert_eq!(
-        m.row_mean(m.index("k").unwrap()),
-        onus::metrics::RowMean {
-            mean: Some(0.0),
-            cells: 1
-        }
-    );
+    assert_eq!(m.row_mean(m.index("j").unwrap()), onus::metrics::RowMean { mean: Some(1.0), cells: 1 });
+    assert_eq!(m.row_mean(m.index("k").unwrap()), onus::metrics::RowMean { mean: Some(0.0), cells: 1 });
     // i's row in row_means() is undefined too.
     let rms = m.row_means();
     assert_eq!(rms[i].0, "i");
@@ -279,27 +231,11 @@ fn a_dominant_row_with_undefined_cells_reports_the_true_cell_count() {
     ];
     let m = WinMatrix::of(&recs);
     let top = m.index("top").unwrap();
-    assert_eq!(
-        m.row_mean(top),
-        onus::metrics::RowMean {
-            mean: Some(1.0),
-            cells: 2
-        }
-    );
+    assert_eq!(m.row_mean(top), onus::metrics::RowMean { mean: Some(1.0), cells: 2 });
     // The strictly-losing reading is by name too.
-    let bottom = WinMatrix::of(&[
-        n("loser", "x", B_WINS),
-        n("y", "loser", A_WINS),
-        n("x", "y", DRAW),
-    ]);
+    let bottom = WinMatrix::of(&[n("loser", "x", B_WINS), n("y", "loser", A_WINS), n("x", "y", DRAW)]);
     let li = bottom.index("loser").unwrap();
-    assert_eq!(
-        bottom.row_mean(li),
-        onus::metrics::RowMean {
-            mean: Some(0.0),
-            cells: 2
-        }
-    );
+    assert_eq!(bottom.row_mean(li), onus::metrics::RowMean { mean: Some(0.0), cells: 2 });
     let name_of_min = bottom
         .row_means()
         .into_iter()
@@ -335,11 +271,7 @@ fn degenerate_inputs_do_not_panic_and_do_nothing_clever() {
     assert_eq!(m.ids(), ["a", "onlyb"]);
     assert_eq!(rate(&m, "onlyb", "a"), Some(0.5));
     // Casing and whitespace are distinct ids.
-    let m = WinMatrix::of(&[
-        n("Rush", "rush", A_WINS),
-        n("rush ", "rush", B_WINS),
-        n("", "rush", DRAW),
-    ]);
+    let m = WinMatrix::of(&[n("Rush", "rush", A_WINS), n("rush ", "rush", B_WINS), n("", "rush", DRAW)]);
     assert_eq!(m.ids(), ["Rush", "rush", "rush ", ""]);
     assert_eq!(rate(&m, "Rush", "rush"), Some(1.0));
     assert_eq!(rate(&m, "rush", "rush "), Some(1.0));
@@ -348,14 +280,7 @@ fn degenerate_inputs_do_not_panic_and_do_nothing_clever() {
     // Duplicates are counted, not deduped.
     let one = n("a", "b", A_WINS);
     let m = WinMatrix::of(&[one.clone(), one.clone(), one]);
-    assert_eq!(
-        c(&m, "a", "b"),
-        Cell {
-            half_wins: 6,
-            n_decided: 3,
-            n_timeout: 0
-        }
-    );
+    assert_eq!(c(&m, "a", "b"), Cell { half_wins: 6, n_decided: 3, n_timeout: 0 });
     assert_eq!(m.decided(), 3);
     // Out-of-range lookups are None, never a panic.
     assert!(m.cell(usize::MAX, 0).is_none());
@@ -367,23 +292,11 @@ fn degenerate_inputs_do_not_panic_and_do_nothing_clever() {
 
 #[test]
 fn rate_is_exact_float_division_at_large_counts() {
-    let cell = Cell {
-        half_wins: 1 << 30,
-        n_decided: 1 << 30,
-        n_timeout: 0,
-    };
+    let cell = Cell { half_wins: 1 << 30, n_decided: 1 << 30, n_timeout: 0 };
     assert_eq!(cell.rate(), Some(0.5));
-    let cell = Cell {
-        half_wins: 1,
-        n_decided: 1_000_000_000,
-        n_timeout: 5,
-    };
+    let cell = Cell { half_wins: 1, n_decided: 1_000_000_000, n_timeout: 5 };
     assert_eq!(cell.rate(), Some(1.0 / 2_000_000_000.0));
-    let cell = Cell {
-        half_wins: 3,
-        n_decided: 2,
-        n_timeout: 0,
-    };
+    let cell = Cell { half_wins: 3, n_decided: 2, n_timeout: 0 };
     assert_eq!(cell.rate(), Some(0.75), "no integer truncation");
 }
 
@@ -392,10 +305,7 @@ fn rate_is_exact_float_division_at_large_counts() {
 struct Lcg(u64);
 impl Lcg {
     fn next(&mut self) -> u64 {
-        self.0 = self
-            .0
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
+        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         self.0 >> 33
     }
     fn below(&mut self, n: u64) -> u64 {
@@ -415,11 +325,7 @@ fn random_records(seed: u64, count: usize, ids: &[&str]) -> Vec<MatchRecord> {
                 5 => DRAW,
                 _ => CAPPED,
             };
-            let o = if g.below(3) == 0 {
-                Orientation::Swapped
-            } else {
-                Orientation::Normal
-            };
+            let o = if g.below(3) == 0 { Orientation::Swapped } else { Orientation::Normal };
             r(a, b, res, o)
         })
         .collect()
@@ -440,17 +346,12 @@ fn exact_mean(fracs: &[(u128, u128)]) -> Option<(u128, u128)> {
     }
     let (mut p, mut q) = (0u128, 1u128);
     for &(n, d) in fracs {
-        let np = p
-            .checked_mul(d)
-            .and_then(|x| x.checked_add(n.checked_mul(q)?))
-            .expect("u128 sum");
+        let np = p.checked_mul(d).and_then(|x| x.checked_add(n.checked_mul(q)?)).expect("u128 sum");
         let nq = q.checked_mul(d).expect("u128 denominator");
         let g = gcd(np, nq).max(1);
         (p, q) = (np / g, nq / g);
     }
-    let nq = q
-        .checked_mul(fracs.len() as u128)
-        .expect("u128 denominator");
+    let nq = q.checked_mul(fracs.len() as u128).expect("u128 denominator");
     let g = gcd(p, nq).max(1);
     Some((p / g, nq / g))
 }
@@ -579,13 +480,7 @@ fn matrix_matches_a_brute_force_oracle_on_random_records() {
         }
         assert_eq!(m.decided(), decided, "seed {seed}");
         assert_eq!(m.timeouts(), timeouts, "seed {seed}");
-        for &row in m
-            .ids()
-            .iter()
-            .map(|s| s.as_str())
-            .collect::<Vec<_>>()
-            .iter()
-        {
+        for &row in m.ids().iter().map(|s| s.as_str()).collect::<Vec<_>>().iter() {
             let mut means = vec![];
             for col in m.ids() {
                 let (w2, d, t) = oracle(&recs, row, col);
@@ -680,53 +575,20 @@ fn an_injected_crippled_strategy_is_surfaced_as_strictly_losing_by_name() {
             let rec = batch::run_match(&content, &settings).expect("names resolve");
             // Ground truth for the slot mapping, independent of the result:
             // the crippled side builds no combat unit.
-            let crippled_slot = if a == "crippled" {
-                Faction::A
-            } else {
-                Faction::B
-            };
+            let crippled_slot = if a == "crippled" { Faction::A } else { Faction::B };
             let rush_slot = if a == "rush" { Faction::A } else { Faction::B };
             assert!(rec.produced.total(rush_slot) > rec.produced.total(crippled_slot));
-            assert_eq!(
-                rec.result,
-                MatchResult::Decided(rush_slot),
-                "{a} vs {b} {o:?}: rush must win"
-            );
+            assert_eq!(rec.result, MatchResult::Decided(rush_slot), "{a} vs {b} {o:?}: rush must win");
             recs.push(rec);
         }
     }
     let m = WinMatrix::of(&recs);
     assert_eq!(m.ids(), ["rush", "crippled"]);
-    assert_eq!(
-        c(&m, "rush", "crippled"),
-        Cell {
-            half_wins: 8,
-            n_decided: 4,
-            n_timeout: 0
-        }
-    );
+    assert_eq!(c(&m, "rush", "crippled"), Cell { half_wins: 8, n_decided: 4, n_timeout: 0 });
     assert_eq!(rate(&m, "crippled", "rush"), Some(0.0));
     let means = m.row_means();
-    assert_eq!(
-        means[0],
-        (
-            "rush".to_string(),
-            onus::metrics::RowMean {
-                mean: Some(1.0),
-                cells: 1
-            }
-        )
-    );
-    assert_eq!(
-        means[1],
-        (
-            "crippled".to_string(),
-            onus::metrics::RowMean {
-                mean: Some(0.0),
-                cells: 1
-            }
-        )
-    );
+    assert_eq!(means[0], ("rush".to_string(), onus::metrics::RowMean { mean: Some(1.0), cells: 1 }));
+    assert_eq!(means[1], ("crippled".to_string(), onus::metrics::RowMean { mean: Some(0.0), cells: 1 }));
 }
 
 #[test]
@@ -761,16 +623,10 @@ fn the_balance_binary_flags_an_all_timeout_run_and_prints_no_rate() {
     );
     let start = stdout.find("win rate").expect("matrix printed");
     let matrix = &stdout[start..];
-    assert!(
-        !matrix.contains("50.0"),
-        "an undecided matrix printed a 50%:\n{matrix}"
-    );
+    assert!(!matrix.contains("50.0"), "an undecided matrix printed a 50%:\n{matrix}");
     assert!(!matrix.contains('%') || matrix.contains("--"), "{matrix}");
     for line in matrix.lines().filter(|l| l.starts_with('[')) {
-        assert!(
-            !line.contains('.'),
-            "a rate was printed in an all-timeout matrix: {line}"
-        );
+        assert!(!line.contains('.'), "a rate was printed in an all-timeout matrix: {line}");
     }
 }
 
@@ -826,27 +682,12 @@ fn a_row_mean_is_the_nearest_float_to_the_exact_rational_mean() {
         v
     };
     let fixtures: [Vec<Vec<MatchRecord>>; 2] = [
-        vec![
-            block("o60", 3, 0, 2),
-            block("o70", 3, 1, 1),
-            block("o20", 1, 0, 4),
-        ],
-        vec![
-            block("h06", 3, 0, 3),
-            block("h11", 5, 1, 0),
-            block("h01", 0, 1, 5),
-        ],
+        vec![block("o60", 3, 0, 2), block("o70", 3, 1, 1), block("o20", 1, 0, 4)],
+        vec![block("h06", 3, 0, 3), block("h11", 5, 1, 0), block("h01", 0, 1, 5)],
     ];
     for blocks in fixtures {
         // Every column order of the three opponents.
-        for perm in [
-            [0, 1, 2],
-            [0, 2, 1],
-            [1, 0, 2],
-            [1, 2, 0],
-            [2, 0, 1],
-            [2, 1, 0],
-        ] {
+        for perm in [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]] {
             let recs: Vec<MatchRecord> = perm.iter().flat_map(|&k| blocks[k].clone()).collect();
             let m = WinMatrix::of(&recs);
             let rm = m.row_mean(m.index("s").unwrap());
@@ -872,18 +713,8 @@ fn scored_cell(row: &str, opp: &str, h: u32, n: u32, flip: bool) -> Vec<MatchRec
     assert!(h <= 2 * n);
     let (wins, draws) = (h / 2, h % 2);
     let losses = n - wins - draws;
-    let (win, loss) = if flip {
-        (B_WINS, A_WINS)
-    } else {
-        (A_WINS, B_WINS)
-    };
-    let seat = |res| {
-        if flip {
-            n_rec(opp, row, res)
-        } else {
-            n_rec(row, opp, res)
-        }
-    };
+    let (win, loss) = if flip { (B_WINS, A_WINS) } else { (A_WINS, B_WINS) };
+    let seat = |res| if flip { n_rec(opp, row, res) } else { n_rec(row, opp, res) };
     let mut v = Vec::with_capacity(n as usize);
     v.extend((0..wins).map(|_| seat(win)));
     v.extend((0..draws).map(|_| seat(DRAW)));
@@ -923,524 +754,25 @@ fn shuffle(recs: &mut [MatchRecord], g: &mut Lcg) {
 /// 0.002 ulp above a float); `next` (within 0.002 ulp below the next float).
 type Fixture = (&'static str, u64, &'static [(u32, u32)]);
 const BEYOND_U128: &[Fixture] = &[
-    (
-        "random",
-        0x3FE200554A2B2A76,
-        &[
-            (349, 193),
-            (325, 541),
-            (222, 809),
-            (1033, 528),
-            (780, 397),
-            (896, 754),
-            (1173, 827),
-            (1025, 767),
-            (1254, 725),
-            (497, 697),
-            (177, 404),
-            (550, 596),
-            (1307, 703),
-            (843, 614),
-            (853, 802),
-            (829, 693),
-            (496, 280),
-            (93, 197),
-            (1222, 637),
-            (696, 457),
-            (981, 692),
-            (31, 344),
-            (24, 227),
-            (50, 523),
-            (488, 482),
-            (416, 415),
-        ],
-    ),
-    (
-        "random",
-        0x3FE204A985D9D68C,
-        &[
-            (228, 200),
-            (1202, 696),
-            (719, 460),
-            (119, 275),
-            (384, 204),
-            (1273, 740),
-            (287, 370),
-            (1011, 745),
-            (18, 282),
-            (193, 720),
-            (174, 227),
-            (686, 377),
-            (170, 270),
-            (339, 641),
-            (29, 158),
-            (772, 512),
-            (756, 544),
-            (916, 707),
-            (404, 597),
-            (787, 599),
-            (471, 303),
-            (845, 635),
-            (285, 333),
-            (360, 248),
-            (639, 333),
-        ],
-    ),
-    (
-        "random",
-        0x3FE204688A4D661E,
-        &[
-            (497, 267),
-            (271, 353),
-            (336, 353),
-            (1356, 786),
-            (1510, 889),
-            (109, 332),
-            (404, 269),
-            (276, 738),
-            (462, 437),
-            (263, 208),
-            (670, 466),
-            (812, 837),
-            (1062, 644),
-            (170, 629),
-            (573, 552),
-            (988, 881),
-        ],
-    ),
-    (
-        "random",
-        0x3FDA8B0506974A24,
-        &[
-            (261, 152),
-            (178, 900),
-            (49, 322),
-            (1543, 894),
-            (551, 510),
-            (308, 601),
-            (243, 398),
-            (31, 639),
-            (235, 282),
-            (49, 249),
-            (107, 286),
-            (315, 677),
-            (66, 566),
-            (800, 496),
-            (387, 230),
-            (652, 445),
-            (294, 519),
-            (9, 459),
-            (99, 256),
-            (1284, 789),
-            (945, 832),
-            (976, 560),
-            (546, 787),
-            (246, 151),
-            (202, 396),
-            (452, 596),
-            (420, 787),
-        ],
-    ),
-    (
-        "random",
-        0x3FDE613359719675,
-        &[
-            (239, 172),
-            (751, 738),
-            (278, 576),
-            (185, 216),
-            (418, 278),
-            (252, 651),
-            (696, 425),
-            (414, 391),
-            (181, 832),
-            (166, 221),
-            (773, 639),
-            (1132, 784),
-            (83, 541),
-            (99, 162),
-            (235, 760),
-            (202, 589),
-            (1329, 670),
-            (1099, 766),
-            (661, 618),
-            (321, 662),
-            (862, 877),
-            (579, 531),
-            (308, 172),
-            (288, 690),
-            (265, 261),
-            (987, 666),
-            (424, 833),
-        ],
-    ),
-    (
-        "random",
-        0x3FDEB029C2072C38,
-        &[
-            (381, 428),
-            (763, 899),
-            (191, 855),
-            (166, 577),
-            (51, 154),
-            (328, 616),
-            (318, 371),
-            (1304, 801),
-            (432, 485),
-            (748, 632),
-            (243, 174),
-            (85, 257),
-            (271, 245),
-            (1266, 758),
-            (1243, 846),
-            (856, 497),
-            (1099, 649),
-            (90, 532),
-            (498, 556),
-            (326, 179),
-            (992, 767),
-            (77, 383),
-            (930, 644),
-            (514, 615),
-            (59, 613),
-            (195, 457),
-            (328, 199),
-        ],
-    ),
-    (
-        "random",
-        0x3FE0F6460F81F53F,
-        &[
-            (492, 498),
-            (233, 173),
-            (344, 335),
-            (557, 302),
-            (264, 245),
-            (574, 287),
-            (241, 466),
-            (248, 651),
-            (24, 491),
-            (266, 226),
-            (12, 378),
-            (698, 466),
-            (741, 398),
-            (389, 596),
-            (154, 323),
-            (937, 512),
-            (1043, 547),
-            (1010, 705),
-            (61, 820),
-            (818, 794),
-        ],
-    ),
-    (
-        "random",
-        0x3FDED3D86C605A27,
-        &[
-            (188, 840),
-            (382, 248),
-            (78, 667),
-            (878, 578),
-            (570, 405),
-            (1212, 706),
-            (114, 527),
-            (336, 551),
-            (268, 321),
-            (627, 609),
-            (464, 789),
-            (292, 244),
-            (497, 822),
-            (208, 857),
-            (617, 374),
-            (495, 564),
-            (689, 486),
-            (562, 893),
-            (849, 451),
-        ],
-    ),
-    (
-        "low",
-        0x3F8A99137917A463,
-        &[
-            (5, 627),
-            (7, 411),
-            (7, 340),
-            (11, 566),
-            (10, 394),
-            (8, 223),
-            (0, 418),
-            (28, 622),
-            (3, 255),
-            (13, 276),
-            (7, 265),
-            (19, 386),
-            (15, 323),
-            (15, 335),
-            (11, 514),
-            (12, 461),
-            (12, 671),
-            (8, 230),
-            (33, 727),
-            (3, 877),
-            (1, 593),
-            (22, 635),
-            (16, 509),
-            (6, 619),
-        ],
-    ),
-    (
-        "high",
-        0x3FEFA349AD135394,
-        &[
-            (628, 317),
-            (1629, 833),
-            (972, 491),
-            (1444, 740),
-            (686, 344),
-            (1094, 555),
-            (933, 478),
-            (655, 330),
-            (978, 493),
-            (507, 259),
-            (488, 246),
-            (721, 363),
-            (705, 355),
-            (1473, 746),
-            (1320, 665),
-            (1492, 753),
-            (1609, 806),
-            (712, 358),
-            (429, 218),
-            (1289, 656),
-            (1660, 833),
-            (1017, 521),
-            (1612, 807),
-            (1406, 707),
-        ],
-    ),
-    (
-        "mid",
-        0x3FE31793C8B5CE36,
-        &[
-            (294, 424),
-            (949, 488),
-            (380, 251),
-            (454, 270),
-            (224, 446),
-            (194, 157),
-            (324, 492),
-            (305, 260),
-            (139, 110),
-            (432, 240),
-            (155, 266),
-            (922, 500),
-            (218, 200),
-            (359, 339),
-            (123, 118),
-            (771, 396),
-            (19, 105),
-            (595, 470),
-        ],
-    ),
-    (
-        "mid",
-        0x3FD87494BA7E25B3,
-        &[
-            (14, 475),
-            (345, 384),
-            (148, 479),
-            (271, 230),
-            (167, 286),
-            (575, 452),
-            (341, 346),
-            (148, 366),
-            (270, 599),
-            (364, 582),
-            (169, 156),
-            (700, 376),
-            (10, 110),
-            (334, 434),
-            (85, 147),
-            (232, 417),
-            (804, 548),
-            (452, 575),
-            (184, 312),
-        ],
-    ),
-    (
-        "mid",
-        0x3FE1F7427D1988BB,
-        &[
-            (224, 382),
-            (710, 410),
-            (327, 209),
-            (278, 469),
-            (369, 285),
-            (186, 265),
-            (637, 584),
-            (291, 326),
-            (186, 227),
-            (373, 273),
-            (133, 228),
-            (198, 127),
-            (908, 491),
-            (265, 306),
-            (205, 171),
-            (255, 180),
-            (834, 594),
-            (348, 502),
-        ],
-    ),
-    (
-        "exact",
-        0x3FE1CCDFD7491BB3,
-        &[
-            (807, 406),
-            (203, 438),
-            (478, 243),
-            (424, 591),
-            (733, 495),
-            (455, 249),
-            (238, 127),
-            (331, 291),
-            (16, 480),
-            (241, 360),
-            (50, 333),
-            (740, 378),
-            (120, 551),
-            (82, 296),
-            (441, 484),
-            (281, 264),
-            (791, 554),
-            (255, 137),
-        ],
-    ),
-    (
-        "exact",
-        0x3FDF27A171BD159E,
-        &[
-            (454, 295),
-            (319, 355),
-            (22, 164),
-            (773, 456),
-            (95, 474),
-            (138, 353),
-            (107, 291),
-            (98, 228),
-            (109, 123),
-            (687, 399),
-            (627, 346),
-            (306, 251),
-            (283, 287),
-            (584, 388),
-            (772, 450),
-            (31, 410),
-        ],
-    ),
-    (
-        "exact",
-        0x3FDE1E42711C9DB5,
-        &[
-            (204, 218),
-            (140, 502),
-            (581, 379),
-            (336, 360),
-            (283, 296),
-            (479, 381),
-            (506, 267),
-            (305, 388),
-            (468, 558),
-            (360, 296),
-            (84, 121),
-            (37, 249),
-            (345, 298),
-            (448, 485),
-            (68, 237),
-            (831, 503),
-            (164, 317),
-            (173, 104),
-            (310, 533),
-            (123, 197),
-            (368, 416),
-        ],
-    ),
-    (
-        "next",
-        0x3FE21B62894A782A,
-        &[
-            (706, 529),
-            (347, 421),
-            (203, 254),
-            (489, 544),
-            (873, 467),
-            (2, 326),
-            (782, 421),
-            (524, 505),
-            (108, 572),
-            (223, 196),
-            (921, 554),
-            (94, 130),
-            (272, 450),
-            (305, 255),
-            (160, 168),
-            (277, 220),
-            (700, 465),
-            (617, 501),
-            (449, 262),
-            (956, 522),
-        ],
-    ),
-    (
-        "next",
-        0x3FE2A9742C613EC8,
-        &[
-            (302, 303),
-            (382, 196),
-            (324, 237),
-            (484, 438),
-            (12, 104),
-            (294, 454),
-            (999, 510),
-            (526, 474),
-            (159, 124),
-            (244, 138),
-            (480, 499),
-            (97, 139),
-            (347, 225),
-            (363, 225),
-            (38, 196),
-            (200, 136),
-            (318, 289),
-            (427, 383),
-        ],
-    ),
-    (
-        "next",
-        0x3FD9B43A3F75B6EE,
-        &[
-            (331, 507),
-            (103, 168),
-            (209, 475),
-            (667, 554),
-            (658, 366),
-            (293, 164),
-            (229, 195),
-            (49, 254),
-            (394, 310),
-            (31, 163),
-            (271, 464),
-            (120, 532),
-            (691, 447),
-            (356, 299),
-            (15, 102),
-            (795, 468),
-            (11, 265),
-            (46, 573),
-            (400, 432),
-            (17, 108),
-            (442, 466),
-        ],
-    ),
+    ("random", 0x3FE200554A2B2A76, &[(349, 193), (325, 541), (222, 809), (1033, 528), (780, 397), (896, 754), (1173, 827), (1025, 767), (1254, 725), (497, 697), (177, 404), (550, 596), (1307, 703), (843, 614), (853, 802), (829, 693), (496, 280), (93, 197), (1222, 637), (696, 457), (981, 692), (31, 344), (24, 227), (50, 523), (488, 482), (416, 415)]),
+    ("random", 0x3FE204A985D9D68C, &[(228, 200), (1202, 696), (719, 460), (119, 275), (384, 204), (1273, 740), (287, 370), (1011, 745), (18, 282), (193, 720), (174, 227), (686, 377), (170, 270), (339, 641), (29, 158), (772, 512), (756, 544), (916, 707), (404, 597), (787, 599), (471, 303), (845, 635), (285, 333), (360, 248), (639, 333)]),
+    ("random", 0x3FE204688A4D661E, &[(497, 267), (271, 353), (336, 353), (1356, 786), (1510, 889), (109, 332), (404, 269), (276, 738), (462, 437), (263, 208), (670, 466), (812, 837), (1062, 644), (170, 629), (573, 552), (988, 881)]),
+    ("random", 0x3FDA8B0506974A24, &[(261, 152), (178, 900), (49, 322), (1543, 894), (551, 510), (308, 601), (243, 398), (31, 639), (235, 282), (49, 249), (107, 286), (315, 677), (66, 566), (800, 496), (387, 230), (652, 445), (294, 519), (9, 459), (99, 256), (1284, 789), (945, 832), (976, 560), (546, 787), (246, 151), (202, 396), (452, 596), (420, 787)]),
+    ("random", 0x3FDE613359719675, &[(239, 172), (751, 738), (278, 576), (185, 216), (418, 278), (252, 651), (696, 425), (414, 391), (181, 832), (166, 221), (773, 639), (1132, 784), (83, 541), (99, 162), (235, 760), (202, 589), (1329, 670), (1099, 766), (661, 618), (321, 662), (862, 877), (579, 531), (308, 172), (288, 690), (265, 261), (987, 666), (424, 833)]),
+    ("random", 0x3FDEB029C2072C38, &[(381, 428), (763, 899), (191, 855), (166, 577), (51, 154), (328, 616), (318, 371), (1304, 801), (432, 485), (748, 632), (243, 174), (85, 257), (271, 245), (1266, 758), (1243, 846), (856, 497), (1099, 649), (90, 532), (498, 556), (326, 179), (992, 767), (77, 383), (930, 644), (514, 615), (59, 613), (195, 457), (328, 199)]),
+    ("random", 0x3FE0F6460F81F53F, &[(492, 498), (233, 173), (344, 335), (557, 302), (264, 245), (574, 287), (241, 466), (248, 651), (24, 491), (266, 226), (12, 378), (698, 466), (741, 398), (389, 596), (154, 323), (937, 512), (1043, 547), (1010, 705), (61, 820), (818, 794)]),
+    ("random", 0x3FDED3D86C605A27, &[(188, 840), (382, 248), (78, 667), (878, 578), (570, 405), (1212, 706), (114, 527), (336, 551), (268, 321), (627, 609), (464, 789), (292, 244), (497, 822), (208, 857), (617, 374), (495, 564), (689, 486), (562, 893), (849, 451)]),
+    ("low", 0x3F8A99137917A463, &[(5, 627), (7, 411), (7, 340), (11, 566), (10, 394), (8, 223), (0, 418), (28, 622), (3, 255), (13, 276), (7, 265), (19, 386), (15, 323), (15, 335), (11, 514), (12, 461), (12, 671), (8, 230), (33, 727), (3, 877), (1, 593), (22, 635), (16, 509), (6, 619)]),
+    ("high", 0x3FEFA349AD135394, &[(628, 317), (1629, 833), (972, 491), (1444, 740), (686, 344), (1094, 555), (933, 478), (655, 330), (978, 493), (507, 259), (488, 246), (721, 363), (705, 355), (1473, 746), (1320, 665), (1492, 753), (1609, 806), (712, 358), (429, 218), (1289, 656), (1660, 833), (1017, 521), (1612, 807), (1406, 707)]),
+    ("mid", 0x3FE31793C8B5CE36, &[(294, 424), (949, 488), (380, 251), (454, 270), (224, 446), (194, 157), (324, 492), (305, 260), (139, 110), (432, 240), (155, 266), (922, 500), (218, 200), (359, 339), (123, 118), (771, 396), (19, 105), (595, 470)]),
+    ("mid", 0x3FD87494BA7E25B3, &[(14, 475), (345, 384), (148, 479), (271, 230), (167, 286), (575, 452), (341, 346), (148, 366), (270, 599), (364, 582), (169, 156), (700, 376), (10, 110), (334, 434), (85, 147), (232, 417), (804, 548), (452, 575), (184, 312)]),
+    ("mid", 0x3FE1F7427D1988BB, &[(224, 382), (710, 410), (327, 209), (278, 469), (369, 285), (186, 265), (637, 584), (291, 326), (186, 227), (373, 273), (133, 228), (198, 127), (908, 491), (265, 306), (205, 171), (255, 180), (834, 594), (348, 502)]),
+    ("exact", 0x3FE1CCDFD7491BB3, &[(807, 406), (203, 438), (478, 243), (424, 591), (733, 495), (455, 249), (238, 127), (331, 291), (16, 480), (241, 360), (50, 333), (740, 378), (120, 551), (82, 296), (441, 484), (281, 264), (791, 554), (255, 137)]),
+    ("exact", 0x3FDF27A171BD159E, &[(454, 295), (319, 355), (22, 164), (773, 456), (95, 474), (138, 353), (107, 291), (98, 228), (109, 123), (687, 399), (627, 346), (306, 251), (283, 287), (584, 388), (772, 450), (31, 410)]),
+    ("exact", 0x3FDE1E42711C9DB5, &[(204, 218), (140, 502), (581, 379), (336, 360), (283, 296), (479, 381), (506, 267), (305, 388), (468, 558), (360, 296), (84, 121), (37, 249), (345, 298), (448, 485), (68, 237), (831, 503), (164, 317), (173, 104), (310, 533), (123, 197), (368, 416)]),
+    ("next", 0x3FE21B62894A782A, &[(706, 529), (347, 421), (203, 254), (489, 544), (873, 467), (2, 326), (782, 421), (524, 505), (108, 572), (223, 196), (921, 554), (94, 130), (272, 450), (305, 255), (160, 168), (277, 220), (700, 465), (617, 501), (449, 262), (956, 522)]),
+    ("next", 0x3FE2A9742C613EC8, &[(302, 303), (382, 196), (324, 237), (484, 438), (12, 104), (294, 454), (999, 510), (526, 474), (159, 124), (244, 138), (480, 499), (97, 139), (347, 225), (363, 225), (38, 196), (200, 136), (318, 289), (427, 383)]),
+    ("next", 0x3FD9B43A3F75B6EE, &[(331, 507), (103, 168), (209, 475), (667, 554), (658, 366), (293, 164), (229, 195), (49, 254), (394, 310), (31, 163), (271, 464), (120, 532), (691, 447), (356, 299), (15, 102), (795, 468), (11, 265), (46, 573), (400, 432), (17, 108), (442, 466)]),
 ];
 
 #[test]
@@ -1451,20 +783,11 @@ fn row_mean_beyond_u128_matches_offline_exact_values() {
         let mut recs = row_records(cells);
         let rm = s_mean(&recs);
         assert_eq!(rm.cells, cells.len(), "{tag}");
-        assert_eq!(
-            rm.mean.map(f64::to_bits),
-            Some(*want_bits),
-            "{tag}: got {:?}, want {want:?}",
-            rm.mean
-        );
+        assert_eq!(rm.mean.map(f64::to_bits), Some(*want_bits), "{tag}: got {:?}, want {want:?}", rm.mean);
         // Order independence at this size: bit-identical under shuffles.
         for _ in 0..2 {
             shuffle(&mut recs, &mut g);
-            assert_eq!(
-                s_mean(&recs).mean.map(f64::to_bits),
-                Some(*want_bits),
-                "{tag} shuffled"
-            );
+            assert_eq!(s_mean(&recs).mean.map(f64::to_bits), Some(*want_bits), "{tag} shuffled");
         }
     }
 }
@@ -1486,18 +809,11 @@ fn row_mean_inside_u128_matches_the_long_division_oracle() {
                 (h, n)
             })
             .collect();
-        let fracs: Vec<(u128, u128)> = cells
-            .iter()
-            .map(|&(h, n)| (h as u128, 2 * n as u128))
-            .collect();
+        let fracs: Vec<(u128, u128)> = cells.iter().map(|&(h, n)| (h as u128, 2 * n as u128)).collect();
         let (p, q) = exact_mean(&fracs).unwrap();
         let want = nearest_f64(p, q);
         let rm = s_mean(&row_records(&cells));
-        assert_eq!(
-            rm.mean.map(f64::to_bits),
-            Some(want.to_bits()),
-            "round {round} cells {cells:?}"
-        );
+        assert_eq!(rm.mean.map(f64::to_bits), Some(want.to_bits()), "round {round} cells {cells:?}");
     }
 }
 
@@ -1517,18 +833,11 @@ fn row_mean_at_limb_boundaries_matches_the_oracle() {
         &[(1, 1), (1, 32768), (65533, 32767), (1, 65535)],
     ];
     for cells in fixtures {
-        let fracs: Vec<(u128, u128)> = cells
-            .iter()
-            .map(|&(h, n)| (h as u128, 2 * n as u128))
-            .collect();
+        let fracs: Vec<(u128, u128)> = cells.iter().map(|&(h, n)| (h as u128, 2 * n as u128)).collect();
         let (p, q) = exact_mean(&fracs).unwrap();
         let want = nearest_f64(p, q);
         let rm = s_mean(&row_records(cells));
-        assert_eq!(
-            rm.mean.map(f64::to_bits),
-            Some(want.to_bits()),
-            "cells {cells:?}"
-        );
+        assert_eq!(rm.mean.map(f64::to_bits), Some(want.to_bits()), "cells {cells:?}");
     }
 }
 
@@ -1536,10 +845,7 @@ fn row_mean_at_limb_boundaries_matches_the_oracle() {
 fn exact_zero_one_and_half_over_many_coprime_cells() {
     let ns: Vec<u32> = (0..40).map(|k| 101 + 2 * k).collect(); // odd, many coprime
     let zero: Vec<(u32, u32)> = ns.iter().map(|&n| (0, n)).collect();
-    assert_eq!(
-        s_mean(&row_records(&zero)).mean.map(f64::to_bits),
-        Some(0.0f64.to_bits())
-    );
+    assert_eq!(s_mean(&row_records(&zero)).mean.map(f64::to_bits), Some(0.0f64.to_bits()));
     let one: Vec<(u32, u32)> = ns.iter().map(|&n| (2 * n, n)).collect();
     assert_eq!(s_mean(&row_records(&one)).mean, Some(1.0));
     let half: Vec<(u32, u32)> = ns.iter().map(|&n| (n, n)).collect();
@@ -1556,10 +862,7 @@ fn exact_zero_one_and_half_over_many_coprime_cells() {
     // here is exactly 1 / (2 * 101 * 40), strictly positive, never rounded to 0.
     let mut tiny = zero.clone();
     tiny[0] = (1, ns[0]);
-    assert_eq!(
-        s_mean(&row_records(&tiny)).mean,
-        Some(nearest_f64(1, 2 * 101 * 40))
-    );
+    assert_eq!(s_mean(&row_records(&tiny)).mean, Some(nearest_f64(1, 2 * 101 * 40)));
 }
 
 /// `run_batch`-shaped input at scale: every ordered pair of a roster, both
@@ -1582,11 +885,7 @@ fn row_means_on_large_rosters_do_not_panic_and_are_cheap() {
                         7 => DRAW,
                         _ => CAPPED,
                     };
-                    let o = if g.below(2) == 0 {
-                        Orientation::Normal
-                    } else {
-                        Orientation::Swapped
-                    };
+                    let o = if g.below(2) == 0 { Orientation::Normal } else { Orientation::Swapped };
                     recs.push(r(a, b, res, o));
                 }
             }
@@ -1595,14 +894,8 @@ fn row_means_on_large_rosters_do_not_panic_and_are_cheap() {
         let t = std::time::Instant::now();
         let means = m.row_means();
         let elapsed = t.elapsed();
-        eprintln!(
-            "roster {roster}: {} records, row_means() in {elapsed:?}",
-            recs.len()
-        );
-        assert!(
-            elapsed < std::time::Duration::from_secs(2),
-            "row_means took {elapsed:?}"
-        );
+        eprintln!("roster {roster}: {} records, row_means() in {elapsed:?}", recs.len());
+        assert!(elapsed < std::time::Duration::from_secs(2), "row_means took {elapsed:?}");
         assert_eq!(means.len(), roster);
         if roster == 10 {
             let mut checked = 0;
@@ -1615,8 +908,7 @@ fn row_means_on_large_rosters_do_not_panic_and_are_cheap() {
                     .collect();
                 // Nine cells of ~11-bit denominators: past u128 unreduced, but the
                 // oracle reduces after every step; skip only if it cannot fit.
-                let want =
-                    std::panic::catch_unwind(|| exact_mean(&fracs).map(|(p, q)| nearest_f64(p, q)));
+                let want = std::panic::catch_unwind(|| exact_mean(&fracs).map(|(p, q)| nearest_f64(p, q)));
                 if let Ok(want) = want {
                     assert_eq!(rm.mean, want, "row {i}");
                     checked += 1;

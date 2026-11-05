@@ -60,11 +60,9 @@ fn hqs(app: &mut App) -> Vec<(Faction, Vec2)> {
 #[test]
 fn swapping_the_orientation_swaps_which_base_each_faction_spawns_at() {
     let mut normal = built(&MatchSettings::default().with_seed(4));
-    let mut swapped = built(
-        &MatchSettings::default()
-            .with_seed(4)
-            .with_orientation(Orientation::Swapped),
-    );
+    let mut swapped = built(&MatchSettings::default()
+        .with_seed(4)
+        .with_orientation(Orientation::Swapped));
 
     let n = hqs(&mut normal);
     let s = hqs(&mut swapped);
@@ -105,11 +103,7 @@ fn swapping_reflects_the_whole_fixture_not_just_the_hq() {
             .map(|(_, p)| ("node".to_string(), p.0))
             .collect();
         v.extend(nodes);
-        v.sort_by(|a, b| {
-            a.0.cmp(&b.0)
-                .then(a.1.x.total_cmp(&b.1.x))
-                .then(a.1.y.total_cmp(&b.1.y))
-        });
+        v.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.x.total_cmp(&b.1.x)).then(a.1.y.total_cmp(&b.1.y)));
         v
     };
     let normal = each(Orientation::Normal);
@@ -121,11 +115,7 @@ fn swapping_reflects_the_whole_fixture_not_just_the_hq() {
             .iter()
             .map(|(k, p)| (k.clone(), Vec2::new(-p.x, p.y)))
             .collect();
-        v.sort_by(|a, b| {
-            a.0.cmp(&b.0)
-                .then(a.1.x.total_cmp(&b.1.x))
-                .then(a.1.y.total_cmp(&b.1.y))
-        });
+        v.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.x.total_cmp(&b.1.x)).then(a.1.y.total_cmp(&b.1.y)));
         v
     };
     assert_eq!(reflected, normal, "Swapped must be the map reflected in x");
@@ -147,11 +137,7 @@ fn orientation_leaves_the_slots_the_seed_and_the_strategies_alone() {
         .iter()
         .map(|cm| cm.strategy(&c).id.as_str())
         .collect();
-    assert_eq!(
-        names,
-        vec!["rush", "turtle"],
-        "orientation is not a slot swap"
-    );
+    assert_eq!(names, vec!["rush", "turtle"], "orientation is not a slot swap");
     assert_eq!(headless::SIDES, [Faction::A, Faction::B]);
     assert_eq!(app.world().resource::<CommandLog>().seed(), 12);
 }
@@ -225,13 +211,11 @@ fn the_batch_plays_every_matchup_in_both_orientations_exactly_once() {
         })
         .collect();
     let len = keys.len();
-    keys.sort_by(|a, b| (&a.0, &a.1, a.2, a.3.index()).cmp(&(&b.0, &b.1, b.2, b.3.index())));
+    keys.sort_by(|a, b| {
+        (&a.0, &a.1, a.2, a.3.index()).cmp(&(&b.0, &b.1, b.2, b.3.index()))
+    });
     keys.dedup();
-    assert_eq!(
-        keys.len(),
-        len,
-        "some (a, b, seed, orientation) played twice"
-    );
+    assert_eq!(keys.len(), len, "some (a, b, seed, orientation) played twice");
     assert_eq!(
         rows.iter()
             .filter(|r| r.orientation == Orientation::Swapped)
@@ -297,11 +281,7 @@ fn the_report_is_reproducible_out_of_process() {
         first.contains("matches      8"),
         "4 ordered pairs x 2 orientations: {first}"
     );
-    assert_eq!(
-        first,
-        balance_stdout(&args),
-        "the report is not reproducible"
-    );
+    assert_eq!(first, balance_stdout(&args), "the report is not reproducible");
 }
 
 // ---- the balancing balances -------------------------------------------------
@@ -386,11 +366,7 @@ fn mirrors_are_side_balanced_across_the_two_orientations() {
                 .iter()
                 .filter(|r| r.strategies[0] == id && r.seed == seed)
                 .collect();
-            assert_eq!(
-                cell.len(),
-                2,
-                "{id} seed {seed} is played in both orientations"
-            );
+            assert_eq!(cell.len(), 2, "{id} seed {seed} is played in both orientations");
             let mut by_o: Vec<&batch::MatchRecord> = cell.clone();
             by_o.sort_by_key(|r| r.orientation.index());
             assert_eq!(by_o[0].orientation, Orientation::Normal);
@@ -530,14 +506,10 @@ fn the_last_cap_flag_wins_and_is_the_cap_that_is_announced() {
     assert!(ok, "{stderr}");
     assert_eq!(announced_cap(&stderr), 5, "--tick-cap came last");
     // And it is enforced: a 5-tick cap cannot play more than 5 ticks.
-    for played in stderr.lines().filter_map(|l| {
-        l.split(" in ")
-            .nth(1)?
-            .split(' ')
-            .next()?
-            .parse::<u32>()
-            .ok()
-    }) {
+    for played in stderr
+        .lines()
+        .filter_map(|l| l.split(" in ").nth(1)?.split(' ').next()?.parse::<u32>().ok())
+    {
         assert!(played <= 5, "played {played} ticks past a 5-tick cap");
     }
 }

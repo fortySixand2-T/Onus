@@ -429,9 +429,7 @@ fn a_single_opening_match_replays_the_pre_change_hashes_and_journal() {
         let mut app = matchup(c, seed, a, b, alloy, true);
         let trace = hash_trace(&mut app, 30, 100);
         let journal = journal_digest(&app);
-        println!(
-            "b3.5 neutrality {a} vs {b} @ {seed}: trace {trace:#018x} journal {journal:#018x}"
-        );
+        println!("b3.5 neutrality {a} vs {b} @ {seed}: trace {trace:#018x} journal {journal:#018x}");
         assert_eq!(
             trace, trace_golden,
             "{a} vs {b} @ seed {seed}: the per-tick state hashes moved \
@@ -473,10 +471,7 @@ fn three_openings_of_one_building_place_exactly_three() {
     for t in 0..3_000u32 {
         step(&mut app);
         let n = army_barracks(&mut app, Faction::A);
-        assert!(
-            n <= 3,
-            "tick {t}: {n} barracks for a strategy that opens three"
-        );
+        assert!(n <= 3, "tick {t}: {n} barracks for a strategy that opens three");
     }
     assert_eq!(
         army_barracks(&mut app, Faction::A),
@@ -496,10 +491,7 @@ fn three_openings_of_one_building_place_exactly_three() {
     );
     // Each opening waits for its own `at_tick`.
     let ticks: Vec<u32> = placed.iter().map(|(t, _)| *t).collect();
-    assert!(
-        ticks[0] >= 300 && ticks[1] >= 600 && ticks[2] >= 900,
-        "{ticks:?}"
-    );
+    assert!(ticks[0] >= 300 && ticks[1] >= 600 && ticks[2] >= 900, "{ticks:?}");
     // ...and they are distinct decisions in ascending order.
     assert!(ticks[0] < ticks[1] && ticks[1] < ticks[2], "{ticks:?}");
 }
@@ -545,14 +537,8 @@ fn three_barracks_finish_materially_more_units_than_one() {
 
     let one = combat_units(&mut app, Faction::A);
     let three = combat_units(&mut app, Faction::B);
-    println!(
-        "b3.5 parallel {HORIZON} ticks: 1 barracks -> {one} units, 3 barracks -> {three} units"
-    );
-    assert_eq!(
-        army_barracks(&mut app, Faction::B),
-        3,
-        "the three-barracks side is short"
-    );
+    println!("b3.5 parallel {HORIZON} ticks: 1 barracks -> {one} units, 3 barracks -> {three} units");
+    assert_eq!(army_barracks(&mut app, Faction::B), 3, "the three-barracks side is short");
     assert!(
         three >= 2 * one,
         "three barracks finished {three} units against one barracks' {one}: \
@@ -638,11 +624,7 @@ fn one_army_order_per_decision_with_several_barracks() {
     );
     let mut app = matchup(c, 7, "triple_line", "triple_line", 100_000, true);
     tick(&mut app, 4_000);
-    assert_eq!(
-        army_barracks(&mut app, Faction::A),
-        3,
-        "three lines expected"
-    );
+    assert_eq!(army_barracks(&mut app, Faction::A), 3, "three lines expected");
 
     for f in [Faction::A, Faction::B] {
         let mut per_tick: Vec<u32> = app
@@ -664,10 +646,7 @@ fn one_army_order_per_decision_with_several_barracks() {
     }
     // ...and the depth cap is still per barracks.
     for len in army_queue_lens(&mut app, Faction::A) {
-        assert!(
-            len <= 2,
-            "a line queued {len} past the strategy's depth of 2"
-        );
+        assert!(len <= 2, "a line queued {len} past the strategy's depth of 2");
     }
 }
 
@@ -729,24 +708,14 @@ fn a_thin_commander_places_one_building_and_wastes_no_randomness() {
             .iter()
             .map(|k| k.rng_state())
             .collect();
-        (
-            army_barracks(&mut app, Faction::A),
-            placements(&app, Faction::A),
-            rng,
-        )
+        (army_barracks(&mut app, Faction::A), placements(&app, Faction::A), rng)
     };
     // Exactly one Gene-Vats' worth of Alloy, no nodes: nothing more is coming.
-    let purse = content()
-        .building("gene_vats")
-        .expect("a barracks")
-        .alloy_cost;
+    let purse = content().building("gene_vats").expect("a barracks").alloy_cost;
     let (wide_n, wide_placed, wide_rng) = run("thin_three", "thin_three", 3, purse);
     let (solo_n, solo_placed, solo_rng) = run("thin_one", "thin_three", 1, purse);
 
-    assert_eq!(
-        wide_n, 1,
-        "a commander with one building's Alloy placed {wide_n}"
-    );
+    assert_eq!(wide_n, 1, "a commander with one building's Alloy placed {wide_n}");
     assert_eq!(wide_placed.len(), 1, "{wide_placed:?}");
     assert_eq!(
         wide_placed, solo_placed,
@@ -783,11 +752,7 @@ fn a_repeated_opening_match_replays_bit_identically() {
         let mut app = matchup(c, 6, "det_wide", "det_wide", alloy, true);
         (hash_trace(&mut app, 20, 100), journal_digest(&app))
     };
-    assert_eq!(
-        run("det_a"),
-        run("det_b"),
-        "a repeated-opening match diverged"
-    );
+    assert_eq!(run("det_a"), run("det_b"), "a repeated-opening match diverged");
 }
 
 /// The choice of *which* barracks to train at never depends on spawn or query
@@ -838,18 +803,11 @@ fn the_target_barracks_never_depends_on_spawn_order() {
             tick(&mut app, 50);
             profile.push(army_queue_lens(&mut app, Faction::A));
         }
-        (
-            profile,
-            combat_units(&mut app, Faction::A),
-            ordered_army(&app, Faction::A),
-        )
+        (profile, combat_units(&mut app, Faction::A), ordered_army(&app, Faction::A))
     };
     let forward = run("order_fwd", false);
     let backward = run("order_rev", true);
-    assert!(
-        forward.1 > 0,
-        "the planted barracks never produced anything"
-    );
+    assert!(forward.1 > 0, "the planted barracks never produced anything");
     assert_eq!(
         forward, backward,
         "reversing the spawn order of three identical barracks changed the match"
@@ -886,15 +844,7 @@ fn repeated_openings_load_and_the_other_refusals_stand() {
     let refused: Vec<(&str, String)> = vec![
         (
             "a barracks that is not a building",
-            strategy(
-                "bad",
-                30,
-                6,
-                &[("nonesuch", 300, 130.0)],
-                &[("ripper", 1)],
-                3,
-                1,
-            ),
+            strategy("bad", 30, 6, &[("nonesuch", 300, 130.0)], &[("ripper", 1)], 3, 1),
         ),
         (
             "the victory building as a barracks",

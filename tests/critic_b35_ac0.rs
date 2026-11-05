@@ -69,10 +69,7 @@ fn strategy(
 
 /// The shipped set with extra entries spliced in, written to its own dir and
 /// loaded. Returns the load *result* so refusal probes can read the error.
-fn try_content_with(
-    name: &str,
-    extra: &[String],
-) -> Result<Content, onus::sim::content::ContentError> {
+fn try_content_with(name: &str, extra: &[String]) -> Result<Content, onus::sim::content::ContentError> {
     let shipped = std::fs::read_to_string(data_dir().join("strategies.ron")).expect("strategies");
     let text = shipped.replace("    ],\n)", &format!("{}\n    ],\n)", extra.join("\n")));
     assert_ne!(text, shipped, "fixture splice found no strategies list");
@@ -318,10 +315,7 @@ fn depth_one_replays_the_pre_change_tree_tick_for_tick() {
              (got {t:#018x}, pre-change {g_trace:#018x})"
         );
         assert_eq!(end, *g_end, "{a} vs {b} seed {seed}: end state_hash moved");
-        assert_eq!(
-            j, *g_journal,
-            "{a} vs {b} seed {seed}: the AI journal moved"
-        );
+        assert_eq!(j, *g_journal, "{a} vs {b} seed {seed}: the AI journal moved");
     }
 }
 
@@ -349,11 +343,7 @@ fn depth_one_adds_nothing_to_a_queue_that_is_already_deeper() {
     let victory = victory_defs(&app);
     // Hand-stuff A's barracks queue to 3 items with a long timer, so the queue
     // cannot drain during the probe.
-    let ripper = app
-        .world()
-        .resource::<Content>()
-        .unit_index("ripper")
-        .unwrap();
+    let ripper = app.world().resource::<Content>().unit_index("ripper").unwrap();
     let mut q = app
         .world_mut()
         .query::<(&Building, &Faction, &mut ProductionQueue)>();
@@ -503,10 +493,7 @@ fn the_queue_visits_every_length_up_to_the_cap() {
         }
     }
     for (len, hit) in seen.iter().enumerate() {
-        assert!(
-            *hit,
-            "depth 3: the queue was never observed at length {len}"
-        );
+        assert!(*hit, "depth 3: the queue was never observed at length {len}");
     }
 }
 
@@ -566,11 +553,7 @@ fn two_sides_in_one_match_each_honour_their_own_depth() {
                 "{a} vs {b}: depth leaked across sides (A {high_a}/{depth_a}, B {high_b}/{depth_b})"
             );
         }
-        assert_eq!(
-            (high_a, high_b),
-            (depth_a, depth_b),
-            "{a} vs {b}: caps not reached"
-        );
+        assert_eq!((high_a, high_b), (depth_a, depth_b), "{a} vs {b}: caps not reached");
     }
 }
 
@@ -606,14 +589,7 @@ fn a_deep_commander_with_thin_alloy_queues_only_what_it_can_pay_for() {
         c.units[idx].mvp_alloy_cost
     };
     // Exactly one Ripper's worth of slack above the barracks.
-    let mut app = matchup(
-        c,
-        31,
-        "critic_poor",
-        "critic_poor",
-        barracks + ripper,
-        false,
-    );
+    let mut app = matchup(c, 31, "critic_poor", "critic_poor", barracks + ripper, false);
     tick(&mut app, 1_200);
     assert_eq!(
         train_army_orders(&app, Faction::A),
@@ -621,10 +597,7 @@ fn a_deep_commander_with_thin_alloy_queues_only_what_it_can_pay_for() {
         "a depth-8 commander with one unit's Alloy did not order exactly one"
     );
     let left = app.world().resource::<Stockpiles>().alloy(Faction::A);
-    assert_eq!(
-        left, 0,
-        "Alloy accounting drifted: {left} left of an exact budget"
-    );
+    assert_eq!(left, 0, "Alloy accounting drifted: {left} left of an exact budget");
     let queued: usize = army_queue_lens(&mut app, Faction::A).into_iter().sum();
     let built = combat_units(&mut app, Faction::A);
     assert_eq!(
@@ -653,14 +626,7 @@ fn one_decision_commits_at_most_one_unit_however_deep() {
     );
     let barracks = c.buildings[c.building_index("gene_vats").unwrap()].alloy_cost;
     let ripper = c.units[c.unit_index("ripper").unwrap()].mvp_alloy_cost;
-    let mut app = matchup(
-        c,
-        41,
-        "critic_budget",
-        "critic_budget",
-        barracks + 3 * ripper,
-        false,
-    );
+    let mut app = matchup(c, 41, "critic_budget", "critic_budget", barracks + 3 * ripper, false);
     tick(&mut app, 1_200);
     let ticks: Vec<u32> = app
         .world()
@@ -670,12 +636,7 @@ fn one_decision_commits_at_most_one_unit_however_deep() {
         .filter(|(_, a)| matches!(a, AiAction::TrainArmy { .. }))
         .map(|(t, _)| t)
         .collect();
-    assert_eq!(
-        ticks.len(),
-        3,
-        "three affordable units, {} ordered",
-        ticks.len()
-    );
+    assert_eq!(ticks.len(), 3, "three affordable units, {} ordered", ticks.len());
     let mut unique = ticks.clone();
     unique.dedup();
     assert_eq!(unique.len(), 3, "two army orders on one tick: {ticks:?}");
@@ -701,14 +662,8 @@ fn a_spliced_queue_depth_of_zero_is_refused_by_name_at_load() {
     )
     .expect_err("depth 0 is content the sim cannot run");
     let msg = format!("{err:?}");
-    assert!(
-        msg.contains("critic_zero"),
-        "the refusal does not name the strategy: {msg}"
-    );
-    assert!(
-        msg.contains("queue_depth"),
-        "the refusal does not name the field: {msg}"
-    );
+    assert!(msg.contains("critic_zero"), "the refusal does not name the strategy: {msg}");
+    assert!(msg.contains("queue_depth"), "the refusal does not name the field: {msg}");
 }
 
 #[test]
@@ -723,8 +678,7 @@ fn a_strategy_with_no_queue_depth_at_all_is_a_load_error() {
         "1",
     )
     .replace("            queue_depth: 1,\n", "");
-    let err =
-        try_content_with("absent_depth", &[entry]).expect_err("a missing depth must not load");
+    let err = try_content_with("absent_depth", &[entry]).expect_err("a missing depth must not load");
     assert!(
         format!("{err:?}").contains("queue_depth"),
         "the parse error does not name the missing field: {err:?}"
@@ -767,10 +721,7 @@ fn a_gigantic_depth_neither_overflows_nor_hangs() {
         );
         prev = len;
     }
-    assert!(
-        prev > 5,
-        "an unbounded depth never grew a deep queue (high {prev})"
-    );
+    assert!(prev > 5, "an unbounded depth never grew a deep queue (high {prev})");
 }
 
 // ============================================================================
@@ -813,11 +764,7 @@ fn a_differing_depth_is_a_differing_content_fingerprint() {
     );
     // ...and the shipped set really is at 1 everywhere.
     for s in &base.strategies {
-        assert_eq!(
-            s.queue_depth, 1,
-            "strategy `{}` does not ship at depth 1",
-            s.id
-        );
+        assert_eq!(s.queue_depth, 1, "strategy `{}` does not ship at depth 1", s.id);
     }
 }
 

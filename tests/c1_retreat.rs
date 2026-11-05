@@ -31,10 +31,7 @@ fn quiet_battle() -> App {
 }
 
 fn order(app: &mut App, o: Order) {
-    app.world_mut()
-        .resource_mut::<CommandQueue>()
-        .0
-        .push_back(o);
+    app.world_mut().resource_mut::<CommandQueue>().0.push_back(o);
 }
 
 /// Every unit of `side` on the field: (entity, def, hp, sim id), entity order.
@@ -91,13 +88,7 @@ fn a_retreat_walks_the_whole_side_off_its_entry_edge_and_ends_the_battle() {
     let a_buildings = buildings_of(&mut app, Faction::A);
     assert!(before.len() >= 5, "workers, a General and two soldiers");
 
-    order(
-        &mut app,
-        Order::Retreat {
-            faction: Faction::A,
-        }
-        .issued_by(Faction::A),
-    );
+    order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
     headless::step(&mut app);
     {
         let b = app.world().resource::<BattleState>();
@@ -115,18 +106,10 @@ fn a_retreat_walks_the_whole_side_off_its_entry_edge_and_ends_the_battle() {
     run_to_outcome(&mut app, 3000);
     let o = app.world().resource::<MatchState>().outcome().unwrap();
     assert_eq!(o.winner, Some(Faction::B), "a retreat cedes the field");
-    let r = app
-        .world()
-        .resource::<BattleState>()
-        .result()
-        .cloned()
-        .unwrap();
+    let r = app.world().resource::<BattleState>().result().cloned().unwrap();
     assert_eq!(r.loss(Faction::A), Some(LossCause::Retreated));
     assert_eq!(r.loss(Faction::B), None);
-    assert!(
-        units_of(&mut app, Faction::A).is_empty(),
-        "the field is empty of A"
-    );
+    assert!(units_of(&mut app, Faction::A).is_empty(), "the field is empty of A");
 
     // The outcome names everyone who got away, with the HP they left with.
     let mut escaped: Vec<_> = r.escaped.iter().map(|e| e.sim_id).collect();
@@ -140,10 +123,7 @@ fn a_retreat_walks_the_whole_side_off_its_entry_edge_and_ends_the_battle() {
     assert_eq!(h.hp, 7, "HP is carried off the field as it was");
     let generals: Vec<_> = r.escaped.iter().filter(|e| e.general).collect();
     assert_eq!(generals.len(), 1, "the General got away, and is marked so");
-    assert_eq!(
-        generals[0].unit,
-        content().general_index("general_logistics").unwrap()
-    );
+    assert_eq!(generals[0].unit, content().general_index("general_logistics").unwrap());
     // Crossing order: by tick, and every crossing is on or before the end.
     assert!(r.escaped.windows(2).all(|w| w[0].tick <= w[1].tick));
     assert!(r.escaped.iter().all(|e| e.tick <= r.tick));
@@ -171,14 +151,8 @@ fn the_entry_edge_is_behind_the_base_by_the_ron_offset() {
     let (ea, eb) = (b.edge(Faction::A), b.edge(Faction::B));
     // Outward is away from the enemy base; the edge stands `offset` behind.
     assert!(ea.outward.dot(hb - ha) < 0.0 && eb.outward.dot(ha - hb) < 0.0);
-    assert!(
-        (ea.beyond(ha) + offset).abs() < 1e-3,
-        "A's HQ is `offset` inside A's edge"
-    );
-    assert!(
-        (eb.beyond(hb) + offset).abs() < 1e-3,
-        "B's HQ is `offset` inside B's edge"
-    );
+    assert!((ea.beyond(ha) + offset).abs() < 1e-3, "A's HQ is `offset` inside A's edge");
+    assert!((eb.beyond(hb) + offset).abs() < 1e-3, "B's HQ is `offset` inside B's edge");
 }
 
 #[test]
@@ -196,43 +170,16 @@ fn a_retreat_overrides_any_other_order_and_stops_production() {
             .unwrap()
     };
     let worker = c.unit_index("worker").unwrap();
-    order(
-        &mut app,
-        Order::Train {
-            building: hq,
-            unit: worker,
-        }
-        .issued_by(Faction::A),
-    );
+    order(&mut app, Order::Train { building: hq, unit: worker }.issued_by(Faction::A));
     headless::step(&mut app);
-    assert!(!app
-        .world()
-        .get::<ProductionQueue>(hq)
-        .unwrap()
-        .items
-        .is_empty());
-    order(
-        &mut app,
-        Order::Retreat {
-            faction: Faction::A,
-        }
-        .issued_by(Faction::A),
-    );
+    assert!(!app.world().get::<ProductionQueue>(hq).unwrap().items.is_empty());
+    order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
     headless::step(&mut app);
-    assert!(app
-        .world()
-        .get::<ProductionQueue>(hq)
-        .unwrap()
-        .items
-        .is_empty());
+    assert!(app.world().get::<ProductionQueue>(hq).unwrap().items.is_empty());
     // A move order after the retreat does not turn the soldier around.
     order(
         &mut app,
-        Order::MoveTo {
-            units: vec![soldier],
-            dest: Vec2::new(500.0, 0.0),
-        }
-        .issued_by(Faction::A),
+        Order::MoveTo { units: vec![soldier], dest: Vec2::new(500.0, 0.0) }.issued_by(Faction::A),
     );
     headless::step(&mut app);
     let edge = app.world().resource::<BattleState>().edge(Faction::A);
@@ -244,13 +191,7 @@ fn a_retreat_overrides_any_other_order_and_stops_production() {
 fn a_retreat_is_a_sides_own_to_order() {
     let mut app = quiet_battle();
     headless::step(&mut app);
-    order(
-        &mut app,
-        Order::Retreat {
-            faction: Faction::A,
-        }
-        .issued_by(Faction::B),
-    );
+    order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::B));
     headless::tick(&mut app, 5);
     assert!(!app.world().resource::<BattleState>().retreating(Faction::A));
 }
@@ -259,31 +200,15 @@ fn a_retreat_is_a_sides_own_to_order() {
 fn a_general_who_falls_during_the_retreat_is_a_general_lost() {
     let mut app = quiet_battle();
     headless::step(&mut app);
-    order(
-        &mut app,
-        Order::Retreat {
-            faction: Faction::A,
-        }
-        .issued_by(Faction::A),
-    );
+    order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
     headless::step(&mut app);
     let g = {
-        let mut q = app
-            .world_mut()
-            .query_filtered::<(Entity, &Faction), With<General>>();
-        q.iter(app.world())
-            .find(|(_, f)| **f == Faction::A)
-            .unwrap()
-            .0
+        let mut q = app.world_mut().query_filtered::<(Entity, &Faction), With<General>>();
+        q.iter(app.world()).find(|(_, f)| **f == Faction::A).unwrap().0
     };
     app.world_mut().despawn(g);
     headless::step(&mut app);
-    let r = app
-        .world()
-        .resource::<BattleState>()
-        .result()
-        .cloned()
-        .expect("decided");
+    let r = app.world().resource::<BattleState>().result().cloned().expect("decided");
     assert_eq!(r.loss(Faction::A), Some(LossCause::GeneralsFell));
     assert_eq!(r.winner, Some(Faction::B));
 }
@@ -292,19 +217,13 @@ fn a_general_who_falls_during_the_retreat_is_a_general_lost() {
 fn the_retreat_order_is_logged() {
     let mut app = quiet_battle();
     headless::step(&mut app);
-    order(
-        &mut app,
-        Order::Retreat {
-            faction: Faction::A,
-        }
-        .issued_by(Faction::A),
-    );
+    order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
     headless::step(&mut app);
     let log = app.world().resource::<CommandLog>();
-    assert!(log.commands().iter().any(|c| c.order
-        == LoggedOrder::Retreat {
-            faction: Faction::A
-        }));
+    assert!(log
+        .commands()
+        .iter()
+        .any(|c| c.order == LoggedOrder::Retreat { faction: Faction::A }));
 }
 
 #[test]
@@ -313,19 +232,9 @@ fn a_skirmish_has_no_retreat() {
     app.insert_resource(AiCommanders::default());
     headless::step(&mut app);
     let before = units_of(&mut app, Faction::A).len();
-    order(
-        &mut app,
-        Order::Retreat {
-            faction: Faction::A,
-        }
-        .issued_by(Faction::A),
-    );
+    order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
     headless::tick(&mut app, 600);
-    assert_eq!(
-        units_of(&mut app, Faction::A).len(),
-        before,
-        "nobody left the field"
-    );
+    assert_eq!(units_of(&mut app, Faction::A).len(), before, "nobody left the field");
     assert!(app.world().resource::<MatchState>().outcome().is_none());
 }
 
@@ -335,47 +244,19 @@ fn a_mutual_retreat_on_one_tick_has_no_winner_and_both_sides_escapees() {
     spawn_unit(&mut app, "ravager", Faction::A, Vec2::new(-100.0, 200.0));
     spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(100.0, -200.0));
     headless::step(&mut app);
-    let fielded = [
-        units_of(&mut app, Faction::A).len(),
-        units_of(&mut app, Faction::B).len(),
-    ];
-    order(
-        &mut app,
-        Order::Retreat {
-            faction: Faction::A,
-        }
-        .issued_by(Faction::A),
-    );
-    order(
-        &mut app,
-        Order::Retreat {
-            faction: Faction::B,
-        }
-        .issued_by(Faction::B),
-    );
+    let fielded = [units_of(&mut app, Faction::A).len(), units_of(&mut app, Faction::B).len()];
+    order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
+    order(&mut app, Order::Retreat { faction: Faction::B }.issued_by(Faction::B));
     run_to_outcome(&mut app, 60 * 120);
     let st = app.world().resource::<BattleState>();
-    assert_eq!(
-        st.retreat_ordered(Faction::A),
-        st.retreat_ordered(Faction::B)
-    );
+    assert_eq!(st.retreat_ordered(Faction::A), st.retreat_ordered(Faction::B));
     let r = st.result().cloned().unwrap();
     assert_eq!(r.winner, None, "neither side held the field");
-    assert_eq!(
-        r.lost,
-        [Some(LossCause::Retreated), Some(LossCause::Retreated)]
-    );
+    assert_eq!(r.lost, [Some(LossCause::Retreated), Some(LossCause::Retreated)]);
     for (s, side) in [Faction::A, Faction::B].into_iter().enumerate() {
         let got = r.escaped.iter().filter(|e| e.side == side).count();
-        assert_eq!(
-            got, fielded[s],
-            "{side:?}: every unit got away and is listed"
-        );
-        assert!(r
-            .report(side)
-            .generals
-            .iter()
-            .all(|g| g.survived && g.escaped));
+        assert_eq!(got, fielded[s], "{side:?}: every unit got away and is listed");
+        assert!(r.report(side).generals.iter().all(|g| g.survived && g.escaped));
     }
     // The battle ended when the slower side was off, not the faster.
     assert_eq!(r.tick, r.escaped.iter().map(|e| e.tick).max().unwrap());
@@ -389,41 +270,16 @@ fn of_two_retreats_the_earlier_order_loses_even_if_the_later_side_is_off_first()
     spawn_unit(&mut app, "ripper", Faction::B, eb.point - eb.outward * 20.0);
     spawn_unit(&mut app, "ravager", Faction::A, Vec2::new(500.0, 0.0));
     headless::step(&mut app);
-    order(
-        &mut app,
-        Order::Retreat {
-            faction: Faction::A,
-        }
-        .issued_by(Faction::A),
-    );
+    order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
     headless::step(&mut app);
-    order(
-        &mut app,
-        Order::Retreat {
-            faction: Faction::B,
-        }
-        .issued_by(Faction::B),
-    );
+    order(&mut app, Order::Retreat { faction: Faction::B }.issued_by(Faction::B));
     run_to_outcome(&mut app, 60 * 120);
     let st = app.world().resource::<BattleState>();
-    let (a, b) = (
-        st.retreat_ordered(Faction::A).unwrap(),
-        st.retreat_ordered(Faction::B).unwrap(),
-    );
+    let (a, b) = (st.retreat_ordered(Faction::A).unwrap(), st.retreat_ordered(Faction::B).unwrap());
     assert!(a < b, "A ordered first: {a} vs {b}");
     let r = st.result().cloned().unwrap();
     assert_eq!(r.winner, Some(Faction::B), "A conceded first");
     assert_eq!(r.lost, [Some(LossCause::Retreated), None]);
-    let b_off = r
-        .escaped
-        .iter()
-        .filter(|e| e.side == Faction::B)
-        .map(|e| e.tick)
-        .max()
-        .unwrap();
-    assert!(
-        b_off < r.tick,
-        "B was off at {b_off}; the battle waited for A until {}",
-        r.tick
-    );
+    let b_off = r.escaped.iter().filter(|e| e.side == Faction::B).map(|e| e.tick).max().unwrap();
+    assert!(b_off < r.tick, "B was off at {b_off}; the battle waited for A until {}", r.tick);
 }

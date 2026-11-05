@@ -91,11 +91,7 @@ fn generals_are_their_own_list_in_units_ron_and_never_join_the_roster() {
         "one General type per nation, in RON order"
     );
     for (k, g) in c.generals.iter().enumerate() {
-        assert!(
-            c.unit_index(&g.id).is_none(),
-            "`{}` must not be a roster unit",
-            g.id
-        );
+        assert!(c.unit_index(&g.id).is_none(), "`{}` must not be a roster unit", g.id);
         let idx = c.general_index(&g.id).unwrap();
         assert_eq!(idx, c.units.len() + k, "Generals index past the roster");
         let def = c.unit_def(idx).expect("a General has a unit definition");
@@ -104,10 +100,7 @@ fn generals_are_their_own_list_in_units_ron_and_never_join_the_roster() {
             (def.offense, def.defense, def.armor, def.speed),
             (g.offense, g.defense, g.armor, g.speed)
         );
-        assert!(
-            def.offense > 0 && def.mvp_attack_ticks > 0,
-            "a General fights"
-        );
+        assert!(def.offense > 0 && def.mvp_attack_ticks > 0, "a General fights");
         assert!(def.nemesis.is_none(), "a General has no nemesis");
         assert_eq!(def.mvp_alloy_cost, 0, "a General is not bought");
         assert!(!def.gathers);
@@ -164,12 +157,7 @@ fn a_side_whose_general_dies_loses_the_battle() {
     let o = outcome(&app).expect("the battle is decided");
     assert_eq!(o.winner, Some(Faction::B), "A lost its General, so B wins");
     assert!(app.world().get_entity(a).is_err(), "the General is dead");
-    let r = app
-        .world()
-        .resource::<BattleState>()
-        .result()
-        .cloned()
-        .unwrap();
+    let r = app.world().resource::<BattleState>().result().cloned().unwrap();
     assert_eq!(r.winner, Some(Faction::B));
     assert_eq!(r.tick, o.tick, "the battle and the match agree on the tick");
     assert_eq!(r.loss(Faction::A), Some(LossCause::GeneralsFell));
@@ -195,12 +183,7 @@ fn both_generals_falling_on_one_tick_is_a_draw() {
     headless::step(&mut app);
     let o = outcome(&app).expect("decided");
     assert_eq!(o.winner, None);
-    let r = app
-        .world()
-        .resource::<BattleState>()
-        .result()
-        .cloned()
-        .unwrap();
+    let r = app.world().resource::<BattleState>().result().cloned().unwrap();
     assert_eq!(r.loss(Faction::A), Some(LossCause::GeneralsFell));
     assert_eq!(r.loss(Faction::B), Some(LossCause::GeneralsFell));
 }
@@ -210,10 +193,7 @@ fn a_side_that_never_fielded_a_general_cannot_lose_one() {
     let setup = BattleSetup::default().with_general(Faction::A, "general_focus");
     let mut app = quiet_battle(setup);
     headless::tick(&mut app, 30);
-    assert!(
-        outcome(&app).is_none(),
-        "B has no General, and that is not a loss"
-    );
+    assert!(outcome(&app).is_none(), "B has no General, and that is not a loss");
     let a = general_of(&mut app, Faction::A);
     app.world_mut().despawn(a);
     headless::step(&mut app);
@@ -226,7 +206,9 @@ fn a_general_cannot_be_trained() {
     let mut app = quiet_battle(one_general_each());
     headless::step(&mut app);
     let hq = {
-        let mut q = app.world_mut().query::<(Entity, &Building, &Faction)>();
+        let mut q = app
+            .world_mut()
+            .query::<(Entity, &Building, &Faction)>();
         q.iter(app.world())
             .find(|(_, b, f)| **f == Faction::A && c.buildings[b.def].victory)
             .map(|(e, _, _)| e)
@@ -234,24 +216,13 @@ fn a_general_cannot_be_trained() {
     };
     let before = app.world().resource::<Stockpiles>().alloy(Faction::A);
     let general = c.general_index("general_synthesis").unwrap();
-    app.world_mut().resource_mut::<CommandQueue>().0.push_back(
-        Order::Train {
-            building: hq,
-            unit: general,
-        }
-        .issued_by(Faction::A),
-    );
+    app.world_mut()
+        .resource_mut::<CommandQueue>()
+        .0
+        .push_back(Order::Train { building: hq, unit: general }.issued_by(Faction::A));
     headless::step(&mut app);
-    assert!(app
-        .world()
-        .get::<ProductionQueue>(hq)
-        .unwrap()
-        .items
-        .is_empty());
-    assert_eq!(
-        app.world().resource::<Stockpiles>().alloy(Faction::A),
-        before
-    );
+    assert!(app.world().get::<ProductionQueue>(hq).unwrap().items.is_empty());
+    assert_eq!(app.world().resource::<Stockpiles>().alloy(Faction::A), before);
 }
 
 #[test]

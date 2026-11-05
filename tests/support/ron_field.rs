@@ -81,11 +81,7 @@ fn build(text: &str, span_start: usize, key_at: usize, key: &str) -> Field {
         .find([',', ')', '\n'])
         .unwrap_or_else(|| panic!("unterminated `{key}` field"));
     let value = rest[..end].trim_end().to_string();
-    let comma = if rest[end..].starts_with(',') {
-        ","
-    } else {
-        ""
-    };
+    let comma = if rest[end..].starts_with(',') { "," } else { "" };
     let head = text[span_start..value_at].to_string();
     let tail = format!("{}{comma}", &rest[value.len()..end]);
     Field {
@@ -101,7 +97,10 @@ fn build(text: &str, span_start: usize, key_at: usize, key: &str) -> Field {
 /// before the key, so it cannot match inside a longer field name.
 pub fn field(text: &str, key: &str) -> Field {
     let at = find_key(text, 0, key);
-    let start = text[..at].char_indices().next_back().map_or(0, |(i, _)| i);
+    let start = text[..at]
+        .char_indices()
+        .next_back()
+        .map_or(0, |(i, _)| i);
     build(text, start, at, key)
 }
 

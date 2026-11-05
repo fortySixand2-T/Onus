@@ -201,16 +201,8 @@ pub(crate) fn validate(content: &Content) -> Result<(), String> {
     };
     let who = "three_resource";
     // One resource per way of acquiring it: the banks are keyed by it.
-    for acq in [
-        Acquisition::Mined,
-        Acquisition::Grown,
-        Acquisition::Channeled,
-    ] {
-        let n = content
-            .resources
-            .iter()
-            .filter(|r| r.acquisition == acq)
-            .count();
+    for acq in [Acquisition::Mined, Acquisition::Grown, Acquisition::Channeled] {
+        let n = content.resources.iter().filter(|r| r.acquisition == acq).count();
         if n != 1 {
             return Err(format!(
                 "{who}: needs exactly one {acq:?} resource, the content declares {n}"
@@ -239,10 +231,7 @@ pub(crate) fn validate(content: &Content) -> Result<(), String> {
                 s.building
             ));
         }
-        if t.growth.sources[..i]
-            .iter()
-            .any(|o| o.building == s.building)
-        {
+        if t.growth.sources[..i].iter().any(|o| o.building == s.building) {
             return Err(format!(
                 "{who}: growth source `{}` is listed twice",
                 s.building
@@ -257,20 +246,17 @@ pub(crate) fn validate(content: &Content) -> Result<(), String> {
     }
     let w = &t.wells;
     if !(w.hold_radius.is_finite() && w.hold_radius > 0.0) {
-        return Err(format!(
-            "{who}: wells hold_radius must be finite and positive"
-        ));
+        return Err(format!("{who}: wells hold_radius must be finite and positive"));
     }
     if w.interval_ticks == 0 || w.per_interval == 0 {
-        return Err(format!(
-            "{who}: wells interval_ticks and per_interval must be > 0"
-        ));
+        return Err(format!("{who}: wells interval_ticks and per_interval must be > 0"));
     }
     if w.sites.is_empty() {
         return Err(format!("{who}: wells needs at least one site"));
     }
     for (k, site) in w.sites.iter().enumerate() {
-        if !(site.along.is_finite() && (0.0..=1.0).contains(&site.along) && site.side.is_finite()) {
+        if !(site.along.is_finite() && (0.0..=1.0).contains(&site.along) && site.side.is_finite())
+        {
             return Err(format!(
                 "{who}: well site {k} needs along in [0, 1] and a finite side"
             ));
@@ -566,11 +552,7 @@ pub fn channel(
         let Ok((_, pos, mut well)) = wells.get_mut(e) else {
             continue;
         };
-        let here = SIDES.map(|f| {
-            near[slot(f)]
-                .iter()
-                .any(|p| p.distance_squared(pos.0) <= r2)
-        });
+        let here = SIDES.map(|f| near[slot(f)].iter().any(|p| p.distance_squared(pos.0) <= r2));
         well.state = match here {
             [true, true] => WellState::Contested,
             [true, false] => WellState::Held(Faction::A),

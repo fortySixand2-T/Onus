@@ -26,10 +26,7 @@ fn assert_valid_path(grid: &TileGrid, path: &[usize], start: usize, goal: usize)
         let (ax, ay) = grid.xy(w[0]);
         let (bx, by) = grid.xy(w[1]);
         let manhattan = ax.abs_diff(bx) + ay.abs_diff(by);
-        assert_eq!(
-            manhattan, 1,
-            "consecutive cells are edge-adjacent (contiguous)"
-        );
+        assert_eq!(manhattan, 1, "consecutive cells are edge-adjacent (contiguous)");
     }
 }
 
@@ -57,10 +54,7 @@ fn tile_grid_tracks_walkable_and_blocked() {
     assert!(grid.is_walkable_xy(3, 2));
     assert!(!grid.is_walkable_xy(1, 1), "the '#' cell is blocked");
     assert!(!grid.is_walkable_xy(2, 1), "the '#' cell is blocked");
-    assert!(
-        grid.is_walkable_xy(0, 1),
-        "'.' next to the wall is walkable"
-    );
+    assert!(grid.is_walkable_xy(0, 1), "'.' next to the wall is walkable");
 
     // Index ↔ (x,y) round-trips.
     let i = grid.idx(2, 1);
@@ -88,9 +82,7 @@ fn tile_grid_random_is_deterministic() {
     let differ = (0..a.width * a.height).any(|i| a.is_walkable(i) != c.is_walkable(i));
     assert!(differ, "a different seed changes the layout");
     // Some cells blocked, some free (a real obstacle field, not all-or-nothing).
-    let blocked = (0..a.width * a.height)
-        .filter(|&i| !a.is_walkable(i))
-        .count();
+    let blocked = (0..a.width * a.height).filter(|&i| !a.is_walkable(i)).count();
     assert!(blocked > 0 && blocked < a.width * a.height);
 }
 
@@ -132,11 +124,7 @@ fn astar_finds_walkable_contiguous_path_to_goal() {
 fn astar_start_equals_goal_is_trivial_path() {
     let grid = TileGrid::new(4, 4, CELL, ORIGIN);
     let s = grid.idx(1, 1);
-    assert_eq!(
-        astar(&grid, s, s),
-        Some(vec![s]),
-        "already there ⇒ singleton path"
-    );
+    assert_eq!(astar(&grid, s, s), Some(vec![s]), "already there ⇒ singleton path");
 }
 
 #[test]
@@ -148,11 +136,7 @@ fn astar_returns_shortest_path_length() {
     let goal = grid.idx(5, 3);
     let path = astar(&grid, start, goal).unwrap();
     assert_valid_path(&grid, &path, start, goal);
-    assert_eq!(
-        path.len(),
-        (5 + 3) + 1,
-        "shortest 4-connected path is Manhattan length"
-    );
+    assert_eq!(path.len(), (5 + 3) + 1, "shortest 4-connected path is Manhattan length");
 }
 
 #[test]
@@ -163,11 +147,7 @@ fn astar_is_deterministic_across_runs() {
     let goal = grid.idx(29, 29);
     let first = astar(&grid, start, goal);
     for _ in 0..8 {
-        assert_eq!(
-            astar(&grid, start, goal),
-            first,
-            "A* path is stable across runs"
-        );
+        assert_eq!(astar(&grid, start, goal), first, "A* path is stable across runs");
     }
 }
 
@@ -177,10 +157,7 @@ fn astar_is_deterministic_across_runs() {
 fn astar_none_iff_unreachable() {
     // Reachable goal ⇒ Some.
     let open = TileGrid::new(5, 5, CELL, ORIGIN);
-    assert!(
-        astar(&open, open.idx(0, 0), open.idx(4, 4)).is_some(),
-        "reachable ⇒ Some"
-    );
+    assert!(astar(&open, open.idx(0, 0), open.idx(4, 4)).is_some(), "reachable ⇒ Some");
 
     // A goal fully walled off by blocked cells ⇒ None.
     let mut walled = TileGrid::new(5, 5, CELL, ORIGIN);
@@ -188,25 +165,13 @@ fn astar_none_iff_unreachable() {
     for (x, y) in [(1, 2), (3, 2), (2, 1), (2, 3)] {
         walled.set_blocked(x, y, true); // ring the goal's four neighbours
     }
-    assert_eq!(
-        astar(&walled, walled.idx(0, 0), goal),
-        None,
-        "walled-off goal ⇒ None"
-    );
+    assert_eq!(astar(&walled, walled.idx(0, 0), goal), None, "walled-off goal ⇒ None");
 
     // A blocked start or blocked goal is also unreachable.
     let mut g = TileGrid::new(4, 4, CELL, ORIGIN);
     g.set_blocked(3, 3, true);
-    assert_eq!(
-        astar(&g, g.idx(0, 0), g.idx(3, 3)),
-        None,
-        "blocked goal ⇒ None"
-    );
-    assert_eq!(
-        astar(&g, g.idx(3, 3), g.idx(0, 0)),
-        None,
-        "blocked start ⇒ None"
-    );
+    assert_eq!(astar(&g, g.idx(0, 0), g.idx(3, 3)), None, "blocked goal ⇒ None");
+    assert_eq!(astar(&g, g.idx(3, 3), g.idx(0, 0)), None, "blocked start ⇒ None");
 }
 
 // ---- AC2: a unit follows the waypoints around obstacles ---------------------
@@ -227,10 +192,7 @@ fn unit_follows_astar_waypoints_around_obstacle() {
         // Step toward this waypoint until arrival (bounded iterations).
         for _ in 0..1000 {
             // The unit's current cell must always be a walkable one.
-            assert!(
-                grid.is_walkable(grid.cell_at(pos)),
-                "unit never enters a blocked cell"
-            );
+            assert!(grid.is_walkable(grid.cell_at(pos)), "unit never enters a blocked cell");
             let (next, arrived) = step_toward(pos, target, step);
             pos = next;
             if arrived {
@@ -249,11 +211,7 @@ fn astar_counted_agrees_with_astar_and_reports_work() {
     let start = grid.idx(0, 0);
     let goal = grid.idx(5, 5);
     let (path, expanded) = astar_counted(&grid, start, goal);
-    assert_eq!(
-        path,
-        astar(&grid, start, goal),
-        "counted variant returns the same path"
-    );
+    assert_eq!(path, astar(&grid, start, goal), "counted variant returns the same path");
     assert!(path.is_some());
     assert!(expanded > 0, "a real search expands at least one node");
     // Unreachable searches still terminate and report their (bounded) work.
@@ -298,41 +256,25 @@ fn flow_field_next_steps_lead_to_goal() {
         let mut cur = start;
         let mut steps = 0u32;
         while cur != goal {
-            let nxt = field
-                .next(cur)
-                .expect("reachable non-goal cell has a flow direction");
+            let nxt = field.next(cur).expect("reachable non-goal cell has a flow direction");
             assert!(grid.is_walkable(nxt), "flow steps only onto walkable cells");
             let (ax, ay) = grid.xy(cur);
             let (bx, by) = grid.xy(nxt);
-            assert_eq!(
-                ax.abs_diff(bx) + ay.abs_diff(by),
-                1,
-                "flow steps are edge-adjacent"
-            );
+            assert_eq!(ax.abs_diff(bx) + ay.abs_diff(by), 1, "flow steps are edge-adjacent");
             cur = nxt;
             steps += 1;
             assert!(steps <= grid.len() as u32, "flow following terminates");
         }
-        assert_eq!(
-            steps,
-            field.distance(start).unwrap(),
-            "steps == field distance"
-        );
+        assert_eq!(steps, field.distance(start).unwrap(), "steps == field distance");
     }
-    assert!(
-        field.next(goal).is_none(),
-        "the goal itself has no flow direction"
-    );
+    assert!(field.next(goal).is_none(), "the goal itself has no flow direction");
 }
 
 // ---- AC3 probe (c): flow field agrees with A* on reachability --------------
 
 #[test]
 fn flow_field_reachability_agrees_with_astar() {
-    for grid in [
-        pocket_map(),
-        TileGrid::random(24, 24, CELL, ORIGIN, 0.28, 0x5EED),
-    ] {
+    for grid in [pocket_map(), TileGrid::random(24, 24, CELL, ORIGIN, 0.28, 0x5EED)] {
         // Pick a walkable goal.
         let goal = (0..grid.len()).find(|&c| grid.is_walkable(c)).unwrap();
         let field = FlowField::compute(&grid, goal);
@@ -356,14 +298,8 @@ fn flow_field_reachability_agrees_with_astar() {
         }
         // The sealed pocket cells (when present) are the unreachable witnesses.
         if grid.width == 6 {
-            assert!(
-                !field.is_reachable(grid.idx(2, 2)),
-                "sealed pocket is unreachable"
-            );
-            assert!(
-                !field.is_reachable(grid.idx(3, 2)),
-                "sealed pocket is unreachable"
-            );
+            assert!(!field.is_reachable(grid.idx(2, 2)), "sealed pocket is unreachable");
+            assert!(!field.is_reachable(grid.idx(3, 2)), "sealed pocket is unreachable");
         }
     }
 }
@@ -375,16 +311,8 @@ fn flow_field_is_deterministic() {
     let a = FlowField::compute(&grid, goal);
     let b = FlowField::compute(&grid, goal);
     for c in 0..grid.len() {
-        assert_eq!(
-            a.next(c),
-            b.next(c),
-            "flow direction stable across runs at {c}"
-        );
-        assert_eq!(
-            a.distance(c),
-            b.distance(c),
-            "flow distance stable across runs at {c}"
-        );
+        assert_eq!(a.next(c), b.next(c), "flow direction stable across runs at {c}");
+        assert_eq!(a.distance(c), b.distance(c), "flow distance stable across runs at {c}");
     }
 }
 
@@ -418,10 +346,7 @@ fn group_flow_field_costs_far_less_than_n_times_astar() {
     let mut astar_work = 0usize;
     for &s in &starts {
         // Each unit reaches the goal by following the shared field (group solved).
-        assert!(
-            field.next(s).is_some(),
-            "each group unit has a flow direction"
-        );
+        assert!(field.next(s).is_some(), "each group unit has a flow direction");
         let (path, expanded) = astar_counted(&grid, s, goal);
         assert!(path.is_some(), "each group unit is reachable by A* too");
         astar_work += expanded;

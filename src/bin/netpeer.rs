@@ -110,8 +110,13 @@ fn build(link: NetLink, seed: u64, me: Faction) -> App {
                 let idx = c.unit_index("worker").expect("worker");
                 (idx, c.units[idx].mvp_kind, Health::from_def(c, idx))
             };
-            app.world_mut()
-                .spawn((Position(spot.pos), UnitDefIdx(idx), kind, faction, hp));
+            app.world_mut().spawn((
+                Position(spot.pos),
+                UnitDefIdx(idx),
+                kind,
+                faction,
+                hp,
+            ));
         }
     }
     // The seeded commander — this peer's side only.

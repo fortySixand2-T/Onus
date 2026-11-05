@@ -212,9 +212,7 @@ fn opening(building: &str, at_tick: u32, offset: f32) -> BarracksOpening {
 }
 
 fn hmatch(c: Content, a: &str, b: &str, seed: u64) -> App {
-    let s = MatchSettings::default()
-        .with_seed(seed)
-        .with_strategies(a, b);
+    let s = MatchSettings::default().with_seed(seed).with_strategies(a, b);
     headless::ai_vs_ai(c, &s).expect("named")
 }
 
@@ -253,18 +251,12 @@ fn critic_workers_still_train_while_an_opening_is_due() {
         headless::step(&mut app);
         t += 1;
     }
-    let placed: Vec<u32> = placements(&app, Faction::A)
-        .iter()
-        .map(|(t, _)| *t)
-        .collect();
-    assert!(
-        placed.len() >= 2,
-        "fixture: second opening placed ({placed:?})"
-    );
+    let placed: Vec<u32> = placements(&app, Faction::A).iter().map(|(t, _)| *t).collect();
+    assert!(placed.len() >= 2, "fixture: second opening placed ({placed:?})");
     let journal = app.world().resource::<AiJournal>().for_faction(Faction::A);
-    let in_window = journal
-        .iter()
-        .any(|(t, a)| matches!(a, AiAction::TrainWorker { .. }) && *t >= 600 && *t < placed[1]);
+    let in_window = journal.iter().any(|(t, a)| {
+        matches!(a, AiAction::TrainWorker { .. }) && *t >= 600 && *t < placed[1]
+    });
     assert!(
         in_window,
         "no worker trained between the second opening coming due (600) and its \
@@ -293,11 +285,7 @@ fn critic_a_lost_line_is_due_again_and_holds_the_army_until_rebuilt() {
         headless::step(&mut app);
         t += 1;
     }
-    assert_eq!(
-        placements(&app, Faction::A).len(),
-        3,
-        "fixture: three lines"
-    );
+    assert_eq!(placements(&app, Faction::A).len(), 3, "fixture: three lines");
     // Let a few units train, then lose the highest-entity foundry.
     headless::tick(&mut app, 600);
     assert!(!over(&app), "fixture: match still running");
@@ -396,10 +384,7 @@ fn critic_a_stockpile_aware_bound_excuses_the_same_openings() {
     let mut bad = Vec::new();
     for s in c.strategies.iter().filter(|s| s.barracks.len() > 1) {
         let r = mirror(&c, &s.id);
-        report.push(format!(
-            "{}: end {} placed A {:?} B {:?}",
-            s.id, r.end, r.placed[0], r.placed[1]
-        ));
+        report.push(format!("{}: end {} placed A {:?} B {:?}", s.id, r.end, r.placed[0], r.placed[1]));
         for (fi, placed) in r.placed.iter().enumerate() {
             let mut owed = 0u32;
             for (k, o) in s.barracks.iter().enumerate().skip(placed.len()) {

@@ -35,9 +35,7 @@ fn without_campaign_layer(name: &str) -> Content {
         std::fs::copy(data_dir().join(file), out.join(file)).unwrap();
     }
     let text = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
-    let at = text
-        .find("    // ---- C1: the campaign battle layer")
-        .expect("the C1 marker");
+    let at = text.find("    // ---- C1: the campaign battle layer").expect("the C1 marker");
     let stripped = format!("{})\n", &text[..at]);
     std::fs::write(out.join("units.ron"), stripped).unwrap();
     let c = Content::load_from_dir(&out).expect("pre-C1 content loads");
@@ -50,11 +48,7 @@ fn play(c: Content, settings: &MatchSettings, ticks: u32) -> (Vec<u64>, usize, O
     headless::tick(&mut app, ticks);
     let hashes = app.world().resource::<StateHashLog>().0.clone();
     let journal = app.world().resource::<AiJournal>().0.len();
-    let end = app
-        .world()
-        .resource::<MatchState>()
-        .outcome()
-        .map(|o| o.tick);
+    let end = app.world().resource::<MatchState>().outcome().map(|o| o.tick);
     (hashes, journal, end)
 }
 
@@ -76,10 +70,7 @@ fn a_skirmish_plays_identically_with_and_without_the_campaign_layer() {
         let with = play(shipped(), &s, 1_800);
         let without = play(without_campaign_layer("seeds"), &s, 1_800);
         assert_eq!(with.0.len(), 1_800, "seed {seed}: one hash per tick");
-        assert_eq!(
-            with, without,
-            "seed {seed}: the campaign layer reached a skirmish"
-        );
+        assert_eq!(with, without, "seed {seed}: the campaign layer reached a skirmish");
     }
 }
 
@@ -89,9 +80,6 @@ fn named_strategies_play_identically_with_and_without_the_campaign_layer() {
         let s = MatchSettings::default().with_strategies(a, b);
         let with = play(shipped(), &s, 3_600);
         let without = play(without_campaign_layer("named"), &s, 3_600);
-        assert_eq!(
-            with, without,
-            "{a} vs {b}: the campaign layer reached a skirmish"
-        );
+        assert_eq!(with, without, "{a} vs {b}: the campaign layer reached a skirmish");
     }
 }

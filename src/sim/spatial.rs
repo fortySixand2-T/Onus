@@ -21,7 +21,15 @@ use bevy::math::Vec2;
 /// (see MVP_PLAN.md) — this is just the sim-pure tag that makes one unit an
 /// *enemy* of another. Unit *types* don't matter at this milestone.
 #[derive(
-    Component, Clone, Copy, PartialEq, Eq, Debug, Hash, serde::Serialize, serde::Deserialize,
+    Component,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Debug,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
 )]
 pub enum Faction {
     A,
@@ -210,7 +218,9 @@ impl SpatialGrid {
     pub fn nearest_enemy_counted(&self, units: &[Unit], i: usize) -> (Option<usize>, usize) {
         let me = units[i];
         let (c0, r0) = self.cell_of(me.pos);
-        let max_ring = c0.max(self.cols - 1 - c0).max(r0.max(self.rows - 1 - r0));
+        let max_ring = c0
+            .max(self.cols - 1 - c0)
+            .max(r0.max(self.rows - 1 - r0));
 
         let mut best_d2 = f32::INFINITY;
         let mut best_idx: Option<usize> = None;
@@ -286,7 +296,9 @@ impl SpatialGrid {
     ) -> Option<usize> {
         let me = units[i];
         let (c0, r0) = self.cell_of(me.pos);
-        let max_ring = c0.max(self.cols - 1 - c0).max(r0.max(self.rows - 1 - r0));
+        let max_ring = c0
+            .max(self.cols - 1 - c0)
+            .max(r0.max(self.rows - 1 - r0));
 
         let mut best_d2 = f32::INFINITY;
         let mut best_idx: Option<usize> = None;
@@ -388,16 +400,8 @@ mod tests {
             unit(10.0, 0.0, Faction::B), // 1 (far enemy)
             unit(5.0, 0.0, Faction::B),  // 2 (near enemy)
         ];
-        assert_eq!(
-            brute_force_nearest_enemy(&units, 0),
-            Some(2),
-            "nearest enemy, not just any"
-        );
-        assert_eq!(
-            brute_force_nearest_enemy(&units, 2),
-            Some(0),
-            "B's nearest enemy is the A"
-        );
+        assert_eq!(brute_force_nearest_enemy(&units, 0), Some(2), "nearest enemy, not just any");
+        assert_eq!(brute_force_nearest_enemy(&units, 2), Some(0), "B's nearest enemy is the A");
     }
 
     #[test]
@@ -414,11 +418,7 @@ mod tests {
             unit(9.0, 9.0, Faction::A),
         ];
         for i in 0..units.len() {
-            assert_eq!(
-                brute_force_nearest_enemy(&units, i),
-                None,
-                "no enemy anywhere"
-            );
+            assert_eq!(brute_force_nearest_enemy(&units, i), None, "no enemy anywhere");
         }
     }
 
@@ -497,9 +497,9 @@ mod tests {
         let units = [
             unit(0.0, 0.0, Faction::A),
             unit(5.0, 5.0, Faction::B),
-            unit(9000.0, -9000.0, Faction::B), // far outside
-            unit(-9000.0, 9000.0, Faction::A), // far outside
-            unit(3.0, -4000.0, Faction::B),    // outside on one axis
+            unit(9000.0, -9000.0, Faction::B),  // far outside
+            unit(-9000.0, 9000.0, Faction::A),  // far outside
+            unit(3.0, -4000.0, Faction::B),     // outside on one axis
             unit(-2.0, 2.0, Faction::A),
         ];
         assert_grid_eq_brute(&units, 15.0, Vec2::new(-10.0, -10.0), Vec2::new(10.0, 10.0));
@@ -548,12 +548,7 @@ mod tests {
 
     // ---- B4: the filtered, bounded query (attack-move priority) -----------
 
-    fn brute_within(
-        units: &[Unit],
-        i: usize,
-        max: f32,
-        ok: impl Fn(usize) -> bool,
-    ) -> Option<usize> {
+    fn brute_within(units: &[Unit], i: usize, max: f32, ok: impl Fn(usize) -> bool) -> Option<usize> {
         let me = units[i];
         let mut best: Option<(f32, usize)> = None;
         for (j, u) in units.iter().enumerate() {
@@ -571,12 +566,7 @@ mod tests {
     #[test]
     fn nearest_enemy_within_matches_the_filtered_brute_force() {
         for seed in 0..40u64 {
-            let layout = random_layout(
-                300,
-                seed,
-                Vec2::new(-500.0, -500.0),
-                Vec2::new(500.0, 500.0),
-            );
+            let layout = random_layout(300, seed, Vec2::new(-500.0, -500.0), Vec2::new(500.0, 500.0));
             let grid = SpatialGrid::build(&layout, 120.0);
             // An arbitrary deterministic filter (every third index refused).
             let ok = |j: usize| !j.is_multiple_of(3);
@@ -601,14 +591,8 @@ mod tests {
             unit(0.0, 5.0, Faction::B),   // 3 (nearest, refused by the filter)
         ];
         let grid = SpatialGrid::build(&units, 4.0);
-        assert_eq!(
-            grid.nearest_enemy_within(&units, 0, 50.0, |j| j != 3),
-            Some(1)
-        );
-        assert_eq!(
-            grid.nearest_enemy_within(&units, 0, 50.0, |_| true),
-            Some(3)
-        );
+        assert_eq!(grid.nearest_enemy_within(&units, 0, 50.0, |j| j != 3), Some(1));
+        assert_eq!(grid.nearest_enemy_within(&units, 0, 50.0, |_| true), Some(3));
         assert_eq!(grid.nearest_enemy_within(&units, 0, 9.0, |j| j != 3), None);
     }
 }

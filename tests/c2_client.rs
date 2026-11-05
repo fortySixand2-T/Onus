@@ -59,9 +59,7 @@ fn app() -> App {
 
 /// One frame with `key` pressed on it.
 fn press(app: &mut App, key: KeyCode) {
-    app.world_mut()
-        .resource_mut::<ButtonInput<KeyCode>>()
-        .press(key);
+    app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);
     app.update();
     let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
     keys.release(key);
@@ -95,9 +93,7 @@ fn label(app: &mut App, faction: Faction) -> (String, Color) {
 }
 
 fn picker_text(app: &mut App) -> String {
-    let mut q = app
-        .world_mut()
-        .query_filtered::<&Text, With<NationPicker>>();
+    let mut q = app.world_mut().query_filtered::<&Text, With<NationPicker>>();
     q.single(app.world()).expect("one picker").0.clone()
 }
 
@@ -110,19 +106,12 @@ fn hq_color(app: &mut App, faction: Faction) -> Color {
 }
 
 fn index(c: &Content, id: &str) -> usize {
-    c.nations
-        .iter()
-        .position(|n| n.id == id)
-        .expect("a shipped nation")
+    c.nations.iter().position(|n| n.id == id).expect("a shipped nation")
 }
 
 /// Press `key` until the picked nation of `side` is `want`.
 fn choose(app: &mut App, opponent: bool, want: Option<usize>) {
-    let key = if opponent {
-        OPPONENT_NEXT_KEY
-    } else {
-        NATION_NEXT_KEY
-    };
+    let key = if opponent { OPPONENT_NEXT_KEY } else { NATION_NEXT_KEY };
     for _ in 0..=app.world().resource::<Content>().nations.len() + 1 {
         let p = pick(app);
         if (if opponent { p.opponent } else { p.player }) == want {
@@ -142,18 +131,11 @@ fn the_cycle_runs_through_every_nation_and_no_nation_and_wraps() {
         at = cycle_nation(at, n, true);
         seen.push(at);
     }
-    assert_eq!(
-        seen,
-        vec![None, Some(0), Some(1), Some(2), Some(3), Some(4), Some(5)]
-    );
+    assert_eq!(seen, vec![None, Some(0), Some(1), Some(2), Some(3), Some(4), Some(5)]);
     assert_eq!(cycle_nation(Some(5), n, true), None, "wraps forward");
     assert_eq!(cycle_nation(None, n, false), Some(5), "wraps back");
     assert_eq!(cycle_nation(Some(0), n, false), None);
-    assert_eq!(
-        cycle_nation(None, 0, true),
-        None,
-        "no nations: only no nation"
-    );
+    assert_eq!(cycle_nation(None, 0, true), None, "no nations: only no nation");
 }
 
 #[test]
@@ -162,11 +144,7 @@ fn the_match_waits_on_the_pick_and_the_sim_does_not_tick() {
     let c = content();
     let p = pick(&app);
     assert_eq!(p.phase, PickPhase::Picking);
-    assert_eq!(
-        (p.player, p.opponent),
-        (Some(0), Some(1)),
-        "a nation each by default"
-    );
+    assert_eq!((p.player, p.opponent), (Some(0), Some(1)), "a nation each by default");
     assert!(!app.world().resource::<TickGate>().is_open());
     frames(&mut app, 30);
     assert_eq!(tick(&app), 0, "nothing is played while the player picks");
@@ -178,10 +156,7 @@ fn the_match_waits_on_the_pick_and_the_sim_does_not_tick() {
     press(&mut app, START_KEY);
     frames(&mut app, 5);
     assert!(tick(&app) > 0);
-    assert!(
-        picker_text(&mut app).is_empty(),
-        "the picker is gone once playing"
-    );
+    assert!(picker_text(&mut app).is_empty(), "the picker is gone once playing");
 }
 
 #[test]
@@ -194,10 +169,7 @@ fn the_picked_nations_are_the_matchs_nations_and_the_opponent_plays_its_personal
     press(&mut app, NATION_PREV_KEY);
     press(&mut app, NATION_NEXT_KEY);
     assert_eq!(pick(&app).player, Some(me), "prev then next is a no-op");
-    assert!(
-        !app.world().contains_resource::<NationRules>(),
-        "nothing applied before start"
-    );
+    assert!(!app.world().contains_resource::<NationRules>(), "nothing applied before start");
 
     press(&mut app, START_KEY);
     let rules = app.world().resource::<NationRules>().clone();
@@ -206,25 +178,13 @@ fn the_picked_nations_are_the_matchs_nations_and_the_opponent_plays_its_personal
     assert!(app.world().resource::<TickGate>().is_open());
     // The AI plays the opponent nation's own script.
     let ai = app.world().resource::<AiCommanders>();
-    let b = ai
-        .commanders()
-        .iter()
-        .find(|x| x.faction == Faction::B)
-        .unwrap();
+    let b = ai.commanders().iter().find(|x| x.faction == Faction::B).unwrap();
     assert_eq!(b.strategy(&c).id, c.nations[them].strategy);
     // The start was given its side's tables: Ashen Reach's HQ has the traited pool.
-    let want =
-        Defs::new(&c, Some(&rules)).building_health(Faction::A, c.building_index("hq").unwrap());
-    assert_ne!(
-        want,
-        Health::from_building_def(&c, c.building_index("hq").unwrap())
-    );
+    let want = Defs::new(&c, Some(&rules)).building_health(Faction::A, c.building_index("hq").unwrap());
+    assert_ne!(want, Health::from_building_def(&c, c.building_index("hq").unwrap()));
     let mut q = app.world_mut().query::<(&Faction, &Building, &Health)>();
-    let hq = q
-        .iter(app.world())
-        .find(|(f, _, _)| **f == Faction::A)
-        .unwrap()
-        .2;
+    let hq = q.iter(app.world()).find(|(f, _, _)| **f == Faction::A).unwrap().2;
     assert_eq!(hq.max, want.max);
 }
 
@@ -233,19 +193,11 @@ fn once_playing_the_keys_change_nothing() {
     let mut app = app();
     press(&mut app, START_KEY);
     let before = (pick(&app), app.world().resource::<NationRules>().clone());
-    for key in [
-        NATION_NEXT_KEY,
-        OPPONENT_NEXT_KEY,
-        NATION_PREV_KEY,
-        START_KEY,
-    ] {
+    for key in [NATION_NEXT_KEY, OPPONENT_NEXT_KEY, NATION_PREV_KEY, START_KEY] {
         press(&mut app, key);
     }
     let after = (pick(&app), app.world().resource::<NationRules>().clone());
-    assert_eq!(
-        (before.0.player, before.0.opponent),
-        (after.0.player, after.0.opponent)
-    );
+    assert_eq!((before.0.player, before.0.opponent), (after.0.player, after.0.opponent));
     assert_eq!(after.0.phase, PickPhase::Playing);
     for f in [Faction::A, Faction::B] {
         assert_eq!(before.1.nation_of(f), after.1.nation_of(f));
@@ -288,16 +240,9 @@ fn no_nation_on_both_sides_is_todays_match() {
     press(&mut app, START_KEY);
     frames(&mut app, 3);
     assert!(tick(&app) > 0);
-    assert!(
-        !app.world().contains_resource::<NationRules>(),
-        "the golden path: no rules"
-    );
+    assert!(!app.world().contains_resource::<NationRules>(), "the golden path: no rules");
     let ai = app.world().resource::<AiCommanders>();
-    let b = ai
-        .commanders()
-        .iter()
-        .find(|x| x.faction == Faction::B)
-        .unwrap();
+    let b = ai.commanders().iter().find(|x| x.faction == Faction::B).unwrap();
     assert_eq!(b.strategy_index(), None, "the default AI, as before C2");
     assert_eq!(hq_color(&mut app, Faction::B), BUILDING_COLOR);
 }
@@ -334,13 +279,8 @@ fn the_panel_prices_training_at_the_players_nation_cost() {
         .roster_unit(Faction::A, bulwark)
         .unwrap()
         .mvp_alloy_cost;
-    assert_ne!(
-        cost, c.units[bulwark].mvp_alloy_cost,
-        "Forgeborn's foundry discount"
-    );
-    let mut q = app
-        .world_mut()
-        .query_filtered::<&Text, With<OptionsPanel>>();
+    assert_ne!(cost, c.units[bulwark].mvp_alloy_cost, "Forgeborn's foundry discount");
+    let mut q = app.world_mut().query_filtered::<&Text, With<OptionsPanel>>();
     let panel = q.single(app.world()).unwrap().0.clone();
     assert!(panel.contains(&format!("Bulwark ({cost})")), "{panel}");
 }

@@ -106,37 +106,25 @@ pub struct Roster {
 impl Roster {
     /// One more unit `id` at full HP.
     pub fn unit(mut self, id: &str) -> Self {
-        self.units.push(RosterUnit {
-            id: id.to_string(),
-            hp: None,
-        });
+        self.units.push(RosterUnit { id: id.to_string(), hp: None });
         self
     }
 
     /// One more unit `id` with `hp` HP.
     pub fn unit_hp(mut self, id: &str, hp: u32) -> Self {
-        self.units.push(RosterUnit {
-            id: id.to_string(),
-            hp: Some(hp),
-        });
+        self.units.push(RosterUnit { id: id.to_string(), hp: Some(hp) });
         self
     }
 
     /// One more building `id` at full HP.
     pub fn building(mut self, id: &str) -> Self {
-        self.buildings.push(RosterBuilding {
-            id: id.to_string(),
-            hp: None,
-        });
+        self.buildings.push(RosterBuilding { id: id.to_string(), hp: None });
         self
     }
 
     /// One more building `id` with `hp` HP.
     pub fn building_hp(mut self, id: &str, hp: u32) -> Self {
-        self.buildings.push(RosterBuilding {
-            id: id.to_string(),
-            hp: Some(hp),
-        });
+        self.buildings.push(RosterBuilding { id: id.to_string(), hp: Some(hp) });
         self
     }
 }
@@ -271,10 +259,7 @@ impl std::fmt::Display for BattleSetupError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BattleSetupError::NoBattleContent => {
-                write!(
-                    f,
-                    "the content has no `mvp_battle` block (no campaign layer)"
-                )
+                write!(f, "the content has no `mvp_battle` block (no campaign layer)")
             }
             BattleSetupError::UnknownGeneral { id, side } => {
                 write!(f, "no general `{id}` (asked for by {side:?})")
@@ -342,10 +327,7 @@ fn spawn_roster(
             ProductionQueue::default(),
         ));
         if let Some(hp) = b.hp {
-            e.insert(Health {
-                current: hp,
-                max: full.max,
-            });
+            e.insert(Health { current: hp, max: full.max });
         }
     }
     let total = roster.units.len();
@@ -353,8 +335,8 @@ fn spawn_roster(
     // at least one spacing inside the entry edge. A roster too big for that
     // many `formation_rank`-wide ranks widens its ranks instead of spilling
     // off the field.
-    let fit = ((battle.general_front + battle.entry_edge_offset) / battle.formation_spacing).floor()
-        as usize;
+    let fit = ((battle.general_front + battle.entry_edge_offset) / battle.formation_spacing)
+        .floor() as usize;
     // Content validation guarantees room for at least one such rank.
     debug_assert!(fit >= 2, "mvp_battle leaves no rank inside the entry edge");
     let ranks = fit.saturating_sub(1).max(1);
@@ -404,9 +386,7 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
             let idx = content
                 .general_index(id)
                 .expect("BattleSetup::check admits only known generals");
-            let def = content
-                .unit_def(idx)
-                .expect("a general has a unit definition");
+            let def = content.unit_def(idx).expect("a general has a unit definition");
             let at = g.base
                 + g.front * battle.general_front
                 + line_offset(g, j, line, battle.formation_spacing);
@@ -885,9 +865,7 @@ fn report(
 ) -> [SideReport; 2] {
     let mut sides: [SideReport; 2] = Default::default();
     for (_, f, def, health, id, general) in units {
-        let hp = health
-            .copied()
-            .unwrap_or_else(|| defs.unit_health(*f, def.0));
+        let hp = health.copied().unwrap_or_else(|| defs.unit_health(*f, def.0));
         sides[faction_slot(*f)].units.push(UnitReport {
             sim_id: id.copied().unwrap_or(SimId::UNIDENTIFIED),
             unit: def.0,
@@ -1025,9 +1003,7 @@ impl AuraField {
 
     /// Every unit carrying a bonus, ascending entity bits.
     pub fn iter(&self) -> impl Iterator<Item = (Entity, StatBonus)> + '_ {
-        self.bonuses
-            .iter()
-            .map(|(k, b)| (Entity::from_bits(*k), *b))
+        self.bonuses.iter().map(|(k, b)| (Entity::from_bits(*k), *b))
     }
 }
 
@@ -1087,15 +1063,9 @@ pub fn auras(
     generals: Query<(Entity, &Position, &Faction, &UnitDefIdx), With<General>>,
     units: Query<(Entity, &Position, &Faction, &UnitDefIdx), Without<General>>,
 ) {
-    let mut gs: Vec<_> = generals
-        .iter()
-        .map(|(e, p, f, d)| (e.to_bits(), p.0, *f, d.0))
-        .collect();
+    let mut gs: Vec<_> = generals.iter().map(|(e, p, f, d)| (e.to_bits(), p.0, *f, d.0)).collect();
     gs.sort_unstable_by_key(|g| g.0);
-    let mut us: Vec<_> = units
-        .iter()
-        .map(|(e, p, f, d)| (e.to_bits(), p.0, *f, d.0))
-        .collect();
+    let mut us: Vec<_> = units.iter().map(|(e, p, f, d)| (e.to_bits(), p.0, *f, d.0)).collect();
     us.sort_unstable_by_key(|u| u.0);
     let domain: Vec<Option<usize>> = us.iter().map(|u| content.domain_of(u.3)).collect();
     let domains = content.resources.len();

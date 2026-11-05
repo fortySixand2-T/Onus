@@ -58,10 +58,7 @@ fn battle_match(
         .map(|r| r.lost)
         .unwrap_or([None, None]);
     let produced = ProductionCounts::of(c, app.world().resource::<Produced>());
-    (
-        MatchRecord::new(c, &settings, result, ticks, produced),
-        lost,
-    )
+    (MatchRecord::new(c, &settings, result, ticks, produced), lost)
 }
 
 fn batch(
@@ -91,10 +88,7 @@ fn campaign_battles_feed_the_b3_gate_and_every_decision_has_a_battle_cause() {
     let c = content();
     let probes = ["mass_ripper", "mass_sentinel"];
     let (recs, causes) = batch(&c, &probes, &[0], |_| "general_focus".to_string());
-    assert_eq!(
-        recs.len(),
-        probes.len() * probes.len() * Orientation::ALL.len()
-    );
+    assert_eq!(recs.len(), probes.len() * probes.len() * Orientation::ALL.len());
     for (r, l) in recs.iter().zip(&causes) {
         match r.result {
             MatchResult::Decided(w) => {
@@ -109,11 +103,7 @@ fn campaign_battles_feed_the_b3_gate_and_every_decision_has_a_battle_cause() {
     // The gate reads a battle batch exactly as it reads a skirmish one.
     let g = KillGate::of(&c, &recs, &GateSpec::default());
     assert_eq!(g.strength.rows.len(), probes.len());
-    assert_eq!(
-        g,
-        KillGate::of(&c, &recs, &GateSpec::default()),
-        "a pure function"
-    );
+    assert_eq!(g, KillGate::of(&c, &recs, &GateSpec::default()), "a pure function");
 }
 
 /// The measurement: the B3 pentagon batch (the five mass probes, every
@@ -126,13 +116,7 @@ fn b3_gate_on_campaign_battles() {
     let c = content();
     let kinds: Vec<String> = c.generals.iter().map(|g| g.id.clone()).collect();
     assert_eq!(kinds.len(), 6);
-    let probes = [
-        "mass_sentinel",
-        "mass_ripper",
-        "mass_arclight",
-        "mass_bulwark",
-        "mass_ravager",
-    ];
+    let probes = ["mass_sentinel", "mass_ripper", "mass_arclight", "mass_bulwark", "mass_ravager"];
     let seeds: Vec<u64> = (0..6).collect();
     let (recs, causes) = batch(&c, &probes, &seeds, |s| kinds[s as usize % 6].clone());
     let g = KillGate::of(&c, &recs, &GateSpec::default());
@@ -193,10 +177,6 @@ fn b3_gate_on_campaign_battles() {
             .map(|r| r.ticks)
             .collect();
         let mean = n.iter().map(|t| *t as f64).sum::<f64>() / n.len().max(1) as f64;
-        println!(
-            "{kind:<18} decided {} mean length {:.0} ticks",
-            n.len(),
-            mean
-        );
+        println!("{kind:<18} decided {} mean length {:.0} ticks", n.len(), mean);
     }
 }

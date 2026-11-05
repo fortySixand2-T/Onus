@@ -27,14 +27,7 @@ const A: MatchResult = MatchResult::Decided(Faction::A);
 const B: MatchResult = MatchResult::Decided(Faction::B);
 const MIN: u32 = 60 * SIM_HZ;
 
-fn rec(
-    a: &str,
-    b: &str,
-    seed: u64,
-    o: Orientation,
-    result: MatchResult,
-    ticks: u32,
-) -> MatchRecord {
+fn rec(a: &str, b: &str, seed: u64, o: Orientation, result: MatchResult, ticks: u32) -> MatchRecord {
     MatchRecord {
         strategies: [a.to_string(), b.to_string()],
         seed,
@@ -107,11 +100,7 @@ fn probe_k3_does_not_pass_when_six_percent_of_matches_are_in_target() {
     let g = gate(&recs);
     let in_band = g.termination.band_share.value.unwrap();
     assert!(in_band < 0.07, "fixture: {in_band}");
-    assert_eq!(
-        g.termination.timeout_rate.status,
-        Status::Pass,
-        "fixture: no timeouts"
-    );
+    assert_eq!(g.termination.timeout_rate.status, Status::Pass, "fixture: no timeouts");
     assert_ne!(
         g.termination.status,
         Status::Pass,
@@ -141,11 +130,7 @@ fn probe_k2_does_not_pass_when_one_mirror_is_resolved_outside_tolerance() {
     let x = &g.seat.mirrors[0];
     assert_eq!(x.strategy, "x");
     assert_eq!(x.slot_a.value, Some(1.0));
-    assert_eq!(
-        x.slot_a.status,
-        Status::Fail,
-        "the per-mirror data is resolved"
-    );
+    assert_eq!(x.slot_a.status, Status::Fail, "the per-mirror data is resolved");
     assert_ne!(
         g.seat.status,
         Status::Pass,
@@ -173,12 +158,7 @@ fn probe_a_strategy_losing_every_matchup_is_named() {
         recs.extend(pair_seed("b", "c", seed, 2));
     }
     let g = gate(&recs);
-    let low = g
-        .strength
-        .rows
-        .iter()
-        .find(|r| r.strategy == "low")
-        .unwrap();
+    let low = g.strength.rows.iter().find(|r| r.strategy == "low").unwrap();
     assert_eq!(low.strength.value, Some(0.125));
     let (_, hi) = low.strength.interval.unwrap();
     assert!(hi < 0.35, "fixture: row resolved below 35%, hi {hi}");
@@ -195,13 +175,7 @@ fn probe_a_strategy_losing_every_matchup_is_named() {
 /// of 1000 (100%); mean 75%; true sd of the mean = sqrt(0.25/10)/2 = 0.0791.
 #[test]
 fn probe_the_row_mean_interval_is_at_least_as_wide_as_the_true_one() {
-    let r = Reading::mean_of(
-        Some(0.75),
-        &[10, 1000],
-        &[10, 1000],
-        0.0,
-        Rule::AtMost(0.65),
-    );
+    let r = Reading::mean_of(Some(0.75), &[10, 1000], &[10, 1000], 0.0, Rule::AtMost(0.65));
     let (lo, hi) = r.interval.unwrap();
     let true_sd = (0.5f64 * 0.5 / 10.0).sqrt() / 2.0;
     let normal_width = 2.0 * 1.959_963_985 * true_sd;
@@ -243,29 +217,15 @@ fn probe_the_bin_report_is_byte_identical_across_runs() {
     let run = |tag: &str| {
         let path = dir.join(format!("onus_critic_b3_{tag}_{}.ron", std::process::id()));
         let out = Command::new(env!("CARGO_BIN_EXE_balance"))
-            .args([
-                "--only",
-                "rush,mass_ripper",
-                "--seeds",
-                "1",
-                "--tick-cap",
-                "9000",
-                "--report",
-            ])
+            .args(["--only", "rush,mass_ripper", "--seeds", "1", "--tick-cap", "9000", "--report"])
             .arg(&path)
             .output()
             .expect("binary runs");
-        assert!(
-            out.status.success(),
-            "{}",
-            String::from_utf8_lossy(&out.stderr)
-        );
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
         let bytes = std::fs::read(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
         // The last line names the (per-run) path; everything else must match.
-        let stdout = String::from_utf8(out.stdout)
-            .unwrap()
-            .replace(&path.display().to_string(), "PATH");
+        let stdout = String::from_utf8(out.stdout).unwrap().replace(&path.display().to_string(), "PATH");
         (bytes, stdout)
     };
     let (a, sa) = run("a");
@@ -274,9 +234,5 @@ fn probe_the_bin_report_is_byte_identical_across_runs() {
     assert_eq!(sa, sb, "stdout differs across runs");
     let text = String::from_utf8(a).unwrap();
     let r = BalanceReport::from_ron(&text).unwrap();
-    assert_eq!(
-        r.to_ron().unwrap(),
-        text,
-        "real report re-serializes to the same bytes"
-    );
+    assert_eq!(r.to_ron().unwrap(), text, "real report re-serializes to the same bytes");
 }

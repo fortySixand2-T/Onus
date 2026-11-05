@@ -3,27 +3,19 @@
 use bevy::prelude::*;
 
 use onus::headless::{self, MatchSettings};
-use onus::sim::battle::{
-    self, AuraField, BattleSetup, BattleState, General, LossCause, SideGround,
-};
+use onus::sim::battle::{self, AuraField, BattleSetup, BattleState, General, LossCause, SideGround};
 use onus::sim::combat::{Health, StatBonus};
 use onus::sim::content::Content;
 use onus::sim::economy::UnitDefIdx;
 use onus::sim::spatial::Faction;
-use onus::sim::{
-    AiCommanders, BattleAiAction, BattleAiJournal, CommandQueue, MatchState, Order, Position,
-    StateHashLog,
-};
+use onus::sim::{AiCommanders, BattleAiAction, BattleAiJournal, CommandQueue, MatchState, Order, Position, StateHashLog};
 
 fn content() -> Content {
     headless::content().expect("content loads")
 }
 
 fn order(app: &mut App, o: Order) {
-    app.world_mut()
-        .resource_mut::<CommandQueue>()
-        .0
-        .push_back(o);
+    app.world_mut().resource_mut::<CommandQueue>().0.push_back(o);
 }
 
 fn spawn_unit(app: &mut App, id: &str, faction: Faction, pos: Vec2) -> Entity {
@@ -32,20 +24,12 @@ fn spawn_unit(app: &mut App, id: &str, faction: Faction, pos: Vec2) -> Entity {
         let idx = c.unit_index(id).unwrap();
         (idx, c.units[idx].mvp_kind, Health::from_def(c, idx))
     };
-    app.world_mut()
-        .spawn((Position(pos), UnitDefIdx(idx), kind, faction, hp))
-        .id()
+    app.world_mut().spawn((Position(pos), UnitDefIdx(idx), kind, faction, hp)).id()
 }
 
 fn generals_of(app: &mut App, side: Faction) -> Vec<Entity> {
-    let mut q = app
-        .world_mut()
-        .query_filtered::<(Entity, &Faction), With<General>>();
-    let mut v: Vec<Entity> = q
-        .iter(app.world())
-        .filter(|(_, f)| **f == side)
-        .map(|(e, _)| e)
-        .collect();
+    let mut q = app.world_mut().query_filtered::<(Entity, &Faction), With<General>>();
+    let mut v: Vec<Entity> = q.iter(app.world()).filter(|(_, f)| **f == side).map(|(e, _)| e).collect();
     v.sort_by_key(|e| e.to_bits());
     v
 }
@@ -75,47 +59,23 @@ fn critic_retreat_finishes_on_a_diagonal_front() {
         let r = deg.to_radians();
         let front = Vec2::new(r.cos(), r.sin());
         let ground = [
-            SideGround {
-                base: Vec2::new(-750.0, 0.0),
-                front,
-            },
-            SideGround {
-                base: Vec2::new(750.0, 0.0),
-                front: -front,
-            },
+            SideGround { base: Vec2::new(-750.0, 0.0), front },
+            SideGround { base: Vec2::new(750.0, 0.0), front: -front },
         ];
         battle::install(app.world_mut(), &setup, ground);
         // a soldier of A's, somewhere on the field
         spawn_unit(&mut app, "ravager", Faction::A, Vec2::new(-300.0, 37.3));
         headless::step(&mut app);
-        order(
-            &mut app,
-            Order::Retreat {
-                faction: Faction::A,
-            }
-            .issued_by(Faction::A),
-        );
+        order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
         let done = run(&mut app, 60 * 120);
         if done.is_none() {
             stalled.push(deg);
             continue;
         }
-        let res = app
-            .world()
-            .resource::<BattleState>()
-            .result()
-            .cloned()
-            .unwrap();
-        assert_eq!(
-            res.loss(Faction::A),
-            Some(LossCause::Retreated),
-            "{deg} deg"
-        );
+        let res = app.world().resource::<BattleState>().result().cloned().unwrap();
+        assert_eq!(res.loss(Faction::A), Some(LossCause::Retreated), "{deg} deg");
     }
-    assert!(
-        stalled.is_empty(),
-        "retreat never finished at fronts {stalled:?} deg"
-    );
+    assert!(stalled.is_empty(), "retreat never finished at fronts {stalled:?} deg");
 }
 
 /// Probe: a retreat under pursuit still ends the battle (escape or fall), it
@@ -130,55 +90,25 @@ fn critic_retreat_under_pursuit_ends() {
     app.insert_resource(AiCommanders::default());
     let mut mine = Vec::new();
     for k in 0..6 {
-        mine.push(spawn_unit(
-            &mut app,
-            "bulwark",
-            Faction::A,
-            Vec2::new(-100.0, k as f32 * 20.0),
-        ));
+        mine.push(spawn_unit(&mut app, "bulwark", Faction::A, Vec2::new(-100.0, k as f32 * 20.0)));
     }
     let mut theirs = Vec::new();
     for k in 0..6 {
-        theirs.push(spawn_unit(
-            &mut app,
-            "ripper",
-            Faction::B,
-            Vec2::new(-40.0, k as f32 * 20.0),
-        ));
+        theirs.push(spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(-40.0, k as f32 * 20.0)));
     }
     headless::step(&mut app);
-    order(
-        &mut app,
-        Order::Retreat {
-            faction: Faction::A,
-        }
-        .issued_by(Faction::A),
-    );
+    order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
     for _ in 0..20 {
         order(
             &mut app,
-            Order::AttackMove {
-                units: theirs.clone(),
-                dest: Vec2::new(-1000.0, 0.0),
-            }
-            .issued_by(Faction::B),
+            Order::AttackMove { units: theirs.clone(), dest: Vec2::new(-1000.0, 0.0) }.issued_by(Faction::B),
         );
         headless::tick(&mut app, 30);
     }
     let done = run(&mut app, 60 * 120);
     assert!(done.is_some(), "a retreat under pursuit never ended");
-    let r = app
-        .world()
-        .resource::<BattleState>()
-        .result()
-        .cloned()
-        .unwrap();
-    assert!(matches!(
-        r.loss(Faction::A),
-        Some(LossCause::Retreated)
-            | Some(LossCause::GeneralsFell)
-            | Some(LossCause::VictoryBuildingLost)
-    ));
+    let r = app.world().resource::<BattleState>().result().cloned().unwrap();
+    assert!(matches!(r.loss(Faction::A), Some(LossCause::Retreated) | Some(LossCause::GeneralsFell) | Some(LossCause::VictoryBuildingLost)));
 }
 
 /// Probe: Synthesis counts the domains of friendly units only.
@@ -201,24 +131,10 @@ fn critic_synthesis_ignores_enemy_domains() {
     spawn_unit(&mut app, "arclight", Faction::B, Vec2::new(0.0, -15.0));
     headless::step(&mut app);
     let c = content();
-    let syn = c
-        .generals
-        .iter()
-        .find(|g| g.id == "general_synthesis")
-        .unwrap();
-    let off = syn
-        .aura
-        .modifiers
-        .iter()
-        .find(|m| format!("{:?}", m.stat) == "Offense")
-        .unwrap()
-        .add
-        .unwrap();
+    let syn = c.generals.iter().find(|g| g.id == "general_synthesis").unwrap();
+    let off = syn.aura.modifiers.iter().find(|m| format!("{:?}", m.stat) == "Offense").unwrap().add.unwrap();
     let b: StatBonus = app.world().resource::<AuraField>().get(mine);
-    assert_eq!(
-        b.offense, off,
-        "one friendly domain => x1, enemies don't count"
-    );
+    assert_eq!(b.offense, off, "one friendly domain => x1, enemies don't count");
 }
 
 /// Probe: one battle, played twice, hashes identically every tick (with the
@@ -263,22 +179,11 @@ fn critic_ai_retreat_exploratory() {
         let mut app = headless::ai_vs_ai(content(), &s).unwrap();
         let end = run(&mut app, 60 * 60 * 15);
         let r = app.world().resource::<BattleState>().result().cloned();
-        let j: Vec<_> = app
-            .world()
-            .resource::<BattleAiJournal>()
-            .0
-            .iter()
-            .filter(|(_, _, a)| matches!(a, BattleAiAction::Retreat))
-            .cloned()
-            .collect();
-        eprintln!(
-            "seed {seed}: end {end:?} winner {:?} lost {:?} retreats {:?}",
-            r.as_ref().map(|r| r.winner),
-            r.as_ref().map(|r| r.lost),
-            j
-        );
+        let j: Vec<_> = app.world().resource::<BattleAiJournal>().0.iter().filter(|(_, _, a)| matches!(a, BattleAiAction::Retreat)).cloned().collect();
+        eprintln!("seed {seed}: end {end:?} winner {:?} lost {:?} retreats {:?}", r.as_ref().map(|r| r.winner), r.as_ref().map(|r| r.lost), j);
     }
 }
+
 
 /// Probe: even on an axis-aligned front, a base at a non-round coordinate must
 /// not leave a retreating unit a float ulp short of its edge.
@@ -291,25 +196,13 @@ fn critic_retreat_finishes_on_an_axis_front_with_odd_base() {
             .with_general(Faction::A, "general_logistics")
             .with_general(Faction::B, "general_bulwark");
         let ground = [
-            SideGround {
-                base: Vec2::new(bx, 13.7),
-                front: Vec2::X,
-            },
-            SideGround {
-                base: Vec2::new(-bx, 13.7),
-                front: -Vec2::X,
-            },
+            SideGround { base: Vec2::new(bx, 13.7), front: Vec2::X },
+            SideGround { base: Vec2::new(-bx, 13.7), front: -Vec2::X },
         ];
         battle::install(app.world_mut(), &setup, ground);
         spawn_unit(&mut app, "ravager", Faction::A, Vec2::new(-300.3, 37.3));
         headless::step(&mut app);
-        order(
-            &mut app,
-            Order::Retreat {
-                faction: Faction::A,
-            }
-            .issued_by(Faction::A),
-        );
+        order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
         let done = run(&mut app, 60 * 120);
         assert!(done.is_some(), "base x {bx}: the retreat never finished");
     }
@@ -329,20 +222,8 @@ fn critic_a_mutual_retreat_does_not_crown_the_slower_withdrawer() {
     spawn_unit(&mut app, "bulwark", Faction::A, Vec2::new(-100.0, 0.0));
     spawn_unit(&mut app, "ripper", Faction::B, Vec2::new(100.0, 0.0));
     headless::step(&mut app);
-    order(
-        &mut app,
-        Order::Retreat {
-            faction: Faction::A,
-        }
-        .issued_by(Faction::A),
-    );
-    order(
-        &mut app,
-        Order::Retreat {
-            faction: Faction::B,
-        }
-        .issued_by(Faction::B),
-    );
+    order(&mut app, Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
+    order(&mut app, Order::Retreat { faction: Faction::B }.issued_by(Faction::B));
     assert!(run(&mut app, 60 * 120).is_some());
     let st = app.world().resource::<BattleState>();
     let r = st.result().cloned().unwrap();
@@ -374,10 +255,7 @@ fn critic_an_enemy_inside_the_radius_gets_no_aura() {
     app.world_mut().get_mut::<Position>(g).unwrap().0 = Vec2::ZERO;
     let enemy = spawn_unit(&mut app, "ravager", Faction::B, Vec2::new(5.0, 0.0));
     headless::step(&mut app);
-    assert_eq!(
-        app.world().resource::<AuraField>().get(enemy),
-        StatBonus::NONE
-    );
+    assert_eq!(app.world().resource::<AuraField>().get(enemy), StatBonus::NONE);
 }
 
 /// Probe: the Synthesis cap binds. Shipped data has max 3 = the number of
@@ -393,25 +271,10 @@ fn critic_synthesis_cap_binds_when_below_the_domain_count() {
     }
     let text = std::fs::read_to_string(src.join("units.ron")).unwrap();
     assert!(text.contains("PerDistinctDomain(max: 3)"));
-    std::fs::write(
-        out.join("units.ron"),
-        text.replace("PerDistinctDomain(max: 3)", "PerDistinctDomain(max: 2)"),
-    )
-    .unwrap();
+    std::fs::write(out.join("units.ron"), text.replace("PerDistinctDomain(max: 3)", "PerDistinctDomain(max: 2)")).unwrap();
     let c = Content::load_from_dir(&out).expect("max 2 loads");
-    let syn = c
-        .generals
-        .iter()
-        .find(|g| g.id == "general_synthesis")
-        .unwrap();
-    let off = syn
-        .aura
-        .modifiers
-        .iter()
-        .find(|m| format!("{:?}", m.stat) == "Offense")
-        .unwrap()
-        .add
-        .unwrap();
+    let syn = c.generals.iter().find(|g| g.id == "general_synthesis").unwrap();
+    let off = syn.aura.modifiers.iter().find(|m| format!("{:?}", m.stat) == "Offense").unwrap().add.unwrap();
     let mut app = headless::ai_vs_ai(
         c,
         &MatchSettings::default().with_battle(

@@ -126,10 +126,7 @@ fn the_shipped_content_yields_the_designed_cycle() {
     // Closed, and every unit exactly once in each role.
     let order = links_of(&report);
     for w in order.windows(2) {
-        assert_eq!(
-            w[0].1, w[1].0,
-            "each link's prey is the next link's predator"
-        );
+        assert_eq!(w[0].1, w[1].0, "each link's prey is the next link's predator");
     }
     assert_eq!(
         order.last().unwrap().1,
@@ -140,10 +137,7 @@ fn the_shipped_content_yields_the_designed_cycle() {
     let mut prey: Vec<&String> = order.iter().map(|(_, q)| q).collect();
     predators.sort();
     prey.sort();
-    assert_eq!(
-        predators, prey,
-        "each unit once as predator and once as prey"
-    );
+    assert_eq!(predators, prey, "each unit once as predator and once as prey");
     predators.dedup();
     assert_eq!(predators.len(), 5, "no unit repeats");
 }
@@ -192,12 +186,7 @@ fn an_open_chain_is_reported() {
     let mut content = shipped();
     set_nemesis(&mut content, "ravager", None);
     let err = PentagonReport::of(&content, &WinMatrix::default()).expect_err("no longer closed");
-    assert_eq!(
-        err,
-        CycleError::Open {
-            at: "ravager".to_string()
-        }
-    );
+    assert_eq!(err, CycleError::Open { at: "ravager".to_string() });
     assert!(err.to_string().contains("ravager"), "{err}");
 }
 
@@ -221,11 +210,7 @@ fn a_short_cycle_leaving_units_out_is_reported() {
             assert_eq!(cycle, vec!["bulwark".to_string(), "ravager".to_string()]);
             assert_eq!(
                 missing,
-                vec![
-                    "sentinel".to_string(),
-                    "ripper".to_string(),
-                    "arclight".to_string()
-                ],
+                vec!["sentinel".to_string(), "ripper".to_string(), "arclight".to_string()],
                 "the units left out, in RON order"
             );
         }
@@ -240,12 +225,7 @@ fn a_lasso_is_reported() {
     let mut content = shipped();
     set_nemesis(&mut content, "sentinel", Some("ravager"));
     let err = PentagonReport::of(&content, &WinMatrix::default()).expect_err("not a cycle");
-    assert_eq!(
-        err,
-        CycleError::Lasso {
-            at: "ravager".to_string()
-        }
-    );
+    assert_eq!(err, CycleError::Lasso { at: "ravager".to_string() });
 }
 
 #[test]
@@ -300,7 +280,8 @@ fn holds_only_when_the_whole_interval_clears_half() {
     // arclight 35/100 (fails), bulwark all-timeout (undefined),
     // ravager 100/100 of 7 (holds — 7 of 7 is [64.6, 100]).
     let records = pentagon_records(&[(65, 35, 0), (50, 50, 0), (35, 65, 0), (0, 0, 4), (7, 0, 0)]);
-    let report = PentagonReport::of(&content, &WinMatrix::of(&records)).expect("the shipped cycle");
+    let report =
+        PentagonReport::of(&content, &WinMatrix::of(&records)).expect("the shipped cycle");
 
     assert_eq!(link(&report, "sentinel").verdict, Verdict::Holds);
     assert_eq!(link(&report, "sentinel").rate, Some(0.65));
@@ -310,11 +291,7 @@ fn holds_only_when_the_whole_interval_clears_half() {
     assert_eq!(link(&report, "arclight").rate, Some(0.35));
     assert_eq!(link(&report, "bulwark").verdict, Verdict::Undefined);
     assert_eq!(link(&report, "bulwark").rate, None, "never 0.5");
-    assert_eq!(
-        link(&report, "bulwark").interval,
-        None,
-        "no rate, no interval"
-    );
+    assert_eq!(link(&report, "bulwark").interval, None, "no rate, no interval");
     assert_eq!(link(&report, "bulwark").n_decided, 0);
     assert_eq!(link(&report, "bulwark").n_timeout, 4);
     assert_eq!(link(&report, "ravager").verdict, Verdict::Holds);
@@ -352,10 +329,7 @@ fn the_same_rate_on_too_few_matches_is_undetermined_not_a_verdict() {
             assert_eq!(report.holding(), 0);
             assert_eq!(report.failing(), 0, "undetermined is not a failed design");
             assert_eq!(report.undefined(), 0, "undetermined is not undefined");
-            assert!(
-                !report.all_hold(),
-                "a coin-flip-wide reading is not a pentagon"
-            );
+            assert!(!report.all_hold(), "a coin-flip-wide reading is not a pentagon");
         } else {
             assert_eq!(report.holding(), 5, "75% of 40 is [59.8, 85.8]");
             assert_eq!(report.undetermined(), 0);
@@ -384,10 +358,7 @@ fn an_empty_batch_is_five_undefined_links_not_a_balanced_pentagon() {
     assert_eq!(report.links().len(), 5);
     assert_eq!(report.undefined(), 5);
     assert_eq!(report.holding(), 0);
-    assert!(
-        !report.all_hold(),
-        "nothing decided is not a pentagon that holds"
-    );
+    assert!(!report.all_hold(), "nothing decided is not a pentagon that holds");
     for l in report.links() {
         assert_eq!(l.rate, None);
     }
@@ -427,10 +398,7 @@ fn a_links_rate_is_the_predators_not_the_preys() {
 
     // The transpose is the losing reading, and it is *not* what a link reports.
     let m = WinMatrix::of(&records);
-    assert_eq!(
-        m.get("mass_ripper", "mass_sentinel").unwrap().rate(),
-        Some(0.25)
-    );
+    assert_eq!(m.get("mass_ripper", "mass_sentinel").unwrap().rate(), Some(0.25));
 }
 
 #[test]
@@ -518,7 +486,10 @@ fn a_cycle_unit_with_no_mass_strategy_is_a_reported_gap() {
 #[test]
 fn the_real_batch_reports_what_the_sim_actually_does() {
     let content = shipped();
-    let probes: Vec<String> = DESIGNED.iter().map(|(p, _)| format!("mass_{p}")).collect();
+    let probes: Vec<String> = DESIGNED
+        .iter()
+        .map(|(p, _)| format!("mass_{p}"))
+        .collect();
     let settings = BatchSettings::default()
         .with_only(probes.clone())
         .with_seeds(2);
@@ -561,21 +532,9 @@ fn the_real_batch_reports_what_the_sim_actually_does() {
     // retune) moves it once more: four links resolve as holds at 8 of 8, and
     // `sentinel > ripper` stays undetermined at 2 of 4 decided with 4 timeouts.
     // Nothing fails. (F-046: two holds, three undetermined.)
-    assert_eq!(
-        report.failing(),
-        0,
-        "no link reads as broken design:\n{report}"
-    );
-    assert_eq!(
-        report.holding(),
-        4,
-        "four links resolve as holds:\n{report}"
-    );
-    assert_eq!(
-        report.undetermined(),
-        1,
-        "one link the sample cannot call:\n{report}"
-    );
+    assert_eq!(report.failing(), 0, "no link reads as broken design:\n{report}");
+    assert_eq!(report.holding(), 4, "four links resolve as holds:\n{report}");
+    assert_eq!(report.undetermined(), 1, "one link the sample cannot call:\n{report}");
     assert_eq!(report.undefined(), 0, "every link has decided matches");
 
     // Link by link: the rate, and whether eight matches can resolve it.

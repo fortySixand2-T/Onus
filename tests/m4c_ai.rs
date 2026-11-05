@@ -496,11 +496,7 @@ fn the_ai_puts_its_workers_on_a_deposit_and_banks_alloy() {
 fn the_ai_builds_one_barracks_and_not_before_its_tick() {
     let script = content().ai;
     // The MVP opener opens exactly one barracks; `opening` is that one entry.
-    assert_eq!(
-        script.barracks.len(),
-        1,
-        "the default strategy changed shape"
-    );
+    assert_eq!(script.barracks.len(), 1, "the default strategy changed shape");
     let opening = &script.barracks[0];
     let mut app = ai_match(11);
     tick(&mut app, opening.at_tick);
@@ -594,9 +590,7 @@ fn the_ai_attack_moves_its_force_at_the_enemy_hq() {
     // It closes: the army's distance to the enemy HQ falls.
     let army_distance = |app: &mut App| -> f32 {
         let c = content();
-        let mut q = app
-            .world_mut()
-            .query::<(&Position, &UnitDefIdx, &Faction)>();
+        let mut q = app.world_mut().query::<(&Position, &UnitDefIdx, &Faction)>();
         let ds: Vec<f32> = q
             .iter(app.world())
             .filter(|(_, d, f)| **f == Faction::A && c.units[d.0].offense > 0)
@@ -623,11 +617,7 @@ fn the_ai_acts_only_on_its_think_interval() {
     let acts = journal(&app, Faction::A);
     assert!(!acts.is_empty());
     for (t, a) in acts {
-        assert_eq!(
-            t % interval,
-            0,
-            "decision {a:?} taken off-timer at tick {t}"
-        );
+        assert_eq!(t % interval, 0, "decision {a:?} taken off-timer at tick {t}");
     }
 }
 
@@ -723,10 +713,7 @@ fn the_sim_reads_no_clock_and_iterates_no_hash_map() {
             }
         }
     }
-    assert!(
-        offenders.is_empty(),
-        "nondeterminism in the sim: {offenders:?}"
-    );
+    assert!(offenders.is_empty(), "nondeterminism in the sim: {offenders:?}");
 }
 
 // ---- AC1: the script is content, and bad content is refused at load ---------
@@ -750,10 +737,7 @@ fn load_mutated(name: &str, from: &str, to: &str) -> Result<Content, String> {
         };
         std::fs::write(dir.join(file), edited).unwrap();
     }
-    assert_eq!(
-        hit, 1,
-        "anchor `{from}` is in {hit} shipped files, not exactly 1"
-    );
+    assert_eq!(hit, 1, "anchor `{from}` is in {hit} shipped files, not exactly 1");
     Content::load_from_dir(&dir).map_err(|e| e.to_string())
 }
 
@@ -766,28 +750,12 @@ fn load_mutated(name: &str, from: &str, to: &str) -> Result<Content, String> {
 #[test]
 fn an_unrunnable_ai_script_is_refused_at_load() {
     for (name, from, to) in [
-        (
-            "think0",
-            "think_interval_ticks: 30",
-            "think_interval_ticks: 0",
-        ),
-        (
-            "wave0",
-            "attack_interval_ticks: 600",
-            "attack_interval_ticks: 0",
-        ),
+        ("think0", "think_interval_ticks: 30", "think_interval_ticks: 0"),
+        ("wave0", "attack_interval_ticks: 600", "attack_interval_ticks: 0"),
         ("workers0", "worker_target: 6", "worker_target: 0"),
         ("army0", "attack_at_army: 3", "attack_at_army: 0"),
-        (
-            "nobarracks",
-            "(building: \"foundry\", at_tick",
-            "(building: \"nonesuch\", at_tick",
-        ),
-        (
-            "hqbarracks",
-            "(building: \"foundry\", at_tick",
-            "(building: \"hq\", at_tick",
-        ),
+        ("nobarracks", "(building: \"foundry\", at_tick", "(building: \"nonesuch\", at_tick"),
+        ("hqbarracks", "(building: \"foundry\", at_tick", "(building: \"hq\", at_tick"),
         (
             "wrongunit",
             "(unit: \"sentinel\", count: 2)",
@@ -865,11 +833,7 @@ fn the_ai_script_comes_from_the_ron_not_from_constants() {
     let acts = journal(&app, Faction::A);
     assert!(!acts.is_empty(), "the edited script never acted");
     for (t, a) in acts {
-        assert_eq!(
-            t % 97,
-            0,
-            "decision {a:?} at tick {t} ignores the edited RON"
-        );
+        assert_eq!(t % 97, 0, "decision {a:?} at tick {t} ignores the edited RON");
     }
 }
 
@@ -1010,11 +974,7 @@ fn nothing_runs_after_the_match_is_decided() {
             app.world().get::<Health>(killer).map(|h| h.current),
             frozen_hp
         );
-        assert_eq!(
-            alloy(&app, Faction::A),
-            1_000,
-            "Alloy was spent after the end"
-        );
+        assert_eq!(alloy(&app, Faction::A), 1_000, "Alloy was spent after the end");
         assert_eq!(queued(&app, my_hq), 0, "production ran after the end");
     }
 }
@@ -1026,10 +986,7 @@ fn a_match_with_only_one_hq_never_ends() {
     let mut app = sim_app();
     spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
     tick(&mut app, 500);
-    assert!(
-        outcome(&app).is_none(),
-        "a solitary HQ won a match by itself"
-    );
+    assert!(outcome(&app).is_none(), "a solitary HQ won a match by itself");
     assert!(!app.world().resource::<MatchState>().engaged());
 }
 
@@ -1080,12 +1037,7 @@ fn ai_vs_ai(seed: u64) -> App {
             ResourceNode { amount: 100_000 },
         ));
         for i in 0..3 {
-            spawn_unit(
-                &mut app,
-                "worker",
-                faction,
-                base + Vec2::new(0.0, 20.0 * i as f32),
-            );
+            spawn_unit(&mut app, "worker", faction, base + Vec2::new(0.0, 20.0 * i as f32));
         }
     }
     app.insert_resource(AiCommanders::new(seed, &[Faction::A, Faction::B]));
@@ -1137,11 +1089,7 @@ fn an_ai_vs_ai_match_is_decided_within_eight_minutes() {
                 .map(|(_, f)| *f)
                 .collect()
         };
-        assert_eq!(
-            standing,
-            vec![winner],
-            "seed {seed}: the win was not a dead HQ"
-        );
+        assert_eq!(standing, vec![winner], "seed {seed}: the win was not a dead HQ");
         lengths.push((seed, o.tick, o.winner));
     }
     println!("match lengths (seed, tick, winner): {lengths:?}");
@@ -1199,10 +1147,9 @@ fn an_hq_lost_on_the_first_tick_decides_the_match() {
     let mut app = sim_app();
     spawn_building(&mut app, "hq", Faction::A, Vec2::new(-300.0, 0.0));
     let doomed = spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
-    app.world_mut().entity_mut(doomed).insert(Health {
-        current: 1,
-        max: 400,
-    });
+    app.world_mut()
+        .entity_mut(doomed)
+        .insert(Health { current: 1, max: 400 });
     spawn_unit(&mut app, "arclight", Faction::A, Vec2::new(-60.0, 0.0));
     step(&mut app);
     assert!(
@@ -1224,10 +1171,9 @@ fn the_decision_does_not_depend_on_which_tick_the_loss_lands_on() {
         let mut app = sim_app();
         spawn_building(&mut app, "hq", Faction::A, Vec2::new(-300.0, 0.0));
         let doomed = spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
-        app.world_mut().entity_mut(doomed).insert(Health {
-            current: 1,
-            max: 400,
-        });
+        app.world_mut()
+            .entity_mut(doomed)
+            .insert(Health { current: 1, max: 400 });
         tick(&mut app, delay);
         spawn_unit(&mut app, "arclight", Faction::A, Vec2::new(-60.0, 0.0));
         tick(&mut app, 300);
@@ -1269,10 +1215,7 @@ fn a_one_sided_fixture_never_terminates_on_any_tick() {
         );
         assert!(!app.world().resource::<MatchState>().engaged());
     }
-    assert!(
-        moved > 0.0,
-        "the sim was frozen, so 'still running' proves nothing"
-    );
+    assert!(moved > 0.0, "the sim was frozen, so 'still running' proves nothing");
 }
 
 /// And the other side of that: a second HQ arriving late makes the match
@@ -1284,10 +1227,9 @@ fn a_second_hq_arriving_late_makes_the_match_decidable() {
     tick(&mut app, 100);
     assert!(!app.world().resource::<MatchState>().engaged());
     let doomed = spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
-    app.world_mut().entity_mut(doomed).insert(Health {
-        current: 1,
-        max: 400,
-    });
+    app.world_mut()
+        .entity_mut(doomed)
+        .insert(Health { current: 1, max: 400 });
     spawn_unit(&mut app, "arclight", Faction::A, Vec2::new(-60.0, 0.0));
     tick(&mut app, 300);
     assert_eq!(outcome(&app).map(|o| o.winner), Some(Some(Faction::A)));
@@ -1342,8 +1284,7 @@ fn a_split_gather_claim_is_swept_and_the_unit_re_arms() {
     );
     tick(&mut app, 120);
     assert!(
-        !app.world().get_entity(enemy).is_ok()
-            || app.world().get::<Health>(enemy).unwrap().current < full,
+        !app.world().get_entity(enemy).is_ok() || app.world().get::<Health>(enemy).unwrap().current < full,
         "the unit was still disarmed by a claim the economy could not see"
     );
 }

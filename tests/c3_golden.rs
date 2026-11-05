@@ -13,7 +13,8 @@ use onus::sim::content::Content;
 use onus::sim::nation::NationRules;
 use onus::sim::three::{EconomyMode, LeyWell, ThreeEconomy};
 use onus::sim::{
-    AiCommanders, AiJournal, CommandLog, Faction, MatchLog, MatchState, ReplaySource, StateHashLog,
+    AiCommanders, AiJournal, CommandLog, Faction, MatchLog, MatchState, ReplaySource,
+    StateHashLog,
 };
 
 fn data_dir() -> PathBuf {
@@ -22,10 +23,7 @@ fn data_dir() -> PathBuf {
 
 fn shipped() -> Content {
     let c = Content::load_from_dir(&data_dir()).expect("content loads");
-    assert!(
-        c.three_resource.is_some(),
-        "the shipped content has the block"
-    );
+    assert!(c.three_resource.is_some(), "the shipped content has the block");
     c
 }
 
@@ -48,11 +46,7 @@ fn play(c: Content, s: &MatchSettings, ticks: u32) -> Trace {
     assert!(!app.world().contains_resource::<ThreeEconomy>());
     let hashes = app.world().resource::<StateHashLog>().0.clone();
     let journal = app.world().resource::<AiJournal>().0.len();
-    let end = app
-        .world()
-        .resource::<MatchState>()
-        .outcome()
-        .map(|o| o.tick);
+    let end = app.world().resource::<MatchState>().outcome().map(|o| o.tick);
     (hashes, journal, end)
 }
 
@@ -74,11 +68,7 @@ fn an_alloy_only_match_plays_identically_with_and_without_the_three_resource_con
         assert_eq!(with, play(before_c3(), &s, 1_800), "seed {seed}");
         // Nations too: the Alloy-only list is the one played.
         let n = s.clone().with_nations(Some("tollmarch"), Some("verdant"));
-        assert_eq!(
-            play(shipped(), &n, 1_200),
-            play(before_c3(), &n, 1_200),
-            "seed {seed}"
-        );
+        assert_eq!(play(shipped(), &n, 1_200), play(before_c3(), &n, 1_200), "seed {seed}");
     }
 }
 
@@ -115,15 +105,9 @@ fn an_alloy_only_log_is_written_as_before() {
     let (log, _) = record(&MatchSettings::default().with_seed(3), 300);
     assert_eq!(log.economy, EconomyMode::Alloy);
     let text = log.to_ron().unwrap();
-    assert!(
-        !text.contains("economy"),
-        "an Alloy-only log is byte-for-byte pre-C3"
-    );
+    assert!(!text.contains("economy"), "an Alloy-only log is byte-for-byte pre-C3");
     // ...so a pre-C3 log, which has no such field, reads as Alloy-only.
-    assert_eq!(
-        MatchLog::from_ron(&text).unwrap().economy,
-        EconomyMode::Alloy
-    );
+    assert_eq!(MatchLog::from_ron(&text).unwrap().economy, EconomyMode::Alloy);
 }
 
 #[test]
@@ -133,17 +117,9 @@ fn a_three_resource_log_records_its_economy_and_replays_it_faithfully() {
         .with_seed(9)
         .with_economy(EconomyMode::ThreeResource);
     let (log, recorded) = record(&s, TICKS);
-    assert_eq!(
-        log.economy,
-        EconomyMode::ThreeResource,
-        "the sim stamps the economy"
-    );
+    assert_eq!(log.economy, EconomyMode::ThreeResource, "the sim stamps the economy");
     assert!(log.to_ron().unwrap().contains("economy"));
-    assert!(
-        log.commands.len() > 10,
-        "the AI played: {}",
-        log.commands.len()
-    );
+    assert!(log.commands.len() > 10, "the AI played: {}", log.commands.len());
     // Into a world set up Alloy-only: the replay installs the economy itself.
     let mut rep = replay(shipped(), log.clone(), MatchSettings::default(), TICKS);
     {
@@ -234,8 +210,5 @@ fn a_three_resource_log_replayed_into_a_match_under_way_is_refused() {
     let src = rep.world().resource::<ReplaySource>();
     let why = src.rejection().expect("refused");
     assert!(why.contains("economy"), "{why}");
-    assert!(
-        !rep.world().contains_resource::<ThreeEconomy>(),
-        "nothing installed"
-    );
+    assert!(!rep.world().contains_resource::<ThreeEconomy>(), "nothing installed");
 }

@@ -79,11 +79,7 @@ fn golden_fixture(c: Content, commanders: AiCommanders, ballast: bool) -> App {
         (Faction::A, Vec2::new(-750.0, 0.0)),
         (Faction::B, Vec2::new(750.0, 0.0)),
     ] {
-        let def = app
-            .world()
-            .resource::<Content>()
-            .building_index("hq")
-            .unwrap();
+        let def = app.world().resource::<Content>().building_index("hq").unwrap();
         app.world_mut().spawn((
             Position(base),
             Building { def },
@@ -272,57 +268,27 @@ fn probe_the_relabelled_digest_still_detects_a_real_behavioural_change() {
         relabelled_digest(&app)
     };
     let base = play(4, "mass_ripper", "turtle", 1_800);
-    assert_ne!(
-        base,
-        play(11, "mass_ripper", "turtle", 1_800),
-        "a different seed"
-    );
-    assert_ne!(
-        base,
-        play(4, "mass_bulwark", "turtle", 1_800),
-        "a different A strategy"
-    );
-    assert_ne!(
-        base,
-        play(4, "mass_ripper", "rush", 1_800),
-        "a different B strategy"
-    );
-    assert_ne!(
-        base,
-        play(4, "turtle", "mass_ripper", 1_800),
-        "the sides swapped"
-    );
+    assert_ne!(base, play(11, "mass_ripper", "turtle", 1_800), "a different seed");
+    assert_ne!(base, play(4, "mass_bulwark", "turtle", 1_800), "a different A strategy");
+    assert_ne!(base, play(4, "mass_ripper", "rush", 1_800), "a different B strategy");
+    assert_ne!(base, play(4, "turtle", "mass_ripper", 1_800), "the sides swapped");
     // A shorter trace, chosen so the two traces really do differ in length.
     let trace_len = |ticks: u32| -> usize {
         let c = content();
-        let pair = AiCommanders::matchup(
-            &c,
-            4,
-            &[(Faction::A, "mass_ripper"), (Faction::B, "turtle")],
-        )
-        .expect("shipped");
+        let pair =
+            AiCommanders::matchup(&c, 4, &[(Faction::A, "mass_ripper"), (Faction::B, "turtle")])
+                .expect("shipped");
         let mut app = golden_fixture(c, pair, false);
         tick(&mut app, ticks);
         app.world().resource::<AiJournal>().0.len()
     };
-    assert!(
-        trace_len(600) < trace_len(1_800),
-        "the fixture keeps deciding things"
-    );
-    assert_ne!(
-        base,
-        play(4, "mass_ripper", "turtle", 600),
-        "a shorter trace"
-    );
+    assert!(trace_len(600) < trace_len(1_800), "the fixture keeps deciding things");
+    assert_ne!(base, play(4, "mass_ripper", "turtle", 600), "a shorter trace");
 
     // And a single altered decision is caught: drop one journal entry.
     let c = content();
-    let pair = AiCommanders::matchup(
-        &c,
-        4,
-        &[(Faction::A, "mass_ripper"), (Faction::B, "turtle")],
-    )
-    .expect("shipped");
+    let pair = AiCommanders::matchup(&c, 4, &[(Faction::A, "mass_ripper"), (Faction::B, "turtle")])
+        .expect("shipped");
     let mut app = golden_fixture(c, pair, false);
     tick(&mut app, 1_800);
     let whole = relabelled_digest(&app);
@@ -395,10 +361,7 @@ fn probe_two_buildings_finishing_on_one_tick_count_once_each() {
     let foundry = spawn_building(&mut app, Faction::A, "foundry", Vec2::new(-400.0, 0.0));
     assert!(order(&mut app, hq, "hq", Faction::A, worker));
     // Start the slower one early enough that both land on the same tick.
-    let (wt, bt) = (
-        c.units[worker].mvp_train_ticks,
-        c.units[bulwark].mvp_train_ticks,
-    );
+    let (wt, bt) = (c.units[worker].mvp_train_ticks, c.units[bulwark].mvp_train_ticks);
     assert!(order(&mut app, foundry, "foundry", Faction::A, bulwark));
     let before = wt.min(bt);
     tick(&mut app, before);
@@ -460,11 +423,7 @@ fn probe_a_two_deep_queue_counts_once_per_spawn() {
         "both items spawned, both counted"
     );
     tick(&mut app, 200);
-    assert_eq!(
-        app.world().resource::<Produced>().total(Faction::A),
-        2,
-        "no drift"
-    );
+    assert_eq!(app.world().resource::<Produced>().total(Faction::A), 2, "no drift");
 }
 
 /// Building only a **late** unit in the roster must not disturb the earlier
@@ -475,16 +434,10 @@ fn probe_a_late_roster_unit_does_not_disturb_earlier_columns() {
     let c = content();
     let last = c.units.len() - 1;
     let id = c.units[last].id.clone();
-    let barracks = c.units[last]
-        .barracks
-        .clone()
-        .expect("the last unit has a barracks");
+    let barracks = c.units[last].barracks.clone().expect("the last unit has a barracks");
     let mut app = sim_app(c.clone(), Stockpiles::starting(100_000));
     let b = spawn_building(&mut app, Faction::B, &barracks, Vec2::new(0.0, 0.0));
-    assert!(
-        order(&mut app, b, &barracks, Faction::B, last),
-        "{id} is orderable"
-    );
+    assert!(order(&mut app, b, &barracks, Faction::B, last), "{id} is orderable");
     tick(&mut app, c.units[last].mvp_train_ticks + 1);
     let p = app.world().resource::<Produced>().clone();
     assert_eq!(p.count(Faction::B, last), 1);
@@ -492,19 +445,11 @@ fn probe_a_late_roster_unit_does_not_disturb_earlier_columns() {
         assert_eq!(p.count(Faction::B, u), 0, "unit {u} was never built");
     }
     assert_eq!(p.total(Faction::B), 1, "exactly one unit, of one type");
-    assert_eq!(
-        p.count(Faction::B, last + 7),
-        0,
-        "off the roster reads zero"
-    );
+    assert_eq!(p.count(Faction::B, last + 7), 0, "off the roster reads zero");
     assert_eq!(p.count(Faction::A, last), 0, "the other side built nothing");
     // Snapshotted into a record's block, the column is still at the right index.
     let counts = ProductionCounts::of(&c, app.world().resource::<Produced>());
-    assert_eq!(
-        counts.counts(Faction::B).len(),
-        c.units.len(),
-        "padded to the roster"
-    );
+    assert_eq!(counts.counts(Faction::B).len(), c.units.len(), "padded to the roster");
     assert_eq!(counts.get(Faction::B, &id), 1);
     assert_eq!(counts.counts(Faction::B)[last], 1);
 }
@@ -527,10 +472,7 @@ fn probe_alive_equals_starting_plus_produced_minus_lost() {
     }
     let produced = app.world().resource::<Produced>().clone();
     let lost = *app.world().resource::<Casualties>();
-    assert!(
-        produced.grand_total() > 0,
-        "the match built nothing to check"
-    );
+    assert!(produced.grand_total() > 0, "the match built nothing to check");
     assert!(lost.total() > 0, "the match killed nothing to check");
 
     let mut q = app.world_mut().query::<(&UnitDefIdx, &Faction)>();
@@ -599,10 +541,7 @@ fn probe_a_real_mutual_loss_keeps_its_production() {
     );
     let counts = ProductionCounts::of(&c, app.world().resource::<Produced>());
     assert_eq!(counts.unit_ids().len(), c.units.len());
-    assert_eq!(
-        counts.total(Faction::A) + counts.total(Faction::B),
-        built.grand_total()
-    );
+    assert_eq!(counts.total(Faction::A) + counts.total(Faction::B), built.grand_total());
 }
 
 /// Turning per-tick hashing on is observation, not play: it must not change a
@@ -628,10 +567,7 @@ fn probe_production_is_independent_of_hashing() {
 fn probe_an_unlabelled_block_never_reports_a_wrong_count() {
     let c = content();
     let empty = ProductionCounts::default();
-    assert!(
-        empty.unit_ids().is_empty(),
-        "an unplayed row names no roster"
-    );
+    assert!(empty.unit_ids().is_empty(), "an unplayed row names no roster");
     for f in headless::SIDES {
         assert_eq!(empty.total(f), 0);
         assert!(empty.counts(f).is_empty());
@@ -658,42 +594,20 @@ fn probe_a_record_is_interpretable_without_the_content() {
     )
     .expect("shipped");
     // Reading the row by name only.
-    let by_name: u32 = r
-        .produced
-        .unit_ids()
-        .iter()
-        .map(|id| r.produced.get(Faction::A, id))
-        .sum();
-    assert_eq!(
-        by_name,
-        r.produced.total(Faction::A),
-        "the named columns are the row"
-    );
+    let by_name: u32 = r.produced.unit_ids().iter().map(|id| r.produced.get(Faction::A, id)).sum();
+    assert_eq!(by_name, r.produced.total(Faction::A), "the named columns are the row");
     let pairs: Vec<(&str, u32)> = r.produced.by_unit(Faction::A).collect();
     assert_eq!(pairs.len(), r.produced.unit_ids().len());
-    assert_eq!(
-        pairs.iter().map(|(_, n)| n).sum::<u32>(),
-        r.produced.total(Faction::A)
-    );
+    assert_eq!(pairs.iter().map(|(_, n)| n).sum::<u32>(), r.produced.total(Faction::A));
     // A mass strategy built its own unit, under its own name.
-    assert!(
-        r.produced.get(Faction::A, "ripper") > 0,
-        "mass_ripper built no rippers"
-    );
-    assert!(
-        r.produced.get(Faction::B, "bulwark") > 0,
-        "mass_bulwark built no bulwarks"
-    );
+    assert!(r.produced.get(Faction::A, "ripper") > 0, "mass_ripper built no rippers");
+    assert!(r.produced.get(Faction::B, "bulwark") > 0, "mass_bulwark built no bulwarks");
     // Ids are unique, so a name can only mean one column.
     let mut ids = r.produced.unit_ids().to_vec();
     ids.sort();
     let before = ids.len();
     ids.dedup();
-    assert_eq!(
-        ids.len(),
-        before,
-        "a duplicated id would make a name ambiguous"
-    );
+    assert_eq!(ids.len(), before, "a duplicated id would make a name ambiguous");
 }
 
 /// B3 must be computable from these records alone: a win-rate matrix by
@@ -735,20 +649,12 @@ fn probe_b3_metrics_are_computable_from_the_records_alone() {
             let _ = (i, j, decided);
         }
     }
-    assert_eq!(
-        played as usize,
-        rows.len(),
-        "every row belongs to a matchup cell"
-    );
+    assert_eq!(played as usize, rows.len(), "every row belongs to a matchup cell");
 
     // Per-unit production, keyed by id, without knowing content order.
     let mut per_unit: Vec<(String, u32)> = Vec::new();
     for r in &rows {
-        for (id, n) in r
-            .produced
-            .by_unit(Faction::A)
-            .chain(r.produced.by_unit(Faction::B))
-        {
+        for (id, n) in r.produced.by_unit(Faction::A).chain(r.produced.by_unit(Faction::B)) {
             match per_unit.iter_mut().find(|(k, _)| k == id) {
                 Some((_, acc)) => *acc += n,
                 None => per_unit.push((id.to_string(), n)),
@@ -759,17 +665,11 @@ fn probe_b3_metrics_are_computable_from_the_records_alone() {
     assert!(total > 0, "the batch built nothing");
     assert_eq!(
         total,
-        batch::production_totals(&rows)
-            .iter()
-            .map(|(_, n)| n)
-            .sum::<u32>(),
+        batch::production_totals(&rows).iter().map(|(_, n)| n).sum::<u32>(),
         "the shipped totals and a by-id recount disagree"
     );
     // Every unit a mass strategy is named for shows up somewhere in the batch.
-    let ripper = per_unit
-        .iter()
-        .find(|(k, _)| k == "ripper")
-        .map(|(_, n)| *n);
+    let ripper = per_unit.iter().find(|(k, _)| k == "ripper").map(|(_, n)| *n);
     assert!(ripper.unwrap_or(0) > 0, "no rippers in a mass_ripper batch");
 }
 
@@ -803,10 +703,7 @@ fn probe_an_unlabelled_row_contributes_zero_not_a_misaligned_column() {
     );
     let ids: Vec<&str> = totals.iter().map(|(id, _)| id.as_str()).collect();
     let expected: Vec<&str> = c.units.iter().map(|u| u.id.as_str()).collect();
-    assert_eq!(
-        ids, expected,
-        "the totals are still named by the played roster"
-    );
+    assert_eq!(ids, expected, "the totals are still named by the played roster");
 }
 
 /// Orientation is a reflection of the map, not a change of plan: the same
@@ -823,10 +720,7 @@ fn probe_a_reflected_match_builds_the_same_things() {
         n.produced, s.produced,
         "reflecting the map changed what each side built"
     );
-    assert_eq!(
-        n.ticks, s.ticks,
-        "reflecting the map changed the match length"
-    );
+    assert_eq!(n.ticks, s.ticks, "reflecting the map changed the match length");
     assert_eq!(n.result, s.result);
 }
 
@@ -836,27 +730,15 @@ fn probe_a_reflected_match_builds_the_same_things() {
 fn probe_every_branch_reports_a_full_width_block() {
     let c = content();
     let rows = [
-        batch::run_match(
-            &c,
-            &MatchSettings::default()
-                .with_strategies("turtle", "turtle")
-                .with_tick_cap(600),
-        )
-        .expect("shipped"),
-        batch::run_match(
-            &c,
-            &MatchSettings::default().with_strategies("rush", "turtle"),
-        )
-        .expect("shipped"),
+        batch::run_match(&c, &MatchSettings::default().with_strategies("turtle", "turtle").with_tick_cap(600))
+            .expect("shipped"),
+        batch::run_match(&c, &MatchSettings::default().with_strategies("rush", "turtle"))
+            .expect("shipped"),
     ];
     assert_eq!(rows[0].result, MatchResult::Timeout);
     assert!(rows[1].result.is_decided());
     for r in &rows {
-        assert_eq!(
-            r.produced.unit_ids().len(),
-            c.units.len(),
-            "full roster width"
-        );
+        assert_eq!(r.produced.unit_ids().len(), c.units.len(), "full roster width");
         for f in headless::SIDES {
             assert_eq!(r.produced.counts(f).len(), c.units.len());
         }

@@ -67,10 +67,7 @@ fn the_five_mass_probes_are_knob_identical_at_one_shipped_threshold() {
     // F-044: the threshold (10 at F-031) is read, not pinned; every probe must
     // commit at that one shipped value.
     let first = c.strategy(PROBES[0]).expect("shipped");
-    assert!(
-        first.attack_at_army >= 1,
-        "the probes commit at a real threshold"
-    );
+    assert!(first.attack_at_army >= 1, "the probes commit at a real threshold");
     for id in PROBES {
         let s = c.strategy(id).unwrap_or_else(|| panic!("{id} is shipped"));
         assert_eq!(
@@ -118,13 +115,7 @@ fn the_mvp_strategy_is_untouched_by_the_tempo_pass() {
 
 // ---- the structural claim under every CI in F-031 ----------------------------
 
-fn record(
-    a: &str,
-    b: &str,
-    seed: u64,
-    orientation: Orientation,
-    result: MatchResult,
-) -> MatchRecord {
+fn record(a: &str, b: &str, seed: u64, orientation: Orientation, result: MatchResult) -> MatchRecord {
     MatchRecord {
         strategies: [a.to_string(), b.to_string()],
         seed,
@@ -145,18 +136,9 @@ fn a_pentagon_link_pools_four_matches_per_seed() {
     for seeds in 1u32..=5 {
         let mut records = Vec::new();
         for k in 0..seeds as u64 {
-            for (a, b) in [
-                ("mass_sentinel", "mass_ripper"),
-                ("mass_ripper", "mass_sentinel"),
-            ] {
+            for (a, b) in [("mass_sentinel", "mass_ripper"), ("mass_ripper", "mass_sentinel")] {
                 for orientation in Orientation::ALL {
-                    records.push(record(
-                        a,
-                        b,
-                        k,
-                        orientation,
-                        MatchResult::Decided(Faction::A),
-                    ));
+                    records.push(record(a, b, k, orientation, MatchResult::Decided(Faction::A)));
                 }
             }
         }
@@ -318,10 +300,7 @@ fn a_coin_flip_link_is_undetermined_not_a_hold() {
         .find(|l| l.predator == "ravager")
         .expect("the cycle has a ravager link");
     assert_eq!(link.prey, "sentinel");
-    assert!(
-        link.rate.expect("decided") > 0.5,
-        "the point estimate is above half"
-    );
+    assert!(link.rate.expect("decided") > 0.5, "the point estimate is above half");
     assert_eq!(
         link.verdict,
         onus::pentagon::Verdict::Undetermined,

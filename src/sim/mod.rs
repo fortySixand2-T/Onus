@@ -23,8 +23,7 @@ pub mod spatial;
 pub mod three;
 pub mod victory;
 pub use ai::{
-    AiAction, AiCommander, AiCommanders, AiJournal, BattleAiAction, BattleAiJournal,
-    UnknownStrategy,
+    AiAction, AiCommander, AiCommanders, AiJournal, BattleAiAction, BattleAiJournal, UnknownStrategy,
 };
 pub use combat::{AttackCooldown, Casualties, Engaging, Health, Target};
 pub use content::Content;
@@ -36,10 +35,10 @@ pub use replay::{
     state_hash, CommandLog, LoggedCommand, LoggedOrder, MatchLog, ReplaySource, SimId, SimIds,
     StateHashLog,
 };
+pub use victory::{match_running, MatchOutcome, MatchState};
 pub use spatial::{
     brute_force_nearest_enemy, random_layout, Faction, SpatialGrid, SplitMix64, Unit,
 };
-pub use victory::{match_running, MatchOutcome, MatchState};
 
 // ---- tunables --------------------------------------------------------------
 
@@ -221,7 +220,10 @@ impl OrderQueue {
                     // Held for at least one tick ⇒ the stamped form; taken on
                     // sight ⇒ exactly what was pushed.
                     schedule: if queued < now {
-                        CommandTick::Scheduled { queued, apply: t }
+                        CommandTick::Scheduled {
+                            queued,
+                            apply: t,
+                        }
                     } else {
                         cmd.when
                     },
@@ -592,6 +594,7 @@ impl Order {
             order: Box::new(self),
         }
     }
+
 }
 
 /// May the sim advance this frame?
@@ -921,7 +924,12 @@ pub fn apply_commands(
                         continue;
                     }
                     economy::enqueue_unit_with(
-                        side_defs, &mut stock, b.def, *faction, &mut queue, unit,
+                        side_defs,
+                        &mut stock,
+                        b.def,
+                        *faction,
+                        &mut queue,
+                        unit,
                     );
                 }
             }
@@ -1093,13 +1101,7 @@ pub fn movement(
     auras: Option<Res<battle::AuraField>>,
     // The match's nations (C2); absent with none.
     nations: Option<Res<nation::NationRules>>,
-    mut query: Query<(
-        Entity,
-        &mut Position,
-        &MoveTarget,
-        &UnitDefIdx,
-        Option<&Faction>,
-    )>,
+    mut query: Query<(Entity, &mut Position, &MoveTarget, &UnitDefIdx, Option<&Faction>)>,
     mut commands: Commands,
 ) {
     report.sim_ticks += 1;

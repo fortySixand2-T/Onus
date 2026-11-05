@@ -71,18 +71,11 @@ fn cross_fixtures_hold_one_strategy_and_two_different_nations() {
         for b in nations.iter().filter(|b| *b != a) {
             for s in &strategies {
                 let want = Fixture::new((a, s), (b, s));
-                assert_eq!(
-                    f.iter().filter(|x| **x == want).count(),
-                    1,
-                    "{a} vs {b} on {s}"
-                );
+                assert_eq!(f.iter().filter(|x| **x == want).count(), 1, "{a} vs {b} on {s}");
             }
         }
     }
-    assert_eq!(
-        f[0],
-        Fixture::new(("house", "mass_ripper"), ("forgeborn", "mass_ripper"))
-    );
+    assert_eq!(f[0], Fixture::new(("house", "mass_ripper"), ("forgeborn", "mass_ripper")));
 }
 
 #[test]
@@ -95,11 +88,7 @@ fn personality_fixtures_play_each_nations_own_script() {
     for x in &f {
         for side in &x.sides {
             let def = c.nations.iter().find(|d| d.id == side.nation).unwrap();
-            assert_eq!(
-                side.strategy, def.strategy,
-                "{} plays its personality",
-                side.nation
-            );
+            assert_eq!(side.strategy, def.strategy, "{} plays its personality", side.nation);
         }
         assert_ne!(x.sides[0].nation, x.sides[1].nation);
     }
@@ -150,14 +139,11 @@ fn a_cross_batch_plays_every_fixture_in_both_orientations_faithfully() {
         .with_only(names(&["rush"]));
     let nations = names(&["forgeborn", "tollmarch"]);
     let mut seen = 0;
-    let records = batch::run_nation_batch(
-        &c,
-        &settings,
-        Some(&nations),
-        NationAxis::Cross,
-        &mut |_| seen += 1,
-    )
-    .unwrap();
+    let records =
+        batch::run_nation_batch(&c, &settings, Some(&nations), NationAxis::Cross, &mut |_| {
+            seen += 1
+        })
+        .unwrap();
     // 2 ordered pairs x 1 strategy x 2 seeds x 2 orientations.
     assert_eq!(records.len(), 8);
     assert_eq!(seen, 8);
@@ -182,14 +168,9 @@ fn a_cross_batch_plays_every_fixture_in_both_orientations_faithfully() {
         .unwrap();
         assert_eq!(r.record, direct, "the row is the match it names");
     }
-    let again = batch::run_nation_batch(
-        &c,
-        &settings,
-        Some(&nations),
-        NationAxis::Cross,
-        &mut |_| {},
-    )
-    .unwrap();
+    let again =
+        batch::run_nation_batch(&c, &settings, Some(&nations), NationAxis::Cross, &mut |_| {})
+            .unwrap();
     assert_eq!(records, again, "a nation batch is deterministic");
 }
 
@@ -204,22 +185,12 @@ fn cross_matches_differ_from_their_mirror_by_the_traits() {
         .with_tick_cap(6_000)
         .with_only(names(&["rush"]));
     let nations = names(&["house", "verdant"]);
-    let cross = batch::run_nation_batch(
-        &c,
-        &settings,
-        Some(&nations),
-        NationAxis::Cross,
-        &mut |_| {},
-    )
-    .unwrap();
-    let mirror = batch::run_nation_batch(
-        &c,
-        &settings,
-        Some(&nations),
-        NationAxis::Mirror,
-        &mut |_| {},
-    )
-    .unwrap();
+    let cross =
+        batch::run_nation_batch(&c, &settings, Some(&nations), NationAxis::Cross, &mut |_| {})
+            .unwrap();
+    let mirror =
+        batch::run_nation_batch(&c, &settings, Some(&nations), NationAxis::Mirror, &mut |_| {})
+            .unwrap();
     assert!(mirror.iter().all(NationRecord::is_mirror));
     let built = |rec: &MatchRecord, f| rec.produced.get(f, "ripper");
     // Normal orientation, House in slot A and Verdant in slot B.
@@ -235,10 +206,7 @@ fn cross_matches_differ_from_their_mirror_by_the_traits() {
         built(&m.record, B)
     );
     assert!(built(&r.record, B) > built(&r.record, A));
-    assert!(
-        built(&r.record, B) > built(&m.record, B),
-        "Verdant out-trains House in slot B"
-    );
+    assert!(built(&r.record, B) > built(&m.record, B), "Verdant out-trains House in slot B");
 }
 
 /// The traitless House mirror is the plain strategy batch, record for record:
@@ -247,9 +215,7 @@ fn cross_matches_differ_from_their_mirror_by_the_traits() {
 fn the_house_mirror_is_the_plain_batch() {
     let c = content();
     let only = names(&["mvp", "rush"]);
-    let settings = BatchSettings::default()
-        .with_tick_cap(3_000)
-        .with_only(only);
+    let settings = BatchSettings::default().with_tick_cap(3_000).with_only(only);
     let plain = batch::run_batch(&c, &settings, &mut |_| {}).unwrap();
     let house = batch::run_nation_batch(
         &c,
@@ -272,21 +238,13 @@ fn a_nation_matrix_is_read_off_the_relabelled_records() {
         .with_tick_cap(300)
         .with_only(names(&["rush"]));
     let nations = names(&["verdant", "aetherkin", "house"]);
-    let records = batch::run_nation_batch(
-        &c,
-        &settings,
-        Some(&nations),
-        NationAxis::Cross,
-        &mut |_| {},
-    )
-    .unwrap();
+    let records =
+        batch::run_nation_batch(&c, &settings, Some(&nations), NationAxis::Cross, &mut |_| {})
+            .unwrap();
     let relabelled: Vec<MatchRecord> = records.iter().map(NationRecord::by_nation).collect();
     let m = WinMatrix::of(&relabelled);
     // First appearance: house (content order first) leads.
-    assert_eq!(
-        m.ids(),
-        names(&["house", "verdant", "aetherkin"]).as_slice()
-    );
+    assert_eq!(m.ids(), names(&["house", "verdant", "aetherkin"]).as_slice());
     for (r, l) in records.iter().zip(&relabelled) {
         assert_eq!(l.strategies, r.nations);
         assert_eq!(l.result, r.record.result);
@@ -330,22 +288,12 @@ fn the_binary_plays_the_nation_axis_and_prints_the_nation_matrix() {
 fn the_binary_refuses_a_bad_nation_request() {
     for args in [
         &["--nations", "sideways"][..],
-        &[
-            "--nations",
-            "cross",
-            "--only-nations",
-            "atlantis",
-            "--tick-cap",
-            "1",
-        ],
+        &["--nations", "cross", "--only-nations", "atlantis", "--tick-cap", "1"],
         &["--only-nations", "house"],
         &["--nations", "mirror", "--report", "x.ron"],
     ] {
         let out = balance(args);
         assert!(!out.status.success(), "{args:?} was accepted");
-        assert!(
-            !String::from_utf8_lossy(&out.stderr).is_empty(),
-            "{args:?}: silent refusal"
-        );
+        assert!(!String::from_utf8_lossy(&out.stderr).is_empty(), "{args:?}: silent refusal");
     }
 }

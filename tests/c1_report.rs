@@ -38,11 +38,7 @@ fn generals_of(app: &mut App, side: Faction) -> Vec<Entity> {
 }
 
 fn result(app: &App) -> BattleResult {
-    app.world()
-        .resource::<BattleState>()
-        .result()
-        .cloned()
-        .expect("decided")
+    app.world().resource::<BattleState>().result().cloned().expect("decided")
 }
 
 fn run_to_outcome(app: &mut App, cap: u32) {
@@ -86,9 +82,7 @@ fn the_report_lists_each_sides_survivors_buildings_and_generals() {
     // A wound taken in the battle shows in the report.
     let rav = c.unit_index("ravager").unwrap();
     {
-        let mut q = app
-            .world_mut()
-            .query::<(&UnitDefIdx, &Faction, &mut Health)>();
+        let mut q = app.world_mut().query::<(&UnitDefIdx, &Faction, &mut Health)>();
         for (d, f, mut h) in q.iter_mut(app.world_mut()) {
             if *f == Faction::A && d.0 == rav {
                 h.current = 5;
@@ -119,10 +113,7 @@ fn the_report_lists_each_sides_survivors_buildings_and_generals() {
         .collect();
     ids.sort();
     let focus_hp = Health::from_def(&c, c.general_index("general_focus").unwrap()).max;
-    assert_eq!(
-        ids,
-        [("general_focus", focus_hp), ("ravager", 5), ("ripper", 11)]
-    );
+    assert_eq!(ids, [("general_focus", focus_hp), ("ravager", 5), ("ripper", 11)]);
     assert!(a.buildings.windows(2).all(|w| w[0].sim_id < w[1].sim_id));
     let mut blds: Vec<_> = a
         .buildings
@@ -135,25 +126,11 @@ fn the_report_lists_each_sides_survivors_buildings_and_generals() {
     let f_max = Health::from_building_def(&c, f).max;
     assert_eq!(blds, [("hq", 900, hq_max), ("foundry", f_max, f_max)]);
     let gfocus = c.general_index("general_focus").unwrap();
-    assert_eq!(
-        a.generals,
-        [GeneralFate {
-            unit: gfocus,
-            survived: true,
-            escaped: false
-        }]
-    );
+    assert_eq!(a.generals, [GeneralFate { unit: gfocus, survived: true, escaped: false }]);
 
     let b = r.report(Faction::B);
     let gbul = c.general_index("general_bulwark").unwrap();
-    assert_eq!(
-        b.generals,
-        [GeneralFate {
-            unit: gbul,
-            survived: false,
-            escaped: false
-        }]
-    );
+    assert_eq!(b.generals, [GeneralFate { unit: gbul, survived: false, escaped: false }]);
     let worker = c.unit_index("worker").unwrap();
     assert!(!b.units.is_empty() && b.units.iter().all(|u| u.unit == worker && !u.general));
     assert_eq!(b.buildings.len(), 1, "B's HQ still stands");
@@ -181,12 +158,7 @@ fn each_general_has_a_fate_in_setup_order() {
     headless::step(&mut app);
     let r = result(&app);
     assert_eq!(r.winner, Some(Faction::A));
-    let fates: Vec<_> = r
-        .report(Faction::A)
-        .generals
-        .iter()
-        .map(|g| (g.unit, g.survived))
-        .collect();
+    let fates: Vec<_> = r.report(Faction::A).generals.iter().map(|g| (g.unit, g.survived)).collect();
     assert_eq!(
         fates,
         [
@@ -194,22 +166,14 @@ fn each_general_has_a_fate_in_setup_order() {
             (c.general_index("general_frenzy").unwrap(), true),
         ]
     );
-    let alive: Vec<_> = r
-        .report(Faction::A)
-        .units
-        .iter()
-        .filter(|u| u.general)
-        .collect();
+    let alive: Vec<_> = r.report(Faction::A).units.iter().filter(|u| u.general).collect();
     assert_eq!(alive.len(), 1, "the dead General is not a survivor");
 }
 
 #[test]
 fn a_retreat_reports_who_got_away_with_the_hp_they_left_with() {
     let c = content();
-    let roster = Roster::default()
-        .unit_hp("bulwark", 9)
-        .unit("ravager")
-        .building("hq");
+    let roster = Roster::default().unit_hp("bulwark", 9).unit("ravager").building("hq");
     let setup = BattleSetup::default()
         .with_general(Faction::A, "general_logistics")
         .with_roster(Faction::A, roster)
@@ -217,12 +181,10 @@ fn a_retreat_reports_who_got_away_with_the_hp_they_left_with() {
     let mut app = quiet(setup);
     headless::step(&mut app);
     let before = field(&mut app, Faction::A);
-    app.world_mut().resource_mut::<CommandQueue>().0.push_back(
-        Order::Retreat {
-            faction: Faction::A,
-        }
-        .issued_by(Faction::A),
-    );
+    app.world_mut()
+        .resource_mut::<CommandQueue>()
+        .0
+        .push_back(Order::Retreat { faction: Faction::A }.issued_by(Faction::A));
     run_to_outcome(&mut app, 3000);
     let r = result(&app);
     let a = r.report(Faction::A);
@@ -234,14 +196,7 @@ fn a_retreat_reports_who_got_away_with_the_hp_they_left_with() {
     assert_eq!(got, before, "everyone escaped, as they were");
     assert!(a.units.iter().all(|u| u.escaped));
     let glog = c.general_index("general_logistics").unwrap();
-    assert_eq!(
-        a.generals,
-        [GeneralFate {
-            unit: glog,
-            survived: true,
-            escaped: true
-        }]
-    );
+    assert_eq!(a.generals, [GeneralFate { unit: glog, survived: true, escaped: true }]);
     assert_eq!(a.buildings.len(), 1, "a city is left behind standing");
     let b = r.report(Faction::B);
     assert_eq!(b.generals.len(), 1);

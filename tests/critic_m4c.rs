@@ -120,10 +120,9 @@ fn an_hq_destroyed_on_the_first_tick_still_ends_the_match() {
     spawn_building(&mut app, "hq", Faction::A, Vec2::new(-300.0, 0.0));
     let doomed = spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
     // One hit from being razed, with an executioner already in range.
-    app.world_mut().entity_mut(doomed).insert(Health {
-        current: 1,
-        max: 400,
-    });
+    app.world_mut()
+        .entity_mut(doomed)
+        .insert(Health { current: 1, max: 400 });
     spawn_unit(&mut app, "arclight", Faction::A, Vec2::new(-60.0, 0.0));
 
     tick(&mut app, 600);
@@ -152,10 +151,9 @@ fn when_the_hq_falls_does_not_change_whether_the_match_ends() {
         let mut app = sim_app();
         spawn_building(&mut app, "hq", Faction::A, Vec2::new(-300.0, 0.0));
         let doomed = spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
-        app.world_mut().entity_mut(doomed).insert(Health {
-            current: 1,
-            max: 400,
-        });
+        app.world_mut()
+            .entity_mut(doomed)
+            .insert(Health { current: 1, max: 400 });
         tick(&mut app, delay);
         // The executioner arrives `delay` ticks in; from here it is identical.
         spawn_unit(&mut app, "arclight", Faction::A, Vec2::new(-60.0, 0.0));
@@ -178,10 +176,9 @@ fn the_recorded_outcome_is_stable_and_the_sim_is_frozen_after_it() {
     let mut app = sim_app_with_alloy(10_000);
     spawn_building(&mut app, "hq", Faction::A, Vec2::new(-300.0, 0.0));
     let doomed = spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
-    app.world_mut().entity_mut(doomed).insert(Health {
-        current: 40,
-        max: 400,
-    });
+    app.world_mut()
+        .entity_mut(doomed)
+        .insert(Health { current: 40, max: 400 });
     spawn_unit(&mut app, "arclight", Faction::A, Vec2::new(-60.0, 0.0));
     let walker = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(-300.0, -300.0));
 
@@ -210,11 +207,7 @@ fn the_recorded_outcome_is_stable_and_the_sim_is_frozen_after_it() {
     let alloy_before = app.world().resource::<Stockpiles>().alloy(Faction::A);
     tick(&mut app, 300);
 
-    assert_eq!(
-        outcome(&app),
-        Some(first),
-        "the outcome moved after the end"
-    );
+    assert_eq!(outcome(&app), Some(first), "the outcome moved after the end");
     assert_eq!(
         app.world().get::<Position>(walker).unwrap().0,
         pos_before,
@@ -239,10 +232,9 @@ fn an_overkilled_hq_dies_once_and_is_not_a_casualty() {
     let mut app = sim_app();
     spawn_building(&mut app, "hq", Faction::A, Vec2::new(-600.0, 0.0));
     let doomed = spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
-    app.world_mut().entity_mut(doomed).insert(Health {
-        current: 5,
-        max: 400,
-    });
+    app.world_mut()
+        .entity_mut(doomed)
+        .insert(Health { current: 5, max: 400 });
     for i in 0..4 {
         spawn_unit(
             &mut app,
@@ -314,9 +306,7 @@ fn unit_vs_unit_targeting_still_matches_the_brute_force_oracle() {
     let mut rows: Vec<(Entity, Vec2, Faction)> = Vec::new();
     let mut rng = 0x1234_5678u64;
     let mut next = || {
-        rng = rng
-            .wrapping_mul(6364136223846793005)
-            .wrapping_add(1442695040888963407);
+        rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
         ((rng >> 33) % 400) as f32 - 200.0
     };
     for i in 0..24 {
@@ -331,15 +321,7 @@ fn unit_vs_unit_targeting_still_matches_the_brute_force_oracle() {
 
     let mut layout: Vec<(Entity, Unit)> = rows
         .iter()
-        .map(|(e, p, f)| {
-            (
-                *e,
-                Unit {
-                    pos: *p,
-                    faction: *f,
-                },
-            )
-        })
+        .map(|(e, p, f)| (*e, Unit { pos: *p, faction: *f }))
         .collect();
     layout.sort_by_key(|(e, _)| e.to_bits());
     let units: Vec<Unit> = layout.iter().map(|(_, u)| *u).collect();
@@ -450,11 +432,7 @@ fn every_order_variant_against_a_dead_entity_is_inert() {
     app.world_mut().entity_mut(dead_building).despawn();
     app.world_mut().entity_mut(dead_node).despawn();
 
-    let worker = app
-        .world()
-        .resource::<Content>()
-        .unit_index("worker")
-        .unwrap();
+    let worker = app.world().resource::<Content>().unit_index("worker").unwrap();
     let before = app.world().resource::<Stockpiles>().alloy(Faction::A);
     for o in [
         Order::MoveTo {
@@ -655,6 +633,7 @@ fn assert_restated_length_claim(lengths: &[(u64, u32)]) {
     );
 }
 
+
 /// The AI is a commander with a budget, not a printer: across a long match no
 /// faction's Alloy may go up except through deposits, and the AI must never end
 /// a match having spent more than it banked. (Conservation check on the AI's
@@ -684,8 +663,10 @@ fn load_mutated(from: &str, to: &str) -> Result<Content, String> {
         tag ^= b as u64;
         tag = tag.wrapping_mul(0x1000_0000_01b3);
     }
-    let dir =
-        std::env::temp_dir().join(format!("onus-critic-m4c-{}-{tag:016x}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!(
+        "onus-critic-m4c-{}-{tag:016x}",
+        std::process::id()
+    ));
     std::fs::create_dir_all(&dir).expect("tmp dir");
     // The edit lands in whichever shipped file states the anchor: unit stats in
     // `units.ron`, the AI script in `strategies.ron` (B1).
@@ -700,10 +681,7 @@ fn load_mutated(from: &str, to: &str) -> Result<Content, String> {
         };
         std::fs::write(dir.join(file), edited).expect("write");
     }
-    assert_eq!(
-        hit, 1,
-        "fixture: `{from}` is in {hit} shipped files, not exactly 1"
-    );
+    assert_eq!(hit, 1, "fixture: `{from}` is in {hit} shipped files, not exactly 1");
     let r = Content::load_from_dir(&dir).map_err(|e| e.to_string());
     let _ = std::fs::remove_dir_all(&dir);
     r
@@ -727,17 +705,11 @@ fn a_building_hp_scale_the_sim_cannot_represent_is_an_error() {
         "unexpected rejection: {err}"
     );
     // And a building stat off the design scale is refused too.
-    load_mutated(
-        "mvp_defense: 10, mvp_armor: 4",
-        "mvp_defense: 11, mvp_armor: 4",
-    )
-    .expect_err("a building above max_stat loaded");
+    load_mutated("mvp_defense: 10, mvp_armor: 4", "mvp_defense: 11, mvp_armor: 4")
+        .expect_err("a building above max_stat loaded");
     // A building with no pool at all is a load error, not a 0-HP building.
-    load_mutated(
-        "mvp_defense: 10, mvp_armor: 4",
-        "mvp_defense: 0, mvp_armor: 4",
-    )
-    .expect_err("a 0-HP building loaded");
+    load_mutated("mvp_defense: 10, mvp_armor: 4", "mvp_defense: 0, mvp_armor: 4")
+        .expect_err("a 0-HP building loaded");
 }
 
 /// The AI script is content: every number it reads must be stated in the RON and
@@ -758,18 +730,9 @@ fn the_ai_script_is_data_and_a_broken_script_is_refused() {
             "(building: \"nonesuch\", at_tick",
         ),
         ("offset: 130.0", "offset: 0.0"),
-        (
-            "(unit: \"sentinel\", count: 2)",
-            "(unit: \"sentinel\", count: 0)",
-        ),
-        (
-            "(unit: \"sentinel\", count: 2)",
-            "(unit: \"worker\", count: 2)",
-        ),
-        (
-            "(unit: \"sentinel\", count: 2)",
-            "(unit: \"nonesuch\", count: 2)",
-        ),
+        ("(unit: \"sentinel\", count: 2)", "(unit: \"sentinel\", count: 0)"),
+        ("(unit: \"sentinel\", count: 2)", "(unit: \"worker\", count: 2)"),
+        ("(unit: \"sentinel\", count: 2)", "(unit: \"nonesuch\", count: 2)"),
     ] {
         assert!(
             load_mutated(from, to).is_err(),
@@ -831,21 +794,17 @@ fn changing_the_ron_changes_the_ai() {
             ResourceNode { amount: 100_000 },
         ));
         for i in 0..3 {
-            spawn_unit(
-                &mut app,
-                "worker",
-                Faction::A,
-                Vec2::new(0.0, 20.0 * i as f32),
-            );
+            spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, 20.0 * i as f32));
         }
         app.insert_resource(AiCommanders::new(11, &[Faction::A]));
         let mut placed = None;
         for _ in 0..2_000 {
             step(&mut app);
             let j = app.world().resource::<AiJournal>();
-            if let Some((t, _, _)) =
-                j.0.iter()
-                    .find(|(_, _, a)| matches!(a, onus::sim::AiAction::PlaceBarracks { .. }))
+            if let Some((t, _, _)) = j
+                .0
+                .iter()
+                .find(|(_, _, a)| matches!(a, onus::sim::AiAction::PlaceBarracks { .. }))
             {
                 placed = Some(*t);
                 break;
@@ -855,10 +814,7 @@ fn changing_the_ron_changes_the_ai() {
     };
     let fast = barracks_tick(content()).expect("the AI never opened its barracks");
     let late = barracks_tick(slow).expect("the AI never opened its barracks (slow script)");
-    assert!(
-        (300..600).contains(&fast),
-        "shipped script: barracks at {fast}"
-    );
+    assert!((300..600).contains(&fast), "shipped script: barracks at {fast}");
     assert!(late >= 1_200, "the RON's at_tick was ignored: {late}");
 }
 
@@ -885,10 +841,7 @@ fn a_split_gather_claim_is_still_read_as_a_job_by_the_ai() {
     spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
     let node = app
         .world_mut()
-        .spawn((
-            Position(Vec2::new(200.0, 0.0)),
-            ResourceNode { amount: 10_000 },
-        ))
+        .spawn((Position(Vec2::new(200.0, 0.0)), ResourceNode { amount: 10_000 }))
         .id();
     let clean = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, 10.0));
     let split = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, 20.0));
@@ -931,10 +884,7 @@ fn a_worker_with_a_half_claim_is_not_left_idle_for_a_whole_think_interval() {
     spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
     let node = app
         .world_mut()
-        .spawn((
-            Position(Vec2::new(200.0, 0.0)),
-            ResourceNode { amount: 10_000 },
-        ))
+        .spawn((Position(Vec2::new(200.0, 0.0)), ResourceNode { amount: 10_000 }))
         .id();
     let split = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, 20.0));
     app.world_mut()
@@ -962,16 +912,12 @@ fn sweeping_a_half_claim_off_a_unit_that_dies_this_tick_is_not_fatal() {
     let mut app = sim_app();
     let node = app
         .world_mut()
-        .spawn((
-            Position(Vec2::new(500.0, 0.0)),
-            ResourceNode { amount: 100 },
-        ))
+        .spawn((Position(Vec2::new(500.0, 0.0)), ResourceNode { amount: 100 }))
         .id();
     let doomed = spawn_unit(&mut app, "worker", Faction::A, Vec2::ZERO);
-    app.world_mut().entity_mut(doomed).insert(Health {
-        current: 1,
-        max: 40,
-    });
+    app.world_mut()
+        .entity_mut(doomed)
+        .insert(Health { current: 1, max: 40 });
     app.world_mut()
         .entity_mut(doomed)
         .insert((GatherTarget(node), GatherPhase::ToNode));
@@ -995,10 +941,9 @@ fn both_hqs_falling_on_the_same_tick_is_a_draw() {
     let a_hq = spawn_building(&mut app, "hq", Faction::A, Vec2::new(-1_000.0, 0.0));
     let b_hq = spawn_building(&mut app, "hq", Faction::B, Vec2::new(1_000.0, 0.0));
     for e in [a_hq, b_hq] {
-        app.world_mut().entity_mut(e).insert(Health {
-            current: 1,
-            max: 400,
-        });
+        app.world_mut()
+            .entity_mut(e)
+            .insert(Health { current: 1, max: 400 });
     }
     spawn_unit(&mut app, "arclight", Faction::B, Vec2::new(-940.0, 0.0));
     spawn_unit(&mut app, "arclight", Faction::A, Vec2::new(940.0, 0.0));
@@ -1019,10 +964,9 @@ fn both_hqs_falling_on_the_same_tick_is_a_draw() {
 fn a_one_sided_fixture_is_never_decided_even_when_its_lone_hq_dies() {
     let mut app = sim_app();
     let lone = spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
-    app.world_mut().entity_mut(lone).insert(Health {
-        current: 1,
-        max: 400,
-    });
+    app.world_mut()
+        .entity_mut(lone)
+        .insert(Health { current: 1, max: 400 });
     spawn_unit(&mut app, "arclight", Faction::B, Vec2::new(60.0, 0.0));
     for t in 0..300 {
         step(&mut app);
@@ -1031,10 +975,7 @@ fn a_one_sided_fixture_is_never_decided_even_when_its_lone_hq_dies() {
             "tick {t}: a match with only one HQ on the board was decided"
         );
     }
-    assert!(
-        app.world().get_entity(lone).is_err(),
-        "fixture: HQ survived"
-    );
+    assert!(app.world().get_entity(lone).is_err(), "fixture: HQ survived");
 }
 
 /// Nothing the sim owns may move after the outcome is recorded — positions,
@@ -1046,10 +987,9 @@ fn nothing_the_sim_owns_moves_after_the_match_is_recorded() {
     let mut app = sim_app_with_alloy(content().economy.starting_alloy);
     spawn_building(&mut app, "hq", Faction::A, Vec2::new(-300.0, 0.0));
     let doomed = spawn_building(&mut app, "hq", Faction::B, Vec2::ZERO);
-    app.world_mut().entity_mut(doomed).insert(Health {
-        current: 1,
-        max: 400,
-    });
+    app.world_mut()
+        .entity_mut(doomed)
+        .insert(Health { current: 1, max: 400 });
     app.world_mut().spawn((
         Position(Vec2::new(-200.0, 0.0)),
         ResourceNode { amount: 100_000 },
@@ -1089,15 +1029,9 @@ fn nothing_the_sim_owns_moves_after_the_match_is_recorded() {
     tick(&mut app, 300);
     let after = snapshot(&mut app);
     assert_eq!(before.0, after.0, "world state changed after termination");
-    assert_eq!(
-        before.1, after.1,
-        "a production queue advanced after termination"
-    );
+    assert_eq!(before.1, after.1, "a production queue advanced after termination");
     assert_eq!(before.2, after.2, "MatchState changed after termination");
-    assert_eq!(
-        before.3, after.3,
-        "the AI kept issuing orders after termination"
-    );
+    assert_eq!(before.3, after.3, "the AI kept issuing orders after termination");
 }
 
 // ---- order attribution -----------------------------------------------------
@@ -1113,14 +1047,8 @@ fn a_re_signed_order_is_void_and_cannot_be_laundered() {
         units,
         dest: Vec2::new(900.0, 900.0),
     };
-    push(
-        &mut app,
-        mk(vec![mine]).issued_by(Faction::A).issued_by(Faction::B),
-    );
-    push(
-        &mut app,
-        mk(vec![theirs]).issued_by(Faction::B).issued_by(Faction::A),
-    );
+    push(&mut app, mk(vec![mine]).issued_by(Faction::A).issued_by(Faction::B));
+    push(&mut app, mk(vec![theirs]).issued_by(Faction::B).issued_by(Faction::A));
     push(
         &mut app,
         mk(vec![mine, theirs])
@@ -1366,12 +1294,7 @@ fn ai_solo(seed: u64) -> (App, Entity) {
         ))
         .id();
     for i in 0..3 {
-        spawn_unit(
-            &mut app,
-            "worker",
-            Faction::A,
-            Vec2::new(0.0, 20.0 * i as f32),
-        );
+        spawn_unit(&mut app, "worker", Faction::A, Vec2::new(0.0, 20.0 * i as f32));
     }
     app.insert_resource(AiCommanders::new(seed, &[Faction::A]));
     (app, node)
@@ -1391,9 +1314,7 @@ fn no_reader_sees_a_half_claim_at_any_offset_in_the_think_interval() {
         tick(&mut app, offset);
         // Pick a worker the AI has already tasked, and break its claim.
         let victim = {
-            let mut q = app
-                .world_mut()
-                .query_filtered::<Entity, With<GatherTarget>>();
+            let mut q = app.world_mut().query_filtered::<Entity, With<GatherTarget>>();
             let mut v: Vec<Entity> = q.iter(app.world()).collect();
             v.sort_unstable_by_key(|e| e.to_bits());
             v.first().copied()
@@ -1436,10 +1357,7 @@ fn a_half_claim_on_a_building_node_or_soldier_is_swept() {
     let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::ZERO);
     let node = app
         .world_mut()
-        .spawn((
-            Position(Vec2::new(200.0, 0.0)),
-            ResourceNode { amount: 500 },
-        ))
+        .spawn((Position(Vec2::new(200.0, 0.0)), ResourceNode { amount: 500 }))
         .id();
     let soldier = spawn_unit(&mut app, "bulwark", Faction::A, Vec2::new(10.0, 0.0));
     for e in [hq, node, soldier] {
@@ -1453,9 +1371,7 @@ fn a_half_claim_on_a_building_node_or_soldier_is_swept() {
     app.world_mut()
         .entity_mut(lone_phase)
         .insert((GatherTarget(node), GatherPhase::ToNode));
-    app.world_mut()
-        .entity_mut(lone_phase)
-        .remove::<GatherTarget>();
+    app.world_mut().entity_mut(lone_phase).remove::<GatherTarget>();
 
     step(&mut app);
     assert!(
@@ -1464,8 +1380,7 @@ fn a_half_claim_on_a_building_node_or_soldier_is_swept() {
     );
     for e in [hq, node, soldier, lone_phase] {
         assert!(
-            app.world().get::<GatherTarget>(e).is_none()
-                && app.world().get::<GatherPhase>(e).is_none(),
+            app.world().get::<GatherTarget>(e).is_none() && app.world().get::<GatherPhase>(e).is_none(),
             "{e:?}: the claim was not dropped as a pair"
         );
     }
@@ -1697,6 +1612,7 @@ fn the_only_readers_of_the_gather_claim_are_the_three_the_doc_names() {
     }
 }
 
+
 /// Resolve a chain-registered `sim::…` path to the source of its function body.
 ///
 /// **Every failure to resolve is an error, never a skip.** The rule this guard
@@ -1738,13 +1654,16 @@ fn resolve_sim_fn(path: &str) -> Result<String, String> {
         };
         let rest = &text[at..];
         // The body runs to the first line that is a bare `}` at column 0.
-        let end = rest[1..].find("\n}\n").map(|i| i + 3).ok_or_else(|| {
-            format!(
-                "{path}: `{needle}` in {} has no closing `}}` at column 0, so \
+        let end = rest[1..]
+            .find("\n}\n")
+            .map(|i| i + 3)
+            .ok_or_else(|| {
+                format!(
+                    "{path}: `{needle}` in {} has no closing `}}` at column 0, so \
                      the guard cannot read the whole body",
-                file.display()
-            )
-        })?;
+                    file.display()
+                )
+            })?;
         found.push((file.display().to_string(), rest[..end].to_string()));
     }
     match found.len() {
@@ -1879,11 +1798,7 @@ fn every_seed_decides_inside_eight_minutes_on_a_dead_hq() {
                 .map(|(_, f)| *f)
                 .collect()
         };
-        assert_eq!(
-            standing,
-            vec![winner],
-            "seed {seed}: the win was not earned"
-        );
+        assert_eq!(standing, vec![winner], "seed {seed}: the win was not earned");
         assert!(o.tick <= BUDGET, "seed {seed}: decided at tick {}", o.tick);
         lengths.push((seed, o.tick));
     }
@@ -1940,8 +1855,7 @@ fn a_half_claim_on_a_unit_that_dies_this_tick_is_not_fatal() {
     app.world_mut().entity_mut(victim).remove::<GatherPhase>();
     // Also re-split it every tick for as long as it lives.
     for _ in 0..600 {
-        if app.world().get_entity(victim).is_ok()
-            && app.world().get::<GatherPhase>(victim).is_some()
+        if app.world().get_entity(victim).is_ok() && app.world().get::<GatherPhase>(victim).is_some()
         {
             split_the_claim(&mut app, victim);
         }
@@ -2046,10 +1960,7 @@ fn targeting_matches_the_oracle_with_half_claims_on_the_field() {
         );
         checked += 1;
     }
-    assert!(
-        checked * 2 >= rows.len(),
-        "fixture: most of the field must survive the tick"
-    );
+    assert!(checked * 2 >= rows.len(), "fixture: most of the field must survive the tick");
 }
 
 /// **Two commanders touching the same worker on the same tick.** The sweep now

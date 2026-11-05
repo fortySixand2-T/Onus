@@ -110,10 +110,7 @@ fn load_mutated(name: &str, from: &str, to: &str) -> Result<Content, String> {
         .join(name);
     std::fs::create_dir_all(&dir).unwrap();
     let units = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
-    assert!(
-        units.contains(from),
-        "anchor `{from}` missing from units.ron"
-    );
+    assert!(units.contains(from), "anchor `{from}` missing from units.ron");
     std::fs::write(dir.join("units.ron"), units.replace(from, to)).unwrap();
     // B1: the content set is three files.
     for file in ["resources.ron", "strategies.ron"] {
@@ -224,8 +221,7 @@ fn nemesis_applies_to_exactly_the_declared_pairs_and_bypasses_armor() {
                 assert!(
                     dealt >= base,
                     "{} -> {}: armor must be bypassed, not mitigated",
-                    au.id,
-                    du.id
+                    au.id, du.id
                 );
             }
             if dealt != plain {
@@ -303,10 +299,7 @@ fn simultaneous_mutual_kills_despawn_each_unit_exactly_once() {
     assert_eq!(cas.total(), 4, "four deaths, counted once each");
     assert_eq!((cas.lost(Faction::A), cas.lost(Faction::B)), (2, 2));
     assert_eq!(
-        app.world_mut()
-            .query::<&UnitDefIdx>()
-            .iter(app.world())
-            .len(),
+        app.world_mut().query::<&UnitDefIdx>().iter(app.world()).len(),
         0,
         "the field is empty"
     );
@@ -427,9 +420,7 @@ fn a_hunter_drops_a_prey_that_outruns_the_leash_and_does_not_oscillate() {
     assert!(app.world().get::<Engaging>(hunter).is_some(), "gave chase");
 
     tick(&mut app, 600);
-    let gap = pos(&app, hunter)
-        .unwrap()
-        .distance(pos(&app, prey).unwrap());
+    let gap = pos(&app, hunter).unwrap().distance(pos(&app, prey).unwrap());
     assert!(
         gap > content().combat.pursue_range,
         "precondition: the prey got away ({gap})"
@@ -440,11 +431,7 @@ fn a_hunter_drops_a_prey_that_outruns_the_leash_and_does_not_oscillate() {
 
     let parked = pos(&app, hunter).unwrap();
     tick(&mut app, 120);
-    assert_eq!(
-        pos(&app, hunter),
-        Some(parked),
-        "no oscillation after giving up"
-    );
+    assert_eq!(pos(&app, hunter), Some(parked), "no oscillation after giving up");
 }
 
 // ---- P9: determinism under archetype perturbation ---------------------------
@@ -512,10 +499,7 @@ fn the_stat_scaling_is_read_from_the_ron_not_hardcoded() {
         "a plain (non-nemesis) pair"
     );
     let (off, arm) = (base.units[bulwark].offense, base.units[ripper].armor);
-    let (dpo, mpa) = (
-        base.combat.damage_per_offense,
-        base.combat.mitigation_per_armor,
-    );
+    let (dpo, mpa) = (base.combat.damage_per_offense, base.combat.mitigation_per_armor);
 
     let f = unit_field("damage_per_offense");
     let dpo2 = if dpo > 2 { dpo - 2 } else { dpo + 3 };
@@ -530,18 +514,11 @@ fn the_stat_scaling_is_read_from_the_ron_not_hardcoded() {
     let m5 = mutated("mit5", &f.from, &f.with(mpa2));
     // bulwark offense * damage_per_offense, minus ripper armor * the edited factor.
     let want = (off * dpo).saturating_sub(arm * mpa2);
-    assert!(
-        want > 0 && arm > 0,
-        "the probe must see the mitigation move"
-    );
+    assert!(want > 0 && arm > 0, "the probe must see the mitigation move");
     assert_eq!(damage_per_hit(&m5, bulwark, ripper), want);
 
     let f = unit_field("speed_per_point");
-    let s72 = mutated(
-        "spd",
-        &f.from,
-        &f.with(format!("{:?}", 2.0 * f.num::<f32>())),
-    );
+    let s72 = mutated("spd", &f.from, &f.with(format!("{:?}", 2.0 * f.num::<f32>())));
     assert_eq!(
         move_speed(&s72, bulwark),
         2.0 * move_speed(&base, bulwark),
@@ -557,28 +534,17 @@ fn the_nemesis_bonus_is_read_from_the_ron_and_floors() {
     // if 1.15 is what ships) and the armor rule is flipped, whatever it is.
     let shipped_c = content();
     let f = unit_field("damage_mult");
-    let (text, milli) = if f.value == "1.15" {
-        ("1.25", 1_250)
-    } else {
-        ("1.15", 1_150)
-    };
+    let (text, milli) = if f.value == "1.15" { ("1.25", 1_250) } else { ("1.15", 1_150) };
     let c = mutated("mult115", &f.from, &f.with(text));
     let (b, r) = (
         c.unit_index("bulwark").unwrap(),
         c.unit_index("ravager").unwrap(),
     );
-    assert_eq!(
-        c.units[b].nemesis.as_deref(),
-        Some("ravager"),
-        "the pentagon"
-    );
+    assert_eq!(c.units[b].nemesis.as_deref(), Some("ravager"), "the pentagon");
     assert_eq!(c.nemesis_bonus.mult_milli(), milli);
     let base = c.units[b].offense * c.combat.damage_per_offense;
     let mitigation = c.units[r].armor * c.combat.mitigation_per_armor;
-    assert!(
-        mitigation > 0,
-        "the prey must have armor for the rule to show"
-    );
+    assert!(mitigation > 0, "the prey must have armor for the rule to show");
     let armor_rule = |boosted: u32, ignore: bool| {
         if ignore {
             boosted
@@ -621,15 +587,9 @@ fn degenerate_or_missing_combat_content_is_rejected_at_load() {
         ("spd0", edit("speed_per_point", "0.0")),
         ("leash", edit("pursue_range", &half_engage)),
         ("nocadence", (cadence.from.clone(), cadence.removed())),
-        (
-            "noblock",
-            ("mvp_combat: (".into(), "mvp_combat_typo: (".into()),
-        ),
+        ("noblock", ("mvp_combat: (".into(), "mvp_combat_typo: (".into())),
         ("weakmult", edit("damage_mult", "0.5")),
-        (
-            "badprey",
-            ("nemesis: \"ravager\"".into(), "nemesis: \"nobody\"".into()),
-        ),
+        ("badprey", ("nemesis: \"ravager\"".into(), "nemesis: \"nobody\"".into())),
     ];
     for (name, (from, to)) in &cases {
         let (name, from, to) = (*name, from.as_str(), to.as_str());
@@ -657,18 +617,13 @@ fn no_global_speed_constant_survives_in_src() {
             }
         }
     }
-    assert!(
-        offenders.is_empty(),
-        "sim::SPEED not retired: {offenders:?}"
-    );
+    assert!(offenders.is_empty(), "sim::SPEED not retired: {offenders:?}");
 
     // ...and each unit really moves at its own rate.
     let c = content();
     let mut app = sim_app();
     let dt = 1.0 / 60.0;
-    for id in [
-        "worker", "bulwark", "sentinel", "ripper", "ravager", "arclight",
-    ] {
+    for id in ["worker", "bulwark", "sentinel", "ripper", "ravager", "arclight"] {
         let e = spawn_unit(&mut app, id, Faction::A, Vec2::ZERO);
         app.world_mut()
             .entity_mut(e)
@@ -772,13 +727,7 @@ fn targets(app: &mut App) -> Vec<(Entity, Entity)> {
 fn state_hash(app: &mut App) -> u64 {
     let mut rows: Vec<(u64, u32, u32, u64, u32)> = app
         .world_mut()
-        .query::<(
-            Entity,
-            &Position,
-            Option<&Health>,
-            Option<&Target>,
-            Option<&AttackCooldown>,
-        )>()
+        .query::<(Entity, &Position, Option<&Health>, Option<&Target>, Option<&AttackCooldown>)>()
         .iter(app.world())
         .map(|(e, p, h, t, cd)| {
             (
@@ -786,8 +735,7 @@ fn state_hash(app: &mut App) -> u64 {
                 p.0.x.to_bits(),
                 p.0.y.to_bits(),
                 t.map(|t| t.0.to_bits()).unwrap_or(u64::MAX),
-                h.map(|h| h.current).unwrap_or(u32::MAX)
-                    ^ (cd.map(|c| c.0).unwrap_or(u32::MAX) << 1),
+                h.map(|h| h.current).unwrap_or(u32::MAX) ^ (cd.map(|c| c.0).unwrap_or(u32::MAX) << 1),
             )
         })
         .collect();
@@ -889,7 +837,9 @@ fn an_order_issued_on_the_tick_the_target_dies_is_kept() {
     );
     // Arm the killer for this tick and make the next hit lethal.
     set_hp(&mut app, prey, 1);
-    app.world_mut().entity_mut(killer).insert(AttackCooldown(0));
+    app.world_mut()
+        .entity_mut(killer)
+        .insert(AttackCooldown(0));
     let dest = Vec2::new(600.0, 0.0);
     push(
         &mut app,
@@ -899,10 +849,7 @@ fn an_order_issued_on_the_tick_the_target_dies_is_kept() {
         },
     );
     step(&mut app);
-    assert!(
-        !alive(&app, prey),
-        "precondition: the prey died on this tick"
-    );
+    assert!(!alive(&app, prey), "precondition: the prey died on this tick");
     assert!(
         app.world().get::<Engaging>(hunter).is_none(),
         "the order cancelled the chase"
@@ -928,13 +875,13 @@ fn a_gather_order_also_cancels_a_chase_in_progress() {
     let node_pos = Vec2::new(-300.0, 0.0);
     let node = app
         .world_mut()
-        .spawn((Position(node_pos), onus::sim::ResourceNode { amount: 500 }))
+        .spawn((
+            Position(node_pos),
+            onus::sim::ResourceNode { amount: 500 },
+        ))
         .id();
     step(&mut app);
-    assert!(
-        app.world().get::<Engaging>(hunter).is_some(),
-        "precondition"
-    );
+    assert!(app.world().get::<Engaging>(hunter).is_some(), "precondition");
     push(
         &mut app,
         Order::Gather {
@@ -1017,11 +964,7 @@ fn max_stat_is_data_and_bounds_exactly_the_design_scale() {
     let max = field(&units, "max_stat");
     let over = field_after(&units, "id: \"sentinel\"", "offense");
     assert!(
-        load_with_combat(
-            "stat_11",
-            &[(&over.from, &over.with(c.combat.max_stat + 1))]
-        )
-        .is_err(),
+        load_with_combat("stat_11", &[(&over.from, &over.with(c.combat.max_stat + 1))]).is_err(),
         "a stat above the declared scale must be rejected"
     );
     let top = c
@@ -1049,10 +992,7 @@ fn a_degenerate_scale_is_rejected_not_overflowed_inside_the_validator() {
     let r = load_with_combat(
         "degenerate_scale",
         &[
-            (
-                &unit_field("max_stat").from,
-                &unit_field("max_stat").with(4000000000u32),
-            ),
+            (&unit_field("max_stat").from, &unit_field("max_stat").with(4000000000u32)),
             (
                 &unit_field("damage_per_offense").from,
                 &unit_field("damage_per_offense").with(4000000000u32),
@@ -1073,22 +1013,13 @@ fn accepted_content_never_needs_a_saturating_hit() {
     let c = load_with_combat(
         "wrap_to_zero",
         &[
-            (
-                &unit_field("max_stat").from,
-                &unit_field("max_stat").with(134217728),
-            ),
+            (&unit_field("max_stat").from, &unit_field("max_stat").with(134217728)),
             (
                 &unit_field("damage_per_offense").from,
                 &unit_field("damage_per_offense").with(67108864),
             ),
-            (
-                &unit_field("damage_mult").from,
-                &unit_field("damage_mult").with("2.048"),
-            ),
-            (
-                &unit_field("hp_per_defense").from,
-                &unit_field("hp_per_defense").with(1),
-            ),
+            (&unit_field("damage_mult").from, &unit_field("damage_mult").with("2.048")),
+            (&unit_field("hp_per_defense").from, &unit_field("hp_per_defense").with(1)),
         ],
     );
     let Ok(c) = c else {
@@ -1435,10 +1366,7 @@ fn carried(app: &App, e: Entity) -> u32 {
 }
 
 fn node_amount(app: &App, e: Entity) -> u32 {
-    app.world()
-        .get::<ResourceNode>(e)
-        .map(|n| n.amount)
-        .unwrap_or(0)
+    app.world().get::<ResourceNode>(e).map(|n| n.amount).unwrap_or(0)
 }
 
 fn spawn_node(app: &mut App, pos: Vec2, amount: u32) -> Entity {
@@ -1687,10 +1615,7 @@ fn alloy_is_conserved_across_a_mixed_selection_gather_loop() {
         );
         banked_ever = banked_ever.max(stock);
     }
-    assert!(
-        banked_ever > 0,
-        "no Alloy was ever banked: the loop is dead"
-    );
+    assert!(banked_ever > 0, "no Alloy was ever banked: the loop is dead");
 }
 
 /// P38. The clearing pass must never confiscate a *real* gatherer's job or its
@@ -1915,9 +1840,7 @@ fn a_mixed_economy_and_combat_run_is_deterministic_and_order_independent() {
             Faction::A,
             ProductionQueue::default(),
         ));
-        let ids = [
-            "worker", "bulwark", "ripper", "sentinel", "worker", "ravager",
-        ];
+        let ids = ["worker", "bulwark", "ripper", "sentinel", "worker", "ravager"];
         let mut mine = Vec::new();
         for (i, id) in ids.iter().enumerate() {
             let f = if i % 2 == 0 { Faction::A } else { Faction::B };

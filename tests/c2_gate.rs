@@ -18,13 +18,7 @@ fn content() -> Content {
     headless::content().expect("content loads")
 }
 
-fn rec(
-    nations: [&str; 2],
-    strategies: [&str; 2],
-    seed: u64,
-    o: Orientation,
-    result: MatchResult,
-) -> NationRecord {
+fn rec(nations: [&str; 2], strategies: [&str; 2], seed: u64, o: Orientation, result: MatchResult) -> NationRecord {
     NationRecord {
         nations: [nations[0].into(), nations[1].into()],
         record: MatchRecord {
@@ -40,21 +34,13 @@ fn rec(
 
 /// A cross batch over `nations` on strategy `s`: every ordered pair, `seeds`
 /// seeds, both orientations; `wins(a, b, seed, o)` says whether slot A won.
-fn cross(
-    nations: &[&str],
-    seeds: u64,
-    wins: impl Fn(&str, &str, u64, Orientation) -> bool,
-) -> Vec<NationRecord> {
+fn cross(nations: &[&str], seeds: u64, wins: impl Fn(&str, &str, u64, Orientation) -> bool) -> Vec<NationRecord> {
     let mut out = Vec::new();
     for seed in 0..seeds {
         for a in nations {
             for b in nations.iter().filter(|b| *b != a) {
                 for o in Orientation::ALL {
-                    let w = if wins(a, b, seed, o) {
-                        Faction::A
-                    } else {
-                        Faction::B
-                    };
+                    let w = if wins(a, b, seed, o) { Faction::A } else { Faction::B };
                     out.push(rec([a, b], ["s", "s"], seed, o, MatchResult::Decided(w)));
                 }
             }
@@ -70,12 +56,7 @@ fn even(_: &str, _: &str, _: u64, o: Orientation) -> bool {
 
 /// The pentagon batch for `pairs` where the predator always wins, except
 /// on `broken` (predator nation, prey nation, predator unit) where the prey does.
-fn pentagon_records(
-    c: &Content,
-    nations: &[String],
-    seeds: u64,
-    broken: Option<(&str, &str, &str)>,
-) -> Vec<NationRecord> {
+fn pentagon_records(c: &Content, nations: &[String], seeds: u64, broken: Option<(&str, &str, &str)>) -> Vec<NationRecord> {
     let fixtures = pentagon::nation_pentagon_fixtures(c, nations).unwrap();
     let cycle = PentagonReport::of_records(c, &[]).unwrap();
     let mut out = Vec::new();
@@ -88,22 +69,13 @@ fn pentagon_records(
                     .links()
                     .iter()
                     .find(|l| {
-                        let (p, q) = (
-                            l.predator_strategy.as_ref().unwrap(),
-                            l.prey_strategy.as_ref().unwrap(),
-                        );
-                        (&a.strategy == p && &b.strategy == q)
-                            || (&a.strategy == q && &b.strategy == p)
+                        let (p, q) = (l.predator_strategy.as_ref().unwrap(), l.prey_strategy.as_ref().unwrap());
+                        (&a.strategy == p && &b.strategy == q) || (&a.strategy == q && &b.strategy == p)
                     })
                     .unwrap();
-                let pred_slot = if Some(&a.strategy) == link.predator_strategy.as_ref() {
-                    0
-                } else {
-                    1
-                };
+                let pred_slot = if Some(&a.strategy) == link.predator_strategy.as_ref() { 0 } else { 1 };
                 let (pn, qn) = (&f.sides[pred_slot].nation, &f.sides[1 - pred_slot].nation);
-                let flipped = broken
-                    .is_some_and(|(bp, bq, unit)| pn == bp && qn == bq && link.predator == unit);
+                let flipped = broken.is_some_and(|(bp, bq, unit)| pn == bp && qn == bq && link.predator == unit);
                 let winner_slot = if flipped { 1 - pred_slot } else { pred_slot };
                 let w = [Faction::A, Faction::B][winner_slot];
                 out.push(rec(
@@ -139,22 +111,13 @@ fn even_nations_and_a_holding_pentagon_pass() {
     assert_eq!(g.strength.len(), 3);
     for r in &g.strength {
         assert_eq!(r.strength.value, Some(0.5), "{}", r.nation);
-        assert_eq!(
-            r.strength.status,
-            Status::Pass,
-            "{}: {:?}",
-            r.nation,
-            r.strength.interval
-        );
+        assert_eq!(r.strength.status, Status::Pass, "{}: {:?}", r.nation, r.strength.interval);
         assert_eq!(r.opponents, 2);
     }
     assert_eq!(g.strength_status, Status::Pass);
     // Every ordered pair, mirrors included.
     assert_eq!(g.pentagon.len(), 9);
-    assert!(g
-        .pentagon
-        .iter()
-        .all(|p| p.status == Status::Pass && p.links.len() == 5));
+    assert!(g.pentagon.iter().all(|p| p.status == Status::Pass && p.links.len() == 5));
     assert_eq!(g.pentagon_status, Status::Pass);
     assert_eq!(g.status, Status::Pass);
     assert!(g.failing.is_empty());
@@ -173,14 +136,7 @@ fn a_dominant_nation_fails_and_is_named() {
     });
     let g = NationGate::of(&c, &x, &[], &NationSpec::default()).unwrap();
     assert_eq!(g.failing, ids(&["forgeborn"]), "{:#?}", g.strength);
-    let row = |id: &str| {
-        g.strength
-            .iter()
-            .find(|r| r.nation == id)
-            .unwrap()
-            .strength
-            .clone()
-    };
+    let row = |id: &str| g.strength.iter().find(|r| r.nation == id).unwrap().strength.clone();
     assert_eq!(row("forgeborn").value, Some(0.75));
     assert_eq!(row("house").value, Some(0.375));
     assert_eq!(g.strength_status, Status::Fail);
@@ -209,10 +165,7 @@ fn a_thin_sample_is_undetermined_not_a_pass() {
     let c = content();
     let x = cross(&["house", "forgeborn"], 1, even);
     let g = NationGate::of(&c, &x, &[], &NationSpec::default()).unwrap();
-    assert!(g
-        .strength
-        .iter()
-        .all(|r| r.strength.status == Status::Undetermined));
+    assert!(g.strength.iter().all(|r| r.strength.status == Status::Undetermined));
     assert_eq!(g.status, Status::Undetermined);
 }
 
@@ -221,20 +174,8 @@ fn mirrors_and_timeouts_do_not_count_toward_strength() {
     let c = content();
     let mut x = cross(&["house", "forgeborn"], 40, even);
     for seed in 0..40 {
-        x.push(rec(
-            ["house", "house"],
-            ["s", "s"],
-            seed,
-            Orientation::ALL[0],
-            MatchResult::Decided(Faction::A),
-        ));
-        x.push(rec(
-            ["house", "forgeborn"],
-            ["s", "s"],
-            seed,
-            Orientation::ALL[0],
-            MatchResult::Timeout,
-        ));
+        x.push(rec(["house", "house"], ["s", "s"], seed, Orientation::ALL[0], MatchResult::Decided(Faction::A)));
+        x.push(rec(["house", "forgeborn"], ["s", "s"], seed, Orientation::ALL[0], MatchResult::Timeout));
     }
     let g = NationGate::of(&c, &x, &[], &NationSpec::default()).unwrap();
     for r in &g.strength {
@@ -255,16 +196,10 @@ fn a_link_broken_under_one_nation_pair_fails_that_pair_only() {
     assert_eq!(g.status, Status::Fail);
     for pair in &g.pentagon {
         let broken = pair.predator_nation == "aetherkin" && pair.prey_nation == "house";
-        assert_eq!(
-            pair.status,
-            if broken { Status::Fail } else { Status::Pass },
-            "{pair:?}"
-        );
+        assert_eq!(pair.status, if broken { Status::Fail } else { Status::Pass }, "{pair:?}");
         if broken {
             assert_eq!(pair.links[0].verdict, pentagon::Verdict::Fails);
-            assert!(pair.links[1..]
-                .iter()
-                .all(|l| l.verdict == pentagon::Verdict::Holds));
+            assert!(pair.links[1..].iter().all(|l| l.verdict == pentagon::Verdict::Holds));
         }
     }
 }
@@ -278,21 +213,12 @@ fn the_pentagon_fixtures_field_each_probe_under_every_ordered_pair() {
     assert_eq!(f.len(), 3 * 3 * links * 2);
     let report = PentagonReport::of_records(&c, &[]).unwrap();
     let first = &report.links()[0];
-    let (ps, qs) = (
-        first.predator_strategy.clone().unwrap(),
-        first.prey_strategy.clone().unwrap(),
-    );
+    let (ps, qs) = (first.predator_strategy.clone().unwrap(), first.prey_strategy.clone().unwrap());
     assert_eq!(f[0], Fixture::new(("house", &ps), ("house", &qs)));
     // The predator's nation is the outer loop: (house, forgeborn) comes
     // before (forgeborn, house).
-    assert_eq!(
-        f[2 * links],
-        Fixture::new(("house", &ps), ("forgeborn", &qs))
-    );
-    assert_eq!(
-        f[2 * links + 1],
-        Fixture::new(("forgeborn", &qs), ("house", &ps))
-    );
+    assert_eq!(f[2 * links], Fixture::new(("house", &ps), ("forgeborn", &qs)));
+    assert_eq!(f[2 * links + 1], Fixture::new(("forgeborn", &qs), ("house", &ps)));
     // Both slot orders of each (link, pair).
     assert_eq!(f[0].sides[0], f[1].sides[1]);
     assert_eq!(f[0].sides[1], f[1].sides[0]);
@@ -307,10 +233,7 @@ fn the_pentagon_fixtures_field_each_probe_under_every_ordered_pair() {
 #[ignore = "measurement: run in release with --ignored --nocapture"]
 fn the_shipped_nation_reading() {
     let c = content();
-    let seeds: u32 = std::env::var("ONUS_C2_SEEDS")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(2);
+    let seeds: u32 = std::env::var("ONUS_C2_SEEDS").ok().and_then(|s| s.parse().ok()).unwrap_or(2);
     let part = std::env::var("ONUS_C2_PART").unwrap_or_default();
     let run = |p: &str| part.is_empty() || part == p;
     let settings = BatchSettings::default().with_seeds(seeds);
@@ -321,48 +244,25 @@ fn the_shipped_nation_reading() {
     let mut tick = |r: &NationRecord| {
         n += 1;
         if n % 50 == 0 {
-            eprintln!(
-                "[{n}] {:?} {:?} {:?} {}s",
-                r.nations,
-                r.record.strategies,
-                r.record.result,
-                t0.elapsed().as_secs()
-            );
+            eprintln!("[{n}] {:?} {:?} {:?} {}s", r.nations, r.record.strategies, r.record.result, t0.elapsed().as_secs());
         }
     };
     let strength_table = |label: &str, records: &[NationRecord]| {
         let g = NationGate::of(&c, records, &[], &spec).unwrap();
-        let timeouts = records
-            .iter()
-            .filter(|r| r.record.result == MatchResult::Timeout)
-            .count();
-        println!(
-            "{label}: strength {}, {} matches, {timeouts} timeouts, seeds {seeds}",
-            g.strength_status.label(),
-            records.len()
-        );
+        let timeouts = records.iter().filter(|r| r.record.result == MatchResult::Timeout).count();
+        println!("{label}: strength {}, {} matches, {timeouts} timeouts, seeds {seeds}", g.strength_status.label(), records.len());
         for r in &g.strength {
             let (lo, hi) = r.strength.interval.unwrap_or((f64::NAN, f64::NAN));
-            println!(
-                "  {:<12} {:>5.1}% [{:.1}, {:.1}] n {} n_eff {:.0} {}",
-                r.nation,
-                100.0 * r.strength.value.unwrap_or(f64::NAN),
-                100.0 * lo,
-                100.0 * hi,
-                r.strength.n,
-                r.strength.n_eff,
-                r.strength.status.label()
-            );
+            println!("  {:<12} {:>5.1}% [{:.1}, {:.1}] n {} n_eff {:.0} {}", r.nation,
+                100.0 * r.strength.value.unwrap_or(f64::NAN), 100.0 * lo, 100.0 * hi,
+                r.strength.n, r.strength.n_eff, r.strength.status.label());
         }
         // The nation matrix itself, row against column.
         let relabelled: Vec<MatchRecord> = records.iter().map(NationRecord::by_nation).collect();
         let m = onus::metrics::WinMatrix::of(&relabelled);
         for (i, id) in m.ids().iter().enumerate() {
             let cells: Vec<String> = (0..m.len())
-                .map(|j| {
-                    m.rate(i, j)
-                        .map_or("  --".into(), |r| format!("{:>4.0}", 100.0 * r))
-                })
+                .map(|j| m.rate(i, j).map_or("  --".into(), |r| format!("{:>4.0}", 100.0 * r)))
                 .collect();
             println!("    {:<12} {}", id, cells.join(" "));
         }
@@ -375,53 +275,27 @@ fn the_shipped_nation_reading() {
             .filter_map(|l| l.predator_strategy.clone())
             .collect();
         let cross_settings = settings.clone().with_only(probes);
-        let cross =
-            batch::run_nation_batch(&c, &cross_settings, None, NationAxis::Cross, &mut tick)
-                .unwrap();
+        let cross = batch::run_nation_batch(&c, &cross_settings, None, NationAxis::Cross, &mut tick).unwrap();
         strength_table("cross (gated)", &cross);
     }
     if run("pentagon") {
         let fixtures = pentagon::nation_pentagon_fixtures(&c, &nations).unwrap();
         let pent = batch::run_fixtures(&c, &fixtures, &settings, &mut tick).unwrap();
         let g = NationGate::of(&c, &[], &pent, &spec).unwrap();
-        let timeouts = pent
-            .iter()
-            .filter(|r| r.record.result == MatchResult::Timeout)
-            .count();
-        println!(
-            "pentagon (gated): {}, {} matches, {timeouts} timeouts, seeds {seeds}",
-            g.pentagon_status.label(),
-            pent.len()
-        );
+        let timeouts = pent.iter().filter(|r| r.record.result == MatchResult::Timeout).count();
+        println!("pentagon (gated): {}, {} matches, {timeouts} timeouts, seeds {seeds}", g.pentagon_status.label(), pent.len());
         for p in &g.pentagon {
             let line: Vec<String> = p
                 .links
                 .iter()
-                .map(|l| {
-                    format!(
-                        "{}>{} {:.0}% {}/{} {}",
-                        &l.predator[..3],
-                        &l.prey[..3],
-                        100.0 * l.rate.unwrap_or(f64::NAN),
-                        l.n_decided,
-                        l.n_timeout,
-                        l.verdict.label()
-                    )
-                })
+                .map(|l| format!("{}>{} {:.0}% {}/{} {}", &l.predator[..3], &l.prey[..3],
+                    100.0 * l.rate.unwrap_or(f64::NAN), l.n_decided, l.n_timeout, l.verdict.label()))
                 .collect();
-            println!(
-                "  {:>11} / {:<11} {:<12} | {}",
-                p.predator_nation,
-                p.prey_nation,
-                p.status.label(),
-                line.join(", ")
-            );
+            println!("  {:>11} / {:<11} {:<12} | {}", p.predator_nation, p.prey_nation, p.status.label(), line.join(", "));
         }
     }
     if run("personality") {
-        let personality =
-            batch::run_nation_batch(&c, &settings, None, NationAxis::Personality, &mut tick)
-                .unwrap();
+        let personality = batch::run_nation_batch(&c, &settings, None, NationAxis::Personality, &mut tick).unwrap();
         strength_table("personality (reported, not gated)", &personality);
     }
     println!("{} s", t0.elapsed().as_secs());

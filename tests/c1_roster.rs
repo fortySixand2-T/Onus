@@ -26,9 +26,10 @@ fn quiet(setup: BattleSetup) -> App {
 
 /// (entity, def, position, health) of `side`'s non-General units, entity order.
 fn units_of(app: &mut App, side: Faction) -> Vec<(Entity, usize, Vec2, Health)> {
-    let mut q = app
-        .world_mut()
-        .query_filtered::<(Entity, &Faction, &UnitDefIdx, &Position, &Health), Without<General>>();
+    let mut q = app.world_mut().query_filtered::<
+        (Entity, &Faction, &UnitDefIdx, &Position, &Health),
+        Without<General>,
+    >();
     let mut v: Vec<_> = q
         .iter(app.world())
         .filter(|(_, f, ..)| **f == side)
@@ -83,11 +84,7 @@ fn a_roster_side_starts_with_exactly_its_roster_and_no_skirmish_start() {
     let a = units_of(&mut app, Faction::A);
     let mut ids: Vec<&str> = a.iter().map(|u| c.units[u.1].id.as_str()).collect();
     ids.sort();
-    assert_eq!(
-        ids,
-        ["arclight", "bulwark", "ravager", "ripper"],
-        "no skirmish workers"
-    );
+    assert_eq!(ids, ["arclight", "bulwark", "ravager", "ripper"], "no skirmish workers");
     for (_, d, _, h) in &a {
         let full = Health::from_def(&c, *d).max;
         assert_eq!(h.max, full);
@@ -97,24 +94,10 @@ fn a_roster_side_starts_with_exactly_its_roster_and_no_skirmish_start() {
     let mut b = buildings_of(&mut app, Faction::A);
     b.sort_by_key(|x| c.buildings[x.1].id != "hq");
     let ids: Vec<&str> = b.iter().map(|x| c.buildings[x.1].id.as_str()).collect();
-    assert_eq!(
-        ids,
-        ["hq", "foundry"],
-        "the roster's buildings, and no other HQ"
-    );
+    assert_eq!(ids, ["hq", "foundry"], "the roster's buildings, and no other HQ");
     let hq_pool = Health::from_building_def(&c, b[0].1).max;
-    assert_eq!(
-        b[0].3,
-        Some(Health {
-            current: 900,
-            max: hq_pool
-        }),
-        "siege damage carried"
-    );
-    assert_eq!(
-        b[1].3, None,
-        "a building at full HP takes its pool from the RON"
-    );
+    assert_eq!(b[0].3, Some(Health { current: 900, max: hq_pool }), "siege damage carried");
+    assert_eq!(b[1].3, None, "a building at full HP takes its pool from the RON");
     // B, with no roster, has today's skirmish start.
     let worker = c.unit_index("worker").unwrap();
     assert!(units_of(&mut app, Faction::B).iter().all(|u| u.1 == worker));
@@ -132,10 +115,7 @@ fn a_roster_stands_in_ranks_behind_its_generals_and_its_buildings_in_a_line() {
     let battle = c.battle.clone().unwrap();
     let rank = battle.formation_rank as usize;
     let n = rank + 3; // one full rank and part of a second
-    let mut roster = Roster::default()
-        .building("hq")
-        .building("foundry")
-        .building("gene_vats");
+    let mut roster = Roster::default().building("hq").building("foundry").building("gene_vats");
     for _ in 0..n {
         roster = roster.unit("ravager");
     }
@@ -164,11 +144,7 @@ fn a_roster_stands_in_ranks_behind_its_generals_and_its_buildings_in_a_line() {
         row
     };
     let (first, second) = (in_rank(1.0), in_rank(2.0));
-    assert_eq!(
-        (first.len(), second.len()),
-        (rank, n - rank),
-        "a full rank, then the rest"
-    );
+    assert_eq!((first.len(), second.len()), (rank, n - rank), "a full rank, then the rest");
     for row in [&first, &second] {
         for w in row.windows(2) {
             assert!((w[0].distance(w[1]) - battle.formation_spacing).abs() < 1e-3);
@@ -180,10 +156,7 @@ fn a_roster_stands_in_ranks_behind_its_generals_and_its_buildings_in_a_line() {
     assert!(depth(b[1].2).abs() < 1e-3 && depth(b[2].2).abs() < 1e-3);
     assert!((across(b[1].2).abs() - battle.building_spacing).abs() < 1e-3);
     assert!((across(b[2].2).abs() - battle.building_spacing).abs() < 1e-3);
-    assert!(
-        across(b[1].2) * across(b[2].2) < 0.0,
-        "either side of the base"
-    );
+    assert!(across(b[1].2) * across(b[2].2) < 0.0, "either side of the base");
 }
 
 #[test]
@@ -194,33 +167,19 @@ fn a_bad_roster_is_refused_before_anything_spawns() {
     let cases: Vec<(Roster, BattleSetupError)> = vec![
         (
             Roster::default().unit("dragon"),
-            BattleSetupError::UnknownUnit {
-                id: "dragon".into(),
-                side: Faction::B,
-            },
+            BattleSetupError::UnknownUnit { id: "dragon".into(), side: Faction::B },
         ),
         (
             Roster::default().unit("general_focus"),
-            BattleSetupError::UnknownUnit {
-                id: "general_focus".into(),
-                side: Faction::B,
-            },
+            BattleSetupError::UnknownUnit { id: "general_focus".into(), side: Faction::B },
         ),
         (
             Roster::default().building("castle"),
-            BattleSetupError::UnknownBuilding {
-                id: "castle".into(),
-                side: Faction::B,
-            },
+            BattleSetupError::UnknownBuilding { id: "castle".into(), side: Faction::B },
         ),
         (
             Roster::default().unit_hp("ripper", 0),
-            BattleSetupError::BadHp {
-                id: "ripper".into(),
-                side: Faction::B,
-                hp: 0,
-                max: rip_max,
-            },
+            BattleSetupError::BadHp { id: "ripper".into(), side: Faction::B, hp: 0, max: rip_max },
         ),
         (
             Roster::default().unit_hp("ripper", rip_max + 1),
@@ -249,19 +208,11 @@ fn a_field_battle_with_no_buildings_is_decided_by_the_generals() {
         .with_roster(Faction::B, Roster::default().unit("ravager"));
     let mut app = quiet(setup);
     headless::tick(&mut app, 30);
-    assert!(
-        app.world().resource::<MatchState>().outcome().is_none(),
-        "no HQ is not a loss"
-    );
+    assert!(app.world().resource::<MatchState>().outcome().is_none(), "no HQ is not a loss");
     let (gb, _) = general_of(&mut app, Faction::B);
     app.world_mut().despawn(gb);
     headless::step(&mut app);
-    let r = app
-        .world()
-        .resource::<BattleState>()
-        .result()
-        .cloned()
-        .expect("decided");
+    let r = app.world().resource::<BattleState>().result().cloned().expect("decided");
     assert_eq!(r.winner, Some(Faction::A));
     assert_eq!(r.loss(Faction::B), Some(LossCause::GeneralsFell));
 }
@@ -289,12 +240,7 @@ fn a_damaged_city_falls_sooner() {
         headless::step(&mut app);
         t += 1;
     }
-    let r = app
-        .world()
-        .resource::<BattleState>()
-        .result()
-        .cloned()
-        .expect("decided");
+    let r = app.world().resource::<BattleState>().result().cloned().expect("decided");
     assert_eq!(r.loss(Faction::A), Some(LossCause::VictoryBuildingLost));
     assert_eq!(r.winner, Some(Faction::B));
 }
@@ -346,30 +292,11 @@ fn tight_content(tag: &str, front: &str, spacing: &str, offset: &str) -> Result<
     }
     let text = std::fs::read_to_string(src.join("units.ron")).unwrap();
     let edited = text
-        .replacen(
-            "general_front: 80.0,",
-            &format!("general_front: {front},"),
-            1,
-        )
-        .replacen(
-            "formation_spacing: 30.0,",
-            &format!("formation_spacing: {spacing},"),
-            1,
-        )
-        .replacen(
-            "entry_edge_offset: 150.0,",
-            &format!("entry_edge_offset: {offset},"),
-            1,
-        );
-    for (k, v) in [
-        ("general_front", front),
-        ("formation_spacing", spacing),
-        ("entry_edge_offset", offset),
-    ] {
-        assert!(
-            edited.contains(&format!("{k}: {v},")),
-            "{tag}: {k} not replaced"
-        );
+        .replacen("general_front: 80.0,", &format!("general_front: {front},"), 1)
+        .replacen("formation_spacing: 30.0,", &format!("formation_spacing: {spacing},"), 1)
+        .replacen("entry_edge_offset: 150.0,", &format!("entry_edge_offset: {offset},"), 1);
+    for (k, v) in [("general_front", front), ("formation_spacing", spacing), ("entry_edge_offset", offset)] {
+        assert!(edited.contains(&format!("{k}: {v},")), "{tag}: {k} not replaced");
     }
     std::fs::write(out.join("units.ron"), edited).unwrap();
     Content::load_from_dir(&out).map_err(|e| e.to_string())
@@ -380,8 +307,7 @@ fn tight_content(tag: &str, front: &str, spacing: &str, offset: &str) -> Result<
 /// at load, naming the fields, so no roster can ever start off the field.
 #[test]
 fn a_layout_with_no_room_for_a_rank_is_refused_at_load() {
-    let err =
-        tight_content("tight", "10.0", "30.0", "10.0").expect_err("front 10 + offset 10 < 2 x 30");
+    let err = tight_content("tight", "10.0", "30.0", "10.0").expect_err("front 10 + offset 10 < 2 x 30");
     for field in ["general_front", "entry_edge_offset", "formation_spacing"] {
         assert!(err.contains(field), "{err}");
     }

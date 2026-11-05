@@ -10,7 +10,9 @@ use std::path::PathBuf;
 use onus::headless::{self, MatchSettings};
 use onus::sim::content::Content;
 use onus::sim::three::{Bank, EconomyMode, LeyWell, WellState};
-use onus::sim::{AiAction, AiJournal, Building, Faction, Health, Position, Stockpiles, UnitDefIdx};
+use onus::sim::{
+    AiAction, AiJournal, Building, Faction, Health, Position, Stockpiles, UnitDefIdx,
+};
 
 fn shipped() -> Content {
     Content::load_from_dir(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data"))
@@ -49,14 +51,7 @@ fn hq(app: &mut App, f: Faction) -> Vec2 {
 /// half-way between the HQs).
 fn home_and_middle(app: &mut App, f: Faction) -> ((Entity, Vec2), (Entity, Vec2)) {
     let mine = hq(app, f);
-    let theirs = hq(
-        app,
-        if f == Faction::A {
-            Faction::B
-        } else {
-            Faction::A
-        },
-    );
+    let theirs = hq(app, if f == Faction::A { Faction::B } else { Faction::A });
     let w = wells(app);
     let home = w
         .iter()
@@ -90,20 +85,16 @@ fn the_ai_opens_its_gene_vats_and_trains_rippers_only_on_biomass() {
     }
     let j = journal(&app, Faction::A);
     assert!(
-        j.iter().any(
-            |(_, a)| matches!(a, AiAction::PlaceBarracks { building, .. } if *building == vats)
-        ),
+        j.iter()
+            .any(|(_, a)| matches!(a, AiAction::PlaceBarracks { building, .. } if *building == vats)),
         "the script's Gene-Vats opening goes up"
     );
     assert!(
-        !j.iter()
-            .any(|(_, a)| matches!(a, AiAction::TrainArmy { .. })),
+        !j.iter().any(|(_, a)| matches!(a, AiAction::TrainArmy { .. })),
         "no Ripper ordered without the Biomass for it: {j:?}"
     );
     // Alloy is not what a Ripper costs: the side has Alloy to spare.
-    assert!(
-        app.world().resource::<Stockpiles>().alloy(Faction::A) >= c.units[ripper].mvp_alloy_cost
-    );
+    assert!(app.world().resource::<Stockpiles>().alloy(Faction::A) >= c.units[ripper].mvp_alloy_cost);
     // Given the Biomass, it trains and pays in Biomass.
     let price = c.units[ripper].cost.amount;
     let _ = app
@@ -124,10 +115,7 @@ fn the_ai_opens_its_gene_vats_and_trains_rippers_only_on_biomass() {
     }
     assert!(trained, "a Ripper is ordered once the Biomass is there");
     let s = app.world().resource::<Stockpiles>();
-    assert!(
-        s.biomass(Faction::A) < price,
-        "the Ripper was paid in Biomass"
-    );
+    assert!(s.biomass(Faction::A) < price, "the Ripper was paid in Biomass");
     assert!(
         s.alloy(Faction::A) + 10 >= alloy,
         "and not in Alloy (at most a worker's price apart)"
@@ -157,24 +145,14 @@ fn the_ai_keeps_its_ron_keepers_on_its_home_well_and_channels_aether() {
             v.dedup();
             v
         };
-        assert_eq!(
-            keepers.len() as u32,
-            t.ai.keepers,
-            "{f:?}: the RON's keepers"
-        );
+        assert_eq!(keepers.len() as u32, t.ai.keepers, "{f:?}: the RON's keepers");
         for k in &keepers {
             let p = app.world().get::<Position>(*k).expect("the keeper lives").0;
-            assert!(
-                p.distance(home_pos) <= t.wells.hold_radius,
-                "{f:?}: keeper on its well"
-            );
+            assert!(p.distance(home_pos) <= t.wells.hold_radius, "{f:?}: keeper on its well");
         }
         let w = app.world().get::<LeyWell>(home).unwrap();
         assert_eq!(w.state(), WellState::Held(f), "{f:?} holds its home well");
-        assert!(
-            app.world().resource::<Stockpiles>().aether(f) > 0,
-            "{f:?} channels Aether"
-        );
+        assert!(app.world().resource::<Stockpiles>().aether(f) > 0, "{f:?} channels Aether");
     }
 }
 
@@ -195,9 +173,7 @@ fn the_ai_sends_its_ron_guards_to_contest_the_middle_well() {
                 ordered |= well == middle;
             }
         }
-        let mut q = app
-            .world_mut()
-            .query::<(&Position, &UnitDefIdx, &Faction)>();
+        let mut q = app.world_mut().query::<(&Position, &UnitDefIdx, &Faction)>();
         there |= q.iter(app.world()).any(|(p, d, f)| {
             *f == Faction::A
                 && c.units[d.0].offense > 0
@@ -289,12 +265,7 @@ fn an_alloy_only_ai_neither_keeps_nor_guards() {
 #[test]
 fn a_mirror_still_sends_its_waves_while_guards_fall_at_the_middle_well() {
     let c = shipped();
-    let mut app = match_of(
-        c,
-        EconomyMode::ThreeResource,
-        "mass_sentinel",
-        "mass_sentinel",
-    );
+    let mut app = match_of(c, EconomyMode::ThreeResource, "mass_sentinel", "mass_sentinel");
     headless::tick(&mut app, 20_000);
     for f in [Faction::A, Faction::B] {
         let j = journal(&app, f);

@@ -111,11 +111,7 @@ pub fn update_options_panel(
 
     // The banks: Alloy alone, or all three (C3).
     let alloy = banks_text(&stock, PLAYER_FACTION, three.is_some());
-    let economy = if three.is_some() {
-        EconomyMode::ThreeResource
-    } else {
-        EconomyMode::Alloy
-    };
+    let economy = if three.is_some() { EconomyMode::ThreeResource } else { EconomyMode::Alloy };
     let defs = crate::sim::nation::Defs::new(&content, rules.as_deref()).in_economy(economy);
 
     // A selected building shows what it can train and its queue.

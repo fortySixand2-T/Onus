@@ -451,10 +451,7 @@ fn a_depth_three_strategy_fills_to_three_one_per_decision_and_no_further() {
             }
         }
     }
-    assert_eq!(
-        deepest, 3,
-        "the queue never reached the depth its script asks for"
-    );
+    assert_eq!(deepest, 3, "the queue never reached the depth its script asks for");
     let at = |n: usize| first_reached[n].unwrap_or_else(|| panic!("the queue never held {n}"));
     assert!(
         at(2) >= at(1) + think,
@@ -497,10 +494,7 @@ fn each_side_honours_its_own_queue_depth() {
             ),
         ],
     );
-    assert_eq!(
-        c.ai.queue_depth, 1,
-        "the default's depth is the shipped one"
-    );
+    assert_eq!(c.ai.queue_depth, 1, "the default's depth is the shipped one");
     let mut app = matchup(c, 9, "shallow", "deep", 100_000, true);
 
     let mut deepest = [0usize; 2];
@@ -608,10 +602,7 @@ fn affordability_gates_the_queue_whatever_the_depth() {
     for t in 0..2_000u32 {
         step(&mut app);
         for len in army_queue_lens(&mut app, Faction::A) {
-            assert!(
-                len <= 1,
-                "tick {t}: queued {len} on one Ripper's worth of Alloy"
-            );
+            assert!(len <= 1, "tick {t}: queued {len} on one Ripper's worth of Alloy");
         }
     }
     assert_eq!(
@@ -629,25 +620,16 @@ fn affordability_gates_the_queue_whatever_the_depth() {
     // same script fills to three. (Without this the first half would pass on a
     // build that has no `queue_depth` at all.)
     let paid = 10 * c_ripper_cost(&app);
-    let _ = app
-        .world_mut()
-        .resource_mut::<Stockpiles>()
-        .add(Faction::A, paid);
+    let _ = app.world_mut().resource_mut::<Stockpiles>().add(Faction::A, paid);
     let mut deepest = 0usize;
     for t in 0..2_000u32 {
         step(&mut app);
         for len in army_queue_lens(&mut app, Faction::A) {
-            assert!(
-                len <= 3,
-                "tick {t}: queued {len} past the strategy's depth of 3"
-            );
+            assert!(len <= 3, "tick {t}: queued {len} past the strategy's depth of 3");
             deepest = deepest.max(len);
         }
     }
-    assert_eq!(
-        deepest, 3,
-        "with Alloy in hand the depth-3 script stayed shallow"
-    );
+    assert_eq!(deepest, 3, "with Alloy in hand the depth-3 script stayed shallow");
 }
 
 /// One Ripper's Alloy cost, read off the content the match is running.
@@ -694,3 +676,4 @@ fn the_same_pair_seed_and_depth_replays_bit_identically() {
         "changing the queue depth changed nothing about the match"
     );
 }
+

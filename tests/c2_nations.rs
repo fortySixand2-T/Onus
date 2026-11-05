@@ -119,26 +119,11 @@ fn the_shipped_roster_is_c0s_six_nations_with_their_generals() {
     let names: Vec<&str> = c.nations.iter().map(|n| n.name.as_str()).collect();
     assert_eq!(
         names,
-        [
-            "House Vael",
-            "Forgeborn",
-            "Verdant",
-            "Aetherkin",
-            "Tollmarch",
-            "Ashen Reach"
-        ]
+        ["House Vael", "Forgeborn", "Verdant", "Aetherkin", "Tollmarch", "Ashen Reach"]
     );
     for n in &c.nations {
-        assert!(
-            c.general_index(&n.general).is_some(),
-            "{}: general resolves",
-            n.id
-        );
-        assert!(
-            c.strategy(&n.strategy).is_some(),
-            "{}: strategy resolves",
-            n.id
-        );
+        assert!(c.general_index(&n.general).is_some(), "{}: general resolves", n.id);
+        assert!(c.strategy(&n.strategy).is_some(), "{}: strategy resolves", n.id);
     }
 }
 
@@ -214,28 +199,13 @@ fn forgeborn_pays_less_for_foundry_units_and_only_forgeborn() {
     };
     let bulwark = c.unit_index("bulwark").unwrap();
     for (b, f) in [(fa, Faction::A), (fb, Faction::B)] {
-        push(
-            &mut app,
-            Order::Train {
-                building: b,
-                unit: bulwark,
-            },
-            f,
-        );
+        push(&mut app, Order::Train { building: b, unit: bulwark }, f);
     }
     headless::step(&mut app);
     let s = app.world().resource::<Stockpiles>();
     let base = c.units[bulwark].mvp_alloy_cost;
-    assert_eq!(
-        before[0] - s.alloy(Faction::A),
-        traited(base, mul),
-        "Forgeborn price"
-    );
-    assert_eq!(
-        before[1] - s.alloy(Faction::B),
-        base,
-        "no nation pays the RON price"
-    );
+    assert_eq!(before[0] - s.alloy(Faction::A), traited(base, mul), "Forgeborn price");
+    assert_eq!(before[1] - s.alloy(Faction::B), base, "no nation pays the RON price");
     assert!(traited(base, mul) < base);
 
     // Through the lookup every read site uses: a Gene-Vats unit is untouched.
@@ -248,9 +218,7 @@ fn forgeborn_pays_less_for_foundry_units_and_only_forgeborn() {
     );
     let sentinel = c.unit_index("sentinel").unwrap();
     assert_eq!(
-        defs.roster_unit(Faction::A, sentinel)
-            .unwrap()
-            .mvp_alloy_cost,
+        defs.roster_unit(Faction::A, sentinel).unwrap().mvp_alloy_cost,
         traited(c.units[sentinel].mvp_alloy_cost, mul)
     );
 }
@@ -267,14 +235,7 @@ fn verdant_trains_gene_vats_units_faster() {
     let mut app = quiet(Some("verdant"), None);
     let [ga, gb] = place_both(&mut app, "gene_vats");
     for (b, f) in [(ga, Faction::A), (gb, Faction::B)] {
-        push(
-            &mut app,
-            Order::Train {
-                building: b,
-                unit: ripper,
-            },
-            f,
-        );
+        push(&mut app, Order::Train { building: b, unit: ripper }, f);
     }
     let made = |app: &App| {
         let p = app.world().resource::<Produced>();
@@ -292,12 +253,7 @@ fn verdant_trains_gene_vats_units_faster() {
         }
     }
     let (a, b) = (first[0].expect("A trained"), first[1].expect("B trained"));
-    assert_eq!(
-        b - a,
-        base - fast,
-        "Verdant's Ripper arrives {} ticks early",
-        base - fast
-    );
+    assert_eq!(b - a, base - fast, "Verdant's Ripper arrives {} ticks early", base - fast);
 }
 
 #[test]
@@ -316,11 +272,9 @@ fn tollmarch_workers_gather_faster() {
     let mut most = [0u32; 2];
     for _ in 0..900 {
         headless::step(&mut app);
-        let mut q = app.world_mut().query::<(
-            &Faction,
-            &Carrying,
-            Option<&onus::sim::economy::GatherPhase>,
-        )>();
+        let mut q = app
+            .world_mut()
+            .query::<(&Faction, &Carrying, Option<&onus::sim::economy::GatherPhase>)>();
         for (f, load, phase) in q.iter(app.world()) {
             let k = if *f == Faction::A { 0 } else { 1 };
             most[k] = most[k].max(load.0);
@@ -329,11 +283,7 @@ fn tollmarch_workers_gather_faster() {
             }
         }
     }
-    assert_eq!(
-        longest,
-        [fast, base],
-        "a load takes Tollmarch's gather time, its side only"
-    );
+    assert_eq!(longest, [fast, base], "a load takes Tollmarch's gather time, its side only");
     assert_eq!(most, [carry, carry], "the load itself is unchanged");
 }
 
@@ -348,16 +298,9 @@ fn aetherkin_arclights_reach_further() {
     let duel = |a: Option<&str>| {
         let mut app = quiet(a, None);
         let mut spawn = |f: Faction, x: f32| {
-            let hp =
-                Defs::new(&c, app.world().get_resource::<NationRules>()).unit_health(f, arclight);
+            let hp = Defs::new(&c, app.world().get_resource::<NationRules>()).unit_health(f, arclight);
             app.world_mut()
-                .spawn((
-                    Position(Vec2::new(x, 2_000.0)),
-                    UnitDefIdx(arclight),
-                    UnitKind::Soldier,
-                    f,
-                    hp,
-                ))
+                .spawn((Position(Vec2::new(x, 2_000.0)), UnitDefIdx(arclight), UnitKind::Soldier, f, hp))
                 .id()
         };
         let ea = spawn(Faction::A, 0.0);
@@ -373,11 +316,7 @@ fn aetherkin_arclights_reach_further() {
     assert_eq!(a_now, a_max, "B's Arclight is out of reach");
     assert!(b_now < b_max, "Aetherkin's Arclight hits at {gap}");
     let ((a_now, a_max), (b_now, b_max)) = duel(None);
-    assert_eq!(
-        (a_now, b_now),
-        (a_max, b_max),
-        "with no nation neither reaches"
-    );
+    assert_eq!((a_now, b_now), (a_max, b_max), "with no nation neither reaches");
 }
 
 #[test]
@@ -462,11 +401,7 @@ fn any_stat_on_any_target_is_a_line_of_data() {
     for (i, u) in c.units.iter().enumerate() {
         let want = if u.offense > 0 { u.offense + 1 } else { 0 };
         assert_eq!(d.unit(Faction::A, i).unwrap().offense, want, "{}", u.id);
-        assert_eq!(
-            d.unit(Faction::B, i).unwrap().offense,
-            u.offense,
-            "B untouched"
-        );
+        assert_eq!(d.unit(Faction::B, i).unwrap().offense, u.offense, "B untouched");
     }
     // Generals take no trait: a General's definition is the content's.
     let g = c.general_index("general_focus").unwrap();
@@ -483,10 +418,7 @@ fn any_stat_on_any_target_is_a_line_of_data() {
     let r = x_defs(&c);
     let d = Defs::new(&c, Some(&r));
     let hq = c.building_index("hq").unwrap();
-    assert_eq!(
-        d.building(Faction::A, hq).unwrap().mvp_armor,
-        c.buildings[hq].mvp_armor + 1
-    );
+    assert_eq!(d.building(Faction::A, hq).unwrap().mvp_armor, c.buildings[hq].mvp_armor + 1);
 
     let c = one_trait(
         "attack_ticks",
@@ -523,58 +455,19 @@ fn several_traits_compose_in_ron_order() {
 #[test]
 fn an_unplayable_trait_is_refused_at_load() {
     let refused = [
-        (
-            "wrong_form",
-            "(applies_to: CombatUnits, stat: AlloyCost, add: 5)",
-        ),
-        (
-            "both_forms",
-            "(applies_to: CombatUnits, stat: AlloyCost, add: 5, mul: 0.9)",
-        ),
-        (
-            "zero_mul",
-            "(applies_to: CombatUnits, stat: TrainTicks, mul: 0.0)",
-        ),
-        (
-            "over_max",
-            "(applies_to: CombatUnits, stat: Offense, add: 10)",
-        ),
-        (
-            "neg_stat",
-            "(applies_to: Unit(\"ripper\"), stat: Armor, add: -5)",
-        ),
-        (
-            "unknown_unit",
-            "(applies_to: Unit(\"dragon\"), stat: Speed, add: 1)",
-        ),
-        (
-            "unknown_building",
-            "(applies_to: Barracks(\"castle\"), stat: AlloyCost, mul: 0.9)",
-        ),
-        (
-            "hp_on_units",
-            "(applies_to: CombatUnits, stat: BuildingHp, mul: 1.1)",
-        ),
-        (
-            "speed_on_buildings",
-            "(applies_to: Buildings, stat: Speed, add: 1)",
-        ),
-        (
-            "carry_on_soldiers",
-            "(applies_to: CombatUnits, stat: CarryCapacity, add: 1)",
-        ),
-        (
-            "reach_past_engage",
-            "(applies_to: Unit(\"arclight\"), stat: AttackRange, add: 500)",
-        ),
-        (
-            "arm_a_worker",
-            "(applies_to: Workers, stat: Offense, add: 1)",
-        ),
-        (
-            "unknown_field",
-            "(applies_to: Workers, stat: Speed, add: 1, note: \"hi\")",
-        ),
+        ("wrong_form", "(applies_to: CombatUnits, stat: AlloyCost, add: 5)"),
+        ("both_forms", "(applies_to: CombatUnits, stat: AlloyCost, add: 5, mul: 0.9)"),
+        ("zero_mul", "(applies_to: CombatUnits, stat: TrainTicks, mul: 0.0)"),
+        ("over_max", "(applies_to: CombatUnits, stat: Offense, add: 10)"),
+        ("neg_stat", "(applies_to: Unit(\"ripper\"), stat: Armor, add: -5)"),
+        ("unknown_unit", "(applies_to: Unit(\"dragon\"), stat: Speed, add: 1)"),
+        ("unknown_building", "(applies_to: Barracks(\"castle\"), stat: AlloyCost, mul: 0.9)"),
+        ("hp_on_units", "(applies_to: CombatUnits, stat: BuildingHp, mul: 1.1)"),
+        ("speed_on_buildings", "(applies_to: Buildings, stat: Speed, add: 1)"),
+        ("carry_on_soldiers", "(applies_to: CombatUnits, stat: CarryCapacity, add: 1)"),
+        ("reach_past_engage", "(applies_to: Unit(\"arclight\"), stat: AttackRange, add: 500)"),
+        ("arm_a_worker", "(applies_to: Workers, stat: Offense, add: 1)"),
+        ("unknown_field", "(applies_to: Workers, stat: Speed, add: 1, note: \"hi\")"),
     ];
     for (name, t) in refused {
         assert!(one_trait(name, t).is_err(), "{name}: `{t}` must be refused");
@@ -631,11 +524,7 @@ fn the_state_hash_sees_a_nation_even_one_with_no_traits() {
         app.world().resource::<onus::sim::StateHashLog>().0.clone()
     };
     assert_ne!(hash_at(Some("house")), hash_at(None));
-    assert_eq!(
-        hash_at(Some("house")),
-        hash_at(Some("house")),
-        "deterministic"
-    );
+    assert_eq!(hash_at(Some("house")), hash_at(Some("house")), "deterministic");
 }
 
 #[test]
@@ -700,32 +589,19 @@ fn a_nation_match_log_names_its_nations_and_replays_them_faithfully() {
         [Some("forgeborn".to_string()), Some("tollmarch".to_string())],
         "the sim stamps each side's nation into the log"
     );
-    assert!(
-        log.commands.len() > 10,
-        "the AI played: {}",
-        log.commands.len()
-    );
+    assert!(log.commands.len() > 10, "the AI played: {}", log.commands.len());
     let rep = replay(log.clone(), [None, None], TICKS);
     let src = rep.world().resource::<ReplaySource>();
     assert_eq!(src.rejection(), None, "a faithful log is not refused");
     assert!(src.finished());
     let rules = rep.world().resource::<NationRules>();
     let c = rep.world().resource::<Content>();
-    assert_eq!(
-        c.nations[rules.nation_of(Faction::A).unwrap()].id,
-        "forgeborn"
-    );
-    assert_eq!(
-        c.nations[rules.nation_of(Faction::B).unwrap()].id,
-        "tollmarch"
-    );
+    assert_eq!(c.nations[rules.nation_of(Faction::A).unwrap()].id, "forgeborn");
+    assert_eq!(c.nations[rules.nation_of(Faction::B).unwrap()].id, "tollmarch");
     let replayed = rep.world().resource::<StateHashLog>().clone();
     assert_eq!(recorded.first_divergence(&replayed), None);
     // The replay's own log names the same nations: a replay of a replay holds.
-    assert_eq!(
-        rep.world().resource::<CommandLog>().log().nations,
-        log.nations
-    );
+    assert_eq!(rep.world().resource::<CommandLog>().log().nations, log.nations);
 
     // One side only: the other slot stays none, and it still replays.
     let (log, recorded) = record(None, Some("verdant"), 600);
@@ -741,10 +617,7 @@ fn a_no_nation_log_is_written_as_before_and_a_pre_c2_log_reads_as_no_nations() {
     let (log, _) = record(None, None, 300);
     assert_eq!(log.nations, [None, None]);
     let text = log.to_ron().unwrap();
-    assert!(
-        !text.contains("nations"),
-        "a no-nation log is byte-for-byte pre-C2"
-    );
+    assert!(!text.contains("nations"), "a no-nation log is byte-for-byte pre-C2");
     // ...so a pre-C2 log, which has no such field, reads as no nations.
     assert_eq!(MatchLog::from_ron(&text).unwrap().nations, [None, None]);
 }
@@ -763,10 +636,7 @@ fn a_log_naming_a_nation_this_content_lacks_is_refused() {
     let why = src.rejection().expect("refused");
     assert!(why.contains("atlantis"), "{why}");
     assert_eq!(src.cursor(), 0, "nothing of a refused log is fed");
-    assert!(
-        !rep.world().contains_resource::<NationRules>(),
-        "nothing installed"
-    );
+    assert!(!rep.world().contains_resource::<NationRules>(), "nothing installed");
 }
 
 #[test]
@@ -774,15 +644,8 @@ fn a_log_whose_nations_disagree_with_the_world_is_refused() {
     // The world already plays nations the log did not record — either way round.
     let (log, _) = record(None, None, 300);
     let rep = replay(log, [Some("forgeborn"), None], 60);
-    let why = rep
-        .world()
-        .resource::<ReplaySource>()
-        .rejection()
-        .map(str::to_string);
-    assert!(
-        why.as_deref().is_some_and(|w| w.contains("nation")),
-        "{why:?}"
-    );
+    let why = rep.world().resource::<ReplaySource>().rejection().map(str::to_string);
+    assert!(why.as_deref().is_some_and(|w| w.contains("nation")), "{why:?}");
 
     let (log, _) = record(Some("forgeborn"), Some("tollmarch"), 300);
     let rep = replay(log.clone(), [Some("verdant"), Some("tollmarch")], 60);
@@ -808,15 +671,7 @@ fn a_building_armor_trait_mitigates_hits_on_its_side_only() {
     // Far from both bases, so nothing but the one attacker is near it.
     let spots = [Vec2::new(-750.0, 650.0), Vec2::new(750.0, 650.0)];
     for (f, at) in [Faction::A, Faction::B].into_iter().zip(spots) {
-        push(
-            &mut app,
-            Order::Place {
-                faction: f,
-                building: foundry,
-                pos: at,
-            },
-            f,
-        );
+        push(&mut app, Order::Place { faction: f, building: foundry, pos: at }, f);
     }
     headless::step(&mut app);
     let targets = [
@@ -829,13 +684,8 @@ fn a_building_armor_trait_mitigates_hits_on_its_side_only() {
     for (i, f) in attackers.into_iter().enumerate() {
         let at = spots[i] + Vec2::new(0.0, 60.0);
         let hp = Health::from_def(&c, sentinel);
-        app.world_mut().spawn((
-            Position(at),
-            UnitDefIdx(sentinel),
-            c.units[sentinel].mvp_kind,
-            f,
-            hp,
-        ));
+        app.world_mut()
+            .spawn((Position(at), UnitDefIdx(sentinel), c.units[sentinel].mvp_kind, f, hp));
     }
     let hp = |app: &App, e: Entity| app.world().get::<Health>(e).unwrap().current;
     let full = [hp(&app, targets[0]), hp(&app, targets[1])];
@@ -858,32 +708,21 @@ fn a_building_armor_trait_mitigates_hits_on_its_side_only() {
         onus::sim::combat::StatBonus::NONE,
     );
     let rules = app.world().resource::<NationRules>().clone();
-    let armored = Defs::new(&c, Some(&rules))
-        .building(Faction::A, foundry)
-        .unwrap();
+    let armored = Defs::new(&c, Some(&rules)).building(Faction::A, foundry).unwrap();
     let mitigated = onus::sim::combat::damage_to_building_between(
         &c,
         &c.units[sentinel],
         armored,
         onus::sim::combat::StatBonus::NONE,
     );
-    assert!(
-        mitigated < plain && mitigated > 0,
-        "the trait changes the hit"
-    );
-    assert_eq!(
-        took,
-        [mitigated, plain],
-        "A's foundry takes the traited hit, B's the plain one"
-    );
+    assert!(mitigated < plain && mitigated > 0, "the trait changes the hit");
+    assert_eq!(took, [mitigated, plain], "A's foundry takes the traited hit, B's the plain one");
 }
 
 /// What one side's commander did in the first `ticks` of a match where side A
 /// plays nation `x`.
 fn ai_actions(c: &Content, ticks: u32) -> [Vec<onus::sim::ai::AiAction>; 2] {
-    let s = MatchSettings::default()
-        .with_seed(3)
-        .with_nations(Some("x"), None);
+    let s = MatchSettings::default().with_seed(3).with_nations(Some("x"), None);
     let mut app = headless::ai_vs_ai(c.clone(), &s).unwrap();
     headless::tick(&mut app, ticks);
     let j = app.world().resource::<onus::sim::AiJournal>();
@@ -906,39 +745,21 @@ fn the_ai_prices_workers_and_army_at_its_sides_traited_cost() {
     let worker = |x: &AiAction| matches!(x, AiAction::TrainWorker { .. });
     let army = |x: &AiAction| matches!(x, AiAction::TrainArmy { .. });
     let barracks = |x: &AiAction| matches!(x, AiAction::PlaceBarracks { .. });
-    assert!(
-        b.iter().any(worker) && b.iter().any(army),
-        "the window is long enough: {b:?}"
-    );
-    assert!(
-        a.iter().any(barracks),
-        "A still builds, so it could train: {a:?}"
-    );
-    assert!(
-        !a.iter().any(worker),
-        "A priced a worker at the base cost: {a:?}"
-    );
-    assert!(
-        !a.iter().any(army),
-        "A priced its army at the base cost: {a:?}"
-    );
+    assert!(b.iter().any(worker) && b.iter().any(army), "the window is long enough: {b:?}");
+    assert!(a.iter().any(barracks), "A still builds, so it could train: {a:?}");
+    assert!(!a.iter().any(worker), "A priced a worker at the base cost: {a:?}");
+    assert!(!a.iter().any(army), "A priced its army at the base cost: {a:?}");
 }
 
 #[test]
 fn the_ai_prices_its_barracks_at_its_sides_traited_cost() {
     use onus::sim::ai::AiAction;
-    let c = one_trait(
-        "ai_bld_dear",
-        "(applies_to: Buildings, stat: AlloyCost, mul: 100.0)",
-    )
-    .expect("loads");
+    let c = one_trait("ai_bld_dear", "(applies_to: Buildings, stat: AlloyCost, mul: 100.0)")
+        .expect("loads");
     let [a, b] = ai_actions(&c, 4_000);
     let barracks = |x: &AiAction| matches!(x, AiAction::PlaceBarracks { .. });
     assert!(b.iter().any(barracks), "the window is long enough: {b:?}");
-    assert!(
-        !a.iter().any(barracks),
-        "A priced a barracks at the base cost: {a:?}"
-    );
+    assert!(!a.iter().any(barracks), "A priced a barracks at the base cost: {a:?}");
 }
 
 // ---- BuildingHp rounds the way every other `mul` does (critic finding 4) -----
@@ -947,11 +768,8 @@ fn the_ai_prices_its_barracks_at_its_sides_traited_cost() {
 fn a_building_hp_trait_rounds_half_up_like_every_mul() {
     // 1.004 puts every shipped pool on a fraction: 8400 -> 8433.6 (up),
     // 5040 -> 5060.16 (down), 4200 -> 4216.8 (up).
-    let c = one_trait(
-        "bhp_round",
-        "(applies_to: Buildings, stat: BuildingHp, mul: 1.004)",
-    )
-    .expect("loads");
+    let c = one_trait("bhp_round", "(applies_to: Buildings, stat: BuildingHp, mul: 1.004)")
+        .expect("loads");
     let r = x_defs(&c);
     let d = Defs::new(&c, Some(&r));
     let per = c.combat.building_hp_per_defense;
@@ -990,11 +808,7 @@ fn a_building_hp_trait_rounds_half_up_like_every_mul() {
 /// Content whose one nation `x` has no stat traits and the given mixed-army
 /// trait (`synthesis: (...)` RON, or "" for none).
 fn with_synthesis(name: &str, syn: &str) -> Result<Content, String> {
-    let line = if syn.is_empty() {
-        String::new()
-    } else {
-        format!("synthesis: {syn},")
-    };
+    let line = if syn.is_empty() { String::new() } else { format!("synthesis: {syn},") };
     let text = format!(
         r#"(nations: [(id: "x", name: "X", domain: None, colour: (0.1,0.2,0.3),
             accent: (0.4,0.5,0.6), general: "general_focus", strategy: "mvp",
@@ -1003,8 +817,7 @@ fn with_synthesis(name: &str, syn: &str) -> Result<Content, String> {
     Content::load_from_dir(&with_nations(name, &text)).map_err(|e| e.to_string())
 }
 
-const SYN: &str =
-    "(radius: 120.0, modifiers: [(stat: Offense, add: 1), (stat: Armor, add: 1)], max: 2)";
+const SYN: &str = "(radius: 120.0, modifiers: [(stat: Offense, add: 1), (stat: Armor, add: 1)], max: 2)";
 
 /// A skirmish where A plays `x`, with no commanders; `units` are spawned on
 /// an open stretch of the map and the field is read after one tick.
@@ -1018,30 +831,17 @@ fn synthesis_field(c: &Content, units: &[(Faction, &str, Vec2)]) -> Vec<StatBonu
             let u = c.unit_index(id).unwrap();
             let hp = Health::from_def(c, u);
             app.world_mut()
-                .spawn((
-                    Position(Vec2::new(0.0, 650.0) + at),
-                    UnitDefIdx(u),
-                    c.units[u].mvp_kind,
-                    f,
-                    hp,
-                ))
+                .spawn((Position(Vec2::new(0.0, 650.0) + at), UnitDefIdx(u), c.units[u].mvp_kind, f, hp))
                 .id()
         })
         .collect();
     headless::step(&mut app);
-    let field = app
-        .world()
-        .get_resource::<AuraField>()
-        .expect("a synthesis nation has the field");
+    let field = app.world().get_resource::<AuraField>().expect("a synthesis nation has the field");
     es.iter().map(|e| field.get(*e)).collect()
 }
 
 fn bonus(n: u32) -> StatBonus {
-    StatBonus {
-        offense: n,
-        armor: n,
-        ..StatBonus::NONE
-    }
+    StatBonus { offense: n, armor: n, ..StatBonus::NONE }
 }
 
 #[test]
@@ -1049,13 +849,7 @@ fn synthesis_is_active_beside_other_domains_and_scales_per_domain() {
     let c = with_synthesis("syn_mixed", SYN).expect("loads");
     use Faction::A;
     // A sentinel (Machine) and a ripper (Flesh): one other domain each.
-    let two = synthesis_field(
-        &c,
-        &[
-            (A, "sentinel", Vec2::ZERO),
-            (A, "ripper", Vec2::new(30.0, 0.0)),
-        ],
-    );
+    let two = synthesis_field(&c, &[(A, "sentinel", Vec2::ZERO), (A, "ripper", Vec2::new(30.0, 0.0))]);
     assert_eq!(two, [bonus(1), bonus(1)]);
     // Add an arclight (Energy): two other domains each. A second machine unit
     // adds no domain to the first, but gives the others nothing new either.
@@ -1070,13 +864,7 @@ fn synthesis_is_active_beside_other_domains_and_scales_per_domain() {
     );
     assert_eq!(three, [bonus(2), bonus(2), bonus(2), bonus(2)]);
     // Out of the radius, a neighbour does not count.
-    let far = synthesis_field(
-        &c,
-        &[
-            (A, "sentinel", Vec2::ZERO),
-            (A, "ripper", Vec2::new(200.0, 0.0)),
-        ],
-    );
+    let far = synthesis_field(&c, &[(A, "sentinel", Vec2::ZERO), (A, "ripper", Vec2::new(200.0, 0.0))]);
     assert_eq!(far, [StatBonus::NONE, StatBonus::NONE]);
 }
 
@@ -1147,31 +935,13 @@ fn only_a_synthesis_nation_installs_the_field_and_the_hash_sees_the_trait() {
 #[test]
 fn an_unplayable_synthesis_is_refused_at_load() {
     for (name, syn) in [
-        (
-            "syn_max0",
-            "(radius: 120.0, modifiers: [(stat: Offense, add: 1)], max: 0)",
-        ),
-        (
-            "syn_max3",
-            "(radius: 120.0, modifiers: [(stat: Offense, add: 1)], max: 3)",
-        ),
-        (
-            "syn_r0",
-            "(radius: 0.0, modifiers: [(stat: Offense, add: 1)], max: 1)",
-        ),
+        ("syn_max0", "(radius: 120.0, modifiers: [(stat: Offense, add: 1)], max: 0)"),
+        ("syn_max3", "(radius: 120.0, modifiers: [(stat: Offense, add: 1)], max: 3)"),
+        ("syn_r0", "(radius: 0.0, modifiers: [(stat: Offense, add: 1)], max: 1)"),
         ("syn_empty", "(radius: 120.0, modifiers: [], max: 1)"),
-        (
-            "syn_twice",
-            "(radius: 120.0, modifiers: [(stat: Armor, add: 1), (stat: Armor, add: 1)], max: 1)",
-        ),
-        (
-            "syn_ticks_add",
-            "(radius: 120.0, modifiers: [(stat: AttackTicks, add: 1)], max: 1)",
-        ),
-        (
-            "syn_nemesis",
-            "(radius: 120.0, modifiers: [(stat: Nemesis, add: 1)], max: 1)",
-        ),
+        ("syn_twice", "(radius: 120.0, modifiers: [(stat: Armor, add: 1), (stat: Armor, add: 1)], max: 1)"),
+        ("syn_ticks_add", "(radius: 120.0, modifiers: [(stat: AttackTicks, add: 1)], max: 1)"),
+        ("syn_nemesis", "(radius: 120.0, modifiers: [(stat: Nemesis, add: 1)], max: 1)"),
     ] {
         assert!(with_synthesis(name, syn).is_err(), "{name} must be refused");
     }
@@ -1181,10 +951,7 @@ fn an_unplayable_synthesis_is_refused_at_load() {
 fn the_shipped_house_vael_has_the_synthesis_trait() {
     let c = shipped();
     let house = c.nations.iter().find(|n| n.id == "house").unwrap();
-    let syn = house
-        .synthesis
-        .as_ref()
-        .expect("House's edge is the mixed army");
+    let syn = house.synthesis.as_ref().expect("House's edge is the mixed army");
     assert!(syn.max >= 1 && !syn.modifiers.is_empty());
     for n in c.nations.iter().filter(|n| n.id != "house") {
         assert!(n.synthesis.is_none(), "{} has no mixed-army trait", n.id);

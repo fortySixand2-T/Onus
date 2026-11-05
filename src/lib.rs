@@ -64,7 +64,8 @@ pub fn build_app() -> App {
     // over). `Content`'s own failure is a panic, which reaches stderr with or
     // without a subscriber.
     let replay_config = replay_io::load_config_or_report(Path::new(sim::content::DATA_DIR));
-    app.insert_resource(Time::<Fixed>::from_hz(60.0))
+    app
+        .insert_resource(Time::<Fixed>::from_hz(60.0))
         .insert_resource(content)
         .init_resource::<CursorWorld>()
         .init_resource::<DragState>()
@@ -186,7 +187,8 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
             sim::victory::match_watch,
             // A campaign battle's own start-of-tick latch (C1). Only in a
             // battle: a skirmish has no `BattleState`, so this never runs.
-            sim::battle::battle_watch.run_if(resource_exists::<sim::battle::BattleState>),
+            sim::battle::battle_watch
+                .run_if(resource_exists::<sim::battle::BattleState>),
             // Playing the match — off the moment it is decided, so nothing keeps
             // running that could change the recorded outcome.
             (
@@ -200,7 +202,8 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
                 // ley-wells it spawns must be numbered on tick 0, as they were
                 // in the recorded world. Replay-only, a no-op after its first
                 // tick, and after the sweep like every replay system (F-008).
-                sim::replay::apply_log_economy.run_if(resource_exists::<sim::replay::ReplaySource>),
+                sim::replay::apply_log_economy
+                    .run_if(resource_exists::<sim::replay::ReplaySource>),
                 // Every thing in the world carries the sim's own stable id, so
                 // the command log and the state hash address entities by
                 // something that does not move when the app's configuration
@@ -216,13 +219,16 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
                 // The scripted commanders — **unless this is a replay**, where
                 // their decisions are already in the log as orders and letting
                 // them think again would double every one of them.
-                sim::ai::ai_commanders.run_if(not(resource_exists::<sim::replay::ReplaySource>)),
+                sim::ai::ai_commanders
+                    .run_if(not(resource_exists::<sim::replay::ReplaySource>)),
                 // A replay's starting world includes its nations (C2): applied
                 // (or the log refused) before anything of it is fed.
-                sim::replay::apply_log_nations.run_if(resource_exists::<sim::replay::ReplaySource>),
+                sim::replay::apply_log_nations
+                    .run_if(resource_exists::<sim::replay::ReplaySource>),
                 // A replay's only producer: this tick's logged commands, pushed
                 // onto the same queue every other producer writes to.
-                sim::replay::feed_replay.run_if(resource_exists::<sim::replay::ReplaySource>),
+                sim::replay::feed_replay
+                    .run_if(resource_exists::<sim::replay::ReplaySource>),
                 sim::apply_commands,
                 // A campaign battle's retreats (C1), right after the orders, so
                 // a retreat overrides whatever else its side was told to do.
@@ -260,7 +266,8 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
             sim::replay::record_unplayed,
             // A campaign battle's own causes of defeat (C1: a fallen General),
             // decided just ahead of the skirmish check. Battle-only.
-            sim::battle::battle_end.run_if(resource_exists::<sim::battle::BattleState>),
+            sim::battle::battle_end
+                .run_if(resource_exists::<sim::battle::BattleState>),
             // Deciding it: always runs, and writes the outcome exactly once.
             sim::victory::match_end,
             // The tail identification pass: whatever this tick spawned (a

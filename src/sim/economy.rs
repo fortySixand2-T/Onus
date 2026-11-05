@@ -491,14 +491,7 @@ pub fn place_building(
     building: usize,
     pos: Vec2,
 ) -> bool {
-    place_building_with(
-        Defs::plain(content),
-        stock,
-        commands,
-        faction,
-        building,
-        pos,
-    )
+    place_building_with(Defs::plain(content), stock, commands, faction, building, pos)
 }
 
 /// [`place_building`] at the price and HP pool of `faction`'s own
@@ -540,14 +533,7 @@ pub fn enqueue_unit(
     queue: &mut ProductionQueue,
     unit: usize,
 ) -> bool {
-    enqueue_unit_with(
-        Defs::plain(content),
-        stock,
-        building_def,
-        faction,
-        queue,
-        unit,
-    )
+    enqueue_unit_with(Defs::plain(content), stock, building_def, faction, queue, unit)
 }
 
 /// [`enqueue_unit`] at the price and training time of `faction`'s own
@@ -561,10 +547,9 @@ pub fn enqueue_unit_with(
     queue: &mut ProductionQueue,
     unit: usize,
 ) -> bool {
-    let (Some(def), Some((bank, price))) = (
-        defs.roster_unit(faction, unit),
-        defs.unit_price(faction, unit),
-    ) else {
+    let (Some(def), Some((bank, price))) =
+        (defs.roster_unit(faction, unit), defs.unit_price(faction, unit))
+    else {
         return false;
     };
     if !defs.content.produces(building_def, unit) {

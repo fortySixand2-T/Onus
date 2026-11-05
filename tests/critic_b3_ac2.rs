@@ -145,10 +145,7 @@ fn reordering_units_cannot_change_a_link_or_a_verdict() {
     let mut b = pairs(&other);
     a.sort();
     b.sort();
-    assert_eq!(
-        a, b,
-        "the same links, whatever order the units are listed in"
-    );
+    assert_eq!(a, b, "the same links, whatever order the units are listed in");
     for l in other.links() {
         let same = link(&base, &l.predator);
         assert_eq!(l.prey, same.prey, "direction must not depend on RON order");
@@ -170,11 +167,7 @@ fn an_asymmetric_fixture_pins_the_direction_and_the_two_constructors_agree() {
     let report = PentagonReport::of(&content, &WinMatrix::of(&records)).expect("closed");
     let l = link(&report, "bulwark");
     assert_eq!(l.prey, "ravager");
-    assert_eq!(
-        l.rate,
-        Some(0.75),
-        "the predator's rate, never the transpose"
-    );
+    assert_eq!(l.rate, Some(0.75), "the predator's rate, never the transpose");
     assert_eq!(l.verdict, Verdict::Holds);
     assert_eq!(l.n_decided, 40);
 
@@ -236,21 +229,14 @@ fn every_way_of_being_even_reads_undetermined_not_failed() {
         "a dead-even matchup is not a counter — and not a broken counter either"
     );
     let hair = link(&report, "ravager");
-    assert!(
-        hair.rate.unwrap() > 0.5 && hair.rate.unwrap() < 0.501,
-        "{hair:?}"
-    );
+    assert!(hair.rate.unwrap() > 0.5 && hair.rate.unwrap() < 0.501, "{hair:?}");
     assert_eq!(
         hair.verdict,
         Verdict::Undetermined,
         "0.05% above half over 2048 matches is [47.9, 52.2] — nothing is established"
     );
     let draws = link(&report, "sentinel");
-    assert_eq!(
-        draws.rate,
-        Some(0.5),
-        "eight mutual losses are eight decided draws"
-    );
+    assert_eq!(draws.rate, Some(0.5), "eight mutual losses are eight decided draws");
     assert_eq!(draws.n_decided, 8);
     assert_eq!(draws.n_timeout, 0);
     assert_eq!(draws.verdict, Verdict::Undetermined);
@@ -277,11 +263,11 @@ fn every_way_of_being_even_reads_undetermined_not_failed() {
 fn a_resolved_hold_and_a_resolved_failure_are_still_told_apart() {
     let content = shipped();
     let records = shipped_records(&[
-        (65, 35, 0, 0), // 65% of 100 — [55.3, 73.6]
-        (35, 65, 0, 0), // 35% of 100 — [26.4, 44.7]
-        (60, 40, 0, 0), // 60% of 100 — [50.2, 69.1], the narrowest hold here
-        (40, 60, 0, 0), // 40% of 100 — [30.9, 49.8], the narrowest failure
-        (0, 0, 0, 7),   // nothing decided at all
+        (65, 35, 0, 0),   // 65% of 100 — [55.3, 73.6]
+        (35, 65, 0, 0),   // 35% of 100 — [26.4, 44.7]
+        (60, 40, 0, 0),   // 60% of 100 — [50.2, 69.1], the narrowest hold here
+        (40, 60, 0, 0),   // 40% of 100 — [30.9, 49.8], the narrowest failure
+        (0, 0, 0, 7),     // nothing decided at all
     ]);
     let report = PentagonReport::of(&content, &WinMatrix::of(&records)).expect("closed");
     assert_eq!(link(&report, "bulwark").verdict, Verdict::Holds);
@@ -297,16 +283,8 @@ fn a_resolved_hold_and_a_resolved_failure_are_still_told_apart() {
     // Every link prints its interval beside its rate, so no table can quote a
     // verdict without the width it was read at.
     let shown = report.to_string();
-    for (lo, hi) in [
-        ("55.3", "73.6"),
-        ("26.4", "44.7"),
-        ("50.2", "69.1"),
-        ("30.9", "49.8"),
-    ] {
-        assert!(
-            shown.contains(&format!("[{lo}, {hi}]")),
-            "interval missing from:\n{shown}"
-        );
+    for (lo, hi) in [("55.3", "73.6"), ("26.4", "44.7"), ("50.2", "69.1"), ("30.9", "49.8")] {
+        assert!(shown.contains(&format!("[{lo}, {hi}]")), "interval missing from:\n{shown}");
     }
 }
 
@@ -324,10 +302,7 @@ fn an_all_undefined_report_never_reads_as_balanced() {
         assert_eq!(report.undefined(), 5);
         assert_eq!(report.holding(), 0);
         assert_eq!(report.failing(), 0, "undecided is not a failure either");
-        assert!(
-            !report.all_hold(),
-            "an all-timeout run is not a balanced pentagon"
-        );
+        assert!(!report.all_hold(), "an all-timeout run is not a balanced pentagon");
         for l in report.links() {
             assert_eq!(l.rate, None, "never 0.5");
         }
@@ -350,10 +325,7 @@ fn an_all_no_strategy_report_never_reads_as_balanced() {
     assert_eq!(report.gaps(), 5, "every link is unmeasurable");
     assert_eq!(report.holding(), 0);
     assert_eq!(report.failing(), 0);
-    assert!(
-        !report.all_hold(),
-        "no probe set is not a balanced pentagon"
-    );
+    assert!(!report.all_hold(), "no probe set is not a balanced pentagon");
     for l in report.links() {
         assert_eq!(l.verdict, Verdict::NoStrategy);
         assert_eq!(l.rate, None);
@@ -404,9 +376,7 @@ fn each_malformed_shape_has_its_own_error() {
     set_nemesis(&mut c, "ravager", Some("worker"));
     assert_eq!(
         PentagonReport::of(&c, &WinMatrix::default()).unwrap_err(),
-        CycleError::Open {
-            at: "worker".to_string()
-        }
+        CycleError::Open { at: "worker".to_string() }
     );
 
     // A lasso whose start is *off* the cycle: the worker is first in RON order,
@@ -415,9 +385,7 @@ fn each_malformed_shape_has_its_own_error() {
     set_nemesis(&mut c, "worker", Some("sentinel"));
     assert_eq!(
         PentagonReport::of(&c, &WinMatrix::default()).unwrap_err(),
-        CycleError::Lasso {
-            at: "sentinel".to_string()
-        }
+        CycleError::Lasso { at: "sentinel".to_string() }
     );
 
     // Two units pointing at the same prey: not a cycle either.
@@ -453,10 +421,7 @@ fn a_malformed_report_is_deterministic() {
     set_nemesis(&mut c, "arclight", Some("arclight"));
     let first = PentagonReport::of(&c, &WinMatrix::default()).unwrap_err();
     for _ in 0..8 {
-        assert_eq!(
-            PentagonReport::of(&c, &WinMatrix::default()).unwrap_err(),
-            first
-        );
+        assert_eq!(PentagonReport::of(&c, &WinMatrix::default()).unwrap_err(), first);
     }
 }
 
@@ -493,10 +458,7 @@ fn mass_strategy_reads_counts_and_refuses_mixed_or_empty_armies() {
         .iter_mut()
         .find(|s| s.id == "mass_bulwark")
         .expect("shipped");
-    s.army = vec![ArmyItem {
-        unit: "bulwark".to_string(),
-        count: 7,
-    }];
+    s.army = vec![ArmyItem { unit: "bulwark".to_string(), count: 7 }];
     assert_eq!(
         pentagon::mass_strategy(&c, "bulwark").map(|s| s.id.as_str()),
         Some("mass_bulwark")
@@ -510,14 +472,8 @@ fn mass_strategy_reads_counts_and_refuses_mixed_or_empty_armies() {
         .find(|s| s.id == "mass_bulwark")
         .expect("shipped");
     s.army = vec![
-        ArmyItem {
-            unit: "bulwark".to_string(),
-            count: 1,
-        },
-        ArmyItem {
-            unit: "bulwark".to_string(),
-            count: 2,
-        },
+        ArmyItem { unit: "bulwark".to_string(), count: 1 },
+        ArmyItem { unit: "bulwark".to_string(), count: 2 },
     ];
     assert_eq!(
         pentagon::mass_strategy(&c, "bulwark").map(|s| s.id.as_str()),
@@ -532,14 +488,8 @@ fn mass_strategy_reads_counts_and_refuses_mixed_or_empty_armies() {
         .find(|s| s.id == "mass_bulwark")
         .expect("shipped");
     s.army = vec![
-        ArmyItem {
-            unit: "bulwark".to_string(),
-            count: 1,
-        },
-        ArmyItem {
-            unit: "sentinel".to_string(),
-            count: 1,
-        },
+        ArmyItem { unit: "bulwark".to_string(), count: 1 },
+        ArmyItem { unit: "sentinel".to_string(), count: 1 },
     ];
     assert!(
         pentagon::mass_strategy(&c, "bulwark").is_none(),
@@ -594,10 +544,7 @@ fn an_out_of_cycle_probe_does_not_displace_a_real_one() {
         .expect("shipped")
         .clone();
     worker_probe.id = "mass_worker".to_string();
-    worker_probe.army = vec![ArmyItem {
-        unit: "worker".to_string(),
-        count: 1,
-    }];
+    worker_probe.army = vec![ArmyItem { unit: "worker".to_string(), count: 1 }];
     c.strategies.insert(0, worker_probe);
 
     for (predator, _) in SHIPPED {
@@ -609,10 +556,7 @@ fn an_out_of_cycle_probe_does_not_displace_a_real_one() {
     }
     let report = PentagonReport::of(&c, &WinMatrix::default()).expect("closed");
     assert!(
-        report
-            .links()
-            .iter()
-            .all(|l| l.predator != "worker" && l.prey != "worker"),
+        report.links().iter().all(|l| l.predator != "worker" && l.prey != "worker"),
         "a probe for a unit outside the cycle is irrelevant to the pentagon"
     );
 }

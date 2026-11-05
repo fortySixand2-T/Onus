@@ -365,6 +365,7 @@ fn alloy_ledger_balances_over_a_long_mixed_run() {
     let queued_sentinels = spent / sentinel;
     trained += spent;
 
+
     // Run everything to completion.
     step_n(&mut app, 9200);
 
@@ -381,12 +382,13 @@ fn alloy_ledger_balances_over_a_long_mixed_run() {
         start,
         "ledger: remaining + spent == starting Alloy"
     );
-    assert!(app
-        .world()
-        .get::<ProductionQueue>(hq)
-        .unwrap()
-        .items
-        .is_empty());
+    assert!(
+        app.world()
+            .get::<ProductionQueue>(hq)
+            .unwrap()
+            .items
+            .is_empty()
+    );
 }
 
 fn step_n(app: &mut App, n: u32) {
@@ -426,9 +428,7 @@ fn economy_is_deterministic_per_tick() {
             }
             step(&mut app);
             let mut h = alloy(&app, Faction::A) as u64;
-            h = h
-                .wrapping_mul(31)
-                .wrapping_add(count_units(&mut app) as u64);
+            h = h.wrapping_mul(31).wrapping_add(count_units(&mut app) as u64);
             h = h.wrapping_mul(31).wrapping_add(in_deposits(&mut app));
             h = h.wrapping_mul(31).wrapping_add(carried(&mut app));
             let mut q = app.world_mut().query::<&Position>();
@@ -573,11 +573,7 @@ mod pass2 {
             lib.contains("add_sim_systems(&mut app, FixedUpdate)"),
             "build_app must install the shared chain on FixedUpdate"
         );
-        for sys in [
-            "sim::apply_commands",
-            "sim::economy::production",
-            "sim::movement",
-        ] {
+        for sys in ["sim::apply_commands", "sim::economy::production", "sim::movement"] {
             assert_eq!(
                 lib.matches(sys).count(),
                 1,
@@ -726,11 +722,7 @@ mod pass2 {
         let total = 2 * u32::MAX as u64 + 200;
         for t in 0..600 {
             step(&mut app);
-            assert_eq!(
-                ledger(&mut app),
-                total,
-                "tick {t}: no Alloy created or lost"
-            );
+            assert_eq!(ledger(&mut app), total, "tick {t}: no Alloy created or lost");
         }
         assert_eq!(alloy(&app, Faction::A), u32::MAX, "the counter is pinned");
         assert_eq!(
@@ -751,11 +743,7 @@ mod pass2 {
             0,
             "the held load banks once the stockpile has room"
         );
-        assert_eq!(
-            ledger(&mut app),
-            after_spend,
-            "still only moved, never made"
-        );
+        assert_eq!(ledger(&mut app), after_spend, "still only moved, never made");
     }
 
     /// Two loaded workers deposit on the same tick into a stockpile with room
@@ -939,10 +927,7 @@ mod pass2 {
     fn the_shipped_content_is_not_wrongly_rejected() {
         Content::load_default().expect("the real assets must load");
         // A no-op edit still loads: validation rejects content, not editing.
-        edited(
-            "noop",
-            &[("units.ron", "name: \"Worker\"", "name: \"Worker\"")],
-        );
+        edited("noop", &[("units.ron", "name: \"Worker\"", "name: \"Worker\"")]);
     }
 
     #[test]
@@ -968,11 +953,7 @@ mod pass2 {
             ),
             (
                 "unknown_currency",
-                vec![(
-                    "resources.ron",
-                    "currency: \"alloy\",",
-                    "currency: \"unobtanium\",",
-                )],
+                vec![("resources.ron", "currency: \"alloy\",", "currency: \"unobtanium\",")],
                 "unobtanium",
             ),
             (
@@ -1012,10 +993,7 @@ mod pass2 {
             &[("resources.ron", &start.from, &start.removed())],
         )
         .expect_err("resources.ron without starting_alloy must not load");
-        assert!(
-            err.contains("starting_alloy") || err.contains("parse"),
-            "{err}"
-        );
+        assert!(err.contains("starting_alloy") || err.contains("parse"), "{err}");
     }
 
     // ---- P11: starting Alloy and costs come from the RON --------------------
@@ -1023,14 +1001,8 @@ mod pass2 {
     #[test]
     fn starting_alloy_comes_from_ron_and_is_seeded_once_for_both_factions() {
         let start = field(&shipped("resources.ron"), "starting_alloy");
-        assert_ne!(
-            start.value, "777",
-            "the probe value must differ from the shipped one"
-        );
-        let c = edited(
-            "starting_777",
-            &[("resources.ron", &start.from, &start.with(777))],
-        );
+        assert_ne!(start.value, "777", "the probe value must differ from the shipped one");
+        let c = edited("starting_777", &[("resources.ron", &start.from, &start.with(777))]);
         assert_eq!(c.economy.starting_alloy, 777);
         let mut app = shipped_app(c, 777);
         assert_eq!(alloy(&app, Faction::A), 777);
@@ -1058,10 +1030,7 @@ mod pass2 {
     fn every_charge_follows_the_edited_ron_price() {
         // F-044: both anchors are the shipped fields, read.
         let (worker, foundry) = (worker_field("mvp_alloy_cost"), foundry_cost());
-        assert!(
-            worker.value != "37" && foundry.value != "137",
-            "probe prices must differ"
-        );
+        assert!(worker.value != "37" && foundry.value != "137", "probe prices must differ");
         let c = edited(
             "prices",
             &[
@@ -1122,11 +1091,7 @@ mod pass2 {
             .iter(app.world())
             .map(|(i, k)| (i.0, k.copied()))
             .collect();
-        assert_eq!(
-            seen.len(),
-            expected.len(),
-            "every ordered unit was produced"
-        );
+        assert_eq!(seen.len(), expected.len(), "every ordered unit was produced");
         let content = app.world().resource::<Content>().clone();
         for (idx, kind) in seen {
             let def = &content.units[idx];

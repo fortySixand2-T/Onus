@@ -121,10 +121,12 @@ fn p1_default_settings_match_the_pre_b2_fixture_over_a_long_horizon() {
 
     assert_eq!(old_hashes.len(), TICKS as usize);
     assert_eq!(new_hashes.len(), TICKS as usize);
-    let first_diff = old_hashes.iter().zip(&new_hashes).position(|(a, b)| a != b);
+    let first_diff = old_hashes
+        .iter()
+        .zip(&new_hashes)
+        .position(|(a, b)| a != b);
     assert_eq!(
-        first_diff,
-        None,
+        first_diff, None,
         "lifted fixture diverges from the pre-B2 bench fixture at tick {:?}",
         first_diff.map(|i| i + 1)
     );
@@ -261,7 +263,10 @@ fn p3_an_unknown_name_on_either_side_is_refused() {
 
 #[test]
 fn p3b_a_half_named_matchup_with_a_bad_name_is_refused() {
-    for s in [shape(Some("bogus"), None, 0), shape(None, Some("bogus"), 0)] {
+    for s in [
+        shape(Some("bogus"), None, 0),
+        shape(None, Some("bogus"), 0),
+    ] {
         let err = headless::ai_vs_ai(content(), &s).expect_err("a typo must not build a match");
         assert_eq!(err.id, "bogus");
     }
@@ -397,18 +402,16 @@ fn p5b_stepping_matches_a_hand_rolled_fixed_clock_advance() {
 
 #[test]
 fn p6_content_is_cwd_independent_and_agrees_with_load_default() {
-    let from_repo_root =
-        Content::load_from_dir(&PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data"))
-            .expect("assets/data");
+    let from_repo_root = Content::load_from_dir(
+        &PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data"),
+    )
+    .expect("assets/data");
     let prev = std::env::current_dir().expect("cwd");
     std::env::set_current_dir("/").expect("chdir /");
     let got = headless::content();
     std::env::set_current_dir(&prev).expect("restore cwd");
     let got = got.expect("headless::content() must not depend on the working directory");
-    assert_eq!(
-        got.fingerprint().hash(),
-        from_repo_root.fingerprint().hash()
-    );
+    assert_eq!(got.fingerprint().hash(), from_repo_root.fingerprint().hash());
     // ...and it is the same content the driver loads from the repo root.
     let driver = Content::load_default().expect("load_default from the repo root");
     assert_eq!(got.fingerprint().hash(), driver.fingerprint().hash());

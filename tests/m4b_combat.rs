@@ -142,11 +142,7 @@ fn a_unit_attacks_the_enemy_in_range_until_it_dies_and_despawns() {
         .saturating_sub(r.armor * c.combat.mitigation_per_armor);
     assert_eq!(per_hit, want, "offense damage - armor mitigation");
     let full = hp(&app, victim).expect("victim has an HP pool");
-    assert_eq!(
-        full,
-        r.defense * c.combat.hp_per_defense,
-        "Ripper defense -> HP"
-    );
+    assert_eq!(full, r.defense * c.combat.hp_per_defense, "Ripper defense -> HP");
     assert!(
         per_hit > 0 && full.div_ceil(per_hit) >= 3,
         "fixture: the kill must take at least three hits to time the cadence"
@@ -549,11 +545,7 @@ fn the_nemesis_bonus_applies_in_a_live_fight() {
     // F-044: floor(base * mult_milli / 1000) on the loaded RON, armor rule applied.
     let boosted = (base as u64 * c.nemesis_bonus.mult_milli() as u64 / 1_000) as u32;
     let ravager = c.unit_index("ravager").unwrap();
-    assert_eq!(
-        dealt,
-        nemesis_hit(&c, boosted, ravager),
-        "nemesis damage, armor ignored"
-    );
+    assert_eq!(dealt, nemesis_hit(&c, boosted, ravager), "nemesis damage, armor ignored");
     assert!(
         dealt > base.saturating_sub(c.units[ravager].armor * c.combat.mitigation_per_armor),
         "and it beats the armored hit"

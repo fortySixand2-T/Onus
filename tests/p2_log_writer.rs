@@ -115,8 +115,7 @@ fn spawn_unit(app: &mut App, id: &str, faction: Faction, pos: Vec2) -> Entity {
 fn spawn_building(app: &mut App, id: &str, faction: Faction, pos: Vec2) -> Entity {
     let def = {
         let c = app.world().resource::<Content>();
-        c.building_index(id)
-            .unwrap_or_else(|| panic!("building `{id}`"))
+        c.building_index(id).unwrap_or_else(|| panic!("building `{id}`"))
     };
     app.world_mut()
         .spawn((
@@ -159,12 +158,7 @@ fn ai_vs_ai(seed: u64, writer: Option<ReplayWriter>) -> App {
             ResourceNode { amount: 100_000 },
         ));
         for i in 0..3 {
-            spawn_unit(
-                &mut app,
-                "worker",
-                faction,
-                base + Vec2::new(0.0, 20.0 * i as f32),
-            );
+            spawn_unit(&mut app, "worker", faction, base + Vec2::new(0.0, 20.0 * i as f32));
         }
     }
     app.insert_resource(AiCommanders::new(seed, &[Faction::A, Faction::B]));
@@ -210,11 +204,7 @@ fn a_decided_match_writes_a_log_that_loads_and_replays_to_the_same_verdict() {
         .written()
         .expect("a decided match wrote no log")
         .to_path_buf();
-    assert_eq!(
-        logs_in(dir.path()),
-        vec![written.clone()],
-        "one log, in the configured dir"
-    );
+    assert_eq!(logs_in(dir.path()), vec![written.clone()], "one log, in the configured dir");
     assert!(
         std::fs::metadata(&written).expect("stat").len() > 0,
         "the log is empty"
@@ -239,14 +229,8 @@ fn a_decided_match_writes_a_log_that_loads_and_replays_to_the_same_verdict() {
     replay.insert_resource(ReplaySource::new(log));
     tick(&mut replay, outcome.tick + 6);
     let source = replay.world().resource::<ReplaySource>();
-    assert!(
-        source.rejection().is_none(),
-        "the replay refused the shipped log"
-    );
-    assert!(
-        source.cursor() > 20,
-        "the replay fed nothing, so this proves nothing"
-    );
+    assert!(source.rejection().is_none(), "the replay refused the shipped log");
+    assert!(source.cursor() > 20, "the replay fed nothing, so this proves nothing");
     assert_eq!(
         replay.world().resource::<MatchState>().outcome(),
         Some(outcome),
@@ -288,11 +272,7 @@ fn a_decided_match_writes_exactly_one_log_however_long_it_runs() {
         writer.asks()
     );
     assert_eq!(writer.written(), Some(first.as_path()));
-    assert_eq!(
-        logs_in(dir.path()),
-        vec![first.clone()],
-        "a second log was written"
-    );
+    assert_eq!(logs_in(dir.path()), vec![first.clone()], "a second log was written");
     assert_eq!(
         std::fs::read(&first).expect("read"),
         bytes,
@@ -323,10 +303,7 @@ fn an_exit_before_any_decision_still_writes_what_was_played() {
         .expect("the exit wrote no log")
         .to_path_buf();
     let log = MatchLog::load_for(&written, &content()).expect("the partial log must load");
-    assert!(
-        log.commands.len() > 10,
-        "the partial log is empty of commands"
-    );
+    assert!(log.commands.len() > 10, "the partial log is empty of commands");
     assert_eq!(logs_in(dir.path()).len(), 1);
 }
 
@@ -356,10 +333,7 @@ fn replay_logging_is_off_by_default_and_writes_nothing() {
     let writer = app.world().resource::<ReplayWriter>();
     assert!(writer.asks() > 5, "the writer was never even asked");
     assert_eq!(writer.outcome(), None, "a disabled writer acted");
-    assert!(
-        logs_in(dir.path()).is_empty(),
-        "a disabled writer wrote a file"
-    );
+    assert!(logs_in(dir.path()).is_empty(), "a disabled writer wrote a file");
 }
 
 /// A missing `replay.ron` is a legitimate state — logging off — while a
@@ -372,12 +346,8 @@ fn a_missing_config_is_off_and_a_malformed_one_is_an_error() {
         ReplayConfig::default()
     );
     std::fs::write(dir.join(ReplayConfig::FILE), "(enabled: yes-please)").expect("write");
-    let err =
-        ReplayConfig::load_from_dir(dir.path()).expect_err("a malformed config must be an error");
-    assert!(
-        err.contains("replay.ron"),
-        "the error does not name the file: {err}"
-    );
+    let err = ReplayConfig::load_from_dir(dir.path()).expect_err("a malformed config must be an error");
+    assert!(err.contains("replay.ron"), "the error does not name the file: {err}");
 }
 
 // ---- the failure path is loud, and never fatal ------------------------------
@@ -402,28 +372,16 @@ fn a_write_that_fails_is_reported_and_the_game_keeps_running() {
     let outcome = play_to_decision(&mut app);
 
     let writer = app.world().resource::<ReplayWriter>();
-    let err = writer
-        .error()
-        .expect("the failure was swallowed")
-        .to_string();
-    assert!(
-        err.contains("not written"),
-        "unhelpful failure message: {err}"
-    );
+    let err = writer.error().expect("the failure was swallowed").to_string();
+    assert!(err.contains("not written"), "unhelpful failure message: {err}");
     assert!(writer.written().is_none());
 
     // The game is still there, and still knows who won.
     tick(&mut app, 60);
-    assert_eq!(
-        app.world().resource::<MatchState>().outcome(),
-        Some(outcome)
-    );
+    assert_eq!(app.world().resource::<MatchState>().outcome(), Some(outcome));
     // ...and it does not retry once a frame forever.
     assert_eq!(
-        app.world()
-            .resource::<ReplayWriter>()
-            .error()
-            .map(str::to_string),
+        app.world().resource::<ReplayWriter>().error().map(str::to_string),
         Some(err),
         "the failure changed after being recorded"
     );
@@ -462,16 +420,11 @@ fn a_log_that_cannot_be_read_back_is_never_written() {
     app.update();
     let writer = app.world().resource::<ReplayWriter>();
     assert!(
-        writer
-            .error()
-            .is_some_and(|e| e.contains("content changed")),
+        writer.error().is_some_and(|e| e.contains("content changed")),
         "a log the sim refuses to write back was written anyway: {:?}",
         writer.outcome()
     );
-    assert!(
-        logs_in(dir.path()).is_empty(),
-        "an unloadable file was left on disk"
-    );
+    assert!(logs_in(dir.path()).is_empty(), "an unloadable file was left on disk");
 }
 
 // ---- a diagnostic nobody can see is not a diagnostic ------------------------
@@ -534,7 +487,10 @@ mod capture {
 /// Run `f` with a capturing subscriber installed, and return what was emitted.
 fn emitted<T>(f: impl FnOnce() -> T) -> (T, Vec<(bevy::log::tracing::Level, String)>) {
     let captured = std::sync::Arc::new(capture::Captured::default());
-    let out = bevy::log::tracing::subscriber::with_default(capture::Recorder(captured.clone()), f);
+    let out = bevy::log::tracing::subscriber::with_default(
+        capture::Recorder(captured.clone()),
+        f,
+    );
     let events = captured.events.lock().expect("lock").clone();
     (out, events)
 }
@@ -584,10 +540,7 @@ fn a_missing_or_valid_config_reports_nothing() {
 
     let (config, events) = emitted(|| onus::replay_io::load_config_or_report(dir.path()));
     assert_eq!(config, ReplayConfig::default());
-    assert!(
-        events.is_empty(),
-        "a missing config was reported: {events:?}"
-    );
+    assert!(events.is_empty(), "a missing config was reported: {events:?}");
 
     // And a real one, parsed and returned, silently.
     std::fs::write(
@@ -727,8 +680,10 @@ fn can_report(name: &str, depth: u32, seen: &mut Vec<String>) -> bool {
 /// `add_plugins`.
 #[test]
 fn nothing_build_app_reaches_can_report_before_the_subscriber_exists() {
-    let lib = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"))
-        .expect("src/lib.rs");
+    let lib = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"),
+    )
+    .expect("src/lib.rs");
     let signature = lib.find("pub fn build_app()").expect("build_app");
     // From the opening brace, so the function's own name in its signature is not
     // read as a call to itself.
@@ -776,9 +731,7 @@ fn nothing_build_app_reaches_can_report_before_the_subscriber_exists() {
             continue;
         }
         if can_report(&name, 4, &mut Vec::new()) {
-            offenders.push(format!(
-                "`{name}(..)` is called before the subscriber exists"
-            ));
+            offenders.push(format!("`{name}(..)` is called before the subscriber exists"));
         }
     }
     assert!(
@@ -802,10 +755,7 @@ fn two_matches_in_one_second_with_one_seed_do_not_overwrite_each_other() {
             7,
             // The same fixed second every time, and the same seed: the filename
             // is identical by construction.
-            Some(ReplayWriter::with_fixed_clock(
-                config_writing_to(dir.path()),
-                1_700_000_000,
-            )),
+            Some(ReplayWriter::with_fixed_clock(config_writing_to(dir.path()), 1_700_000_000)),
         );
         play_to_decision(&mut app);
         written.push(
@@ -826,9 +776,7 @@ fn two_matches_in_one_second_with_one_seed_do_not_overwrite_each_other() {
     }
     // The names are the same stem plus a claim suffix, in the order they were
     // taken — no timestamp guessing, no randomness.
-    assert!(written[0]
-        .to_string_lossy()
-        .contains("-1700000000-seed7.ron"));
+    assert!(written[0].to_string_lossy().contains("-1700000000-seed7.ron"));
     assert!(written[1].to_string_lossy().ends_with("-seed7-1.ron"));
     assert!(written[2].to_string_lossy().ends_with("-seed7-2.ron"));
 }
@@ -857,9 +805,7 @@ fn a_writer_with_no_free_name_refuses_rather_than_overwriting() {
     play_to_decision(&mut app);
     let writer = app.world().resource::<ReplayWriter>();
     assert!(
-        writer
-            .error()
-            .is_some_and(|e| e.contains("refusing to overwrite")),
+        writer.error().is_some_and(|e| e.contains("refusing to overwrite")),
         "the writer did not report giving up: {:?}",
         writer.outcome()
     );
@@ -904,16 +850,8 @@ fn writing_a_log_does_not_perturb_the_match() {
         wrote.world().resource::<ReplayWriter>().written().is_some(),
         "the writing run did not write, so this proves nothing"
     );
-    assert_eq!(
-        h1.first_divergence(&h2),
-        None,
-        "writing a log changed the match"
-    );
-    assert_eq!(
-        h1.first_divergence(&h3),
-        None,
-        "the writer's clock reached the match"
-    );
+    assert_eq!(h1.first_divergence(&h2), None, "writing a log changed the match");
+    assert_eq!(h1.first_divergence(&h3), None, "the writer's clock reached the match");
     assert_eq!((o1, f1), (o2, f2));
     assert_eq!((o1, f1), (o3, f3));
     assert_eq!(c1, c2, "writing a log changed the command stream");
@@ -969,8 +907,10 @@ fn the_sim_never_names_the_writer_a_path_or_a_clock() {
 /// a writer the game does not have (F-004).
 #[test]
 fn the_shipped_app_installs_the_writer_and_the_tests_use_the_same_definition() {
-    let lib = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"))
-        .expect("src/lib.rs");
+    let lib = std::fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"),
+    )
+    .expect("src/lib.rs");
     let build_at = lib.find("pub fn build_app()").expect("build_app");
     let build_end = build_at + lib[build_at..].find("\n}\n").expect("build_app ends");
     assert!(
@@ -978,9 +918,7 @@ fn the_shipped_app_installs_the_writer_and_the_tests_use_the_same_definition() {
         "the shipped app does not install the replay writer"
     );
     // ...and it registers both paths to disk.
-    let reg_at = lib
-        .find("pub fn add_replay_writer")
-        .expect("add_replay_writer");
+    let reg_at = lib.find("pub fn add_replay_writer").expect("add_replay_writer");
     let reg_end = reg_at + lib[reg_at..].find("\n}\n").expect("it ends");
     let reg = &lib[reg_at..reg_end];
     assert!(reg.contains("write_on_decision") && reg.contains("write_on_exit"));

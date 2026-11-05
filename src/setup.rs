@@ -189,8 +189,7 @@ pub fn start_match(world: &mut World) {
     let names = [id(pick.player), id(pick.opponent)];
     // The economy first (C3): a nation's traits depend on it. The pick only
     // offers what the content can play.
-    crate::sim::three::install(world, pick.economy)
-        .expect("the pick offers only playable economies");
+    crate::sim::three::install(world, pick.economy).expect("the pick offers only playable economies");
     crate::sim::nation::install(world, &names).expect("the pick names only loaded nations");
     // The ley-wells last, framed by the two HQs, as a headless match lays them.
     if let Some((a, b)) = crate::sim::three::hq_frame(world) {

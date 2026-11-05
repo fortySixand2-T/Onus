@@ -185,11 +185,7 @@ fn the_set_contains_every_probe_the_spec_asks_for() {
         .filter(|u| u.offense > 0)
         .map(|u| u.id.as_str())
         .collect();
-    assert_eq!(
-        combat.len(),
-        5,
-        "the roster is not five combat units: {combat:?}"
-    );
+    assert_eq!(combat.len(), 5, "the roster is not five combat units: {combat:?}");
     let mass = mass_ids(&c);
     assert_eq!(mass.len(), 5, "not five mass probes: {mass:?}");
     for unit in &combat {
@@ -197,11 +193,7 @@ fn the_set_contains_every_probe_the_spec_asks_for() {
             .iter()
             .filter(|id| c.strategy(id).unwrap().army.iter().all(|a| &a.unit == unit))
             .collect();
-        assert_eq!(
-            owners.len(),
-            1,
-            "`{unit}` is hard-committed to by {owners:?}"
-        );
+        assert_eq!(owners.len(), 1, "`{unit}` is hard-committed to by {owners:?}");
     }
     let synth = c
         .strategies
@@ -210,10 +202,7 @@ fn the_set_contains_every_probe_the_spec_asks_for() {
         .count();
     assert!(synth >= 2, "fewer than two synthesis builds: {synth}");
     for required in ["rush", "turtle"] {
-        assert!(
-            c.strategy(required).is_some(),
-            "the set has no `{required}`"
-        );
+        assert!(c.strategy(required).is_some(), "the set has no `{required}`");
     }
 }
 
@@ -240,9 +229,7 @@ fn the_mass_probes_are_identical_in_every_field_of_the_struct() {
             // and the whole opening list, count included, is compared. Openings of two
             // different buildings it would not.
             assert!(
-                s.barracks
-                    .iter()
-                    .all(|b| b.building == s.barracks[0].building),
+                s.barracks.iter().all(|b| b.building == s.barracks[0].building),
                 "`{id}` opens more than one kind of barracks, so this probe's \
                  masking cannot normalise it"
             );
@@ -324,10 +311,7 @@ fn every_strategy_commits_before_the_match_can_stop_it() {
         }
         let (at, force) = first_attack(&app, Faction::A)
             .unwrap_or_else(|| panic!("`{id}` never attacked in {BUDGET} ticks"));
-        assert!(
-            force >= want,
-            "`{id}` attacked with {force} under its threshold {want}"
-        );
+        assert!(force >= want, "`{id}` attacked with {force} under its threshold {want}");
         if let Some(over) = over_at {
             assert!(
                 at <= over,
@@ -353,9 +337,9 @@ fn every_strategy_trains_out_of_every_barracks_it_opens() {
         for opening in &s.barracks {
             let def = c.building_index(&opening.building).unwrap();
             assert!(
-                built
-                    .iter()
-                    .any(|u| { c.unit_index(u).is_some_and(|idx| c.produces(def, idx)) }),
+                built.iter().any(|u| {
+                    c.unit_index(u).is_some_and(|idx| c.produces(def, idx))
+                }),
                 "`{id}` opened `{}` and trained nothing from it in {BUDGET} ticks \
                  (built {built:?})",
                 opening.building
@@ -376,17 +360,11 @@ fn the_realised_composition_is_the_build_orders_own_ratio() {
         let mut app = solo(&id, 4);
         tick(&mut app, BUDGET);
         let built = trained_of(&app, Faction::A);
-        assert!(
-            built.len() >= 3,
-            "`{id}` trained only {built:?} — it stalls"
-        );
+        assert!(built.len() >= 3, "`{id}` trained only {built:?} — it stalls");
         let want: Vec<String> = (0..built.len() as u32)
             .map(|n| s.army_at(n).expect("a non-empty order").to_string())
             .collect();
-        assert_eq!(
-            built, want,
-            "`{id}` built a composition its order never asked for"
-        );
+        assert_eq!(built, want, "`{id}` built a composition its order never asked for");
     }
 }
 
@@ -454,11 +432,7 @@ fn every_strategy_replays_tick_for_tick_on_the_same_seed() {
             let (ha, hb) = (state_hash(a.world_mut()), state_hash(b.world_mut()));
             assert_eq!(ha, hb, "`{id}` diverged at tick {t}");
         }
-        assert_eq!(
-            trace(&a, Faction::A),
-            trace(&b, Faction::A),
-            "`{id}`'s trace drifted"
-        );
+        assert_eq!(trace(&a, Faction::A), trace(&b, Faction::A), "`{id}`'s trace drifted");
     }
 }
 

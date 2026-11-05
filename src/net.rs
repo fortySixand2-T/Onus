@@ -31,7 +31,9 @@ use serde::{Deserialize, Serialize};
 use crate::sim::content::{Content, ContentFingerprint};
 use crate::sim::replay::{CommandLog, LoggedOrder, SimIds, StateHashLog};
 use crate::sim::spatial::Faction;
-use crate::sim::{Attribution, CommandQueue, MatchState, SignedOrder, TickGate};
+use crate::sim::{
+    Attribution, CommandQueue, MatchState, SignedOrder, TickGate,
+};
 
 /// Wire protocol version. Two peers that do not agree on it do not play: the
 /// frames mean different things, and "mostly compatible" is how a desync gets
@@ -73,8 +75,7 @@ impl NetConfig {
             Err(e) if e.kind() == ErrorKind::NotFound => return Ok(Self::default()),
             Err(e) => return Err(format!("net config: cannot read {}: {e}", path.display())),
         };
-        ron::from_str(&text)
-            .map_err(|e| format!("net config: cannot parse {}: {e}", path.display()))
+        ron::from_str(&text).map_err(|e| format!("net config: cannot parse {}: {e}", path.display()))
     }
 
     /// A turn delay of zero would mean "apply a command on the tick it was
@@ -222,9 +223,8 @@ impl Connection {
             if self.inbox.len() < 4 {
                 break;
             }
-            let len =
-                u32::from_le_bytes([self.inbox[0], self.inbox[1], self.inbox[2], self.inbox[3]])
-                    as usize;
+            let len = u32::from_le_bytes([self.inbox[0], self.inbox[1], self.inbox[2], self.inbox[3]])
+                as usize;
             if self.inbox.len() < 4 + len {
                 break;
             }
@@ -325,7 +325,11 @@ impl NetLink {
     }
 
     /// Take the single peer connection from a listener bound by [`host`](Self::host).
-    pub fn accept(listener: &TcpListener, me: Faction, config: NetConfig) -> Result<Self, String> {
+    pub fn accept(
+        listener: &TcpListener,
+        me: Faction,
+        config: NetConfig,
+    ) -> Result<Self, String> {
         let (stream, _) = listener
             .accept()
             .map_err(|e| format!("net: accept failed: {e}"))?;
@@ -339,7 +343,11 @@ impl NetLink {
         Self::from_stream(stream, me, config)
     }
 
-    pub fn from_stream(stream: TcpStream, me: Faction, config: NetConfig) -> Result<Self, String> {
+    pub fn from_stream(
+        stream: TcpStream,
+        me: Faction,
+        config: NetConfig,
+    ) -> Result<Self, String> {
         config.validate()?;
         Ok(Self {
             config,
@@ -539,7 +547,8 @@ pub fn pump(
     // ---- send our turn for `now + delay`, exactly once ----------------------
     let turn = now + link.config.turn_delay_ticks;
     if link.last_sent_turn.is_none_or(|last| turn > last) {
-        let mine: Vec<(Attribution, crate::sim::Order)> = std::mem::take(&mut link.pending_local);
+        let mine: Vec<(Attribution, crate::sim::Order)> =
+            std::mem::take(&mut link.pending_local);
         let mut commands = Vec::with_capacity(mine.len());
         let mut held = Vec::with_capacity(mine.len());
         for (attribution, order) in mine {
@@ -710,11 +719,7 @@ pub fn collect_local(mut queue: ResMut<CommandQueue>, mut link: ResMut<NetLink>)
 /// itself be gated by that decision. Everything it needs — the tick counter, the
 /// registry, the hash log — is sim state it only reads; the two things it writes
 /// are the command queue (which every producer writes) and the gate.
-pub fn add_net_link(
-    app: &mut App,
-    schedule: impl bevy::ecs::schedule::ScheduleLabel + Clone,
-    link: NetLink,
-) {
+pub fn add_net_link(app: &mut App, schedule: impl bevy::ecs::schedule::ScheduleLabel + Clone, link: NetLink) {
     app.insert_resource(link);
     app.init_resource::<StateHashLog>();
     app.add_systems(

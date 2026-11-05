@@ -42,12 +42,7 @@ fn clear_selection(commands: &mut Commands, selected: &Query<Entity, With<Select
     }
 }
 
-type SelectableItem<'a> = (
-    Entity,
-    &'a Position,
-    Option<&'a UnitKind>,
-    Option<&'a ResourceNode>,
-);
+type SelectableItem<'a> = (Entity, &'a Position, Option<&'a UnitKind>, Option<&'a ResourceNode>);
 
 /// Topmost selectable under the cursor: the containing box with the nearest center.
 fn pick(
@@ -267,11 +262,7 @@ pub fn pick_nations(
         (OPPONENT_NEXT_KEY, true, true),
     ] {
         if keys.just_pressed(key) {
-            let side = if opponent {
-                &mut pick.opponent
-            } else {
-                &mut pick.player
-            };
+            let side = if opponent { &mut pick.opponent } else { &mut pick.player };
             *side = cycle_nation(*side, n, forward);
         }
     }
