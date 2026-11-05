@@ -7191,3 +7191,30 @@ schedule is unchanged, and so is every other probe. Base unit combat stats are u
   past 8:00. The median of 30437 ticks (8:27) sits just beyond the 5–8 minute band. That is the
   next lever if the band is to pass. Every unit probe is slower to mass on three resources, so it is
   an economy-pace question (starting stocks, income rates). It is no longer a stall.
+
+## F-085 — Three-resource pace ×1.5: Biomass growth and well payouts every 40 ticks (C3 AC8)
+
+**Probe.** A scratch harness (not shipped) ran the five mass probes on three resources, 1 seed, 50
+matches per variant, with F-084's 9-worker Machine probes. The K3 band is 5–8 min (18000–28800 ticks).
+
+| variant (from 60-tick growth and wells, start 100 Biomass / 0 Aether) | timeouts | decided median | in band | beyond |
+|---|---|---|---|---|
+| as shipped (F-084 full B3, 2 seeds) | 3% | 30437 | 37.1% | 56% |
+| start 250 Biomass / 100 Aether | 0 | 28875 | 36% | 52% |
+| growth 45, well `per_interval` 2 → 4 | 0 | 28194 | 50% | 46% |
+| start 250/100, growth 45, wells 45 | 0 | 24985 | 50% | 40% |
+| **growth 40, wells 40 (×1.5)** | **0** | **24044** | **54%** | **42%** |
+| growth 40, wells 40, start 250/100 | 0 | 24357 | 52% | 40% |
+| growth 35, wells 35 (×1.7) | 0 | 23186 | 54% | 40% |
+| growth 30, wells 30 (×2) | 0 | 26144 | 58% | 38% |
+
+- **The tail is Bulwark, whatever the pace.** At ×1.5, 13 of Bulwark's 18 decided matches end past
+  8:00, with a median of 35711. That compares with 2–7 for every other probe. It reads 13 of 18 at
+  ×1.7 and ×2 too. Bulwark is Alloy-paid, slow (speed 2) and armoured (9/9), and a Biomass or Aether
+  rate cannot reach it.
+- Beyond ×1.5, band share plateaus at 54–58%. ±14 points is the noise at n = 50. ×2 was not taken:
+  F-082 showed doubling Biomass makes Ravager dominant.
+
+**Shipped:** `resources.ron` `three_resource`: `growth.interval_ticks` 60 → 40 and `wells.interval_ticks`
+60 → 40. Every C3 suite passes. Next lever: a three-resource override for `mass_bulwark`'s own production
+(F-084's mechanism). That is being probed, and C2 cross at 3 seeds is being re-run on this setting.

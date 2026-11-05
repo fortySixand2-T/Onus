@@ -46,7 +46,7 @@
         starting_biomass: 100,
         starting_aether: 0,
         growth: (
-            interval_ticks: 60,   // one landing per second at 60 Hz
+            interval_ticks: 40,   // a landing every 2/3 s at 60 Hz (F-085: x1.5 pace)
             sources: [
                 (building: "hq",        per_interval: 1, storage: 200),   // a floor every side has
                 (building: "gene_vats", per_interval: 2, storage: 250),   // build Vats to grow more
@@ -63,7 +63,7 @@
         //     holder changes).
         wells: (
             hold_radius: 110.0,
-            interval_ticks: 60,
+            interval_ticks: 40,
             per_interval: 2,
             sites: [
                 (along: 0.2, side: -220.0),   // side A's home well
