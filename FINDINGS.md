@@ -7175,3 +7175,19 @@ other on three resources, 1 seed, 18 matches. The variant was applied to both Ma
 
 **Shipped:** `mass_bulwark` and `mass_sentinel` get `three_resource: (worker_target: 9)`. The Foundry
 schedule is unchanged, and so is every other probe. Base unit combat stats are untouched.
+
+**Full B3 re-read with 9-worker Machine probes** (5 mass probes, 2 seeds, 100 matches, 1342 s).
+
+| | F-083 (guard fix) | F-084 (9 workers) |
+|---|---|---|
+| timeouts | 15% FAIL | **3% (undetermined)** |
+| K1 | undetermined | undetermined, none dominant (bulwark 50.0, sentinel 75.0, ripper 28.1, ravager 71.9, arclight 25.0) |
+| K2 | undetermined | undetermined (slot A 47.1%, n 17; left base 35.3%) |
+| K3 median / band share | 32054 / 41.2% | 30437 / **37.1% [26.7, 48.9] FAIL** (8% below, 56% beyond) |
+
+- **The timeouts are fixed.** 3 are left: Bulwark mirror 2, Sentinel mirror 1. The timeout rate no
+  longer reads Fail.
+- **K3 still reads Fail, now on band share, not timeouts.** Matches are decided but long: 56% end
+  past 8:00. The median of 30437 ticks (8:27) sits just beyond the 5–8 minute band. That is the
+  next lever if the band is to pass. Every unit probe is slower to mass on three resources, so it is
+  an economy-pace question (starting stocks, income rates). It is no longer a stall.
