@@ -7233,3 +7233,12 @@ matches per variant, with F-084's 9-worker Machine probes. The K3 band is 5–8 
 - So K3 band share on three resources sits at about 54–58% in every economy setting tried. That is
   above the 50% bar but not provably so at n = 100. What is left is Bulwark's own pace, which is the
   user's call.
+
+**Open (stopped by the user before it finished):**
+- **C2 cross on the ×1.5 pace, 3 seeds.** A parallel run, one thread per seed, so the same matches as
+  `with_seeds(3)`. It was stopped at about 2/3 done, so there is no reading. The last C2 cross reading
+  is F-081's: 1 seed, on the pre-F-083/F-084/F-085 settings.
+- **Re-run:** `ONUS_C3_C2_SEEDS=3 cargo test --release --test c3_gate the_three_resource_nation_cross_reading -- --ignored --nocapture`
+  (single-threaded, about 4.4 h).
+- **Not re-run since F-084:** the full test suite and `cargo clippy --all-targets -- -D warnings`.
+  Every C3 suite passes.
