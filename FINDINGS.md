@@ -7025,3 +7025,29 @@ is done, so the AC is ticked. **Neither gate reads Pass.** The next step is the 
 - then Tollmarch's and Verdant's three-resource trait sizes, each step recorded as F-074 did.
 
 Base unit combat stats are not to be retuned.
+
+## F-082 — Three-resource tuning step 1: Biomass growth and storage doubled (C3 AC8)
+
+**Probe.** A scratch harness (not shipped) played the three probes whose cells timed out most in
+F-081: `mass_sentinel`, `mass_ripper` and `mass_ravager`, against each other. 1 seed, 18 matches
+per variant, tick cap 54000 (15:00).
+
+| variant | timeouts | decided median |
+|---|---|---|
+| as shipped (HQ 1/200, Vats 2/250, guards 2) | 5 | 24065 |
+| **Biomass ×2 (HQ 2/400, Vats 4/500)** | **3** | 19719 |
+| guards 0 | 1 | 31191 |
+| Biomass ×2 and guards 0 | 1 | 29043 |
+
+- Doubling Biomass stops the Ravager mirror timing out (2 of 2 → 0 of 2). It speeds up decided
+  matches.
+- **Almost every timeout left is the Sentinel mirror.** Sentinels are Alloy-paid, and the Sentinel
+  mirror times out in **2 of 4** even under Alloy only (seeds 0–1). So that stall is the
+  mirror itself, made worse by the well detachments. It is not something a Biomass number moves.
+- Dropping the guards removes it, but then the AI never contests the middle well. That is AI
+  behaviour (C3 AC5), not economy, so it is not shipped here.
+
+**Shipped:** `resources.ron` `three_resource.growth`: HQ `per_interval` 1 → 2, `storage` 200 → 400;
+Gene-Vats `per_interval` 2 → 4, `storage` 250 → 500. Alloy-only play is untouched (the block is only
+read in three-resource mode). Every C3 test still passes (c3_economy, c3_ai, c3_client, c3_golden).
+The full B3 re-read on this setting follows below.
