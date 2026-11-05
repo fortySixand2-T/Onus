@@ -7026,7 +7026,7 @@ is done, so the AC is ticked. **Neither gate reads Pass.** The next step is the 
 
 Base unit combat stats are not to be retuned.
 
-## F-082 — Three-resource tuning step 1: Biomass growth and storage doubled (C3 AC8)
+## F-082 — Three-resource tuning step 1: Biomass ×2 tried and reverted (C3 AC8)
 
 **Probe.** A scratch harness (not shipped) played the three probes whose cells timed out most in
 F-081: `mass_sentinel`, `mass_ripper` and `mass_ravager`, against each other. 1 seed, 18 matches
@@ -7047,7 +7047,31 @@ per variant, tick cap 54000 (15:00).
 - Dropping the guards removes it, but then the AI never contests the middle well. That is AI
   behaviour (C3 AC5), not economy, so it is not shipped here.
 
-**Shipped:** `resources.ron` `three_resource.growth`: HQ `per_interval` 1 → 2, `storage` 200 → 400;
-Gene-Vats `per_interval` 2 → 4, `storage` 250 → 500. Alloy-only play is untouched (the block is only
-read in three-resource mode). Every C3 test still passes (c3_economy, c3_ai, c3_client, c3_golden).
-The full B3 re-read on this setting follows below.
+**Tried:** `resources.ron` `three_resource.growth` set to HQ `per_interval` 1 → 2, `storage` 200 → 400,
+and Gene-Vats `per_interval` 2 → 4, `storage` 250 → 500.
+
+**Full B3 re-read on Biomass ×2** (5 mass probes, 2 seeds, 100 matches, 1136 s): **worse. Reverted.**
+
+| | as shipped (F-081) | Biomass ×2 |
+|---|---|---|
+| timeouts | 13% FAIL | **14% FAIL** |
+| K1 | undetermined | **FAIL: mass_ravager 100.0% [81.1, 100.0]** |
+| K1 others | bulwark 50, sentinel 75, ripper 25, arclight 25 | bulwark 25, sentinel 75, ripper 25, arclight 25 |
+| K2 | undetermined | undetermined (slot A 53.3%, n 15) |
+| K3 median / band share | 28363 / 43.7% | 20639 / 34.9% FAIL (25% below, 45% beyond) |
+
+- The timeouts did not fall. They moved:
+  - the Ravager mirror now ends (0 of 4 time out);
+  - Bulwark v Ravager now stalls (3 of 4: a Ravager army of about 94 cannot crack a Bulwark wall);
+  - the Sentinel mirror still times out 4 of 4.
+- Doubled Biomass makes Ravager, the Biomass-paid heavy, dominant. The 18-match probe missed this
+  because it left Bulwark and Arclight out. A probe that leaves out a predator cannot judge a K1 move.
+- One Biomass-cost probe step on its own is not a lever on the timeouts. Ripper and Ravager are both
+  Biomass-paid, so Biomass speed shifts the pentagon before it shortens matches.
+- Also tried, on the 3-probe harness on top of Biomass ×2: AI `guards` 2 → 1. Result: 4 timeouts of 18, no better.
+
+**Shipped: nothing.** The RON is back to F-081's values. The finding for the user:
+- **The dominant timeout is the Sentinel mirror.** It stalls 2 of 4 even under Alloy only, and 4 of 4
+  with the well detachments.
+- Only AI `guards: 0` removed it (1 timeout of 18). That changes C3 AC5's behaviour (the AI contests the
+  middle well), so it is the user's call, not an economy tune.

@@ -48,8 +48,8 @@
         growth: (
             interval_ticks: 60,   // one landing per second at 60 Hz
             sources: [
-                (building: "hq",        per_interval: 2, storage: 400),   // a floor every side has
-                (building: "gene_vats", per_interval: 4, storage: 500),   // build Vats to grow more
+                (building: "hq",        per_interval: 1, storage: 200),   // a floor every side has
+                (building: "gene_vats", per_interval: 2, storage: 250),   // build Vats to grow more
             ],
         ),
         //   wells — Aether (Channeled): ley-wells placed relative to the two HQs,
