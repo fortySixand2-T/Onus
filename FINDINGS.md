@@ -7218,3 +7218,18 @@ matches per variant, with F-084's 9-worker Machine probes. The K3 band is 5–8 
 **Shipped:** `resources.ron` `three_resource`: `growth.interval_ticks` 60 → 40 and `wells.interval_ticks`
 60 → 40. Every C3 suite passes. Next lever: a three-resource override for `mass_bulwark`'s own production
 (F-084's mechanism). That is being probed, and C2 cross at 3 seeds is being re-run on this setting.
+
+**Bulwark overrides on top of ×1.5** (same harness, 50 matches; the override is on `mass_bulwark` only).
+
+| variant | in band | beyond | Bulwark beyond | Bulwark median | K1 Bulwark |
+|---|---|---|---|---|---|
+| ×1.5 alone | 54% | 42% | 13/18 | 35711 | 50% |
+| + `worker_target: 12` | 54% | 42% | 13/18 | 35024 | 75% |
+| + 12 workers, Foundries at 300/6000/12000 | 56% | 40% | 12/18 | 31859 | 69% |
+
+- **Neither override moves the tail.** More income and more Foundries make Bulwark win more, but not
+  faster. Its matches are long because a Bulwark army kills slowly: Offense 4, 90 attack ticks,
+  speed 2. That is a base combat stat, which AC8 forbids retuning. **Not shipped.**
+- So K3 band share on three resources sits at about 54–58% in every economy setting tried. That is
+  above the 50% bar but not provably so at n = 100. What is left is Bulwark's own pace, which is the
+  user's call.
