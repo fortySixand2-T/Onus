@@ -556,7 +556,7 @@ fn think(
     if let Some((hq_entity, hq_pos, hq_queued)) = hq {
         economy(
             c, tick, content, defs, stock, units, buildings, nodes, &posts.keepers, hq_entity,
-            hq_pos, hq_queued, queue, journal,
+            hq_pos, hq_queued, wells.is_some(), queue, journal,
         );
         posts.order(tick, me, units, queue, journal);
     } else if battle.is_none() {
@@ -664,6 +664,7 @@ fn economy(
     hq_entity: Entity,
     hq_pos: Vec2,
     hq_queued: usize,
+    three: bool,
     queue: &mut CommandQueue,
     journal: &mut AiJournal,
 ) {
@@ -721,7 +722,7 @@ fn economy(
     if let Some(worker) = hq_worker(content, hq_entity, buildings) {
         let (bank, cost) = defs.unit_price(me, worker).unwrap_or((Bank::Alloy, u32::MAX));
         let pending = hq_queued as u32;
-        if workers_now.saturating_add(pending) < script.worker_target
+        if workers_now.saturating_add(pending) < script.worker_target_in(three)
             && hq_queued == 0
             && budget.get(bank) >= cost
         {
@@ -776,7 +777,7 @@ fn economy(
     const RESERVING: bool = !cfg!(feature = "no-opening-reservation");
     let mut reserve: Option<u32> = None;
     let mut tech: Vec<(usize, usize, usize)> = Vec::new();
-    for opening in &script.barracks {
+    for opening in script.barracks_in(three) {
         let Some(def) = content.building_index(&opening.building) else {
             continue;
         };
