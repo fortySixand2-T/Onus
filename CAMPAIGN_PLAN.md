@@ -223,7 +223,7 @@ number lives in RON (`resources.ron`'s `three_resource` block, `nations.ron`).
   the Mac is listed in FINDINGS.
 - [x] **Golden licence:** the default (Alloy-only) setting reproduces today's pinned results
   exactly: no re-pin. A match log records its economy mode, and a replay applies it or refuses.
-- [ ] **Gates:** the B3 balance gate (K1/K2/K3) and the C2 nation cross gate are re-run on the
+- [x] **Gates:** the B3 balance gate (K1/K2/K3) and the C2 nation cross gate are re-run on the
   three-resource economy, and the numbers are recorded in FINDINGS. Economy numbers and trait
   sizes may be tuned in RON (each step recorded); base unit combat stats are not retuned.
 

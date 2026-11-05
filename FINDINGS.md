@@ -6991,3 +6991,37 @@ arclight 100 14v9 | 0 12v15 | 0 7v17 | 0 14v21 | 50 18v17.
   K1 and K2. The tuning levers are RON (Biomass `per_interval` and storage, well `per_interval`),
   and no base combat stat needs to move.
 
+**C2 nation cross gate on three resources** (every ordered pair of nations, the five mass probes,
+**1 seed** to fit the cloud session, 300 matches, **104 timeouts**, 5299 s). Strength: **undetermined**.
+
+| nation | strength | 95% interval | reading |
+|---|---|---|---|
+| house | 30.2% | [15.9, 45.6] | undetermined |
+| forgeborn | 50.1% | [34.7, 65.5] | undetermined |
+| verdant | 64.7% | [51.4, 77.3] | undetermined |
+| aetherkin | 52.0% | [36.5, 67.5] | undetermined |
+| tollmarch | 69.7% | [56.1, 82.3] | undetermined |
+| ashen_reach | 33.4% | [18.6, 49.0] | undetermined |
+
+Row vs column win %: house 30/25/30/21/44. Forgeborn 70/38/50/23/70. Verdant 75/62/62/50/73.
+Aetherkin 70/50/38/36/67. Tollmarch 79/77/50/64/79. Ashen Reach 56/30/27/33/21.
+
+- **Nothing reads Fail, nothing reads Pass.** One seed leaves every interval about 30 points wide.
+  Three seeds (as F-074) would be needed to settle it.
+- **Tollmarch is again the strongest** (69.7%). Its three-resource trait is richer Alloy mines plus
+  faster gathering, and in the mono-probe mirrors a steady income edge decides the race, as in
+  F-074. **Verdant** (Biomass grows faster) is next at 64.7%. House (30.2%) and Ashen Reach (33.4%)
+  are low, for the same reasons F-074 gives: Synthesis never acts on the mono-probe cross axis, and
+  building HP barely matters when two mass armies meet in the field.
+- **A third of matches time out** (104 of 300), against 69–112 of 900 under Alloy only (F-074). This
+  matches the B3 K3 reading above: the three-resource economy is slower, and any match-length or nation
+  verdict is noisy until it is tuned.
+
+**AC8 status.** The AC asks for the gates to be re-run on the three-resource economy and recorded. That
+is done, so the AC is ticked. **Neither gate reads Pass.** The next step is the user's call. The candidates are:
+- more seeds;
+- RON tuning of the economy numbers (Biomass `per_interval`/storage, well `per_interval`) to bring the
+  timeouts down;
+- then Tollmarch's and Verdant's three-resource trait sizes, each step recorded as F-074 did.
+
+Base unit combat stats are not to be retuned.
