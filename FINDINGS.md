@@ -6941,3 +6941,53 @@ pick systems and sim chain:
    stops at the cap.
 6. Select a Gene-Vats or an Aether Spire: the train line prices Rippers in Biomass and Arclights
    in Aether, and the colours tell the sides and the empty and contested states apart.
+
+## F-081 — The B3 and C2 gates re-read on the three-resource economy (C3 AC8)
+
+**Decision.** `BatchSettings.economy` (default `EconomyMode::Alloy`, so every batch before C3 is
+unchanged) is handed to every match of `run_batch` and `run_fixtures`. The gates are then read
+on `EconomyMode::ThreeResource` by the `--ignored` measurements in `tests/c3_gate.rs`. These are
+readings, not pins. No RON was tuned in this step. Run on the cloud container (4 cores), release.
+
+**Tests.** `tests/c3_gate.rs`: a batch is Alloy only unless it names the economy, and each record
+is the match its settings name, played for real in either economy (and the two economies differ,
+because Rippers cost Biomass). A nation batch plays the economy it names. Both pass.
+
+**B3 kill gate on three resources** (the five mass probes, 2 seeds, 100 matches, 13 timeouts, 1443 s).
+
+| | value | 95% interval | status |
+|---|---|---|---|
+| K1 mass_bulwark | 50.0% | [27.3, 72.7] | undetermined |
+| K1 mass_sentinel | 75.0% | [53.8, 93.4] | undetermined |
+| K1 mass_ripper | 25.0% | [5.2, 47.7] | pass |
+| K1 mass_ravager | 75.0% | [53.8, 93.4] | undetermined |
+| K1 mass_arclight | 25.0% | [6.6, 46.2] | pass |
+| K2 slot A | 54.5% (n 11) | [24.6, 81.5] | undetermined |
+| K2 left base | 27.3% | [8.2, 61.1] | undetermined |
+| K3 decided median | 28363 ticks (7:53) | | |
+| K3 timeouts | **13%** | | **FAIL** |
+| K3 band share (5–8 min) | 43.7% | [32.1, 56.0] | undetermined |
+| K3 below / beyond band | 8% / 54% | | reported |
+
+Row vs column (win %, timeouts, mean of the probe's own unit trained A v B):
+bulwark 75 t0 28v25 | 0 16v20 | 100 t2 27v99 | 100 20v29 | 0 9v13.
+sentinel 100 21v18 | -- t4 32v32 | 100 12v21 | 0 12v14 | 100 15v13.
+ripper 0 t2 87v24 | 0 21v12 | 33 t1 72v72 | 0 39v20 | 100 17v7.
+ravager 0 32v21 | 100 15v12 | 100 19v37 | -- t4 51v51 | 100 21v13.
+arclight 100 14v9 | 0 12v15 | 0 7v17 | 0 14v21 | 50 18v17.
+
+- **No probe is dominant.** K1 is undetermined only because 2 seeds give 20 matches per probe. The
+  intervals are wide and none sits above the 65% line.
+- **Matches are much longer.** The three-resource economy moves the median into the 5–8 minute band
+  (54% now run beyond it). This is the direction the skirmish K3 wanted. The cost is timeouts: 13%,
+  and they are concentrated in the mirrors (sentinel/sentinel 4 of 4, ravager/ravager 4 of 4) and in
+  Ripper cells. Ripper armies are slow to grow on passive Biomass: the ripper mirror trains 72 a side
+  and still times out in 1 of 3.
+- **Ripper falls from the Alloy-only top to 25%.** Ripper is now paid in storage-capped Biomass,
+  so its mass is throttled. Arclight is paid in Aether from contested wells and reads 25% as well.
+  Sentinel and Ravager lead at 75%. Ravager is also Biomass-paid, so the Biomass price alone
+  does not explain Ripper's fall; it loses its old prey cells (0% v bulwark, sentinel, ravager).
+- **Status: not yet a pass.** The K3 timeout rate is the one hard Fail. More seeds would settle
+  K1 and K2. The tuning levers are RON (Biomass `per_interval` and storage, well `per_interval`),
+  and no base combat stat needs to move.
+
