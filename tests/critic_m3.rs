@@ -105,9 +105,8 @@ fn astar_matches_bfs_over_many_random_grids() {
             let goal = (rng.next_u64() as usize) % n;
 
             let dist = bfs_dist_from(&grid, start);
-            let reachable = grid.is_walkable(start)
-                && grid.is_walkable(goal)
-                && dist[goal].is_some();
+            let reachable =
+                grid.is_walkable(start) && grid.is_walkable(goal) && dist[goal].is_some();
 
             match astar(&grid, start, goal) {
                 Some(path) => {
@@ -141,19 +140,19 @@ fn astar_none_on_blocked_start_or_goal() {
 #[test]
 fn astar_none_on_sealed_pocket() {
     // A 1-cell pocket walled off from the rest.
-    let rows = [
-        ".....",
-        ".###.",
-        ".#.#.",
-        ".###.",
-        ".....",
-    ];
+    let rows = [".....", ".###.", ".#.#.", ".###.", "....."];
     let g = TileGrid::from_rows(&rows, 1.0, Vec2::ZERO);
     let pocket = g.idx(2, 2);
     let outside = g.idx(0, 0);
     assert!(g.is_walkable(pocket), "pocket cell itself is walkable");
-    assert!(astar(&g, outside, pocket).is_none(), "sealed pocket unreachable");
-    assert!(astar(&g, pocket, outside).is_none(), "and unreachable back out");
+    assert!(
+        astar(&g, outside, pocket).is_none(),
+        "sealed pocket unreachable"
+    );
+    assert!(
+        astar(&g, pocket, outside).is_none(),
+        "and unreachable back out"
+    );
     // But the pocket can reach itself.
     assert_eq!(astar(&g, pocket, pocket).map(|p| p.len()), Some(1));
 }
@@ -329,12 +328,18 @@ fn one_flow_field_expands_far_fewer_nodes_than_n_astar() {
     let n = grid.len();
     let goal = grid.idx(49, 49);
     // If the RNG happened to block the goal, pick the nearest open corner-ish cell.
-    let goal = if grid.is_walkable(goal) { goal } else { grid.idx(0, 0) };
+    let goal = if grid.is_walkable(goal) {
+        goal
+    } else {
+        grid.idx(0, 0)
+    };
     assert!(grid.is_walkable(goal));
 
     // Collect reachable starts via the oracle.
     let reach = bfs_dist_from(&grid, goal);
-    let starts: Vec<usize> = (0..n).filter(|&c| reach[c].is_some() && c != goal).collect();
+    let starts: Vec<usize> = (0..n)
+        .filter(|&c| reach[c].is_some() && c != goal)
+        .collect();
 
     let (_field, field_expanded) = FlowField::compute_counted(&grid, goal);
 

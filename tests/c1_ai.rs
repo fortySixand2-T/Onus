@@ -111,7 +111,9 @@ fn journal(app: &App) -> Vec<(u32, AiAction)> {
 /// A's battle decisions (guard, retreat): their own journal, so the skirmish
 /// action trace is untouched.
 fn battle_journal(app: &App) -> Vec<(u32, BattleAiAction)> {
-    app.world().resource::<BattleAiJournal>().for_faction(Faction::A)
+    app.world()
+        .resource::<BattleAiJournal>()
+        .for_faction(Faction::A)
 }
 
 fn ravagers(n: usize) -> Roster {
@@ -128,15 +130,32 @@ fn guarded(n: usize) -> BattleSetup {
 #[test]
 fn the_battle_ai_reads_its_numbers_from_ron_and_refuses_bad_ones() {
     let c = content();
-    let ai = c.general_ai.as_ref().expect("the shipped content has a battle AI");
+    let ai = c
+        .general_ai
+        .as_ref()
+        .expect("the shipped content has a battle AI");
     let text = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
     assert!(text.contains(&format!("guard_radius: {:.1}", ai.guard_radius)));
-    assert!(text.contains(&format!("retreat_at_army_lost: {}", ai.retreat_at_army_lost)));
-    assert_eq!(ai.retreat_milli(), (ai.retreat_at_army_lost * 1000.0).round() as u32);
+    assert!(text.contains(&format!(
+        "retreat_at_army_lost: {}",
+        ai.retreat_at_army_lost
+    )));
+    assert_eq!(
+        ai.retreat_milli(),
+        (ai.retreat_at_army_lost * 1000.0).round() as u32
+    );
     let cases: [(&str, &str, &str); 3] = [
         ("guard0", "guard_radius: 150.0", "guard_radius: 0.0"),
-        ("lost0", "retreat_at_army_lost: 0.6", "retreat_at_army_lost: 0.0"),
-        ("lost_over", "retreat_at_army_lost: 0.6", "retreat_at_army_lost: 1.5"),
+        (
+            "lost0",
+            "retreat_at_army_lost: 0.6",
+            "retreat_at_army_lost: 0.0",
+        ),
+        (
+            "lost_over",
+            "retreat_at_army_lost: 0.6",
+            "retreat_at_army_lost: 1.5",
+        ),
     ];
     for (name, from, to) in cases {
         let err = mutated(name, |t| t.replacen(from, to, 1)).expect_err(name);
@@ -158,14 +177,34 @@ fn an_enemy_fighter_near_the_general_pulls_the_army_onto_him() {
     let mut app = a_plays(guarded(4));
     let (g, gpos) = generals_of(&mut app, Faction::A)[0];
     let front = (gpos - hq_of(&mut app, Faction::A)).normalize();
-    spawn_unit(&mut app, "ravager", Faction::B, gpos + front * (radius - 10.0));
+    spawn_unit(
+        &mut app,
+        "ravager",
+        Faction::B,
+        gpos + front * (radius - 10.0),
+    );
     headless::step(&mut app);
     let bj = battle_journal(&app);
-    assert_eq!(bj, [(0, BattleAiAction::Guard { general: g, force: 4 })]);
+    assert_eq!(
+        bj,
+        [(
+            0,
+            BattleAiAction::Guard {
+                general: g,
+                force: 4
+            }
+        )]
+    );
     let j = journal(&app);
-    assert!(!j.iter().any(|(_, a)| matches!(a, AiAction::Attack { .. })), "a guard, not a wave");
+    assert!(
+        !j.iter().any(|(_, a)| matches!(a, AiAction::Attack { .. })),
+        "a guard, not a wave"
+    );
     for e in fighters_of(&mut app, Faction::A) {
-        assert_eq!(app.world().get::<AttackMoveDest>(e).map(|d| d.0), Some(gpos));
+        assert_eq!(
+            app.world().get::<AttackMoveDest>(e).map(|d| d.0),
+            Some(gpos)
+        );
     }
 }
 
@@ -179,9 +218,17 @@ fn a_threat_outside_the_radius_or_one_that_cannot_fight_does_not() {
         let front = (gpos - hq_of(&mut app, Faction::A)).normalize();
         spawn_unit(&mut app, id, Faction::B, gpos + front * d);
         headless::step(&mut app);
-        assert!(battle_journal(&app).is_empty(), "{id}: {:?}", battle_journal(&app));
+        assert!(
+            battle_journal(&app).is_empty(),
+            "{id}: {:?}",
+            battle_journal(&app)
+        );
         let j = journal(&app);
-        assert!(j.iter().any(|(_, a)| matches!(a, AiAction::Attack { force: 4, .. })), "{id}");
+        assert!(
+            j.iter()
+                .any(|(_, a)| matches!(a, AiAction::Attack { force: 4, .. })),
+            "{id}"
+        );
     }
 }
 
@@ -196,7 +243,10 @@ fn retreats_after_losing(n: usize, lose: usize) -> (bool, Vec<(u32, BattleAiActi
     }
     headless::tick(&mut app, think);
     let j = battle_journal(&app);
-    (app.world().resource::<BattleState>().retreating(Faction::A), j)
+    (
+        app.world().resource::<BattleState>().retreating(Faction::A),
+        j,
+    )
 }
 
 #[test]
@@ -206,7 +256,11 @@ fn it_retreats_once_it_has_lost_the_ron_share_of_its_army_and_not_before() {
     let at = (n * milli).div_ceil(1000); // the fewest losses that reach the threshold
     let (gone, j) = retreats_after_losing(n, at);
     assert!(gone, "{at} of {n} lost: {j:?}");
-    assert_eq!(j, [(think(), BattleAiAction::Retreat)], "one retreat, on the next decision");
+    assert_eq!(
+        j,
+        [(think(), BattleAiAction::Retreat)],
+        "one retreat, on the next decision"
+    );
     let (stays, j) = retreats_after_losing(n, at - 1);
     assert!(!stays, "{} of {n} lost: {j:?}", at - 1);
     assert!(j.is_empty(), "{j:?}");
@@ -236,7 +290,10 @@ fn a_side_with_no_city_still_attacks_with_all_it_has() {
     let n = wave - 1;
     let setup = BattleSetup::default()
         .with_general(Faction::A, "general_focus")
-        .with_roster(Faction::A, (0..n).fold(Roster::default(), |r, _| r.unit("ravager")))
+        .with_roster(
+            Faction::A,
+            (0..n).fold(Roster::default(), |r, _| r.unit("ravager")),
+        )
         .with_general(Faction::B, "general_bulwark");
     let mut app = a_plays(setup);
     let target = hq_of(&mut app, Faction::B);
@@ -251,7 +308,10 @@ fn a_side_with_no_city_still_attacks_with_all_it_has() {
         })
         .expect("attacks without a city");
     assert_eq!(attack.1, n as u32);
-    assert!((attack.0 - target).abs().max_element() <= spread, "at the enemy HQ");
+    assert!(
+        (attack.0 - target).abs().max_element() <= spread,
+        "at the enemy HQ"
+    );
 }
 
 #[test]
@@ -259,7 +319,10 @@ fn in_a_field_battle_the_wave_goes_for_the_enemy_general() {
     let c = content();
     let setup = BattleSetup::default()
         .with_general(Faction::A, "general_focus")
-        .with_roster(Faction::A, Roster::default().unit("ravager").unit("ravager"))
+        .with_roster(
+            Faction::A,
+            Roster::default().unit("ravager").unit("ravager"),
+        )
         .with_general(Faction::B, "general_bulwark")
         .with_roster(Faction::B, Roster::default().unit("ravager"));
     let mut app = a_plays(setup);

@@ -80,7 +80,10 @@ impl Health {
             // Saturating for the same reason as the unit pool: `validate` proves
             // the product fits u32 for loaded content, so this only bites on a
             // `Content` assembled in memory.
-            .map(|b| b.mvp_defense.saturating_mul(content.combat.building_hp_per_defense))
+            .map(|b| {
+                b.mvp_defense
+                    .saturating_mul(content.combat.building_hp_per_defense)
+            })
             .unwrap_or(0);
         Self { current: max, max }
     }
@@ -160,7 +163,13 @@ impl Casualties {
 /// Pure and total — no clock, no RNG, no allocation. The sim and the tests read
 /// the same function, and it is the only place damage is decided.
 pub fn damage_per_hit(content: &Content, attacker: usize, defender: usize) -> u32 {
-    damage_per_hit_with(content, attacker, defender, StatBonus::NONE, StatBonus::NONE)
+    damage_per_hit_with(
+        content,
+        attacker,
+        defender,
+        StatBonus::NONE,
+        StatBonus::NONE,
+    )
 }
 
 /// Stat bonuses a unit carries on this tick — a campaign battle's auras (C1,
@@ -304,7 +313,9 @@ pub fn damage_to_building_between(
         .offense
         .saturating_add(atk.offense)
         .saturating_mul(content.combat.damage_per_offense);
-    let mitigation = d.mvp_armor.saturating_mul(content.combat.mitigation_per_armor);
+    let mitigation = d
+        .mvp_armor
+        .saturating_mul(content.combat.mitigation_per_armor);
     base.saturating_sub(mitigation)
 }
 
@@ -712,7 +723,10 @@ mod tests {
             c.unit_index("arclight").unwrap(),
             c.unit_index("ravager").unwrap(),
         );
-        assert!(!is_nemesis(&c, arclight, ravager), "a plain (non-nemesis) pair");
+        assert!(
+            !is_nemesis(&c, arclight, ravager),
+            "a plain (non-nemesis) pair"
+        );
         // offense * damage_per_offense, minus armor * mitigation_per_armor.
         let expect = base(&c, arclight).saturating_sub(mitigation(&c, ravager));
         assert!(
@@ -739,7 +753,10 @@ mod tests {
         c.combat.mitigation_per_armor = per;
         c.units[bulwark].armor = base(&c, worker) / per + 2;
         assert!(!is_nemesis(&c, worker, bulwark));
-        assert!(base(&c, worker) > 0, "the hit must be real for the floor to bite");
+        assert!(
+            base(&c, worker) > 0,
+            "the hit must be real for the floor to bite"
+        );
         assert!(mitigation(&c, bulwark) > base(&c, worker));
         assert_eq!(damage_per_hit(&c, worker, bulwark), 0);
         assert_eq!(damage_per_hit(&c, 999, bulwark), 0, "unknown ids are inert");
@@ -786,7 +803,10 @@ mod tests {
         let c = content();
         let m = c.nemesis_bonus.mult_milli();
         // round(damage_mult * 1000), computed in f64.
-        assert_eq!(m, (c.nemesis_bonus.damage_mult as f64 * 1_000.0).round() as u32);
+        assert_eq!(
+            m,
+            (c.nemesis_bonus.damage_mult as f64 * 1_000.0).round() as u32
+        );
         // floor(base * mult / 1000) — stated here so a rounding change is a
         // test failure, not a silent balance shift. Driven through the real
         // fn on an in-memory copy whose Bulwark offense sets `base`.

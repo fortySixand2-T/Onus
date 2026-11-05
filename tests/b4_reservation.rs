@@ -198,7 +198,10 @@ fn every_multi_opening_strategy_places_its_whole_script_in_a_head_to_head() {
         .filter(|s| s.barracks.len() > 1)
         .map(|s| s.id.clone())
         .collect();
-    assert!(!multi.is_empty(), "the shipped set has no multi-opening strategy");
+    assert!(
+        !multi.is_empty(),
+        "the shipped set has no multi-opening strategy"
+    );
     let mut placed_more_than_one = Vec::new();
     for id in &multi {
         let s = c.strategy(id).unwrap();
@@ -268,7 +271,10 @@ fn the_army_trains_nothing_while_an_opening_is_due() {
     let mut app = match_on(c, "mass_bulwark", "mass_sentinel", seed_at(0, 0));
     headless::tick(&mut app, 20_000);
     let journal = app.world().resource::<AiJournal>().for_faction(Faction::A);
-    let placed: Vec<u32> = placements(&app, Faction::A).iter().map(|(t, _)| *t).collect();
+    let placed: Vec<u32> = placements(&app, Faction::A)
+        .iter()
+        .map(|(t, _)| *t)
+        .collect();
     let mut trained = 0;
     for (t, a) in &journal {
         if !matches!(a, AiAction::TrainArmy { .. }) {
@@ -285,7 +291,10 @@ fn the_army_trains_nothing_while_an_opening_is_due() {
             }
         }
     }
-    assert!(trained >= 5, "the fixture trained only {trained} units: vacuous");
+    assert!(
+        trained >= 5,
+        "the fixture trained only {trained} units: vacuous"
+    );
 }
 
 /// An opening whose `at_tick` has not come reserves nothing: a script with a
@@ -295,11 +304,18 @@ fn the_army_trains_nothing_while_an_opening_is_due() {
 #[test]
 fn an_opening_not_yet_due_changes_nothing() {
     const HORIZON: u32 = 9_000;
-    let one = with_openings(content(), "mass_bulwark", vec![opening("foundry", 300, 130.0)]);
+    let one = with_openings(
+        content(),
+        "mass_bulwark",
+        vec![opening("foundry", 300, 130.0)],
+    );
     let later = with_openings(
         content(),
         "mass_bulwark",
-        vec![opening("foundry", 300, 130.0), opening("foundry", 50_000, 165.0)],
+        vec![
+            opening("foundry", 300, 130.0),
+            opening("foundry", 50_000, 165.0),
+        ],
     );
     let seed = seed_at(0, 2);
     let mut a = match_on(one, "mass_bulwark", "mass_ripper", seed);
@@ -325,7 +341,10 @@ fn an_opening_not_yet_due_changes_nothing() {
         .iter()
         .filter(|(_, x)| matches!(x, AiAction::TrainArmy { .. }))
         .count();
-    assert!(trained >= 5, "the fixture trained only {trained} units: vacuous");
+    assert!(
+        trained >= 5,
+        "the fixture trained only {trained} units: vacuous"
+    );
 }
 
 /// The reserve is held back from the **army only**, not from the tech walk: a
@@ -353,7 +372,10 @@ fn a_cheaper_later_opening_still_goes_up_and_the_reserved_one_follows() {
     );
     let mut app = match_on(c, "mass_sentinel", "mass_bulwark", seed_at(0, 3));
     let stopped = play_until(&mut app, |app| placements(app, Faction::A).len() >= 3);
-    let got: Vec<usize> = placements(&app, Faction::A).iter().map(|(_, b)| *b).collect();
+    let got: Vec<usize> = placements(&app, Faction::A)
+        .iter()
+        .map(|(_, b)| *b)
+        .collect();
     assert_eq!(
         got,
         vec![foundry, vats, spire],

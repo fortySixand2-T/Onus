@@ -621,7 +621,11 @@ fn build_hotkeys_emit_orders_and_never_touch_sim_state() {
     assert_eq!(queue.0.len(), 1, "one order emitted");
     // M4c: input signs what it emits, so the sim can refuse cross-faction orders.
     let signed = queue.0.front().unwrap();
-    assert_eq!(signed.issuer(), Some(Faction::A), "the player's order is signed");
+    assert_eq!(
+        signed.issuer(),
+        Some(Faction::A),
+        "the player's order is signed"
+    );
     match signed.order() {
         Order::Place {
             faction,
@@ -661,7 +665,11 @@ fn train_hotkey_targets_the_selected_building_and_its_ron_roster() {
     let queue = app.world().resource::<CommandQueue>();
     assert_eq!(queue.0.len(), 1);
     let signed = queue.0.front().unwrap();
-    assert_eq!(signed.issuer(), Some(Faction::A), "the player's order is signed");
+    assert_eq!(
+        signed.issuer(),
+        Some(Faction::A),
+        "the player's order is signed"
+    );
     match signed.order() {
         Order::Train { building, unit } => {
             assert_eq!(*building, hq);
@@ -713,8 +721,12 @@ fn a_gatherer_missing_its_gather_data_is_rejected_at_load() {
     );
 
     let ticks = c.unit("worker").unwrap().mvp_gather_ticks;
-    let err = load_mutated("no_gather_ticks", &format!("mvp_gather_ticks: {ticks},"), "")
-        .expect_err("a gatherer with no gather time is invalid content");
+    let err = load_mutated(
+        "no_gather_ticks",
+        &format!("mvp_gather_ticks: {ticks},"),
+        "",
+    )
+    .expect_err("a gatherer with no gather time is invalid content");
     assert!(
         err.contains("worker"),
         "the error names the offender: {err}"

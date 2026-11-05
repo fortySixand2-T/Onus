@@ -272,7 +272,10 @@ impl fmt::Display for BalanceReport {
             "  decided    {} of {}: below {} in {} above {}",
             l.decided, l.total, l.below_band, l.in_band, l.above_band
         )?;
-        let share = |r: Option<f64>| r.map(|x| format!("{:.1}%", 100.0 * x)).unwrap_or_else(|| "--".into());
+        let share = |r: Option<f64>| {
+            r.map(|x| format!("{:.1}%", 100.0 * x))
+                .unwrap_or_else(|| "--".into())
+        };
         writeln!(f, "  in band    {} of decided", share(l.band_share))?;
         writeln!(f, "  timeouts   {} of all matches", share(l.timeout_rate))?;
         let qs = |v: &[(u32, Option<u32>)]| -> String {
@@ -281,10 +284,18 @@ impl fmt::Display for BalanceReport {
                 .collect()
         };
         writeln!(f, "  decided   {}", qs(&l.decided_quantiles))?;
-        writeln!(f, "  all       {}  (timeouts at the cap)", qs(&l.all_quantiles))?;
+        writeln!(
+            f,
+            "  all       {}  (timeouts at the cap)",
+            qs(&l.all_quantiles)
+        )?;
 
         let g = &self.gate;
-        writeln!(f, "kill gate    {}  (status read off clustered 95% Wilson intervals; F-038)", status(g.status))?;
+        writeln!(
+            f,
+            "kill gate    {}  (status read off clustered 95% Wilson intervals; F-038)",
+            status(g.status)
+        )?;
         let k1 = &g.strength;
         writeln!(
             f,
@@ -292,7 +303,13 @@ impl fmt::Display for BalanceReport {
             status(k1.status),
             pct0(k1.max_strength)
         )?;
-        let w = k1.rows.iter().map(|r| r.strategy.len()).max().unwrap_or(0).max(6);
+        let w = k1
+            .rows
+            .iter()
+            .map(|r| r.strategy.len())
+            .max()
+            .unwrap_or(0)
+            .max(6);
         for r in &k1.rows {
             let mut tags = String::new();
             if r.dominant {
@@ -327,8 +344,18 @@ impl fmt::Display for BalanceReport {
             status(k2.status),
             pct0(k2.tolerance)
         )?;
-        writeln!(f, "    slot A      {:<12} {}", status(k2.slot_a.status), reading(&k2.slot_a))?;
-        writeln!(f, "    left base   {:<12} {}", status(k2.left_spawn.status), reading(&k2.left_spawn))?;
+        writeln!(
+            f,
+            "    slot A      {:<12} {}",
+            status(k2.slot_a.status),
+            reading(&k2.slot_a)
+        )?;
+        writeln!(
+            f,
+            "    left base   {:<12} {}",
+            status(k2.left_spawn.status),
+            reading(&k2.left_spawn)
+        )?;
         for m in &k2.mirrors {
             writeln!(
                 f,
@@ -361,7 +388,12 @@ impl fmt::Display for BalanceReport {
             reading(&k3.band_share),
             pct0(k3.min_band_share)
         )?;
-        writeln!(f, "    timeouts      {:<12} {}", status(k3.timeout_rate.status), reading(&k3.timeout_rate))?;
+        writeln!(
+            f,
+            "    timeouts      {:<12} {}",
+            status(k3.timeout_rate.status),
+            reading(&k3.timeout_rate)
+        )?;
         writeln!(
             f,
             "    before band   {:<12} {}  (of all; reported, not gated)",
@@ -380,7 +412,10 @@ impl fmt::Display for BalanceReport {
             k3.decided_median.map(mmss).unwrap_or_else(|| "--".into())
         )?;
         if k3.all_timeout {
-            writeln!(f, "    ALL TIMEOUT: every match hit the cap; nothing about balance was measured")?;
+            writeln!(
+                f,
+                "    ALL TIMEOUT: every match hit the cap; nothing about balance was measured"
+            )?;
         }
         Ok(())
     }

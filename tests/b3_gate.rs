@@ -39,7 +39,14 @@ const DRAW: MatchResult = MatchResult::MutualLoss;
 const CAPPED: MatchResult = MatchResult::Timeout;
 const SIX_MIN: u32 = 6 * 60 * SIM_HZ;
 
-fn rec(a: &str, b: &str, seed: u64, o: Orientation, result: MatchResult, ticks: u32) -> MatchRecord {
+fn rec(
+    a: &str,
+    b: &str,
+    seed: u64,
+    o: Orientation,
+    result: MatchResult,
+    ticks: u32,
+) -> MatchRecord {
     MatchRecord {
         strategies: [a.to_string(), b.to_string()],
         seed,
@@ -119,7 +126,10 @@ fn the_default_thresholds_are_the_stated_ones() {
     assert_eq!(s.min_band_share, 0.5);
     assert_eq!(s.max_timeout_rate, 0.05);
     assert_eq!(s.icc, 0.17, "F-031: deff 1.51 at 4 matches a cluster");
-    assert_eq!(s.mirror_design_effect, 1.38, "F-038: slot A, clustered by seed, measured");
+    assert_eq!(
+        s.mirror_design_effect, 1.38,
+        "F-038: slot A, clustered by seed, measured"
+    );
 }
 
 /// Mirror (K2) readings use the measured seed-clustered design effect, 1.38,
@@ -142,7 +152,10 @@ fn mirror_readings_use_the_measured_seed_clustered_design_effect() {
     assert!((g.seat.slot_a.design_effect - (1.0 + 99.0 * 0.17)).abs() < 1e-9);
     // K1/K3 readings keep F-031's ICC.
     let g = gate(&balanced(&["x", "y"], 600));
-    assert!((g.termination.timeout_rate.design_effect - 1.0 - 0.17 * (4800.0 / 1800.0 - 1.0)).abs() < 1e-9);
+    assert!(
+        (g.termination.timeout_rate.design_effect - 1.0 - 0.17 * (4800.0 / 1800.0 - 1.0)).abs()
+            < 1e-9
+    );
 }
 
 #[test]
@@ -151,7 +164,11 @@ fn status_combines_fail_first_and_pass_only_when_everything_passes() {
     assert_eq!(Status::all([Pass, Pass]), Pass);
     assert_eq!(Status::all([Pass, Undetermined]), Undetermined);
     assert_eq!(Status::all([Undetermined, Fail, Pass]), Fail);
-    assert_eq!(Status::all([]), Undetermined, "nothing measured is not a pass");
+    assert_eq!(
+        Status::all([]),
+        Undetermined,
+        "nothing measured is not a pass"
+    );
     assert_eq!(Pass.label(), "PASS");
     assert_eq!(Fail.label(), "FAIL");
     assert_eq!(Undetermined.label(), "undetermined");
@@ -162,13 +179,29 @@ fn a_reading_is_judged_by_its_interval_not_its_point() {
     // 30 of 100 independent: interval ~[0.22, 0.40].
     let at_most = |t| Reading::proportion(60, 100, 100, 0.0, Rule::AtMost(t)).status;
     assert_eq!(at_most(0.5), Status::Pass);
-    assert_eq!(at_most(0.35), Status::Undetermined, "the point is below, the interval is not");
+    assert_eq!(
+        at_most(0.35),
+        Status::Undetermined,
+        "the point is below, the interval is not"
+    );
     assert_eq!(at_most(0.2), Status::Fail);
     let at_least = |t| Reading::proportion(60, 100, 100, 0.0, Rule::AtLeast(t)).status;
     assert_eq!(at_least(0.2), Status::Pass);
     assert_eq!(at_least(0.35), Status::Undetermined);
     assert_eq!(at_least(0.5), Status::Fail);
-    let within = |c, t| Reading::proportion(60, 100, 100, 0.0, Rule::Within { centre: c, tolerance: t }).status;
+    let within = |c, t| {
+        Reading::proportion(
+            60,
+            100,
+            100,
+            0.0,
+            Rule::Within {
+                centre: c,
+                tolerance: t,
+            },
+        )
+        .status
+    };
     assert_eq!(within(0.3, 0.15), Status::Pass);
     assert_eq!(within(0.3, 0.05), Status::Undetermined);
     assert_eq!(within(0.5, 0.05), Status::Fail);
@@ -179,7 +212,10 @@ fn no_data_is_undetermined_under_every_rule() {
     for rule in [
         Rule::AtMost(0.65),
         Rule::AtLeast(0.5),
-        Rule::Within { centre: 0.5, tolerance: 0.05 },
+        Rule::Within {
+            centre: 0.5,
+            tolerance: 0.05,
+        },
     ] {
         let r = Reading::proportion(0, 0, 0, 0.17, rule);
         assert_eq!(r.value, None);
@@ -191,8 +227,14 @@ fn no_data_is_undetermined_under_every_rule() {
 #[test]
 fn the_design_effect_is_one_plus_m_minus_one_rho() {
     assert_eq!(design_effect(100, 100, 0.17), 1.0, "one match a cluster");
-    assert!((design_effect(200, 100, 0.17) - 1.17).abs() < 1e-12, "a mirror seed");
-    assert!((design_effect(400, 100, 0.17) - 1.51).abs() < 1e-12, "F-031's pair seed");
+    assert!(
+        (design_effect(200, 100, 0.17) - 1.17).abs() < 1e-12,
+        "a mirror seed"
+    );
+    assert!(
+        (design_effect(400, 100, 0.17) - 1.51).abs() < 1e-12,
+        "F-031's pair seed"
+    );
     assert_eq!(design_effect(400, 100, 0.0), 1.0);
     assert_eq!(design_effect(0, 0, 0.17), 1.0);
 }
@@ -216,15 +258,24 @@ fn a_row_mean_over_one_cell_contains_that_cells_wilson_and_normal_intervals() {
         .chain((7..10).map(|s| rec("x", "y", s, Orientation::Normal, B, SIX_MIN)))
         .collect();
     let m = WinMatrix::of(&recs);
-    let spec = GateSpec { icc: 0.0, ..GateSpec::default() };
+    let spec = GateSpec {
+        icc: 0.0,
+        ..GateSpec::default()
+    };
     let g = KillGate::of(&shipped(), &recs, &spec);
     assert_eq!(g.strength.rows[0].strategy, "x");
     assert_eq!(g.strength.rows[0].strength.value, Some(0.7));
     let (lo, hi) = g.strength.rows[0].strength.interval.unwrap();
     let (wlo, whi) = m.cell(0, 1).unwrap().wilson_interval().unwrap();
     let sd = (0.7f64 * 0.3 / 10.0).sqrt();
-    assert!(lo <= wlo && hi >= whi, "k = 1: contains the cell's Wilson interval");
-    assert!(lo <= 0.7 - Z * sd + 1e-12 && hi >= 0.7 + Z * sd - 1e-12, "and its normal interval");
+    assert!(
+        lo <= wlo && hi >= whi,
+        "k = 1: contains the cell's Wilson interval"
+    );
+    assert!(
+        lo <= 0.7 - Z * sd + 1e-12 && hi >= 0.7 + Z * sd - 1e-12,
+        "and its normal interval"
+    );
 }
 
 const Z: f64 = 1.959_963_985_3;
@@ -247,13 +298,26 @@ fn the_row_mean_interval_contains_the_normal_interval_on_the_true_variance() {
     for cells in configs {
         let k = cells.len() as f64;
         let mean = cells.iter().map(|c| c.0).sum::<f64>() / k;
-        let sd = (cells.iter().map(|&(p, n)| p * (1.0 - p) / n as f64).sum::<f64>()).sqrt() / k;
+        let sd = (cells
+            .iter()
+            .map(|&(p, n)| p * (1.0 - p) / n as f64)
+            .sum::<f64>())
+        .sqrt()
+            / k;
         let ns: Vec<u32> = cells.iter().map(|c| c.1).collect();
         let r = Reading::mean_of(Some(mean), &ns, &ns, 0.0, Rule::AtMost(0.65));
         let (lo, hi) = r.interval.unwrap();
         assert!(lo <= mean && mean <= hi, "{cells:?}");
-        assert!(lo <= (mean - Z * sd).max(0.0) + 1e-9, "{cells:?}: lo {lo} vs normal {}", mean - Z * sd);
-        assert!(hi >= (mean + Z * sd).min(1.0) - 1e-9, "{cells:?}: hi {hi} vs normal {}", mean + Z * sd);
+        assert!(
+            lo <= (mean - Z * sd).max(0.0) + 1e-9,
+            "{cells:?}: lo {lo} vs normal {}",
+            mean - Z * sd
+        );
+        assert!(
+            hi >= (mean + Z * sd).min(1.0) - 1e-9,
+            "{cells:?}: hi {hi} vs normal {}",
+            mean + Z * sd
+        );
     }
     let all_won = Reading::mean_of(Some(1.0), &[10, 1000], &[10, 1000], 0.0, Rule::AtMost(0.65));
     let (lo, hi) = all_won.interval.unwrap();
@@ -286,7 +350,11 @@ fn the_same_fair_batch_at_two_seeds_decides_nothing() {
     let g = gate(&balanced(&["x", "y", "z"], 2));
     assert_eq!(g.strength.status, Status::Undetermined);
     assert_eq!(g.seat.status, Status::Undetermined);
-    assert_ne!(g.status, Status::Pass, "a small batch is never a clean bill");
+    assert_ne!(
+        g.status,
+        Status::Pass,
+        "a small batch is never a clean bill"
+    );
 }
 
 #[test]
@@ -295,7 +363,11 @@ fn a_slot_biased_mirror_set_fails_seat_bias() {
     for seed in 0..600 {
         // Slot A wins 7 of every 10 mirrors; the base is split evenly.
         for k in 0..10u64 {
-            let o = if k.is_multiple_of(2) { Orientation::Normal } else { Orientation::Swapped };
+            let o = if k.is_multiple_of(2) {
+                Orientation::Normal
+            } else {
+                Orientation::Swapped
+            };
             let r = if k < 7 { A } else { B };
             recs.push(rec("x", "x", seed * 10 + k, o, r, SIX_MIN));
         }
@@ -373,7 +445,11 @@ fn an_open_mirror_row_holds_k2_undetermined_until_it_resolves_fair() {
     assert_eq!(g.seat.mirrors[2].left_spawn.value, Some(0.5));
     assert_eq!(g.seat.slot_a.status, Status::Pass);
     assert_eq!(g.seat.left_spawn.status, Status::Pass);
-    assert_eq!(g.seat.status, Status::Undetermined, "an open mirror never lets K2 PASS");
+    assert_eq!(
+        g.seat.status,
+        Status::Undetermined,
+        "an open mirror never lets K2 PASS"
+    );
     assert_ne!(g.status, Status::Pass);
 
     // Measure `z` fair over 600 more seeds: every mirror now resolves PASS.
@@ -381,7 +457,11 @@ fn an_open_mirror_row_holds_k2_undetermined_until_it_resolves_fair() {
         recs.extend(fair_mirror("z", seed));
     }
     let g = gate(&recs);
-    assert!(g.seat.mirrors.iter().all(|m| m.slot_a.status == Status::Pass && m.left_spawn.status == Status::Pass));
+    assert!(g
+        .seat
+        .mirrors
+        .iter()
+        .all(|m| m.slot_a.status == Status::Pass && m.left_spawn.status == Status::Pass));
     assert_eq!(g.seat.status, Status::Pass);
 }
 
@@ -396,8 +476,19 @@ fn a_resolved_per_mirror_fail_fails_seat_bias_even_when_the_pool_is_fair() {
             by_slot.push(rec("x", "x", seed, o, A, SIX_MIN));
             by_slot.push(rec("y", "y", seed, o, B, SIX_MIN));
             // x: the left base always wins; y: the right base always wins.
-            by_base.push(rec("x", "x", seed, o, MatchResult::Decided(o.left()), SIX_MIN));
-            let right = if o.left() == Faction::A { Faction::B } else { Faction::A };
+            by_base.push(rec(
+                "x",
+                "x",
+                seed,
+                o,
+                MatchResult::Decided(o.left()),
+                SIX_MIN,
+            ));
+            let right = if o.left() == Faction::A {
+                Faction::B
+            } else {
+                Faction::A
+            };
             by_base.push(rec("y", "y", seed, o, MatchResult::Decided(right), SIX_MIN));
         }
     }
@@ -431,7 +522,11 @@ fn a_strictly_dominant_and_a_strictly_losing_strategy_are_named() {
     let g = gate(&recs);
     assert_eq!(g.strength.dominant, ["top"]);
     assert_eq!(g.strength.losing, ["low"]);
-    assert_eq!(g.strength.failing, ["top"], "100% over 240 matches clears 65%");
+    assert_eq!(
+        g.strength.failing,
+        ["top"],
+        "100% over 240 matches clears 65%"
+    );
     assert_eq!(g.strength.status, Status::Fail);
     assert_eq!(g.status, Status::Fail);
     let mid = &g.strength.rows[1];
@@ -461,17 +556,32 @@ fn a_row_resolved_below_the_mirror_bar_is_named_losing_but_not_gated() {
         }
     }
     let g = gate(&recs);
-    let low = g.strength.rows.iter().find(|r| r.strategy == "low").unwrap();
+    let low = g
+        .strength
+        .rows
+        .iter()
+        .find(|r| r.strategy == "low")
+        .unwrap();
     assert!((low.strength.value.unwrap() - 0.3).abs() < 1e-12);
     assert!(low.strength.interval.unwrap().1 < 0.35);
     assert!(low.losing);
     assert_eq!(g.strength.losing, ["low"]);
     assert!(g.strength.dominant.is_empty() && g.strength.failing.is_empty());
-    assert_eq!(g.strength.status, Status::Pass, "a weak row is named, not gated");
+    assert_eq!(
+        g.strength.status,
+        Status::Pass,
+        "a weak row is named, not gated"
+    );
 
-    let loose = GateSpec { max_strength: 0.75, ..GateSpec::default() };
+    let loose = GateSpec {
+        max_strength: 0.75,
+        ..GateSpec::default()
+    };
     let g = KillGate::of(&shipped(), &recs, &loose);
-    assert!(g.strength.losing.is_empty(), "30% is not resolved below 1 - 0.75");
+    assert!(
+        g.strength.losing.is_empty(),
+        "30% is not resolved below 1 - 0.75"
+    );
 }
 
 #[test]
@@ -484,7 +594,10 @@ fn a_strong_row_at_a_small_sample_is_undetermined_not_failing() {
     assert_eq!(g.strength.rows[0].strength.value, Some(0.75));
     assert_eq!(g.strength.rows[0].strength.status, Status::Undetermined);
     assert!(g.strength.failing.is_empty());
-    assert!(g.strength.dominant.is_empty(), "6 of 8 is not resolved above 50%");
+    assert!(
+        g.strength.dominant.is_empty(),
+        "6 of 8 is not resolved above 50%"
+    );
 }
 
 #[test]
@@ -497,13 +610,18 @@ fn an_opponent_with_nothing_decided_blocks_dominant() {
     let g = gate(&recs);
     assert_eq!(g.strength.rows[0].opponents, 2);
     assert_eq!(g.strength.rows[0].cells, 1);
-    assert!(g.strength.dominant.is_empty(), "never beat `low` — not dominant");
+    assert!(
+        g.strength.dominant.is_empty(),
+        "never beat `low` — not dominant"
+    );
     assert_eq!(g.strength.failing, ["top"]);
 }
 
 #[test]
 fn a_mass_probe_row_is_labelled_with_its_unit() {
-    let recs: Vec<MatchRecord> = (0..2).flat_map(|s| pair_seed("mass_ripper", "rush", s, 2)).collect();
+    let recs: Vec<MatchRecord> = (0..2)
+        .flat_map(|s| pair_seed("mass_ripper", "rush", s, 2))
+        .collect();
     let g = gate(&recs);
     assert_eq!(g.strength.rows[0].unit.as_deref(), Some("ripper"));
     assert_eq!(g.strength.rows[1].unit, None, "rush is not a mass probe");
@@ -524,10 +642,18 @@ fn an_all_timeout_run_is_flagged_and_fails_never_balanced() {
     let g = gate(&recs);
     assert!(g.termination.all_timeout);
     assert_eq!(g.termination.timeout_rate.value, Some(1.0));
-    assert_eq!(g.termination.beyond.value, Some(1.0), "a timeout did not terminate in target");
+    assert_eq!(
+        g.termination.beyond.value,
+        Some(1.0),
+        "a timeout did not terminate in target"
+    );
     assert_eq!(g.termination.beyond.status, Status::Fail);
     assert_eq!(g.termination.status, Status::Fail);
-    assert_eq!(g.termination.band_share.status, Status::Undetermined, "nothing decided");
+    assert_eq!(
+        g.termination.band_share.status,
+        Status::Undetermined,
+        "nothing decided"
+    );
     assert_eq!(g.termination.decided_median, None);
     assert_eq!(g.strength.status, Status::Undetermined);
     assert_eq!(g.seat.status, Status::Undetermined);
@@ -558,7 +684,11 @@ fn short_matches_fail_the_band_and_capped_ones_fail_the_timeout_rate() {
     assert!((g.termination.timeout_rate.value.unwrap() - 0.2).abs() < 1e-3);
     assert_eq!(g.termination.timeout_rate.status, Status::Fail);
     assert_eq!(g.termination.band_share.status, Status::Pass);
-    assert_eq!(g.termination.beyond.status, Status::Pass, "20% past the band is not the median");
+    assert_eq!(
+        g.termination.beyond.status,
+        Status::Pass,
+        "20% past the band is not the median"
+    );
     assert_eq!(g.termination.status, Status::Fail);
 
     let mut long = balanced(&["x", "y"], 600);
@@ -594,7 +724,11 @@ fn the_band_share_gates_k3_even_when_the_median_is_in_band() {
     assert_eq!(g.termination.band_share.status, Status::Fail);
     assert_eq!(g.termination.timeout_rate.status, Status::Pass);
     assert_eq!(g.termination.decided_median, Some(6 * 60 * SIM_HZ));
-    assert_eq!(g.termination.status, Status::Fail, "40% in band is not 'terminate in target'");
+    assert_eq!(
+        g.termination.status,
+        Status::Fail,
+        "40% in band is not 'terminate in target'"
+    );
     assert_eq!(g.status, Status::Fail);
 }
 
@@ -616,7 +750,12 @@ fn the_gate_is_a_pure_function_of_the_record_set() {
     // Row order follows first appearance; every reading is order-free.
     assert_eq!(a.status, b.status);
     for row in &a.strength.rows {
-        let other = b.strength.rows.iter().find(|r| r.strategy == row.strategy).unwrap();
+        let other = b
+            .strength
+            .rows
+            .iter()
+            .find(|r| r.strategy == row.strategy)
+            .unwrap();
         assert_eq!(row, other);
     }
     assert_eq!(a.seat.slot_a, b.seat.slot_a);
@@ -651,11 +790,18 @@ fn play(content: &Content, pairs: &[(&str, &str)], seeds: &[u64]) -> Vec<MatchRe
 #[test]
 fn an_injected_imbalance_fails_the_gate_and_names_the_strategy() {
     let mut content = shipped();
-    let ripper = content.units.iter_mut().find(|u| u.id == "ripper").expect("ripper ships");
+    let ripper = content
+        .units
+        .iter_mut()
+        .find(|u| u.id == "ripper")
+        .expect("ripper ships");
     ripper.offense *= 4;
     let recs = play(
         &content,
-        &[("mass_ripper", "mass_sentinel"), ("mass_ripper", "mass_bulwark")],
+        &[
+            ("mass_ripper", "mass_sentinel"),
+            ("mass_ripper", "mass_bulwark"),
+        ],
         &[0, 1],
     );
     let g = KillGate::of(&content, &recs, &GateSpec::default());
@@ -673,7 +819,10 @@ fn an_injected_imbalance_fails_the_gate_and_names_the_strategy() {
     let base = shipped();
     let recs = play(
         &base,
-        &[("mass_ripper", "mass_sentinel"), ("mass_ripper", "mass_bulwark")],
+        &[
+            ("mass_ripper", "mass_sentinel"),
+            ("mass_ripper", "mass_bulwark"),
+        ],
         &[0, 1],
     );
     let g = KillGate::of(&base, &recs, &GateSpec::default());
@@ -747,16 +896,28 @@ fn the_shipped_reading_on_the_pentagon_batch() {
     // [44.6, 53.1], undetermined (F-049).
     assert_eq!(g.termination.decided_median, Some(29_520), "8:12");
     assert_eq!(g.termination.timeout_rate.value, Some(0.08));
-    assert_eq!(g.termination.timeout_rate.status, Status::Undetermined, "8 of 100 cannot certify <5% or >5%");
+    assert_eq!(
+        g.termination.timeout_rate.status,
+        Status::Undetermined,
+        "8 of 100 cannot certify <5% or >5%"
+    );
     assert_eq!(g.termination.band_share.value, Some(0.32608695652173914));
-    assert_eq!(g.termination.band_share.status, Status::Fail, "33% of decided in band, resolved below 50%");
+    assert_eq!(
+        g.termination.band_share.status,
+        Status::Fail,
+        "33% of decided in band, resolved below 50%"
+    );
     // Reported context: 11% end before 5:00 and 59% after 8:00 (F-046: 25% /
     // 34%; F-041: 10% / 36%; B3: 34% / 30%).
     assert_eq!(g.termination.below.value, Some(0.11));
     assert_eq!(g.termination.below.status, Status::Pass);
     assert_eq!(g.termination.beyond.value, Some(0.59));
     assert_eq!(g.termination.beyond.status, Status::Undetermined);
-    assert_eq!(g.termination.status, Status::Fail, "K3's band share is resolved failing");
+    assert_eq!(
+        g.termination.status,
+        Status::Fail,
+        "K3's band share is resolved failing"
+    );
 
     // The whole gate: FAIL on K3's band share, as at B3 (F-046 and F-041:
     // nothing resolved failing, all undetermined at this size).

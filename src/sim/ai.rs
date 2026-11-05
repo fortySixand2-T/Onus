@@ -139,6 +139,11 @@ pub struct AiCommander {
     keepers: Vec<Entity>,
     /// Three-resource (C3): its well guard detachment, held likewise.
     guards: Vec<Entity>,
+    /// Three-resource (C3, F-083): guards recruited since the last attack
+    /// wave went out (or since the start). At most `ai.guards` per wave, so a
+    /// fallen guard is replaced once per wave, never body by body out of the
+    /// army the wave is waiting for.
+    guard_recruits: u32,
 }
 
 impl AiCommander {
@@ -185,6 +190,7 @@ impl AiCommander {
             peak_army: 0,
             keepers: Vec::new(),
             guards: Vec::new(),
+            guard_recruits: 0,
         }
     }
 
@@ -385,15 +391,17 @@ pub fn ai_commanders(
     // ---- snapshot, in a stable order ---------------------------------------
     let mut unit_rows: Vec<UnitRow> = units
         .iter()
-        .map(|(entity, pos, def, faction, job, general, to, attack_to)| UnitRow {
-            entity,
-            pos: pos.0,
-            def: def.0,
-            faction: *faction,
-            on_a_job: job.is_some(),
-            general,
-            dest: attack_to.map(|d| d.0).or(to.map(|t| t.0)),
-        })
+        .map(
+            |(entity, pos, def, faction, job, general, to, attack_to)| UnitRow {
+                entity,
+                pos: pos.0,
+                def: def.0,
+                faction: *faction,
+                on_a_job: job.is_some(),
+                general,
+                dest: attack_to.map(|d| d.0).or(to.map(|t| t.0)),
+            },
+        )
         .collect();
     unit_rows.sort_unstable_by_key(|r| r.entity.to_bits());
 
@@ -508,8 +516,7 @@ fn think(
             let enemy_hq = buildings
                 .iter()
                 .find(|b| {
-                    b.faction != me
-                        && content.buildings.get(b.def).is_some_and(|def| def.victory)
+                    b.faction != me && content.buildings.get(b.def).is_some_and(|def| def.victory)
                 })
                 .map(|b| b.pos);
             Posts::assign(c, content, t, w, units, hq_pos, enemy_hq)
@@ -542,15 +549,31 @@ fn think(
         if c.peak_army > 0
             && u64::from(lost) * 1000 >= u64::from(c.peak_army) * u64::from(ai.retreat_milli())
         {
-            battle_order(queue, Order::Retreat { faction: me }, BattleAiAction::Retreat);
+            battle_order(
+                queue,
+                Order::Retreat { faction: me },
+                BattleAiAction::Retreat,
+            );
             return;
         }
     }
 
     if let Some((hq_entity, hq_pos, hq_queued)) = hq {
         economy(
-            c, tick, content, defs, stock, units, buildings, nodes, &posts.keepers, hq_entity,
-            hq_pos, hq_queued, queue, journal,
+            c,
+            tick,
+            content,
+            defs,
+            stock,
+            units,
+            buildings,
+            nodes,
+            &posts.keepers,
+            hq_entity,
+            hq_pos,
+            hq_queued,
+            queue,
+            journal,
         );
         posts.order(tick, me, units, queue, journal);
     } else if battle.is_none() {
@@ -626,6 +649,7 @@ fn think(
                     c.rng.range_f32(-spread, spread),
                 );
             c.next_attack_tick = tick.saturating_add(script.attack_interval_ticks);
+            c.guard_recruits = 0;
             let count = force.len() as u32;
             // The wave's order is content (`wave_order`, B4, F-048). The
             // journal entry is the same `Attack` either way: the order kind is
@@ -636,7 +660,12 @@ fn think(
                 WaveOrder::Move => Order::MoveTo { units: force, dest },
                 WaveOrder::AttackMove => Order::AttackMove { units: force, dest },
             };
-            order(queue, journal, wave, AiAction::Attack { dest, force: count });
+            order(
+                queue,
+                journal,
+                wave,
+                AiAction::Attack { dest, force: count },
+            );
         }
     }
 }
@@ -712,7 +741,9 @@ fn economy(
         .filter(|u| !keepers.contains(&u.entity))
         .count() as u32;
     if let Some(worker) = hq_worker(content, hq_entity, buildings) {
-        let (bank, cost) = defs.unit_price(me, worker).unwrap_or((Bank::Alloy, u32::MAX));
+        let (bank, cost) = defs
+            .unit_price(me, worker)
+            .unwrap_or((Bank::Alloy, u32::MAX));
         let pending = hq_queued as u32;
         if workers_now.saturating_add(pending) < script.worker_target
             && hq_queued == 0
@@ -806,10 +837,7 @@ fn economy(
                     building: def,
                     pos,
                 },
-                AiAction::PlaceBarracks {
-                    building: def,
-                    pos,
-                },
+                AiAction::PlaceBarracks { building: def, pos },
             );
         } else if RESERVING && tick >= opening.at_tick && reserve.is_none() {
             reserve = Some(cost);
@@ -964,9 +992,25 @@ impl Posts {
         let keepers = detail(&mut c.keepers, t.ai.keepers, units, |u| {
             u.faction == me && content.units.get(u.def).is_some_and(|d| d.gathers)
         });
-        let guards = detail(&mut c.guards, t.ai.guards, units, |u| {
+        // A fallen guard is replaced only after the next wave goes out (F-083).
+        // Refilling at once starved the wave in a mirror: every new body walked
+        // alone to the middle well and traded 1-for-1 with the enemy's
+        // replacement, so neither army reached `attack_at_army` and the match
+        // ran to the cap.
+        let fighter = |u: &UnitRow| {
             u.faction == me && !u.general && content.units.get(u.def).is_some_and(|d| d.offense > 0)
-        });
+        };
+        c.guards
+            .retain(|e| units.iter().any(|u| u.entity == *e && fighter(u)));
+        let standing = c.guards.len() as u32;
+        let room = t.ai.guards.saturating_sub(c.guard_recruits);
+        let guards = detail(
+            &mut c.guards,
+            t.ai.guards.min(standing + room),
+            units,
+            fighter,
+        );
+        c.guard_recruits += guards.len() as u32 - standing;
         Posts {
             home: Some(home),
             guard_well,
@@ -995,7 +1039,13 @@ impl Posts {
         if let Some((well, pos)) = self.home {
             for &k in &self.keepers {
                 if row(k).is_some_and(|u| self.needs(u, pos)) {
-                    queue.0.push_back(Order::MoveTo { units: vec![k], dest: pos }.issued_by(me));
+                    queue.0.push_back(
+                        Order::MoveTo {
+                            units: vec![k],
+                            dest: pos,
+                        }
+                        .issued_by(me),
+                    );
                     journal.0.push((tick, me, AiAction::Keep { unit: k, well }));
                 }
             }
@@ -1178,12 +1228,8 @@ mod tests {
         // ...and so does a matchup, however it was spelled.
         let c = content();
         let d = c.default_strategy.as_str();
-        let cs = AiCommanders::matchup(
-            &c,
-            1,
-            &[(Faction::A, d), (Faction::A, d), (Faction::B, d)],
-        )
-        .unwrap();
+        let cs = AiCommanders::matchup(&c, 1, &[(Faction::A, d), (Faction::A, d), (Faction::B, d)])
+            .unwrap();
         assert_eq!(cs.commanders().len(), 2, "a faction was given two brains");
     }
 }

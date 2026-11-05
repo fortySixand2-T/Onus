@@ -19,9 +19,7 @@ use onus::sim::content::Content;
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use onus::sim::replay::{CommandFate, CommandLog, MatchLog, StateHashLog};
 use onus::sim::spatial::Faction;
-use onus::sim::{
-    CommandQueue, CommandTick, MatchState, Order, Position, RateReport, TickGate,
-};
+use onus::sim::{CommandQueue, CommandTick, MatchState, Order, Position, RateReport, TickGate};
 
 // ---- harness (mine) ---------------------------------------------------------
 
@@ -42,8 +40,7 @@ struct Scratch(PathBuf);
 
 impl Scratch {
     fn new(name: &str) -> Self {
-        let d = std::env::temp_dir()
-            .join(format!("onus-critic-m6-{name}-{}", std::process::id()));
+        let d = std::env::temp_dir().join(format!("onus-critic-m6-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&d);
         std::fs::create_dir_all(&d).expect("scratch");
         Scratch(d)
@@ -102,9 +99,14 @@ fn run_two_peers(
 ) -> (Outcome, Outcome) {
     let exe = env!("CARGO_BIN_EXE_netpeer");
     let mut cmd = OsCommand::new(exe);
-    cmd.args(["host", &ticks.to_string(), &host_seed.to_string(), "127.0.0.1:0"])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+    cmd.args([
+        "host",
+        &ticks.to_string(),
+        &host_seed.to_string(),
+        "127.0.0.1:0",
+    ])
+    .stdout(Stdio::piped())
+    .stderr(Stdio::null());
     if let Some(d) = dump {
         cmd.env("ONUS_NET_DUMP", d);
     }
@@ -118,7 +120,10 @@ fn run_two_peers(
         .strip_prefix("PORT ")
         .and_then(|p| p.parse().ok())
         .unwrap_or_else(|| panic!("no port announced: {line:?}"));
-    assert!(port >= 1024, "the host did not bind an ephemeral port: {port}");
+    assert!(
+        port >= 1024,
+        "the host did not bind an ephemeral port: {port}"
+    );
 
     let mut ccmd = OsCommand::new(exe);
     ccmd.args([
@@ -212,7 +217,10 @@ fn two_processes_that_disagree_about_the_seed_refuse_to_play() {
             "{who} played the whole match despite refusing the handshake ({} ticks)",
             o.tick
         );
-        assert_eq!(o.agreed, 0, "{who} compared hashes with a peer it had refused");
+        assert_eq!(
+            o.agreed, 0,
+            "{who} compared hashes with a peer it had refused"
+        );
     }
 }
 
@@ -228,7 +236,10 @@ fn both_processes_record_the_identical_command_stream() {
     let (host, client) = run_two_peers(TICKS, 7, 7, Some(dump.path()));
     assert_eq!(host.failure, "none");
     assert_eq!(client.failure, "none");
-    assert_eq!(host.hash, client.hash, "the two processes ended in different worlds");
+    assert_eq!(
+        host.hash, client.hash,
+        "the two processes ended in different worlds"
+    );
 
     let h = std::fs::read_to_string(dump.path().join("host.commands"))
         .expect("the host wrote no command dump");
@@ -344,7 +355,11 @@ fn every_handshake_check_refuses_on_its_own() {
                         .join(format!("onus-critic-m6-hs-{}", std::process::id()));
                     let _ = std::fs::create_dir_all(&d);
                     let t = std::fs::read_to_string(data_dir().join("units.ron")).unwrap();
-                    std::fs::write(d.join("units.ron"), t.replacen("mvp_alloy_cost: 10,", "mvp_alloy_cost: 12,", 1)).unwrap();
+                    std::fs::write(
+                        d.join("units.ron"),
+                        t.replacen("mvp_alloy_cost: 10,", "mvp_alloy_cost: 12,", 1),
+                    )
+                    .unwrap();
                     // B1: the content set is three files.
                     for file in ["resources.ron", "strategies.ron"] {
                         std::fs::copy(data_dir().join(file), d.join(file)).unwrap();
@@ -401,7 +416,10 @@ fn every_handshake_check_refuses_on_its_own() {
             text.contains(expect),
             "the {name} mismatch was refused, but not for the {name}: {text}"
         );
-        assert!(link.peer().is_none(), "the {name} mismatch still set a peer");
+        assert!(
+            link.peer().is_none(),
+            "the {name} mismatch still set a peer"
+        );
         // ...and nothing was played.
         assert_eq!(
             app.world().resource::<MatchState>().tick(),
@@ -425,9 +443,17 @@ fn the_handshake_compares_phase_ones_content_fingerprint() {
     );
     let fps: Vec<&str> = net
         .lines()
-        .filter(|l| l.split("//").next().unwrap_or("").contains("fn fingerprint"))
+        .filter(|l| {
+            l.split("//")
+                .next()
+                .unwrap_or("")
+                .contains("fn fingerprint")
+        })
         .collect();
-    assert!(fps.is_empty(), "`net.rs` defines its own fingerprint: {fps:?}");
+    assert!(
+        fps.is_empty(),
+        "`net.rs` defines its own fingerprint: {fps:?}"
+    );
     // The type on the wire is the sim's own.
     assert!(
         net.contains("use crate::sim::content::{Content, ContentFingerprint}"),
@@ -461,7 +487,13 @@ fn about_to_decide() -> (App, Entity) {
         };
         hqs.push(
             app.world_mut()
-                .spawn((Position(Vec2::new(x, 0.0)), Building { def }, f, ProductionQueue::default(), hp))
+                .spawn((
+                    Position(Vec2::new(x, 0.0)),
+                    Building { def },
+                    f,
+                    ProductionQueue::default(),
+                    hp,
+                ))
                 .id(),
         );
     }
@@ -487,7 +519,11 @@ fn a_closed_gate_stops_every_part_of_the_tick() {
     for _ in 0..50 {
         step(&mut app);
     }
-    assert_eq!(app.world().resource::<MatchState>().tick(), before_tick, "the tick counter advanced");
+    assert_eq!(
+        app.world().resource::<MatchState>().tick(),
+        before_tick,
+        "the tick counter advanced"
+    );
     assert_eq!(
         app.world().resource::<StateHashLog>().0.len(),
         before_hashes,
@@ -508,7 +544,10 @@ fn a_closed_gate_stops_every_part_of_the_tick() {
     app.world_mut().resource_mut::<TickGate>().open();
     step(&mut app);
     assert_eq!(app.world().resource::<MatchState>().tick(), before_tick + 1);
-    assert_eq!(app.world().resource::<StateHashLog>().0.len(), before_hashes + 1);
+    assert_eq!(
+        app.world().resource::<StateHashLog>().0.len(),
+        before_hashes + 1
+    );
 }
 
 /// **A stall must not be able to decide a match, or to change what it decides.**
@@ -566,7 +605,10 @@ fn the_gate_does_not_disturb_a_decided_match() {
     }
     let h = app.world().resource::<StateHashLog>().0.clone();
     let tail = &h[h.len() - 8..];
-    assert!(tail.iter().all(|x| *x == tail[0]), "the frozen tail moved: {tail:?}");
+    assert!(
+        tail.iter().all(|x| *x == tail[0]),
+        "the frozen tail moved: {tail:?}"
+    );
     let frozen = onus::sim::state_hash(app.world_mut());
     app.world_mut().resource_mut::<TickGate>().close();
     for _ in 0..20 {
@@ -621,16 +663,26 @@ fn the_free_opening_ends_exactly_at_the_turn_delay() {
     for _ in 0..60 {
         step(&mut app);
     }
-    assert!(app.world().resource::<NetLink>().failure().is_none(), "the link failed early");
+    assert!(
+        app.world().resource::<NetLink>().failure().is_none(),
+        "the link failed early"
+    );
     assert_eq!(
         app.world().resource::<MatchState>().tick(),
         DELAY,
         "the free opening is not exactly `turn_delay` ticks long"
     );
-    assert!(!app.world().resource::<TickGate>().is_open(), "the gate stayed open past the opening");
+    assert!(
+        !app.world().resource::<TickGate>().is_open(),
+        "the gate stayed open past the opening"
+    );
 
     // The peer's turn for tick DELAY arrives; exactly that tick becomes runnable.
-    raw.write_all(&wire(&Frame::Turn { tick: DELAY, commands: vec![] })).expect("turn");
+    raw.write_all(&wire(&Frame::Turn {
+        tick: DELAY,
+        commands: vec![],
+    }))
+    .expect("turn");
     raw.flush().ok();
     for _ in 0..20 {
         step(&mut app);
@@ -665,7 +717,11 @@ fn a_stalled_peer_sends_one_turn_per_tick_and_no_more() {
         .insert_resource(Stockpiles::starting(alloy))
         .insert_resource(CommandLog::new(7));
     onus::add_sim_systems(&mut app, Update);
-    let cfg = NetConfig { turn_delay_ticks: 2, hash_interval_ticks: 5, stall_timeout_secs: 600.0 };
+    let cfg = NetConfig {
+        turn_delay_ticks: 2,
+        hash_interval_ticks: 5,
+        stall_timeout_secs: 600.0,
+    };
     onus::net::add_net_link(
         &mut app,
         Update,
@@ -708,8 +764,15 @@ fn a_stalled_peer_sends_one_turn_per_tick_and_no_more() {
             *turns.entry(tick).or_default() += 1;
         }
     }
-    assert!(!turns.is_empty(), "the peer sent no turns at all, so nothing is tested");
-    let doubled: Vec<(u32, u32)> = turns.iter().filter(|(_, n)| **n > 1).map(|(t, n)| (*t, *n)).collect();
+    assert!(
+        !turns.is_empty(),
+        "the peer sent no turns at all, so nothing is tested"
+    );
+    let doubled: Vec<(u32, u32)> = turns
+        .iter()
+        .filter(|(_, n)| **n > 1)
+        .map(|(t, n)| (*t, *n))
+        .collect();
     assert!(
         doubled.is_empty(),
         "a stalled peer sent more than one turn for the same applying tick: {doubled:?}"
@@ -740,9 +803,19 @@ fn nothing_under_src_sim_names_the_network_or_a_clock() {
                     None => line,
                 };
                 for banned in [
-                    "TcpStream", "TcpListener", "SocketAddr", "crate::net", "NetLink",
-                    "NetConfig", "net::Frame", "WireCommand", "Time<Real>", "SystemTime",
-                    "Instant", "UNIX_EPOCH", "replay_io",
+                    "TcpStream",
+                    "TcpListener",
+                    "SocketAddr",
+                    "crate::net",
+                    "NetLink",
+                    "NetConfig",
+                    "net::Frame",
+                    "WireCommand",
+                    "Time<Real>",
+                    "SystemTime",
+                    "Instant",
+                    "UNIX_EPOCH",
+                    "replay_io",
                 ] {
                     if code.contains(banned) {
                         offenders.push(format!("{}:{}: {banned}", p.display(), i + 1));
@@ -768,7 +841,10 @@ fn nothing_under_src_sim_names_the_network_or_a_clock() {
 #[test]
 fn the_stall_timeout_is_read_only_by_the_driver() {
     let net = std::fs::read_to_string(src_dir().join("net.rs")).expect("net.rs");
-    assert!(net.contains("Time<Real>"), "the link no longer reads a real clock");
+    assert!(
+        net.contains("Time<Real>"),
+        "the link no longer reads a real clock"
+    );
     let mut sim_clock = Vec::new();
     let mut stack = vec![src_dir().join("sim")];
     while let Some(dir) = stack.pop() {
@@ -794,7 +870,10 @@ fn the_stall_timeout_is_read_only_by_the_driver() {
             }
         }
     }
-    assert!(sim_clock.is_empty(), "the sim reads a wall clock: {sim_clock:?}");
+    assert!(
+        sim_clock.is_empty(),
+        "the sim reads a wall clock: {sim_clock:?}"
+    );
     // ...and the only clock it does read is the fixed timestep.
     let mut stack = vec![src_dir().join("sim")];
     let mut clocks = Vec::new();
@@ -813,7 +892,10 @@ fn the_stall_timeout_is_read_only_by_the_driver() {
             }
         }
     }
-    assert!(clocks.is_empty(), "the sim reads a clock other than the fixed timestep: {clocks:?}");
+    assert!(
+        clocks.is_empty(),
+        "the sim reads a clock other than the fixed timestep: {clocks:?}"
+    );
 }
 
 // ---- 7. the prerequisite, reviewed on its own ------------------------------
@@ -837,7 +919,11 @@ fn only_the_sims_queue_module_constructs_a_stamped_schedule() {
             if !p.extension().is_some_and(|x| x == "rs") {
                 continue;
             }
-            let rel = p.strip_prefix(src_dir()).unwrap().to_string_lossy().to_string();
+            let rel = p
+                .strip_prefix(src_dir())
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
             let text = std::fs::read_to_string(&p).expect("read");
             for (i, line) in text.lines().enumerate() {
                 let code = line.split("//").next().unwrap_or("");
@@ -852,8 +938,7 @@ fn only_the_sims_queue_module_constructs_a_stamped_schedule() {
                     || code.contains("=>")
                     || code.contains("if let")
                     || code.contains("matches!");
-                if code.contains("CommandTick::Scheduled {") && !is_pattern && rel != "sim/mod.rs"
-                {
+                if code.contains("CommandTick::Scheduled {") && !is_pattern && rel != "sim/mod.rs" {
                     offenders.push(format!("{rel}:{}: {}", i + 1, code.trim()));
                 }
             }
@@ -893,15 +978,31 @@ fn discarding_live_orders_does_not_discard_held_ones() {
     // Held for a far tick, so the sim stamps it...
     app.world_mut().resource_mut::<CommandQueue>().0.push_at(
         400,
-        Order::MoveTo { units: vec![u], dest: Vec2::new(9.0, 9.0) }.issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![u],
+            dest: Vec2::new(9.0, 9.0),
+        }
+        .issued_by(Faction::A),
     );
     step(&mut app);
-    assert_eq!(app.world().resource::<CommandQueue>().0.len(), 1, "the held command vanished");
+    assert_eq!(
+        app.world().resource::<CommandQueue>().0.len(),
+        1,
+        "the held command vanished"
+    );
     // ...and a fresh one that has not been looked at.
     app.world_mut().resource_mut::<CommandQueue>().0.push_back(
-        Order::MoveTo { units: vec![u], dest: Vec2::new(1.0, 1.0) }.issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![u],
+            dest: Vec2::new(1.0, 1.0),
+        }
+        .issued_by(Faction::A),
     );
-    let dropped = app.world_mut().resource_mut::<CommandQueue>().0.discard_unseen();
+    let dropped = app
+        .world_mut()
+        .resource_mut::<CommandQueue>()
+        .0
+        .discard_unseen();
     assert_eq!(dropped, 1, "the wrong number of commands was discarded");
     assert_eq!(
         app.world().resource::<CommandQueue>().0.len(),
@@ -924,7 +1025,10 @@ fn discarding_live_orders_does_not_discard_held_ones() {
         held.len(),
         1,
         "the held command was lost — the log records {:?}",
-        log.commands.iter().map(|c| (c.tick, c.schedule, c.fate)).collect::<Vec<_>>()
+        log.commands
+            .iter()
+            .map(|c| (c.tick, c.schedule, c.fate))
+            .collect::<Vec<_>>()
     );
     assert_eq!(held[0].tick, 400, "it was applied on the wrong tick");
     assert_eq!(held[0].fate, CommandFate::Taken);
@@ -943,19 +1047,37 @@ fn a_log_naming_a_variant_this_build_does_not_know_is_refused() {
     log.content = content().fingerprint();
     log.commands.push(onus::sim::replay::LoggedCommand {
         tick: 3,
-        schedule: CommandTick::Scheduled { queued: 1, apply: 3 },
+        schedule: CommandTick::Scheduled {
+            queued: 1,
+            apply: 3,
+        },
         fate: CommandFate::Taken,
         attribution: onus::sim::Attribution::By(Faction::A),
-        order: onus::sim::replay::LoggedOrder::MoveTo { units: vec![0], dest: (1.0, 2.0) },
+        order: onus::sim::replay::LoggedOrder::MoveTo {
+            units: vec![0],
+            dest: (1.0, 2.0),
+        },
     });
     let text = log.to_ron().expect("a stamped log serializes");
-    assert!(log.validate().is_ok(), "the sim's own stamped log is invalid");
+    assert!(
+        log.validate().is_ok(),
+        "the sim's own stamped log is invalid"
+    );
     // Round trip, so the new variants really do survive the file.
-    assert_eq!(MatchLog::from_ron(&text).expect("round trip").commands, log.commands);
+    assert_eq!(
+        MatchLog::from_ron(&text).expect("round trip").commands,
+        log.commands
+    );
 
     for (what, doctored) in [
-        ("an unknown schedule", text.replace("Scheduled(", "Rescheduled(")),
-        ("an unknown fate", text.replace("fate: Taken", "fate: Abandoned")),
+        (
+            "an unknown schedule",
+            text.replace("Scheduled(", "Rescheduled("),
+        ),
+        (
+            "an unknown fate",
+            text.replace("fate: Taken", "fate: Abandoned"),
+        ),
     ] {
         assert!(
             MatchLog::from_ron(&doctored).is_err(),
@@ -978,28 +1100,76 @@ fn the_validator_kept_pace_with_the_new_schedule_and_fate() {
             schedule,
             fate,
             attribution: onus::sim::Attribution::By(Faction::A),
-            order: onus::sim::replay::LoggedOrder::MoveTo { units: vec![0], dest: (0.0, 0.0) },
+            order: onus::sim::replay::LoggedOrder::MoveTo {
+                units: vec![0],
+                dest: (0.0, 0.0),
+            },
         });
         log
     };
     for (t, s, f) in [
-        (9u32, CommandTick::Scheduled { queued: 3, apply: 9 }, CommandFate::Taken),
-        (9, CommandTick::Scheduled { queued: 3, apply: 20 }, CommandFate::Unplayed),
+        (
+            9u32,
+            CommandTick::Scheduled {
+                queued: 3,
+                apply: 9,
+            },
+            CommandFate::Taken,
+        ),
+        (
+            9,
+            CommandTick::Scheduled {
+                queued: 3,
+                apply: 20,
+            },
+            CommandFate::Unplayed,
+        ),
         (9, CommandTick::At(20), CommandFate::Unplayed),
     ] {
-        assert!(entry(t, s, f).validate().is_ok(), "the sim's own ({s:?}, {f:?}) is refused");
+        assert!(
+            entry(t, s, f).validate().is_ok(),
+            "the sim's own ({s:?}, {f:?}) is refused"
+        );
     }
     for (t, s, f) in [
         // Stamped but taken on a tick it was not held for.
-        (9u32, CommandTick::Scheduled { queued: 3, apply: 8 }, CommandFate::Taken),
+        (
+            9u32,
+            CommandTick::Scheduled {
+                queued: 3,
+                apply: 8,
+            },
+            CommandFate::Taken,
+        ),
         // Stamped as queued on the very tick it was taken: never held, so never stamped.
-        (9, CommandTick::Scheduled { queued: 9, apply: 9 }, CommandFate::Taken),
+        (
+            9,
+            CommandTick::Scheduled {
+                queued: 9,
+                apply: 9,
+            },
+            CommandFate::Taken,
+        ),
         // Unplayed but its tick had already come.
         (9, CommandTick::At(9), CommandFate::Unplayed),
         (9, CommandTick::At(3), CommandFate::Unplayed),
-        (9, CommandTick::Scheduled { queued: 3, apply: 9 }, CommandFate::Unplayed),
+        (
+            9,
+            CommandTick::Scheduled {
+                queued: 3,
+                apply: 9,
+            },
+            CommandFate::Unplayed,
+        ),
         // A stamp cannot be late: it was seen before the tick it was aimed at.
-        (9, CommandTick::Scheduled { queued: 3, apply: 5 }, CommandFate::Late),
+        (
+            9,
+            CommandTick::Scheduled {
+                queued: 3,
+                apply: 5,
+            },
+            CommandFate::Late,
+        ),
         (9, CommandTick::Asap, CommandFate::Unplayed),
     ] {
         assert!(
@@ -1040,7 +1210,9 @@ fn only_add_net_link_installs_the_lockstep_systems() {
             };
             for (i, line) in text.lines().enumerate() {
                 let code = line.split("//").next().unwrap_or("");
-                if code.contains("net::pump") || (code.contains("pump") && code.contains("add_systems")) {
+                if code.contains("net::pump")
+                    || (code.contains("pump") && code.contains("add_systems"))
+                {
                     let off: usize = text.lines().take(i).map(|l| l.len() + 1).sum();
                     if !(off > at && off < end) {
                         offenders.push(format!("{}:{}", p.display(), i + 1));
@@ -1050,7 +1222,10 @@ fn only_add_net_link_installs_the_lockstep_systems() {
         }
     }
     assert_eq!(definitions, 1, "there is not exactly one `add_net_link`");
-    assert!(offenders.is_empty(), "the pump is registered outside it: {offenders:#?}");
+    assert!(
+        offenders.is_empty(),
+        "the pump is registered outside it: {offenders:#?}"
+    );
 }
 
 /// F-008 still holds honestly: the sweep precedes every reader of the gather
@@ -1058,7 +1233,9 @@ fn only_add_net_link_installs_the_lockstep_systems() {
 #[test]
 fn the_gate_did_not_disturb_the_gather_claim_sweep() {
     let lib = std::fs::read_to_string(src_dir().join("lib.rs")).expect("lib.rs");
-    let sweep = lib.find("sim::economy::repair_gather_claims").expect("the sweep");
+    let sweep = lib
+        .find("sim::economy::repair_gather_claims")
+        .expect("the sweep");
     for after in [
         "sim::replay::identify",
         "sim::apply_commands",
@@ -1067,15 +1244,23 @@ fn the_gate_did_not_disturb_the_gather_claim_sweep() {
         "sim::replay::record_unplayed",
         "sim::replay::record_state_hash",
     ] {
-        let at = lib.find(after).unwrap_or_else(|| panic!("{after} is not in the chain"));
-        assert!(sweep < at, "{after} is registered before the gather-claim sweep");
+        let at = lib
+            .find(after)
+            .unwrap_or_else(|| panic!("{after} is not in the chain"));
+        assert!(
+            sweep < at,
+            "{after} is registered before the gather-claim sweep"
+        );
     }
     // `may_tick` gates the chain and is not itself a claim reader.
     let m = std::fs::read_to_string(src_dir().join("sim/mod.rs")).expect("sim/mod.rs");
     let at = m.find("pub fn may_tick").expect("may_tick");
     let body = &m[at..at + m[at..].find("\n}\n").expect("body")];
     for claim in ["GatherTarget", "GatherPhase", "SplitClaim"] {
-        assert!(!body.contains(claim), "the tick gate's run condition reads `{claim}`");
+        assert!(
+            !body.contains(claim),
+            "the tick gate's run condition reads `{claim}`"
+        );
     }
 }
 
@@ -1101,7 +1286,11 @@ fn a_wrong_hash_from_the_peer_stops_the_match_and_a_right_one_does_not() {
             .insert_resource(Stockpiles::starting(alloy))
             .insert_resource(CommandLog::new(7));
         onus::add_sim_systems(&mut app, Update);
-        let cfg = NetConfig { turn_delay_ticks: 2, hash_interval_ticks: 2, stall_timeout_secs: 600.0 };
+        let cfg = NetConfig {
+            turn_delay_ticks: 2,
+            hash_interval_ticks: 2,
+            stall_timeout_secs: 600.0,
+        };
         onus::net::add_net_link(
             &mut app,
             Update,
@@ -1116,7 +1305,11 @@ fn a_wrong_hash_from_the_peer_stops_the_match_and_a_right_one_does_not() {
         .expect("hello");
         // Feed turns so the sim can advance, then a hash for tick 2.
         for t in 0..12u32 {
-            raw.write_all(&wire(&Frame::Turn { tick: t, commands: vec![] })).expect("turn");
+            raw.write_all(&wire(&Frame::Turn {
+                tick: t,
+                commands: vec![],
+            }))
+            .expect("turn");
         }
         raw.flush().ok();
         for _ in 0..20 {
@@ -1130,20 +1323,39 @@ fn a_wrong_hash_from_the_peer_stops_the_match_and_a_right_one_does_not() {
             .copied()
             .expect("tick 2 was played");
         let claimed = if corrupt { ours ^ 0xdead_beef } else { ours };
-        raw.write_all(&wire(&Frame::Hash { tick: 2, hash: claimed })).expect("hash");
+        raw.write_all(&wire(&Frame::Hash {
+            tick: 2,
+            hash: claimed,
+        }))
+        .expect("hash");
         raw.flush().ok();
         for _ in 0..20 {
             step(&mut app);
         }
         let link = app.world().resource::<NetLink>();
         if corrupt {
-            let f = link.failure().unwrap_or_else(|| panic!("{name}: a wrong hash was accepted"));
+            let f = link
+                .failure()
+                .unwrap_or_else(|| panic!("{name}: a wrong hash was accepted"));
             let text = format!("{f:?}");
-            assert!(text.contains("Desync"), "{name}: failed for the wrong reason: {text}");
-            assert!(text.contains("tick: 2"), "{name}: the desync names the wrong tick: {text}");
-            assert!(!app.world().resource::<TickGate>().is_open(), "{name}: the sim kept running");
+            assert!(
+                text.contains("Desync"),
+                "{name}: failed for the wrong reason: {text}"
+            );
+            assert!(
+                text.contains("tick: 2"),
+                "{name}: the desync names the wrong tick: {text}"
+            );
+            assert!(
+                !app.world().resource::<TickGate>().is_open(),
+                "{name}: the sim kept running"
+            );
         } else {
-            assert!(link.failure().is_none(), "{name}: an agreeing hash stopped the match: {:?}", link.failure());
+            assert!(
+                link.failure().is_none(),
+                "{name}: an agreeing hash stopped the match: {:?}",
+                link.failure()
+            );
             assert!(link.hashes_agreed() > 0, "{name}: the comparison never ran");
         }
     }
@@ -1185,7 +1397,13 @@ fn a_command_held_when_the_match_ends_is_recorded_and_replays_identically() {
             };
             hqs.push(
                 app.world_mut()
-                    .spawn((Position(Vec2::new(x, 0.0)), Building { def }, f, ProductionQueue::default(), hp))
+                    .spawn((
+                        Position(Vec2::new(x, 0.0)),
+                        Building { def },
+                        f,
+                        ProductionQueue::default(),
+                        hp,
+                    ))
                     .id(),
             );
         }
@@ -1196,14 +1414,24 @@ fn a_command_held_when_the_match_ends_is_recorded_and_replays_identically() {
         };
         let u = app
             .world_mut()
-            .spawn((Position(Vec2::new(-90.0, 0.0)), UnitDefIdx(idx), kind, Faction::A, hp))
+            .spawn((
+                Position(Vec2::new(-90.0, 0.0)),
+                UnitDefIdx(idx),
+                kind,
+                Faction::A,
+                hp,
+            ))
             .id();
         for t in 0..40u32 {
             if live && t == 3 {
                 // Held for a tick the match will never reach.
                 app.world_mut().resource_mut::<CommandQueue>().0.push_at(
                     900,
-                    Order::MoveTo { units: vec![u], dest: Vec2::new(5.0, 5.0) }.issued_by(Faction::A),
+                    Order::MoveTo {
+                        units: vec![u],
+                        dest: Vec2::new(5.0, 5.0),
+                    }
+                    .issued_by(Faction::A),
                 );
             }
             // Not gated on `live`: this is how the *world* ends the match, and
@@ -1221,19 +1449,43 @@ fn a_command_held_when_the_match_ends_is_recorded_and_replays_identically() {
     };
 
     let (rec_hashes, log, rec_hash) = build(None);
-    let unplayed: Vec<_> = log.commands.iter().filter(|c| c.fate == CommandFate::Unplayed).collect();
-    assert_eq!(unplayed.len(), 1, "the held command was not recorded as unplayed: {:?}", log.commands);
+    let unplayed: Vec<_> = log
+        .commands
+        .iter()
+        .filter(|c| c.fate == CommandFate::Unplayed)
+        .collect();
+    assert_eq!(
+        unplayed.len(),
+        1,
+        "the held command was not recorded as unplayed: {:?}",
+        log.commands
+    );
     assert!(
-        matches!(unplayed[0].schedule, CommandTick::Scheduled { apply: 900, .. } | CommandTick::At(900)),
+        matches!(
+            unplayed[0].schedule,
+            CommandTick::Scheduled { apply: 900, .. } | CommandTick::At(900)
+        ),
         "the unplayed command lost its schedule: {:?}",
         unplayed[0].schedule
     );
-    assert!(log.validate().is_ok(), "the sim recorded a log it calls invalid");
+    assert!(
+        log.validate().is_ok(),
+        "the sim recorded a log it calls invalid"
+    );
 
     let (rep_hashes, again, rep_hash) = build(Some(log.clone()));
-    assert_eq!(rec_hashes, rep_hashes, "the replay diverged from the recording");
-    assert_eq!(rec_hash, rep_hash, "the replayed world is not the recorded world");
-    assert_eq!(again.commands, log.commands, "the replay recorded a different account");
+    assert_eq!(
+        rec_hashes, rep_hashes,
+        "the replay diverged from the recording"
+    );
+    assert_eq!(
+        rec_hash, rep_hash,
+        "the replayed world is not the recorded world"
+    );
+    assert_eq!(
+        again.commands, log.commands,
+        "the replay recorded a different account"
+    );
 }
 
 // ============================================================================
@@ -1381,7 +1633,10 @@ fn no_command_in_a_networked_match_is_ever_applied_unscheduled() {
             "{who} applied {} command(s) unscheduled — a command the other peer \
              never heard of: {:?}",
             loose.len(),
-            loose.iter().map(|c| (c.tick, c.schedule)).collect::<Vec<_>>()
+            loose
+                .iter()
+                .map(|c| (c.tick, c.schedule))
+                .collect::<Vec<_>>()
         );
     }
     // ...and the two peers played the same match.
@@ -1459,7 +1714,9 @@ fn every_in_chain_producer_of_unscheduled_orders_runs_before_the_drain() {
                 if text[line_start..site].contains("pub fn push_back") {
                     continue;
                 }
-                let Some(fnpos) = text[..site].rfind("\npub fn ") else { continue };
+                let Some(fnpos) = text[..site].rfind("\npub fn ") else {
+                    continue;
+                };
                 let name: String = text[fnpos + 8..]
                     .chars()
                     .take_while(|c| c.is_alphanumeric() || *c == '_')
@@ -1485,7 +1742,10 @@ fn every_in_chain_producer_of_unscheduled_orders_runs_before_the_drain() {
     let mut excluded: Vec<String> = Vec::new();
     for name in &pushers {
         // Only the ones the chain actually runs.
-        let Some(pos) = lib.find(&format!("::{name},")).or_else(|| lib.find(&format!("::{name}\n"))) else {
+        let Some(pos) = lib
+            .find(&format!("::{name},"))
+            .or_else(|| lib.find(&format!("::{name}\n")))
+        else {
             continue;
         };
         if pos <= anchor_at {
@@ -1545,8 +1805,14 @@ fn a_local_match_is_untouched_by_the_lockstep_drain() {
         (h, log, s)
     };
     let (plain_hashes, plain_log, plain_state) = play(false);
-    assert!(plain_hashes.len() == 40, "a local match did not run every tick");
-    assert!(!plain_log.commands.is_empty(), "the local commander issued nothing");
+    assert!(
+        plain_hashes.len() == 40,
+        "a local match did not run every tick"
+    );
+    assert!(
+        !plain_log.commands.is_empty(),
+        "the local commander issued nothing"
+    );
 
     // The same world again, with no link: bit-identical, which is the baseline
     // the networked variant must not have disturbed.
@@ -1564,7 +1830,8 @@ fn a_local_match_is_untouched_by_the_lockstep_drain() {
         net[at..end].contains("collect_local"),
         "the drain is registered somewhere other than the one installer"
     );
-    let outside = net[..at].matches("collect_local").count() + net[end..].matches("collect_local").count();
+    let outside =
+        net[..at].matches("collect_local").count() + net[end..].matches("collect_local").count();
     assert!(
         outside <= 2,
         "`collect_local` is referenced {outside} times outside its installer — \
@@ -1590,7 +1857,9 @@ fn a_commander_and_a_click_on_one_tick_still_reach_both_peers_in_one_order() {
     // their commander is doing.
     for round in 0..6u32 {
         for (app, f) in [(&mut a, Faction::A), (&mut b, Faction::B)] {
-            let mut q = app.world_mut().query::<(Entity, &onus::sim::SimId, &Faction)>();
+            let mut q = app
+                .world_mut()
+                .query::<(Entity, &onus::sim::SimId, &Faction)>();
             let mut mine: Vec<(Entity, u64)> = q
                 .iter(app.world())
                 .filter(|(_, _, ff)| **ff == f)
@@ -1620,19 +1889,36 @@ fn a_commander_and_a_click_on_one_tick_still_reach_both_peers_in_one_order() {
     }
     let la = a.world().resource::<CommandLog>().log().commands.clone();
     let lb = b.world().resource::<CommandLog>().log().commands.clone();
-    assert!(la.len() >= 12, "too few commands to test an order ({})", la.len());
+    assert!(
+        la.len() >= 12,
+        "too few commands to test an order ({})",
+        la.len()
+    );
     assert_eq!(
         la, lb,
         "two producers on one tick reached the peers in different orders"
     );
     // Both sides are represented, so the ordering rule is actually exercised.
-    let from_a = la.iter().filter(|c| c.attribution == onus::sim::Attribution::By(Faction::A)).count();
-    let from_b = la.iter().filter(|c| c.attribution == onus::sim::Attribution::By(Faction::B)).count();
-    assert!(from_a > 0 && from_b > 0, "only one side issued anything (A {from_a}, B {from_b})");
+    let from_a = la
+        .iter()
+        .filter(|c| c.attribution == onus::sim::Attribution::By(Faction::A))
+        .count();
+    let from_b = la
+        .iter()
+        .filter(|c| c.attribution == onus::sim::Attribution::By(Faction::B))
+        .count();
+    assert!(
+        from_a > 0 && from_b > 0,
+        "only one side issued anything (A {from_a}, B {from_b})"
+    );
     let ha = a.world().resource::<StateHashLog>().0.clone();
     let hb = b.world().resource::<StateHashLog>().0.clone();
     let n = ha.len().min(hb.len());
-    assert_eq!(ha[..n], hb[..n], "the peers' per-tick hashes parted company");
+    assert_eq!(
+        ha[..n],
+        hb[..n],
+        "the peers' per-tick hashes parted company"
+    );
 }
 
 // ---- 3. the seeded layout ---------------------------------------------------
@@ -1652,9 +1938,15 @@ fn the_seeded_layout_is_a_pure_function_and_the_two_sides_never_share_one() {
     for s in [0u64, 1, 7, 12345, u64::MAX] {
         assert_eq!(at(s), at(s), "the layout for seed {s} is not stable");
     }
-    let distinct: std::collections::BTreeSet<Vec<(u32, u32)>> =
-        [0u64, 1, 7, 12345, u64::MAX].iter().map(|s| at(*s)).collect();
-    assert_eq!(distinct.len(), 5, "different seeds produced the same layout");
+    let distinct: std::collections::BTreeSet<Vec<(u32, u32)>> = [0u64, 1, 7, 12345, u64::MAX]
+        .iter()
+        .map(|s| at(*s))
+        .collect();
+    assert_eq!(
+        distinct.len(),
+        5,
+        "different seeds produced the same layout"
+    );
 
     // `seed ^ slot * K`: slot 0 is the seed itself, slot 1 is never equal to it.
     const K: u64 = 0x9E37_79B9_7F4A_7C15;
@@ -1769,7 +2061,9 @@ fn a_constant_layout_makes_the_short_horizon_blind_which_is_why_it_exists() {
                 .map(|u| u.pos)
                 .collect()
             } else {
-                (0..3).map(|i| base + Vec2::new(0.0, 20.0 * i as f32)).collect()
+                (0..3)
+                    .map(|i| base + Vec2::new(0.0, 20.0 * i as f32))
+                    .collect()
             };
             for pos in positions {
                 let (idx, kind, hp) = {
@@ -1777,10 +2071,14 @@ fn a_constant_layout_makes_the_short_horizon_blind_which_is_why_it_exists() {
                     let i = c.unit_index("worker").expect("worker");
                     (i, c.units[i].mvp_kind, Health::from_def(c, i))
                 };
-                app.world_mut().spawn((Position(pos), UnitDefIdx(idx), kind, faction, hp));
+                app.world_mut()
+                    .spawn((Position(pos), UnitDefIdx(idx), kind, faction, hp));
             }
         }
-        app.insert_resource(onus::sim::AiCommanders::new(seed, &[Faction::A, Faction::B]));
+        app.insert_resource(onus::sim::AiCommanders::new(
+            seed,
+            &[Faction::A, Faction::B],
+        ));
         for _ in 0..ticks {
             step(&mut app);
         }
@@ -1852,10 +2150,15 @@ fn the_second_drain_did_not_weaken_the_stall() {
         hashes_at_stall,
         "a stalled peer recorded hashes for ticks that did not happen"
     );
-    assert!(!a.world().resource::<TickGate>().is_open(), "the gate stayed open");
+    assert!(
+        !a.world().resource::<TickGate>().is_open(),
+        "the gate stayed open"
+    );
 
     // A command issued during the stall must not be applied locally.
-    let mut q = a.world_mut().query::<(Entity, &onus::sim::SimId, &Faction)>();
+    let mut q = a
+        .world_mut()
+        .query::<(Entity, &onus::sim::SimId, &Faction)>();
     let victim = q
         .iter(a.world())
         .filter(|(_, _, f)| **f == Faction::A)
@@ -1864,7 +2167,11 @@ fn the_second_drain_did_not_weaken_the_stall() {
         .map(|(e, _)| e)
         .expect("a unit of A");
     a.world_mut().resource_mut::<CommandQueue>().0.push_back(
-        Order::MoveTo { units: vec![victim], dest: Vec2::new(-1234.0, 0.0) }.issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![victim],
+            dest: Vec2::new(-1234.0, 0.0),
+        }
+        .issued_by(Faction::A),
     );
     for _ in 0..30 {
         step(&mut a);
@@ -1893,8 +2200,16 @@ fn the_second_drain_did_not_weaken_the_stall() {
     for _ in 0..200 {
         step_both(&mut a, &mut b);
     }
-    assert!(a.world().resource::<NetLink>().failure().is_none(), "A: {:?}", a.world().resource::<NetLink>().failure());
-    assert!(b.world().resource::<NetLink>().failure().is_none(), "B: {:?}", b.world().resource::<NetLink>().failure());
+    assert!(
+        a.world().resource::<NetLink>().failure().is_none(),
+        "A: {:?}",
+        a.world().resource::<NetLink>().failure()
+    );
+    assert!(
+        b.world().resource::<NetLink>().failure().is_none(),
+        "B: {:?}",
+        b.world().resource::<NetLink>().failure()
+    );
     let ha = a.world().resource::<StateHashLog>().0.clone();
     let hb = b.world().resource::<StateHashLog>().0.clone();
     let n = ha.len().min(hb.len());
@@ -1919,10 +2234,9 @@ fn the_second_drain_did_not_weaken_the_stall() {
 /// other, and the command in the ledger is the full one.
 #[test]
 fn the_recorded_clippy_gate_is_the_real_gate() {
-    let findings = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("FINDINGS.md"),
-    )
-    .expect("FINDINGS.md");
+    let findings =
+        std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("FINDINGS.md"))
+            .expect("FINDINGS.md");
     let flat: String = findings.split_whitespace().collect::<Vec<_>>().join(" ");
     assert!(
         flat.contains("cargo clippy --all-targets -- -D warnings"),

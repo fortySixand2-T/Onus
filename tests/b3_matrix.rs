@@ -50,7 +50,8 @@ fn oriented(a: &str, b: &str, result: MatchResult, orientation: Orientation) -> 
 }
 
 fn idx(m: &WinMatrix, id: &str) -> usize {
-    m.index(id).unwrap_or_else(|| panic!("`{id}` is a row of the matrix"))
+    m.index(id)
+        .unwrap_or_else(|| panic!("`{id}` is a row of the matrix"))
 }
 
 fn cell<'m>(m: &'m WinMatrix, row: &str, col: &str) -> &'m Cell {
@@ -69,8 +70,14 @@ fn assert_complementary(m: &WinMatrix) -> usize {
             }
             let ij = m.cell(i, j).expect("in range");
             let ji = m.cell(j, i).expect("in range");
-            assert_eq!(ij.n_decided, ji.n_decided, "({i},{j}) counts the same matches");
-            assert_eq!(ij.n_timeout, ji.n_timeout, "({i},{j}) counts the same timeouts");
+            assert_eq!(
+                ij.n_decided, ji.n_decided,
+                "({i},{j}) counts the same matches"
+            );
+            assert_eq!(
+                ij.n_timeout, ji.n_timeout,
+                "({i},{j}) counts the same timeouts"
+            );
             match (ij.rate(), ji.rate()) {
                 (Some(x), Some(y)) => {
                     assert_eq!(
@@ -78,7 +85,10 @@ fn assert_complementary(m: &WinMatrix) -> usize {
                         2 * ij.n_decided,
                         "W[{i}][{j}] + W[{j}][{i}] must be exactly 1"
                     );
-                    assert!((x + y - 1.0).abs() < 1e-12, "W[{i}][{j}]={x} W[{j}][{i}]={y}");
+                    assert!(
+                        (x + y - 1.0).abs() < 1e-12,
+                        "W[{i}][{j}]={x} W[{j}][{i}]={y}"
+                    );
                     checked += 1;
                 }
                 (None, None) => {}
@@ -177,7 +187,11 @@ fn a_win_from_either_slot_counts_toward_the_same_cell() {
     assert_eq!(cell(&from_a, "i", "j").rate(), Some(1.0));
     assert_eq!(cell(&from_b, "i", "j").rate(), Some(1.0));
     let c = cell(&both, "i", "j");
-    assert_eq!((c.half_wins, c.n_decided), (4, 2), "two wins over two matches");
+    assert_eq!(
+        (c.half_wins, c.n_decided),
+        (4, 2),
+        "two wins over two matches"
+    );
     assert_eq!(cell(&both, "j", "i").rate(), Some(0.0));
 }
 
@@ -210,7 +224,11 @@ fn a_mutual_loss_is_half_a_win_to_each_side() {
 
 #[test]
 fn a_timeout_is_excluded_from_the_rate_but_counted() {
-    let with = WinMatrix::of(&[rec("i", "j", A_WINS), rec("i", "j", CAPPED), rec("j", "i", CAPPED)]);
+    let with = WinMatrix::of(&[
+        rec("i", "j", A_WINS),
+        rec("i", "j", CAPPED),
+        rec("j", "i", CAPPED),
+    ]);
     let without = WinMatrix::of(&[rec("i", "j", A_WINS)]);
     let c = cell(&with, "i", "j");
     assert_eq!(c.rate(), Some(1.0), "timeouts do not dilute the rate");
@@ -221,7 +239,11 @@ fn a_timeout_is_excluded_from_the_rate_but_counted() {
 
 #[test]
 fn an_all_timeout_cell_is_undefined_not_balanced() {
-    let m = WinMatrix::of(&[rec("i", "j", CAPPED), rec("j", "i", CAPPED), rec("i", "i", CAPPED)]);
+    let m = WinMatrix::of(&[
+        rec("i", "j", CAPPED),
+        rec("j", "i", CAPPED),
+        rec("i", "i", CAPPED),
+    ]);
     for (r, c) in [("i", "j"), ("j", "i"), ("i", "i")] {
         let cell = cell(&m, r, c);
         assert_eq!(cell.rate(), None, "W[{r}][{c}] must not read as 0.5");
@@ -244,7 +266,11 @@ fn an_all_timeout_run_has_no_defined_cell_and_no_defined_mean() {
     let m = WinMatrix::of(&records);
     assert_eq!(m.len(), 3);
     assert!(!m.is_empty());
-    assert_eq!(m.defined_cells(), 0, "nothing was decided, so nothing is known");
+    assert_eq!(
+        m.defined_cells(),
+        0,
+        "nothing was decided, so nothing is known"
+    );
     assert_eq!(m.timeouts(), records.len() as u32);
     assert_eq!(m.decided(), 0);
     for i in 0..m.len() {
@@ -320,7 +346,10 @@ fn row_means_exclude_the_diagonal_and_undefined_cells() {
     assert_eq!(m.ids(), ["s", "t", "u", "v"]);
 
     let s = m.row_mean(idx(&m, "s"));
-    assert_eq!(s.cells, 2, "t and u are defined; the diagonal and v are not counted");
+    assert_eq!(
+        s.cells, 2,
+        "t and u are defined; the diagonal and v are not counted"
+    );
     assert_eq!(s.mean, Some(0.75));
 
     let t = m.row_mean(idx(&m, "t"));
@@ -328,7 +357,11 @@ fn row_means_exclude_the_diagonal_and_undefined_cells() {
     let u = m.row_mean(idx(&m, "u"));
     assert_eq!((u.mean, u.cells), (Some(0.5), 1));
     let v = m.row_mean(idx(&m, "v"));
-    assert_eq!((v.mean, v.cells), (None, 0), "only timeouts: no strength to report");
+    assert_eq!(
+        (v.mean, v.cells),
+        (None, 0),
+        "only timeouts: no strength to report"
+    );
 
     // `row_means` is the same, labelled, in matrix order.
     let all = m.row_means();
@@ -363,7 +396,11 @@ fn a_strictly_dominant_and_a_strictly_losing_strategy_are_identifiable_by_name()
                 // alpha wins every match it plays except its mirror; delta
                 // loses every match it plays; beta vs gamma splits.
                 let result = if a == b {
-                    if o == Orientation::Normal { A_WINS } else { B_WINS }
+                    if o == Orientation::Normal {
+                        A_WINS
+                    } else {
+                        B_WINS
+                    }
                 } else if a == "alpha" || b == "delta" {
                     A_WINS
                 } else if b == "alpha" || a == "delta" {
@@ -379,7 +416,13 @@ fn a_strictly_dominant_and_a_strictly_losing_strategy_are_identifiable_by_name()
     }
     let m = WinMatrix::of(&records);
     let means = m.row_means();
-    let find = |id: &str| means.iter().find(|(n, _)| n == id).map(|(_, r)| *r).unwrap();
+    let find = |id: &str| {
+        means
+            .iter()
+            .find(|(n, _)| n == id)
+            .map(|(_, r)| *r)
+            .unwrap()
+    };
     assert_eq!(find("alpha").mean, Some(1.0));
     assert_eq!(find("alpha").cells, 3);
     assert_eq!(find("delta").mean, Some(0.0));
@@ -495,8 +538,8 @@ fn a_real_batch_yields_a_complementary_matrix_in_ron_order() {
     let records = batch::run_batch(&content, &settings, &mut |_| {}).expect("shipped names");
     let m = WinMatrix::of(&records);
 
-    let ron: Vec<String> = batch::roster(&content, Some(&REAL_SUBSET.map(String::from)))
-        .expect("shipped names");
+    let ron: Vec<String> =
+        batch::roster(&content, Some(&REAL_SUBSET.map(String::from))).expect("shipped names");
     assert_eq!(m.ids(), ron.as_slice(), "rows in RON order");
 
     // Every record is accounted for exactly once per cell it belongs to:
@@ -515,7 +558,10 @@ fn a_real_batch_yields_a_complementary_matrix_in_ron_order() {
     let turtle = idx(&m, "turtle");
     let c = m.cell(rush, turtle).unwrap();
     assert_eq!(c.played(), 4, "two slot orderings x two orientations");
-    assert!(c.n_decided > 0, "the pinned pair decides, so the check below bites");
+    assert!(
+        c.n_decided > 0,
+        "the pinned pair decides, so the check below bites"
+    );
     assert!(assert_complementary(&m) > 0);
 
     // Deterministic: the same records give the same matrix.
@@ -541,7 +587,10 @@ fn primes(count: usize) -> Vec<u32> {
     let mut out = Vec::new();
     let mut k = 2u32;
     while out.len() < count {
-        if (2..k).take_while(|d| d * d <= k).all(|d| !k.is_multiple_of(d)) {
+        if (2..k)
+            .take_while(|d| d * d <= k)
+            .all(|d| !k.is_multiple_of(d))
+        {
             out.push(k);
         }
         k += 1;
@@ -558,7 +607,10 @@ fn permutations(records: &[MatchRecord]) -> Vec<Vec<MatchRecord>> {
     rotated.rotate_left(records.len() / 3);
     out.push(rotated);
     let n = records.len();
-    let stride = (1..n).rev().find(|s| (2..=*s).all(|d| !(s.is_multiple_of(d) && n.is_multiple_of(d)))).unwrap_or(1);
+    let stride = (1..n)
+        .rev()
+        .find(|s| (2..=*s).all(|d| !(s.is_multiple_of(d) && n.is_multiple_of(d))))
+        .unwrap_or(1);
     out.push((0..n).map(|k| records[(k * stride) % n].clone()).collect());
     out
 }
@@ -606,8 +658,19 @@ fn a_row_mean_beyond_u128_is_still_the_nearest_float_and_order_free() {
 #[test]
 fn row_means_are_order_free_on_a_small_table() {
     // 3/5, 7/10, 1/5: exactly 1/2, in any opponent order.
-    let blocks = [scored("s", "o60", 6, 5), scored("s", "o70", 7, 5), scored("s", "o20", 2, 5)];
-    for order in [[0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]] {
+    let blocks = [
+        scored("s", "o60", 6, 5),
+        scored("s", "o70", 7, 5),
+        scored("s", "o20", 2, 5),
+    ];
+    for order in [
+        [0, 1, 2],
+        [0, 2, 1],
+        [1, 0, 2],
+        [1, 2, 0],
+        [2, 0, 1],
+        [2, 1, 0],
+    ] {
         let records: Vec<MatchRecord> = order.iter().flat_map(|&k| blocks[k].clone()).collect();
         let m = WinMatrix::of(&records);
         assert_eq!(m.row_mean(idx(&m, "s")).mean, Some(0.5), "order {order:?}");

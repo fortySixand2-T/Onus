@@ -74,7 +74,9 @@ pub enum CycleError {
 impl fmt::Display for CycleError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CycleError::NoNemesis => write!(f, "no unit names a nemesis: there is no counter cycle"),
+            CycleError::NoNemesis => {
+                write!(f, "no unit names a nemesis: there is no counter cycle")
+            }
             CycleError::SelfNemesis(u) => write!(f, "unit `{u}` is its own nemesis"),
             CycleError::UnknownPrey { unit, prey } => {
                 write!(f, "unit `{unit}` names unknown nemesis `{prey}`")
@@ -83,7 +85,10 @@ impl fmt::Display for CycleError {
                 write!(f, "the nemesis chain does not close: `{at}` has no nemesis")
             }
             CycleError::Lasso { at } => {
-                write!(f, "the nemesis chain re-enters itself at `{at}`, forming a lasso")
+                write!(
+                    f,
+                    "the nemesis chain re-enters itself at `{at}`, forming a lasso"
+                )
             }
             CycleError::Partial { cycle, missing } => write!(
                 f,
@@ -144,7 +149,9 @@ pub fn nemesis_cycle(content: &Content) -> Result<Vec<String>, CycleError> {
             break;
         }
         if cycle.iter().any(|c| c == prey) {
-            return Err(CycleError::Lasso { at: prey.to_string() });
+            return Err(CycleError::Lasso {
+                at: prey.to_string(),
+            });
         }
         cycle.push(prey.to_string());
     }

@@ -27,7 +27,14 @@ const A: MatchResult = MatchResult::Decided(Faction::A);
 const B: MatchResult = MatchResult::Decided(Faction::B);
 const MIN: u32 = 60 * SIM_HZ;
 
-fn rec(a: &str, b: &str, seed: u64, o: Orientation, result: MatchResult, ticks: u32) -> MatchRecord {
+fn rec(
+    a: &str,
+    b: &str,
+    seed: u64,
+    o: Orientation,
+    result: MatchResult,
+    ticks: u32,
+) -> MatchRecord {
     MatchRecord {
         strategies: [a.to_string(), b.to_string()],
         seed,
@@ -80,13 +87,21 @@ fn split(s: &str, seed: u64, a_both: bool) -> [MatchRecord; 2] {
 /// A mirror whose left base wins on `pct`% of `seeds` seeds (slot A exactly 50%).
 fn left_leaning(s: &str, seeds: u64, pct: u64) -> Vec<MatchRecord> {
     (0..seeds)
-        .flat_map(|seed| if seed % 100 < pct { left_both(s, seed) } else { right_both(s, seed) })
+        .flat_map(|seed| {
+            if seed % 100 < pct {
+                left_both(s, seed)
+            } else {
+                right_both(s, seed)
+            }
+        })
         .collect()
 }
 
 /// A mirror whose slot A wins on `k` of every 20 seeds (left base exactly 50%).
 fn slot_a_at(s: &str, seeds: u64, k: u64) -> Vec<MatchRecord> {
-    (0..seeds).flat_map(|seed| split(s, seed, seed % 20 < k)).collect()
+    (0..seeds)
+        .flat_map(|seed| split(s, seed, seed % 20 < k))
+        .collect()
 }
 
 fn fair_set(ids: &[&str], seeds: u64) -> Vec<MatchRecord> {
@@ -108,7 +123,11 @@ fn gate(records: &[MatchRecord]) -> KillGate {
 }
 
 fn mirror<'g>(g: &'g KillGate, s: &str) -> &'g onus::gate::MirrorRow {
-    g.seat.mirrors.iter().find(|m| m.strategy == s).expect("mirror row")
+    g.seat
+        .mirrors
+        .iter()
+        .find(|m| m.strategy == s)
+        .expect("mirror row")
 }
 
 const NINE: [&str; 9] = ["f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9"];
@@ -124,17 +143,33 @@ fn k2_a_fair_pool_with_one_mirror_open_on_its_left_base_is_undetermined() {
     let mut recs = fair_set(&NINE, 600);
     recs.extend(left_leaning("open", 600, 54));
     let g = gate(&recs);
-    assert_eq!(g.seat.slot_a.status, Status::Pass, "fixture: pool slot A resolved fair");
-    assert_eq!(g.seat.left_spawn.status, Status::Pass, "fixture: pool left base resolved fair");
+    assert_eq!(
+        g.seat.slot_a.status,
+        Status::Pass,
+        "fixture: pool slot A resolved fair"
+    );
+    assert_eq!(
+        g.seat.left_spawn.status,
+        Status::Pass,
+        "fixture: pool left base resolved fair"
+    );
     for s in NINE {
         let m = mirror(&g, s);
-        assert_eq!((m.slot_a.status, m.left_spawn.status), (Status::Pass, Status::Pass), "{s}");
+        assert_eq!(
+            (m.slot_a.status, m.left_spawn.status),
+            (Status::Pass, Status::Pass),
+            "{s}"
+        );
     }
     let o = mirror(&g, "open");
     assert_eq!(o.slot_a.status, Status::Pass);
     assert!((o.left_spawn.value.unwrap() - 0.54).abs() < 1e-12);
     assert_eq!(o.left_spawn.status, Status::Undetermined);
-    assert_eq!(g.seat.status, Status::Undetermined, "one open reading holds K2 undetermined");
+    assert_eq!(
+        g.seat.status,
+        Status::Undetermined,
+        "one open reading holds K2 undetermined"
+    );
     assert_ne!(g.status, Status::Pass);
 }
 
@@ -175,7 +210,11 @@ fn k2_a_left_base_only_fail_behind_an_open_mirror_still_fails() {
     assert_eq!(mirror(&g, "bad").slot_a.value, Some(0.5));
     assert_eq!(mirror(&g, "bad").slot_a.status, Status::Pass);
     assert_eq!(mirror(&g, "bad").left_spawn.status, Status::Fail);
-    assert_eq!(g.seat.status, Status::Fail, "an open reading must not mask a resolved FAIL");
+    assert_eq!(
+        g.seat.status,
+        Status::Fail,
+        "an open reading must not mask a resolved FAIL"
+    );
     assert_eq!(g.status, Status::Fail);
 }
 
@@ -226,17 +265,32 @@ fn k2_a_mirror_with_zero_decided_matches_holds_k2_undetermined() {
     let mut recs = fair_set(&NINE, 600);
     for seed in 0..40u64 {
         for o in Orientation::ALL {
-            recs.push(rec("stall", "stall", seed, o, MatchResult::Timeout, 15 * MIN));
+            recs.push(rec(
+                "stall",
+                "stall",
+                seed,
+                o,
+                MatchResult::Timeout,
+                15 * MIN,
+            ));
         }
     }
     let g = gate(&recs);
-    assert_eq!(g.seat.slot_a.status, Status::Pass, "fixture: pool resolved fair");
+    assert_eq!(
+        g.seat.slot_a.status,
+        Status::Pass,
+        "fixture: pool resolved fair"
+    );
     let s = mirror(&g, "stall");
     assert_eq!(s.slot_a.n, 0);
     assert_eq!(s.slot_a.value, None);
     assert_eq!(s.slot_a.status, Status::Undetermined);
     assert_eq!(s.left_spawn.status, Status::Undetermined);
-    assert_eq!(g.seat.status, Status::Undetermined, "an unread mirror never lets K2 PASS");
+    assert_eq!(
+        g.seat.status,
+        Status::Undetermined,
+        "an unread mirror never lets K2 PASS"
+    );
 }
 
 /// Every mirror played only to timeouts: pool and rows have no data.
@@ -272,10 +326,22 @@ fn k2_mirrors_at_and_around_the_tolerance_edges() {
         (e.slot_a.status, g.seat.status)
     };
     // exactly on the edges
-    assert_eq!(case(11), (Status::Undetermined, Status::Undetermined), "55% exactly");
-    assert_eq!(case(9), (Status::Undetermined, Status::Undetermined), "45% exactly");
+    assert_eq!(
+        case(11),
+        (Status::Undetermined, Status::Undetermined),
+        "55% exactly"
+    );
+    assert_eq!(
+        case(9),
+        (Status::Undetermined, Status::Undetermined),
+        "45% exactly"
+    );
     // fixture resolution at 40 000 decided: half-width ~0.57 points
-    let inside = |k: u64| (0..seeds).flat_map(|s| split("edge", s, s % 50 < k)).collect::<Vec<_>>();
+    let inside = |k: u64| {
+        (0..seeds)
+            .flat_map(|s| split("edge", s, s % 50 < k))
+            .collect::<Vec<_>>()
+    };
     let run = |recs: Vec<MatchRecord>| {
         let mut all = fair_set(&["f1", "f2"], 2000);
         all.extend(recs);
@@ -295,7 +361,10 @@ fn k2_mirrors_at_and_around_the_tolerance_edges() {
 /// never PASS; one whose point is inside is never FAIL.
 #[test]
 fn every_seat_reading_status_matches_its_interval_oracle() {
-    let rule = Rule::Within { centre: 0.5, tolerance: 0.05 };
+    let rule = Rule::Within {
+        centre: 0.5,
+        tolerance: 0.05,
+    };
     let mut seen = [0u32; 3];
     for n in (1u32..=4000).step_by(37) {
         let clusters = n.div_ceil(2);
@@ -316,7 +385,10 @@ fn every_seat_reading_status_matches_its_interval_oracle() {
             } else {
                 assert_ne!(r.status, Status::Fail, "h {h} n {n}");
             }
-            assert!(lo <= p + 1e-12 && p <= hi + 1e-12, "interval contains its point: h {h} n {n} p {p} [{lo}, {hi}]");
+            assert!(
+                lo <= p + 1e-12 && p <= hi + 1e-12,
+                "interval contains its point: h {h} n {n} p {p} [{lo}, {hi}]"
+            );
             seen[match r.status {
                 Status::Pass => 0,
                 Status::Fail => 1,
@@ -324,7 +396,10 @@ fn every_seat_reading_status_matches_its_interval_oracle() {
             }] += 1;
         }
     }
-    assert!(seen.iter().all(|&c| c > 0), "grid reaches all three statuses: {seen:?}");
+    assert!(
+        seen.iter().all(|&c| c > 0),
+        "grid reaches all three statuses: {seen:?}"
+    );
 }
 
 // ------------------------------------------------------------ the printed report
@@ -338,7 +413,10 @@ fn the_printed_k2_line_is_not_pass_while_a_mirror_is_open() {
     let r = BalanceReport::of(&shipped(), &BatchSettings::default().with_seeds(600), &recs);
     assert_eq!(r.gate.seat.status, Status::Undetermined);
     let text = r.to_string();
-    let k2 = text.lines().find(|l| l.trim_start().starts_with("K2 seat")).expect("K2 line");
+    let k2 = text
+        .lines()
+        .find(|l| l.trim_start().starts_with("K2 seat"))
+        .expect("K2 line");
     assert!(k2.contains("undetermined"), "{k2}");
     assert!(!k2.contains("PASS"), "{k2}");
     let back = BalanceReport::from_ron(&r.to_ron().unwrap()).unwrap();

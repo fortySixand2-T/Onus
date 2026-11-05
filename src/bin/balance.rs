@@ -150,8 +150,7 @@ fn parse(args: &[String]) -> Result<Request, String> {
                 })?);
             }
             "--only-nations" => {
-                only_nations =
-                    Some(value()?.split(',').map(|s| s.trim().to_string()).collect())
+                only_nations = Some(value()?.split(',').map(|s| s.trim().to_string()).collect())
             }
             "--help" | "-h" => return Ok(Request::Help),
             other => return Err(format!("unknown flag `{other}`\n{}", usage())),
@@ -165,7 +164,9 @@ fn parse(args: &[String]) -> Result<Request, String> {
         return Err("--tick-cap must be at least 1".to_string());
     }
     if nations.is_some() && report.is_some() {
-        return Err("--report is the strategy batch's file; it is not written for --nations".to_string());
+        return Err(
+            "--report is the strategy batch's file; it is not written for --nations".to_string(),
+        );
     }
     if nations.is_none() && only_nations.is_some() {
         return Err("--only-nations needs --nations".to_string());
@@ -203,7 +204,9 @@ fn print_matrix(m: &WinMatrix) {
     }
     let w = m.ids().iter().map(|s| s.len()).max().unwrap_or(0).max(6);
     let header = |title: &str| {
-        let cols: String = (0..m.len()).map(|j| format!(" {:>7}", format!("[{j}]"))).collect();
+        let cols: String = (0..m.len())
+            .map(|j| format!(" {:>7}", format!("[{j}]")))
+            .collect();
         println!("{title:<w$} {cols}", w = w + 4);
     };
     println!(
@@ -309,8 +312,7 @@ fn main() -> ExitCode {
         }
     };
 
-    let total =
-        roster.len() * roster.len() * settings.seeds as usize * Orientation::ALL.len();
+    let total = roster.len() * roster.len() * settings.seeds as usize * Orientation::ALL.len();
     eprintln!(
         "balance: {} strategies x {} seeds x {} orientations = {total} matches, cap {} ticks ({})",
         roster.len(),
@@ -370,7 +372,8 @@ fn main() -> ExitCode {
             q(1.0),
         );
     }
-    println!("spawn        left {} right {}{}",
+    println!(
+        "spawn        left {} right {}{}",
         t.spawn_wins[0],
         t.spawn_wins[1],
         rate(" (left ", t.left_spawn_rate()),

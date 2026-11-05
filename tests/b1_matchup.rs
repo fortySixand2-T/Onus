@@ -328,10 +328,7 @@ fn a_matchup_is_one_strategy_per_side_in_slot_order() {
         .collect();
     assert_eq!(
         got,
-        vec![
-            (Faction::A, "probe_ripper"),
-            (Faction::B, "probe_arclight")
-        ],
+        vec![(Faction::A, "probe_ripper"), (Faction::B, "probe_arclight")],
         "the pair is not in faction-slot order"
     );
 }
@@ -349,7 +346,11 @@ fn the_seed_stream_does_not_depend_on_the_strategy() {
     };
     let base = state(None);
     for id in ["mvp", "probe_ripper", "probe_arclight", "probe_bulwark"] {
-        assert_eq!(state(Some(id)), base, "`{id}` perturbed the seed derivation");
+        assert_eq!(
+            state(Some(id)),
+            base,
+            "`{id}` perturbed the seed derivation"
+        );
     }
     // And the two sides still do not share a stream.
     assert_ne!(
@@ -393,7 +394,10 @@ fn each_side_thinks_on_its_own_cadence() {
     let a = ticks(Faction::A);
     let b = ticks(Faction::B);
     assert!(!a.is_empty() && !b.is_empty(), "a side never acted");
-    assert!(a.iter().all(|t| t % 30 == 0), "A acted off its 30-tick beat");
+    assert!(
+        a.iter().all(|t| t % 30 == 0),
+        "A acted off its 30-tick beat"
+    );
     assert!(
         b.iter().all(|t| t % 90 == 0),
         "B acted off its 90-tick beat (the default's cadence leaked in): {b:?}"
@@ -458,7 +462,10 @@ fn the_same_strategy_pair_and_seed_replays_bit_identically() {
         tick(&mut swapped, 100);
         hashes.push(onus::sim::state_hash(swapped.world_mut()));
     }
-    assert_ne!(first.0, hashes, "changing a side's strategy changed nothing");
+    assert_ne!(
+        first.0, hashes,
+        "changing a side's strategy changed nothing"
+    );
 }
 
 // ---- the default matchup did not move ---------------------------------------
@@ -497,7 +504,10 @@ fn the_default_matchup_is_byte_for_byte_what_it_was_before_ac2() {
         (23, 0x8707_6f9e_2b7e_30aa, 0x7b88_9d1d_8b7a_c6dd),
     ] {
         // The implicit default, through the untouched constructor.
-        let mut app = ai_vs_ai_with(content(), AiCommanders::new(seed, &[Faction::A, Faction::B]));
+        let mut app = ai_vs_ai_with(
+            content(),
+            AiCommanders::new(seed, &[Faction::A, Faction::B]),
+        );
         tick(&mut app, 3_000);
         let state = onus::sim::state_hash(app.world_mut());
         assert_eq!(
@@ -512,12 +522,8 @@ fn the_default_matchup_is_byte_for_byte_what_it_was_before_ac2() {
 
         // ...and naming the default explicitly, as a matchup, is the same match.
         let c = content();
-        let pair = AiCommanders::matchup(
-            &c,
-            seed,
-            &[(Faction::A, "mvp"), (Faction::B, "mvp")],
-        )
-        .expect("the shipped default is a named strategy");
+        let pair = AiCommanders::matchup(&c, seed, &[(Faction::A, "mvp"), (Faction::B, "mvp")])
+            .expect("the shipped default is a named strategy");
         let mut named = ai_vs_ai_with(c, pair);
         tick(&mut named, 3_000);
         assert_eq!(

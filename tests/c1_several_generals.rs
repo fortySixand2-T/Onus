@@ -53,8 +53,14 @@ fn a_side_fields_every_general_its_setup_names_in_a_line_across_its_front() {
     let battle = c.battle.clone().unwrap();
     let mut app = quiet_battle(three_against_one());
     let a = generals_of(&mut app, Faction::A);
-    let ids: Vec<&str> = a.iter().map(|(_, d, _)| c.unit_def(*d).unwrap().id.as_str()).collect();
-    assert_eq!(ids, ["general_synthesis", "general_frenzy", "general_focus"]);
+    let ids: Vec<&str> = a
+        .iter()
+        .map(|(_, d, _)| c.unit_def(*d).unwrap().id.as_str())
+        .collect();
+    assert_eq!(
+        ids,
+        ["general_synthesis", "general_frenzy", "general_focus"]
+    );
     assert_eq!(generals_of(&mut app, Faction::B).len(), 1);
     // One line: the same distance in front of the base, `formation_spacing`
     // apart, centred on the line a lone General would stand at.
@@ -65,8 +71,14 @@ fn a_side_fields_every_general_its_setup_names_in_a_line_across_its_front() {
         assert!(((q.y - p.y).abs() - battle.formation_spacing).abs() < 1e-3);
     }
     let centre = a.iter().map(|(_, _, p)| p.y).sum::<f32>() / 3.0;
-    assert!((centre - lone.y).abs() < 1e-3, "the line is centred on the front");
-    assert!((a[0].2.x.abs() - lone.x.abs()).abs() < 1e-3, "both sides stand as far forward");
+    assert!(
+        (centre - lone.y).abs() < 1e-3,
+        "the line is centred on the front"
+    );
+    assert!(
+        (a[0].2.x.abs() - lone.x.abs()).abs() < 1e-3,
+        "both sides stand as far forward"
+    );
 }
 
 #[test]
@@ -96,9 +108,18 @@ fn a_side_fights_on_while_any_general_lives_and_loses_when_the_last_falls() {
     // The last one falls: A has lost.
     app.world_mut().despawn(a[1].0);
     headless::step(&mut app);
-    let o = app.world().resource::<MatchState>().outcome().expect("decided");
+    let o = app
+        .world()
+        .resource::<MatchState>()
+        .outcome()
+        .expect("decided");
     assert_eq!(o.winner, Some(Faction::B));
-    let r = app.world().resource::<BattleState>().result().cloned().unwrap();
+    let r = app
+        .world()
+        .resource::<BattleState>()
+        .result()
+        .cloned()
+        .unwrap();
     assert_eq!(r.loss(Faction::A), Some(LossCause::GeneralsFell));
     assert_eq!(r.loss(Faction::B), None);
 }
@@ -112,7 +133,11 @@ fn all_of_a_sides_generals_falling_on_one_tick_loses_it_that_tick() {
         app.world_mut().despawn(e);
     }
     headless::step(&mut app);
-    let o = app.world().resource::<MatchState>().outcome().expect("decided");
+    let o = app
+        .world()
+        .resource::<MatchState>()
+        .outcome()
+        .expect("decided");
     assert_eq!((o.winner, o.tick), (Some(Faction::B), before));
 }
 

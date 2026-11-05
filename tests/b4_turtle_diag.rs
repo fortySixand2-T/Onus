@@ -52,13 +52,13 @@ use std::collections::BTreeMap;
 
 use onus::batch::seed_at;
 use onus::headless::{self, MatchSettings, Orientation};
+use onus::sim::combat::{damage_per_hit, damage_per_hit_to_building};
 use onus::sim::content::Content;
 use onus::sim::economy::{Building, UnitDefIdx};
 use onus::sim::spatial::Faction;
-use onus::sim::combat::{damage_per_hit, damage_per_hit_to_building};
 use onus::sim::{
-    AiAction, AiJournal, AttackCooldown, AttackMoveDest, Engaging, Health, MatchState, MoveTarget, Position,
-    Target,
+    AiAction, AiJournal, AttackCooldown, AttackMoveDest, Engaging, Health, MatchState, MoveTarget,
+    Position, Target,
 };
 
 use bevy::math::Vec2;
@@ -404,7 +404,10 @@ fn diagnose(content: &Content, opponent: &str, turtle_seat: Faction, seed_k: u32
         // ---- new AI actions this tick --------------------------------------
         let new: Vec<(Faction, AiAction)> = {
             let j = app.world().resource::<AiJournal>();
-            let v = j.0[journal_seen..].iter().map(|(_, f, a)| (*f, *a)).collect();
+            let v = j.0[journal_seen..]
+                .iter()
+                .map(|(_, f, a)| (*f, *a))
+                .collect();
             journal_seen = j.0.len();
             v
         };
@@ -415,8 +418,7 @@ fn diagnose(content: &Content, opponent: &str, turtle_seat: Faction, seed_k: u32
             let members: Vec<u64> = seen
                 .iter()
                 .filter(|(k, _, mt)| {
-                    *mt == Some(dest)
-                        && tracks.get(k).is_some_and(|t| t.faction == f && t.armed)
+                    *mt == Some(dest) && tracks.get(k).is_some_and(|t| t.faction == f && t.armed)
                 })
                 .map(|(k, _, _)| *k)
                 .collect();
@@ -554,7 +556,10 @@ fn diagnose(content: &Content, opponent: &str, turtle_seat: Faction, seed_k: u32
     });
 
     // ---- structural facts ---------------------------------------------------
-    let fielded = tracks.values().filter(|t| t.faction == d && t.armed).count() as u32;
+    let fielded = tracks
+        .values()
+        .filter(|t| t.faction == d && t.armed)
+        .count() as u32;
     let now = census(&tracks, d, d_hq, r);
     assert_eq!(
         now.home + now.field + now.dead,
@@ -584,7 +589,9 @@ fn diagnose(content: &Content, opponent: &str, turtle_seat: Faction, seed_k: u32
             assert!(at >= dw.commit && alive >= 1 && alive <= d_sent.len() as u32);
         }
     }
-    assert!(d_sent_died_near_turtle <= d_sent_dead_before && d_sent_dead_before <= d_sent.len() as u32);
+    assert!(
+        d_sent_died_near_turtle <= d_sent_dead_before && d_sent_dead_before <= d_sent.len() as u32
+    );
 
     MatchDiag {
         opponent: opponent.to_string(),
@@ -625,14 +632,22 @@ fn print_rows(rows: &[MatchDiag]) {
             (true, Some(_)) => "opp".to_string(),
         };
         let (commit, size, atc) = w.map_or(("-".into(), "-".into(), "-".into()), |w| {
-            (w.commit.to_string(), w.size.to_string(), fmt_census(w.at_commit))
+            (
+                w.commit.to_string(),
+                w.size.to_string(),
+                fmt_census(w.at_commit),
+            )
         });
         let (arr, alive, ata) = match w.and_then(|w| w.arrival) {
             Some((t, c, a)) => (t.to_string(), a.to_string(), fmt_census(c)),
             None => ("-".into(), "-".into(), "-".into()),
         };
         let (tl, dl, away) = w.map_or(("-".into(), "-".into(), "-".into()), |w| {
-            (w.turtle_lost.to_string(), w.d_lost.to_string(), w.d_lost_away.to_string())
+            (
+                w.turtle_lost.to_string(),
+                w.d_lost.to_string(),
+                w.d_lost_away.to_string(),
+            )
         });
         println!(
             "{:<18} {:>4} {:>2} {:>6} {:>6} | {:>6} {:>4} {:>8} | {:>6} {:>4} {:>8} | {:>5} {:>5} {:>4} | {:>3} {:>4} {:>4} {:>4} {:>4}",
@@ -695,7 +710,10 @@ fn print_aggregate(rows: &[MatchDiag], opponents: &[String]) {
             .filter(|m| m.decided && m.winner == Some(m.turtle_seat))
             .count();
         let ws: Vec<&WaveDiag> = ms.iter().filter_map(|m| m.wave.as_ref()).collect();
-        let arr: Vec<(Census, u32)> = ws.iter().filter_map(|w| w.arrival.map(|a| (a.1, a.2))).collect();
+        let arr: Vec<(Census, u32)> = ws
+            .iter()
+            .filter_map(|w| w.arrival.map(|a| (a.1, a.2)))
+            .collect();
         let f = |x: u32| x as f32;
         println!(
             "{:<18} {:>5} {:>5} | {:>5} {:>5}/{:>5}/{:>5} | {:>5} {:>5}/{:>5}/{:>5} | {:>5} {:>5} {:>5} | {:>5} {:>5} {:>5}",
@@ -788,12 +806,18 @@ fn the_turtle_diagnostic_accounts_for_every_armed_unit_in_one_match() {
     print_rows(std::slice::from_ref(&m));
     print_d_rows(std::slice::from_ref(&m));
     assert!(m.decided, "the probe match did not end");
-    let w = m.wave.as_ref().expect("the turtle sent no wave against mass_bulwark");
+    let w = m
+        .wave
+        .as_ref()
+        .expect("the turtle sent no wave against mass_bulwark");
     assert!(
         w.arrival.is_some() || m.winner != Some(m.turtle_seat),
         "the turtle won without its first wave ever reaching the enemy HQ"
     );
-    assert!(m.d_attacks_before > 0, "the opponent never attacked before the turtle");
+    assert!(
+        m.d_attacks_before > 0,
+        "the opponent never attacked before the turtle"
+    );
 }
 
 /// The step-0 table (F-047): turtle against every other shipped strategy, both
@@ -851,10 +875,13 @@ fn commit_order_on_the_diag_content() {
             for _ in 0..onus::headless::DEFAULT_TICK_CAP {
                 headless::step(&mut app);
                 let j = app.world().resource::<AiJournal>();
-                at = j.for_faction(Faction::A).into_iter().find_map(|(t, a)| match a {
-                    AiAction::Attack { .. } => Some(t),
-                    _ => None,
-                });
+                at = j
+                    .for_faction(Faction::A)
+                    .into_iter()
+                    .find_map(|(t, a)| match a {
+                        AiAction::Attack { .. } => Some(t),
+                        _ => None,
+                    });
                 if at.is_some() || app.world().resource::<MatchState>().is_over() {
                     break;
                 }

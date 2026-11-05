@@ -88,23 +88,34 @@ fn fixture(app: &mut App) -> Vec<(String, [f32; 2])> {
 fn probe_swapped_is_the_whole_fixture_reflected_in_x() {
     for seed in [0u64, 4, 99] {
         let mut normal = built(&MatchSettings::default().with_seed(seed));
-        let mut swapped = built(&MatchSettings::default()
-            .with_seed(seed)
-            .with_orientation(Orientation::Swapped));
+        let mut swapped = built(
+            &MatchSettings::default()
+                .with_seed(seed)
+                .with_orientation(Orientation::Swapped),
+        );
         let n = fixture(&mut normal);
         let s = fixture(&mut swapped);
-        assert!(n.len() >= 2 * (1 + 1 + 3), "fixture is not empty: {}", n.len());
-        assert_eq!(n.len(), s.len(), "the two orientations spawn different worlds");
-        let mut reflected: Vec<(String, [f32; 2])> = n
-            .iter()
-            .map(|(k, p)| (k.clone(), [-p[0], p[1]]))
-            .collect();
+        assert!(
+            n.len() >= 2 * (1 + 1 + 3),
+            "fixture is not empty: {}",
+            n.len()
+        );
+        assert_eq!(
+            n.len(),
+            s.len(),
+            "the two orientations spawn different worlds"
+        );
+        let mut reflected: Vec<(String, [f32; 2])> =
+            n.iter().map(|(k, p)| (k.clone(), [-p[0], p[1]])).collect();
         reflected.sort_by(|a, b| {
             a.0.cmp(&b.0)
                 .then(a.1[0].total_cmp(&b.1[0]))
                 .then(a.1[1].total_cmp(&b.1[1]))
         });
-        assert_eq!(reflected, s, "seed {seed}: Swapped is not the x-mirror of Normal");
+        assert_eq!(
+            reflected, s,
+            "seed {seed}: Swapped is not the x-mirror of Normal"
+        );
     }
 }
 
@@ -137,7 +148,11 @@ fn probe_nothing_is_stranded_on_the_far_side_of_the_map() {
             .map(|p| p.0.x)
             .collect();
         nodes.sort_by(f32::total_cmp);
-        assert_eq!(nodes, vec![-750.0, 750.0], "{o:?}: deposits are not mirrored");
+        assert_eq!(
+            nodes,
+            vec![-750.0, 750.0],
+            "{o:?}: deposits are not mirrored"
+        );
     }
 }
 
@@ -173,10 +188,12 @@ fn probe_swapped_moves_the_factions_and_keeps_the_map() {
 fn probe_orientation_does_not_perturb_the_commanders_or_the_seed() {
     let c = content();
     let read = |o: Orientation, seed: u64| -> (Vec<(String, u64, u32)>, u64) {
-        let app = built(&MatchSettings::default()
-            .with_seed(seed)
-            .with_strategies("rush", "turtle")
-            .with_orientation(o));
+        let app = built(
+            &MatchSettings::default()
+                .with_seed(seed)
+                .with_strategies("rush", "turtle")
+                .with_orientation(o),
+        );
         let cs: Vec<(String, u64, u32)> = app
             .world()
             .resource::<AiCommanders>()
@@ -189,7 +206,10 @@ fn probe_orientation_does_not_perturb_the_commanders_or_the_seed() {
     for seed in [0u64, 7, 12345] {
         let a = read(Orientation::Normal, seed);
         let b = read(Orientation::Swapped, seed);
-        assert_eq!(a, b, "seed {seed}: orientation moved something other than the map");
+        assert_eq!(
+            a, b,
+            "seed {seed}: orientation moved something other than the map"
+        );
         assert_eq!(
             a.0.iter().map(|c| c.0.as_str()).collect::<Vec<_>>(),
             vec!["rush", "turtle"],
@@ -198,7 +218,10 @@ fn probe_orientation_does_not_perturb_the_commanders_or_the_seed() {
         assert_eq!(a.1, seed);
     }
     // Non-vacuous: a different seed *does* move the streams.
-    assert_ne!(read(Orientation::Normal, 0).0, read(Orientation::Normal, 1).0);
+    assert_ne!(
+        read(Orientation::Normal, 0).0,
+        read(Orientation::Normal, 1).0
+    );
 }
 
 /// Spawn order (and therefore entity id order, which the sim's stable
@@ -206,9 +229,7 @@ fn probe_orientation_does_not_perturb_the_commanders_or_the_seed() {
 #[test]
 fn probe_spawn_order_is_identical_across_orientations() {
     let ids = |o: Orientation| -> Vec<(String, String)> {
-        let mut app = built(&MatchSettings::default()
-            .with_seed(3)
-            .with_orientation(o));
+        let mut app = built(&MatchSettings::default().with_seed(3).with_orientation(o));
         let mut v: Vec<(String, String)> = app
             .world_mut()
             .query::<(Entity, &Faction, &Position)>()
@@ -267,7 +288,10 @@ fn probe_the_default_is_the_old_geometry_not_a_self_consistent_swap() {
         .find(|(f, _)| **f == Faction::A)
         .map(|(_, p)| p.0)
         .expect("A has an HQ");
-    assert!(a_hq.x < 0.0, "the default must spawn A at the left base, got {a_hq:?}");
+    assert!(
+        a_hq.x < 0.0,
+        "the default must spawn A at the left base, got {a_hq:?}"
+    );
 
     let log = |s: MatchSettings| {
         let mut app = built(&s.with_hashing(true));
@@ -277,12 +301,16 @@ fn probe_the_default_is_the_old_geometry_not_a_self_consistent_swap() {
     let d = log(MatchSettings::default().with_seed(4));
     assert_eq!(
         d,
-        log(MatchSettings::default().with_seed(4).with_orientation(Orientation::Normal)),
+        log(MatchSettings::default()
+            .with_seed(4)
+            .with_orientation(Orientation::Normal)),
         "default != explicit Normal"
     );
     assert_ne!(
         d,
-        log(MatchSettings::default().with_seed(4).with_orientation(Orientation::Swapped)),
+        log(MatchSettings::default()
+            .with_seed(4)
+            .with_orientation(Orientation::Swapped)),
         "Swapped hashes the same as Normal"
     );
     assert_eq!(d.len(), 90);
@@ -341,7 +369,10 @@ fn probe_the_batch_is_exactly_the_product_in_the_stated_order() {
         }
     }
     let got: Vec<(String, String, u64, usize)> = rows.iter().map(key).collect();
-    assert_eq!(got, expected, "row order is not seed-major -> RON -> orientation");
+    assert_eq!(
+        got, expected,
+        "row order is not seed-major -> RON -> orientation"
+    );
 
     let mut uniq = got.clone();
     uniq.sort();
@@ -357,7 +388,11 @@ fn probe_the_batch_is_exactly_the_product_in_the_stated_order() {
     assert_eq!(per.len(), n * n * k as usize);
     for (cell, mut os) in per {
         os.sort();
-        assert_eq!(os, vec![0, 1], "{cell:?} was not played in both orientations");
+        assert_eq!(
+            os,
+            vec![0, 1],
+            "{cell:?} was not played in both orientations"
+        );
     }
 }
 
@@ -367,7 +402,10 @@ fn probe_the_batch_is_exactly_the_product_in_the_stated_order() {
 fn probe_only_filters_without_reordering_under_both_orientations() {
     let forward = run(&small(2, 1, &["rush", "turtle"]));
     let backward = run(&small(2, 1, &["turtle", "rush"]));
-    assert_eq!(forward, backward, "the flag's typing order reached the rows");
+    assert_eq!(
+        forward, backward,
+        "the flag's typing order reached the rows"
+    );
     let full = run(&BatchSettings::default().with_tick_cap(2).with_seeds(1));
     let expect: Vec<&MatchRecord> = full
         .iter()
@@ -402,7 +440,10 @@ fn probe_winner_at_left_agrees_with_the_winning_hq_position() {
             headless::step(&mut app);
             ticks += 1;
         }
-        assert_eq!(ticks, record.ticks, "{o:?}: the replay diverged from the record");
+        assert_eq!(
+            ticks, record.ticks,
+            "{o:?}: the replay diverged from the record"
+        );
         let outcome = app.world().resource::<MatchState>().outcome();
         assert_eq!(
             outcome.and_then(|x| x.winner),
@@ -500,7 +541,10 @@ fn probe_spawn_wins_are_a_rebucketing_of_the_same_decided_matches() {
         .filter(|r| r.winner() == Some(Faction::A))
         .count();
     assert_eq!(t.wins[0], a);
-    assert!(t.decided > 0, "nothing was decided; the probe measured nothing");
+    assert!(
+        t.decided > 0,
+        "nothing was decided; the probe measured nothing"
+    );
 }
 
 // ---- determinism ------------------------------------------------------------
@@ -537,7 +581,10 @@ fn probe_the_cli_is_identical_out_of_process_including_progress() {
     assert_eq!(err1, err2, "the progress stream is not reproducible");
     assert!(out1.contains("matches      16"), "{out1}");
     assert!(err1.contains("[16/16]"), "{err1}");
-    assert!(err1.contains("[normal]") && err1.contains("[swapped]"), "{err1}");
+    assert!(
+        err1.contains("[normal]") && err1.contains("[swapped]"),
+        "{err1}"
+    );
 }
 
 // ---- CLI range, precedence, help -------------------------------------------
@@ -552,8 +599,14 @@ fn probe_counts_are_refused_above_u32_not_truncated() {
         let (ok, out, err) = balance(&[flag, "4294967296", "--only", "nosuchstrategy"]);
         assert!(!ok, "{flag} 2^32 was accepted");
         assert!(out.is_empty(), "{flag}: {out}");
-        assert!(err.contains("out of range"), "{flag} truncated instead: {err}");
-        assert!(err.contains(flag), "{flag}: the refusal does not name the flag: {err}");
+        assert!(
+            err.contains("out of range"),
+            "{flag} truncated instead: {err}"
+        );
+        assert!(
+            err.contains(flag),
+            "{flag}: the refusal does not name the flag: {err}"
+        );
 
         // u32::MAX parses; the run then fails for the *other* reason.
         let (ok, out, err) = balance(&[flag, "4294967295", "--only", "nosuchstrategy"]);
@@ -586,7 +639,10 @@ fn probe_minutes_refuses_at_the_overflow_boundary_and_accepts_below_it() {
     let (ok, out, err) = balance(&["--minutes", "1193046", "--only", "nosuchstrategy"]);
     assert!(!ok);
     assert!(out.is_empty());
-    assert!(!err.contains("out of range"), "the boundary was refused: {err}");
+    assert!(
+        !err.contains("out of range"),
+        "the boundary was refused: {err}"
+    );
     assert!(err.contains("nosuchstrategy"), "{err}");
     // One more minute overflows u32 and must be refused, not wrapped.
     for m in ["1193047", "4294967296", "18446744073709551615"] {
@@ -614,7 +670,14 @@ fn probe_cap_precedence_is_last_flag_wins_in_both_orders() {
     };
     let played = |err: &str| -> Vec<u32> {
         err.lines()
-            .filter_map(|l| l.split(" in ").nth(1)?.split(' ').next()?.parse::<u32>().ok())
+            .filter_map(|l| {
+                l.split(" in ")
+                    .nth(1)?
+                    .split(' ')
+                    .next()?
+                    .parse::<u32>()
+                    .ok()
+            })
             .collect()
     };
     let (ok, _, err) = balance(&["--only", "rush", "--minutes", "1", "--tick-cap", "7"]);
@@ -685,9 +748,17 @@ fn probe_a_purely_positional_edge_cancels_exactly_in_the_slot_split() {
         }
     }
     let t = batch::Tally::of(&rows);
-    assert_eq!(t.spawn_wins, [12, 0], "the raw positional edge must stay visible");
+    assert_eq!(
+        t.spawn_wins,
+        [12, 0],
+        "the raw positional edge must stay visible"
+    );
     assert_eq!(t.left_spawn_rate(), Some(1.0));
-    assert_eq!(t.wins, [6, 6], "a purely positional edge must cancel exactly");
+    assert_eq!(
+        t.wins,
+        [6, 6],
+        "a purely positional edge must cancel exactly"
+    );
     assert_eq!(t.slot_a_rate(), Some(0.5));
     // ...and the per-orientation halves each show the full asymmetry.
     assert_eq!(t.by_orientation[0].wins, [6, 0]);
@@ -715,7 +786,11 @@ fn probe_a_turn_order_edge_survives_reflection_and_is_reported_as_such() {
         }
     }
     let t = batch::Tally::of(&rows);
-    assert_eq!(t.wins, [12, 0], "a slot edge must not be cancelled by reflection");
+    assert_eq!(
+        t.wins,
+        [12, 0],
+        "a slot edge must not be cancelled by reflection"
+    );
     assert_eq!(t.slot_a_rate(), Some(1.0));
     assert_eq!(t.spawn_wins, [6, 6], "a slot edge is positionally even");
     assert_eq!(t.left_spawn_rate(), Some(0.5));

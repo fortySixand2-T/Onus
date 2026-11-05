@@ -72,9 +72,15 @@ impl ReplayConfig {
         let text = match std::fs::read_to_string(&path) {
             Ok(t) => t,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Self::default()),
-            Err(e) => return Err(format!("replay config: cannot read {}: {e}", path.display())),
+            Err(e) => {
+                return Err(format!(
+                    "replay config: cannot read {}: {e}",
+                    path.display()
+                ))
+            }
         };
-        ron::from_str(&text).map_err(|e| format!("replay config: cannot parse {}: {e}", path.display()))
+        ron::from_str(&text)
+            .map_err(|e| format!("replay config: cannot parse {}: {e}", path.display()))
     }
 }
 
@@ -227,7 +233,10 @@ impl ReplayWriter {
         };
         let dir = PathBuf::from(&self.config.dir);
         if let Err(e) = std::fs::create_dir_all(&dir) {
-            let msg = format!("replay log not written: cannot create {}: {e}", dir.display());
+            let msg = format!(
+                "replay log not written: cannot create {}: {e}",
+                dir.display()
+            );
             error!("{msg}");
             self.outcome = Some(WriteOutcome::Failed(msg));
             return;
@@ -262,7 +271,11 @@ impl ReplayWriter {
 /// even two processes racing cannot both take one name — and the writer walks
 /// `-1`, `-2`, ... until it claims one. Running out is reported and loses the
 /// *new* log; overwriting would lose an *old* one, which is strictly worse.
-fn claim_path(dir: &Path, stem: &str, max_collisions: u32) -> Result<(PathBuf, std::fs::File), String> {
+fn claim_path(
+    dir: &Path,
+    stem: &str,
+    max_collisions: u32,
+) -> Result<(PathBuf, std::fs::File), String> {
     let mut last = None;
     for n in 0..=max_collisions {
         let name = if n == 0 {

@@ -48,7 +48,11 @@ fn play(c: Content, settings: &MatchSettings, ticks: u32) -> Trace {
     headless::tick(&mut app, ticks);
     let hashes = app.world().resource::<StateHashLog>().0.clone();
     let journal = app.world().resource::<AiJournal>().0.len();
-    let end = app.world().resource::<MatchState>().outcome().map(|o| o.tick);
+    let end = app
+        .world()
+        .resource::<MatchState>()
+        .outcome()
+        .map(|o| o.tick);
     let rules = app.world().contains_resource::<NationRules>();
     (hashes, journal, end, rules)
 }
@@ -77,17 +81,27 @@ fn a_skirmish_plays_identically_with_and_without_the_nation_layer() {
         let without = play(without_nations("seeds"), &s, 1_800);
         assert_eq!(with.0.len(), 1_800, "seed {seed}: one hash per tick");
         assert!(!with.3, "seed {seed}: no NationRules with no nation");
-        assert_eq!(with, without, "seed {seed}: the nation layer reached a no-nation match");
+        assert_eq!(
+            with, without,
+            "seed {seed}: the nation layer reached a no-nation match"
+        );
     }
 }
 
 #[test]
 fn named_strategies_play_identically_with_and_without_the_nation_layer() {
-    for (a, b) in [("rush", "turtle"), ("mass_ripper", "mass_bulwark"), ("synth_triad", "mvp")] {
+    for (a, b) in [
+        ("rush", "turtle"),
+        ("mass_ripper", "mass_bulwark"),
+        ("synth_triad", "mvp"),
+    ] {
         let s = MatchSettings::default().with_strategies(a, b);
         let with = play(shipped(), &s, 3_600);
         let without = play(without_nations("named"), &s, 3_600);
-        assert_eq!(with, without, "{a} vs {b}: the nation layer reached a no-nation match");
+        assert_eq!(
+            with, without,
+            "{a} vs {b}: the nation layer reached a no-nation match"
+        );
     }
 }
 
@@ -115,6 +129,9 @@ fn a_decided_match_is_decided_identically() {
     let cap = headless::DEFAULT_TICK_CAP;
     let with = play(shipped(), &s, cap);
     let without = play(without_nations("decided"), &s, cap);
-    assert!(with.2.is_some(), "the match is decided inside the default cap");
+    assert!(
+        with.2.is_some(),
+        "the match is decided inside the default cap"
+    );
     assert_eq!(with, without);
 }

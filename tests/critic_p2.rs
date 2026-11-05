@@ -40,8 +40,8 @@ struct Scratch(PathBuf);
 
 impl Scratch {
     fn new(name: &str) -> Self {
-        let dir = std::env::temp_dir()
-            .join(format!("onus-critic-p2-{name}-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("onus-critic-p2-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("scratch dir");
         Scratch(dir)
@@ -100,11 +100,19 @@ fn spawn_unit(app: &mut App, id: &str, faction: Faction, pos: Vec2) {
 fn spawn_building(app: &mut App, id: &str, faction: Faction, pos: Vec2) -> Entity {
     let (def, hp) = {
         let c = app.world().resource::<Content>();
-        let def = c.building_index(id).unwrap_or_else(|| panic!("building `{id}`"));
+        let def = c
+            .building_index(id)
+            .unwrap_or_else(|| panic!("building `{id}`"));
         (def, Health::from_building_def(c, def))
     };
     app.world_mut()
-        .spawn((Position(pos), Building { def }, faction, ProductionQueue::default(), hp))
+        .spawn((
+            Position(pos),
+            Building { def },
+            faction,
+            ProductionQueue::default(),
+            hp,
+        ))
         .id()
 }
 
@@ -130,10 +138,17 @@ fn ai_vs_ai(seed: u64, writer: Option<ReplayWriter>) -> App {
         (Faction::B, Vec2::new(750.0, 0.0)),
     ] {
         spawn_building(&mut app, "hq", faction, base);
-        app.world_mut()
-            .spawn((Position(base + Vec2::new(0.0, 250.0)), ResourceNode { amount: 100_000 }));
+        app.world_mut().spawn((
+            Position(base + Vec2::new(0.0, 250.0)),
+            ResourceNode { amount: 100_000 },
+        ));
         for i in 0..3 {
-            spawn_unit(&mut app, "worker", faction, base + Vec2::new(0.0, 20.0 * i as f32));
+            spawn_unit(
+                &mut app,
+                "worker",
+                faction,
+                base + Vec2::new(0.0, 20.0 * i as f32),
+            );
         }
     }
     app.insert_resource(AiCommanders::new(seed, &[Faction::A, Faction::B]));
@@ -162,16 +177,42 @@ fn play(seed: u64, ticks: u32, writer: Option<ReplayWriter>) -> (Trace, App) {
     let log = app.world().resource::<CommandLog>().log().clone();
     let outcome = app.world().resource::<MatchState>().outcome();
     let final_hash = onus::sim::state_hash(app.world_mut());
-    (Trace { hashes, final_hash, issued, log, outcome }, app)
+    (
+        Trace {
+            hashes,
+            final_hash,
+            issued,
+            log,
+            outcome,
+        },
+        app,
+    )
 }
 
 fn assert_same(what: &str, a: &Trace, b: &Trace) {
-    assert_eq!(a.hashes.first_divergence(&b.hashes), None, "{what}: a per-tick hash moved");
-    assert_eq!(a.hashes.0.len(), b.hashes.0.len(), "{what}: different number of ticks");
-    assert_eq!(a.final_hash, b.final_hash, "{what}: the final world differs");
+    assert_eq!(
+        a.hashes.first_divergence(&b.hashes),
+        None,
+        "{what}: a per-tick hash moved"
+    );
+    assert_eq!(
+        a.hashes.0.len(),
+        b.hashes.0.len(),
+        "{what}: different number of ticks"
+    );
+    assert_eq!(
+        a.final_hash, b.final_hash,
+        "{what}: the final world differs"
+    );
     assert_eq!(a.issued, b.issued, "{what}: the SimId registry drifted");
-    assert_eq!(a.log.commands, b.log.commands, "{what}: the command stream differs");
-    assert_eq!(a.log.content, b.log.content, "{what}: the content stamp differs");
+    assert_eq!(
+        a.log.commands, b.log.commands,
+        "{what}: the command stream differs"
+    );
+    assert_eq!(
+        a.log.content, b.log.content,
+        "{what}: the content stamp differs"
+    );
     assert_eq!(a.outcome, b.outcome, "{what}: a different verdict");
 }
 
@@ -210,7 +251,10 @@ fn no_configuration_of_the_writer_changes_a_single_tick_of_the_sim() {
     let (fixed, fixed_app) = play(
         7,
         TICKS,
-        Some(ReplayWriter::with_fixed_clock(config_in(a.path()), 1_700_000_000)),
+        Some(ReplayWriter::with_fixed_clock(
+            config_in(a.path()),
+            1_700_000_000,
+        )),
     );
     // A different path, a different prefix, a different collision budget — all
     // of which change the *filename* the clock helps compute.
@@ -231,16 +275,33 @@ fn no_configuration_of_the_writer_changes_a_single_tick_of_the_sim() {
     assert_same("a writer at all", &none, &disabled);
     assert_same("a wall-clock writer", &none, &wall);
     assert_same("a fixed-clock writer", &none, &fixed);
-    assert_same("a writer with a different path and clock", &none, &elsewhere);
+    assert_same(
+        "a writer with a different path and clock",
+        &none,
+        &elsewhere,
+    );
     assert_same("wall vs fixed clock", &wall, &fixed);
 
     // ...and none of it is vacuous: the match was decided and played out, and
     // all three enabled writers really did write, to three different names.
-    assert!(none.outcome.is_some(), "the fixture never decided, so nothing was written");
-    assert!(none.log.commands.len() > 20, "the fixture played almost nothing");
-    assert!(none.issued.last().copied().unwrap_or(0) > 8, "nothing was ever spawned");
+    assert!(
+        none.outcome.is_some(),
+        "the fixture never decided, so nothing was written"
+    );
+    assert!(
+        none.log.commands.len() > 20,
+        "the fixture played almost nothing"
+    );
+    assert!(
+        none.issued.last().copied().unwrap_or(0) > 8,
+        "nothing was ever spawned"
+    );
     let mut names = Vec::new();
-    for (what, app) in [("wall", &wall_app), ("fixed", &fixed_app), ("elsewhere", &other_app)] {
+    for (what, app) in [
+        ("wall", &wall_app),
+        ("fixed", &fixed_app),
+        ("elsewhere", &other_app),
+    ] {
         let w = app.world().resource::<ReplayWriter>();
         assert!(w.asks() > 100, "{what}: the writer was barely asked");
         let p = w
@@ -250,7 +311,10 @@ fn no_configuration_of_the_writer_changes_a_single_tick_of_the_sim() {
         names.push(p.file_name().unwrap().to_string_lossy().to_string());
     }
     assert_eq!(
-        names.iter().collect::<std::collections::BTreeSet<_>>().len(),
+        names
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
         3,
         "the three writers produced the same filename, so the clock and the path \
          were not actually varied: {names:?}"
@@ -305,12 +369,21 @@ fn nothing_under_src_sim_names_a_clock_a_path_or_the_writer() {
 #[test]
 fn the_writer_lives_outside_the_sim_and_the_sim_does_not_depend_on_it() {
     let io = std::fs::read_to_string(src_dir().join("replay_io.rs")).expect("replay_io.rs");
-    assert!(io.contains("SystemTime"), "the clock is not where it is claimed to be");
+    assert!(
+        io.contains("SystemTime"),
+        "the clock is not where it is claimed to be"
+    );
     // ...and `replay_io` is not a sim module.
     let sim_mod = std::fs::read_to_string(src_dir().join("sim/mod.rs")).expect("sim/mod.rs");
-    assert!(!sim_mod.contains("replay_io"), "the sim declares the driver's writer");
+    assert!(
+        !sim_mod.contains("replay_io"),
+        "the sim declares the driver's writer"
+    );
     let lib = std::fs::read_to_string(src_dir().join("lib.rs")).expect("lib.rs");
-    assert!(lib.contains("pub mod replay_io;"), "the writer is not a driver module");
+    assert!(
+        lib.contains("pub mod replay_io;"),
+        "the writer is not a driver module"
+    );
 }
 
 // ---- 2. what reaches disk must be usable -----------------------------------
@@ -338,13 +411,24 @@ fn every_file_the_writer_claims_to_have_written_is_a_usable_replay() {
         tick(&mut app, 20);
 
         let writer = app.world().resource::<ReplayWriter>();
-        assert!(writer.error().is_none(), "seed {seed}: write failed: {:?}", writer.error());
+        assert!(
+            writer.error().is_none(),
+            "seed {seed}: write failed: {:?}",
+            writer.error()
+        );
         let path = writer
             .written()
             .unwrap_or_else(|| panic!("seed {seed}: a decided match wrote nothing"))
             .to_path_buf();
-        assert!(path.exists(), "seed {seed}: the reported path does not exist");
-        assert_eq!(logs_in(dir.path()), vec![path.clone()], "seed {seed}: not exactly one log");
+        assert!(
+            path.exists(),
+            "seed {seed}: the reported path does not exist"
+        );
+        assert_eq!(
+            logs_in(dir.path()),
+            vec![path.clone()],
+            "seed {seed}: not exactly one log"
+        );
 
         // The bytes on disk are exactly what the sim would have written.
         let recorded = app.world().resource::<CommandLog>().log().clone();
@@ -355,9 +439,13 @@ fn every_file_the_writer_claims_to_have_written_is_a_usable_replay() {
         );
 
         // The front door accepts it, and it replays to the same verdict.
-        let loaded = MatchLog::load_for(&path, &content())
-            .unwrap_or_else(|e| panic!("seed {seed}: the shipped writer wrote a log the front door refuses: {e}"));
-        assert_eq!(loaded.commands, recorded.commands, "seed {seed}: the file lost commands");
+        let loaded = MatchLog::load_for(&path, &content()).unwrap_or_else(|e| {
+            panic!("seed {seed}: the shipped writer wrote a log the front door refuses: {e}")
+        });
+        assert_eq!(
+            loaded.commands, recorded.commands,
+            "seed {seed}: the file lost commands"
+        );
         assert!(loaded.content.is_known() && !loaded.content_changed);
 
         let mut r = ai_vs_ai(loaded.seed, None);
@@ -365,7 +453,11 @@ fn every_file_the_writer_claims_to_have_written_is_a_usable_replay() {
         r.insert_resource(onus::sim::ReplaySource::new(loaded));
         tick(&mut r, played + 20);
         let src = r.world().resource::<onus::sim::ReplaySource>();
-        assert_eq!(src.rejection(), None, "seed {seed}: the replay refused the shipped log");
+        assert_eq!(
+            src.rejection(),
+            None,
+            "seed {seed}: the replay refused the shipped log"
+        );
         assert!(src.cursor() > 0, "seed {seed}: the replay fed nothing");
         assert_eq!(
             r.world().resource::<MatchState>().outcome(),
@@ -415,8 +507,13 @@ fn exhausting_the_name_budget_loses_the_new_log_and_no_old_one() {
     tick(&mut app, 5);
 
     let writer = app.world().resource::<ReplayWriter>();
-    assert!(writer.written().is_none(), "the writer overwrote one of the taken names");
-    let err = writer.error().expect("running out of names was not reported");
+    assert!(
+        writer.written().is_none(),
+        "the writer overwrote one of the taken names"
+    );
+    let err = writer
+        .error()
+        .expect("running out of names was not reported");
     assert!(
         err.contains("refusing to overwrite") || err.to_lowercase().contains("taken"),
         "the failure does not say what happened: {err}"
@@ -429,7 +526,11 @@ fn exhausting_the_name_budget_loses_the_new_log_and_no_old_one() {
             p.display()
         );
     }
-    assert_eq!(logs_in(dir.path()).len(), planted.len(), "a stray file was left behind");
+    assert_eq!(
+        logs_in(dir.path()).len(),
+        planted.len(),
+        "a stray file was left behind"
+    );
 }
 
 /// One free name after several taken ones: the writer walks to it, and writes
@@ -481,7 +582,10 @@ fn a_zero_collision_budget_is_exactly_one_attempt() {
         if taken {
             std::fs::write(dir.path().join(&name), "taken").expect("plant");
         }
-        let cfg = ReplayConfig { max_collisions: 0, ..config_in(dir.path()) };
+        let cfg = ReplayConfig {
+            max_collisions: 0,
+            ..config_in(dir.path())
+        };
         let mut app = ai_vs_ai(seed, Some(ReplayWriter::with_fixed_clock(cfg, STAMP)));
         while app.world().resource::<MatchState>().outcome().is_none() {
             step(&mut app);
@@ -517,7 +621,10 @@ fn a_filesystem_that_refuses_is_reported_and_the_match_survives() {
     let scratch = Scratch::new("hostile");
     let as_file = scratch.path().join("i-am-a-file");
     std::fs::write(&as_file, "not a directory").expect("write");
-    let cfg = ReplayConfig { dir: as_file.display().to_string(), ..config_in(scratch.path()) };
+    let cfg = ReplayConfig {
+        dir: as_file.display().to_string(),
+        ..config_in(scratch.path())
+    };
     let mut app = ai_vs_ai(7, Some(ReplayWriter::new(cfg)));
     let mut played = 0u32;
     while app.world().resource::<MatchState>().outcome().is_none() && played < 8 * 60 * 60 {
@@ -527,7 +634,10 @@ fn a_filesystem_that_refuses_is_reported_and_the_match_survives() {
     let before = onus::sim::state_hash(app.world_mut());
     tick(&mut app, 30);
     let w = app.world().resource::<ReplayWriter>();
-    assert!(w.written().is_none(), "a file was written into a regular file");
+    assert!(
+        w.written().is_none(),
+        "a file was written into a regular file"
+    );
     assert!(w.error().is_some(), "a failed write was not reported");
     assert!(w.asks() > 20, "the writer stopped being asked");
     assert_eq!(
@@ -566,7 +676,10 @@ fn a_filesystem_that_refuses_is_reported_and_the_match_survives() {
             tick(&mut app, 5);
             let w = app.world().resource::<ReplayWriter>();
             assert!(w.written().is_none());
-            assert!(w.error().is_some(), "an unwritable directory was not reported");
+            assert!(
+                w.error().is_some(),
+                "an unwritable directory was not reported"
+            );
         }
         perms.set_mode(0o700);
         let _ = std::fs::set_permissions(ro.path(), perms);
@@ -597,17 +710,37 @@ fn a_match_decided_immediately_writes_exactly_one_log() {
     step(&mut app);
     app.world_mut().despawn(b);
     step(&mut app);
-    assert!(app.world().resource::<MatchState>().is_over(), "the fixture did not decide");
-    let first = app.world().resource::<ReplayWriter>().written().map(|p| p.to_path_buf());
-    assert!(first.is_some(), "an immediately decided match wrote nothing");
+    assert!(
+        app.world().resource::<MatchState>().is_over(),
+        "the fixture did not decide"
+    );
+    let first = app
+        .world()
+        .resource::<ReplayWriter>()
+        .written()
+        .map(|p| p.to_path_buf());
+    assert!(
+        first.is_some(),
+        "an immediately decided match wrote nothing"
+    );
     tick(&mut app, 200);
     assert_eq!(
-        app.world().resource::<ReplayWriter>().written().map(|p| p.to_path_buf()),
+        app.world()
+            .resource::<ReplayWriter>()
+            .written()
+            .map(|p| p.to_path_buf()),
         first,
         "the writer wrote a second time"
     );
-    assert!(app.world().resource::<ReplayWriter>().asks() > 150, "the latch was never tested");
-    assert_eq!(logs_in(dir.path()).len(), 1, "more than one log reached disk");
+    assert!(
+        app.world().resource::<ReplayWriter>().asks() > 150,
+        "the latch was never tested"
+    );
+    assert_eq!(
+        logs_in(dir.path()).len(),
+        1,
+        "more than one log reached disk"
+    );
 }
 
 /// An exit in the **same frame** as the decision, and repeated exits after it,
@@ -659,13 +792,26 @@ fn an_app_that_never_ticked_writes_no_file_at_all() {
         .init_resource::<MatchState>()
         .insert_resource(CommandLog::new(7));
     onus::add_replay_writer(&mut app, config_in(dir.path()));
-    assert!(!app.world().resource::<CommandLog>().log().content.is_known());
+    assert!(!app
+        .world()
+        .resource::<CommandLog>()
+        .log()
+        .content
+        .is_known());
     app.world_mut().write_message(AppExit::Success);
     app.update();
     let w = app.world().resource::<ReplayWriter>();
-    assert_eq!(w.outcome(), Some(&WriteOutcome::NothingToWrite), "outcome: {:?}", w.outcome());
+    assert_eq!(
+        w.outcome(),
+        Some(&WriteOutcome::NothingToWrite),
+        "outcome: {:?}",
+        w.outcome()
+    );
     assert!(w.asks() > 0, "the writer was never asked");
-    assert!(logs_in(dir.path()).is_empty(), "a file was written for a match that never ran");
+    assert!(
+        logs_in(dir.path()).is_empty(),
+        "a file was written for a match that never ran"
+    );
     assert!(
         !dir.path().join("critic").exists(),
         "an unplayed match still created output"
@@ -678,7 +824,10 @@ fn an_app_that_never_ticked_writes_no_file_at_all() {
 fn a_disabled_writer_does_not_even_create_its_directory() {
     let scratch = Scratch::new("disabled");
     let target = scratch.path().join("should-never-exist");
-    let cfg = ReplayConfig { enabled: false, ..config_in(&target) };
+    let cfg = ReplayConfig {
+        enabled: false,
+        ..config_in(&target)
+    };
     let mut app = ai_vs_ai(7, Some(ReplayWriter::new(cfg)));
     let mut played = 0u32;
     while app.world().resource::<MatchState>().outcome().is_none() && played < 8 * 60 * 60 {
@@ -687,9 +836,15 @@ fn a_disabled_writer_does_not_even_create_its_directory() {
     }
     tick(&mut app, 20);
     let w = app.world().resource::<ReplayWriter>();
-    assert!(w.asks() > 20, "the disabled writer was never asked, so this proves nothing");
+    assert!(
+        w.asks() > 20,
+        "the disabled writer was never asked, so this proves nothing"
+    );
     assert_eq!(w.outcome(), None, "a disabled writer recorded an outcome");
-    assert!(!target.exists(), "a disabled writer created its output directory");
+    assert!(
+        !target.exists(),
+        "a disabled writer created its output directory"
+    );
 }
 
 // ---- 6. the config ----------------------------------------------------------
@@ -714,9 +869,18 @@ fn a_missing_config_is_off_and_no_broken_one_reads_as_off() {
         ("garbage", "not ron at all }{"),
         ("truncated", "(enabled: true, dir: \"x\", prefix: \"y\""),
         // A typo in a field name: the field it meant is then missing.
-        ("typo", "(enable: true, dir: \"x\", prefix: \"y\", max_collisions: 4)"),
-        ("missing-dir", "(enabled: true, prefix: \"y\", max_collisions: 4)"),
-        ("wrong-type", "(enabled: \"yes\", dir: \"x\", prefix: \"y\", max_collisions: 4)"),
+        (
+            "typo",
+            "(enable: true, dir: \"x\", prefix: \"y\", max_collisions: 4)",
+        ),
+        (
+            "missing-dir",
+            "(enabled: true, prefix: \"y\", max_collisions: 4)",
+        ),
+        (
+            "wrong-type",
+            "(enabled: \"yes\", dir: \"x\", prefix: \"y\", max_collisions: 4)",
+        ),
     ] {
         let got = write(body);
         assert!(
@@ -730,7 +894,12 @@ fn a_missing_config_is_off_and_no_broken_one_reads_as_off() {
         .expect("a well-formed config must load");
     assert_eq!(
         ok,
-        ReplayConfig { enabled: true, dir: "somewhere".into(), prefix: "p".into(), max_collisions: 3 }
+        ReplayConfig {
+            enabled: true,
+            dir: "somewhere".into(),
+            prefix: "p".into(),
+            max_collisions: 3
+        }
     );
 }
 
@@ -739,15 +908,25 @@ fn a_missing_config_is_off_and_no_broken_one_reads_as_off() {
 #[test]
 fn the_shipped_configuration_is_off_and_cannot_litter_the_repo() {
     let shipped = ReplayConfig::load_from_dir(&data_dir()).expect("assets/data/replay.ron");
-    assert!(!shipped.enabled, "the shipped config writes a log on every run");
-    assert!(!shipped.dir.starts_with('/'), "the default output path is absolute");
-    assert!(!shipped.dir.contains(".."), "the default output path escapes upwards");
-    let ignore = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".gitignore"),
-    )
-    .expect(".gitignore");
     assert!(
-        ignore.lines().any(|l| l.trim().trim_start_matches('/') == shipped.dir),
+        !shipped.enabled,
+        "the shipped config writes a log on every run"
+    );
+    assert!(
+        !shipped.dir.starts_with('/'),
+        "the default output path is absolute"
+    );
+    assert!(
+        !shipped.dir.contains(".."),
+        "the default output path escapes upwards"
+    );
+    let ignore =
+        std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(".gitignore"))
+            .expect(".gitignore");
+    assert!(
+        ignore
+            .lines()
+            .any(|l| l.trim().trim_start_matches('/') == shipped.dir),
         "the default replay directory `{}` is not gitignored",
         shipped.dir
     );
@@ -794,8 +973,7 @@ fn only_add_replay_writer_registers_the_writer() {
                             let end = at.saturating_add(
                                 text[at.min(text.len())..].find("\n}\n").unwrap_or(0),
                             );
-                            let offset: usize =
-                                text.lines().take(i).map(|l| l.len() + 1).sum();
+                            let offset: usize = text.lines().take(i).map(|l| l.len() + 1).sum();
                             if !(offset > at && offset < end) {
                                 offenders.push(format!("{}:{}", p.display(), i + 1));
                             }
@@ -805,7 +983,10 @@ fn only_add_replay_writer_registers_the_writer() {
             }
         }
     }
-    assert_eq!(definitions, 1, "there is not exactly one `add_replay_writer`");
+    assert_eq!(
+        definitions, 1,
+        "there is not exactly one `add_replay_writer`"
+    );
     assert!(
         offenders.is_empty(),
         "the writer's systems are registered outside the one definition: {offenders:#?}"
@@ -915,10 +1096,9 @@ fn resolve_src_fn(name: &str) -> Result<String, String> {
         let text = std::fs::read_to_string(&f).map_err(|e| e.to_string())?;
         if let Some(at) = text.find(&needle) {
             let rest = &text[at..];
-            let end = rest[1..]
-                .find("\n}\n")
-                .map(|i| i + 3)
-                .ok_or_else(|| format!("{name}: no closing brace at column 0 in {}", f.display()))?;
+            let end = rest[1..].find("\n}\n").map(|i| i + 3).ok_or_else(|| {
+                format!("{name}: no closing brace at column 0 in {}", f.display())
+            })?;
             found.push(rest[..end].to_string());
         }
     }
@@ -957,7 +1137,9 @@ fn nothing_build_app_calls_can_report_before_the_subscriber_exists() {
     let mut checked = 0usize;
     let mut i = 0usize;
     while i < body.len() {
-        let Some(rel) = body[i..].find("::") else { break };
+        let Some(rel) = body[i..].find("::") else {
+            break;
+        };
         let colons = i + rel;
         // The identifier after `::`, and the `(` that would make it a call.
         let after = &body[colons + 2..];
@@ -973,7 +1155,9 @@ fn nothing_build_app_calls_can_report_before_the_subscriber_exists() {
             continue;
         }
         // Only functions this crate defines; anything else is Bevy's.
-        let Ok(callee) = resolve_src_fn(name) else { continue };
+        let Ok(callee) = resolve_src_fn(name) else {
+            continue;
+        };
         checked += 1;
         let reports = ["error!", "warn!", "info!", "debug!", "trace!"]
             .iter()
@@ -984,7 +1168,9 @@ fn nothing_build_app_calls_can_report_before_the_subscriber_exists() {
             });
         if reports && colons < subscriber {
             let line = body[..colons].lines().count() + lib[..at].lines().count();
-            deaf.push(format!("lib.rs:{line}: {name}(..) can report, and is called here"));
+            deaf.push(format!(
+                "lib.rs:{line}: {name}(..) can report, and is called here"
+            ));
         }
     }
     assert!(
@@ -1063,8 +1249,14 @@ fn a_symlink_at_a_candidate_name_is_neither_written_through_nor_removed() {
         );
         // ...and the log went somewhere else entirely, and is usable.
         let w = app.world().resource::<ReplayWriter>();
-        let written = w.written().unwrap_or_else(|| panic!("nothing written: {:?}", w.error()));
-        assert_ne!(written, candidate.as_path(), "the writer claimed the symlink");
+        let written = w
+            .written()
+            .unwrap_or_else(|| panic!("nothing written: {:?}", w.error()));
+        assert_ne!(
+            written,
+            candidate.as_path(),
+            "the writer claimed the symlink"
+        );
         assert!(MatchLog::load_for(written, &content()).is_ok());
     }
 }
@@ -1095,7 +1287,11 @@ fn only_the_freshly_claimed_path_can_reach_the_cleanup() {
         .lines()
         .filter(|l| l.split("//").next().unwrap_or("").contains("remove_file"))
         .collect();
-    assert_eq!(removals.len(), 1, "the writer deletes files from more than one place: {removals:?}");
+    assert_eq!(
+        removals.len(),
+        1,
+        "the writer deletes files from more than one place: {removals:?}"
+    );
     // The one call site is the one that just claimed the path.
     let at = calls[0];
     let window = &shipped[at.saturating_sub(300)..at];
@@ -1162,7 +1358,12 @@ fn build_app_touches_the_world_in_the_order_the_sim_was_pinned_against() {
     );
     // The config load reads a file and touches no `World`, so it may sit
     // anywhere after the subscriber — but it must not be an app operation.
-    let seam = body.find("load_config_or_report(").expect("the seam is called");
+    let seam = body
+        .find("load_config_or_report(")
+        .expect("the seam is called");
     let plugins = body.find("add_plugins(DefaultPlugins)").expect("plugins");
-    assert!(seam > plugins, "the config load moved back above the subscriber");
+    assert!(
+        seam > plugins,
+        "the config load moved back above the subscriber"
+    );
 }

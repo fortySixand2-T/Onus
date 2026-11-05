@@ -61,14 +61,19 @@ fn load_with_strategies(name: &str, text: &str) -> Result<Content, String> {
 
 /// A whole strategies file holding exactly the entries given.
 fn strategies_file(default: &str, entries: &[String]) -> String {
-    format!("(\n    default: \"{default}\",\n    strategies: [\n{}\n    ],\n)\n", entries.join("\n"))
+    format!(
+        "(\n    default: \"{default}\",\n    strategies: [\n{}\n    ],\n)\n",
+        entries.join("\n")
+    )
 }
 
 /// One strategy entry, with the barracks list and army spelled out.
 fn strategy(id: &str, barracks: &[(&str, u32, f32)], army: &[(&str, u32)]) -> String {
     let openings: Vec<String> = barracks
         .iter()
-        .map(|(b, at, off)| format!("            (building: \"{b}\", at_tick: {at}, offset: {off:?}),"))
+        .map(|(b, at, off)| {
+            format!("            (building: \"{b}\", at_tick: {at}, offset: {off:?}),")
+        })
         .collect();
     let army: Vec<String> = army
         .iter()
@@ -206,11 +211,7 @@ fn the_default_strategy_is_the_old_mvp_ai_number_for_number() {
     assert_eq!(s.barracks[0].building, "foundry");
     assert_eq!(s.barracks[0].at_tick, 300);
     assert_eq!(s.barracks[0].offset, 130.0);
-    let army: Vec<(&str, u32)> = s
-        .army
-        .iter()
-        .map(|i| (i.unit.as_str(), i.count))
-        .collect();
+    let army: Vec<(&str, u32)> = s.army.iter().map(|i| (i.unit.as_str(), i.count)).collect();
     assert_eq!(army, vec![("sentinel", 2), ("bulwark", 1)]);
 }
 
@@ -246,7 +247,10 @@ fn a_strategy_may_open_several_barracks_and_build_across_domains() {
     let mut app = ai_vs_ai_on(c, 5);
     tick(&mut app, 14_000);
 
-    let placed: Vec<usize> = placements(&app, Faction::A).iter().map(|(b, _)| *b).collect();
+    let placed: Vec<usize> = placements(&app, Faction::A)
+        .iter()
+        .map(|(b, _)| *b)
+        .collect();
     for (name, def) in ["foundry", "gene_vats", "aether_spire"].iter().zip(&defs) {
         assert_eq!(
             placed.iter().filter(|b| *b == def).count(),
@@ -317,10 +321,16 @@ fn each_army_entry_is_trained_at_the_barracks_that_produces_it() {
 #[test]
 fn a_strategy_naming_a_unit_its_barracks_cannot_produce_is_refused_at_load() {
     let army = [("sentinel", 2), ("ripper", 1)];
-    let narrow = strategies_file("narrow", &[strategy("narrow", &[("foundry", 300, 130.0)], &army)]);
+    let narrow = strategies_file(
+        "narrow",
+        &[strategy("narrow", &[("foundry", 300, 130.0)], &army)],
+    );
     let err = load_with_strategies("narrow", &narrow)
         .expect_err("a Foundry-only strategy asking for a Ripper loaded");
-    assert!(err.contains("narrow") && err.contains("ripper"), "unexpected rejection: {err}");
+    assert!(
+        err.contains("narrow") && err.contains("ripper"),
+        "unexpected rejection: {err}"
+    );
 
     let wide = strategies_file(
         "narrow",
@@ -346,8 +356,8 @@ fn every_strategy_is_validated_not_only_the_default() {
             strategy("rotten", &[("foundry", 300, 130.0)], &[("ripper", 1)]),
         ],
     );
-    let err = load_with_strategies("rotten", &text)
-        .expect_err("a broken non-default strategy loaded");
+    let err =
+        load_with_strategies("rotten", &text).expect_err("a broken non-default strategy loaded");
     assert!(
         err.contains("rotten"),
         "the error does not name the offending strategy: {err}"
@@ -363,7 +373,8 @@ fn unrunnable_strategies_are_refused_at_load() {
     let cases: Vec<(&str, String)> = vec![
         (
             "no barracks at all",
-            one(ok(&[], &[("sentinel", 1)])).replace("barracks: [\n\n            ]", "barracks: []"),
+            one(ok(&[], &[("sentinel", 1)]))
+                .replace("barracks: [\n\n            ]", "barracks: []"),
         ),
         (
             "a barracks that is not a building",
@@ -409,7 +420,10 @@ fn unrunnable_strategies_are_refused_at_load() {
         ),
         (
             "a default naming no strategy",
-            strategies_file("nonesuch", &[ok(&[("foundry", 300, 130.0)], &[("sentinel", 1)])]),
+            strategies_file(
+                "nonesuch",
+                &[ok(&[("foundry", 300, 130.0)], &[("sentinel", 1)])],
+            ),
         ),
         (
             "an empty set",
@@ -447,8 +461,7 @@ fn unrunnable_strategies_are_refused_at_load() {
         ),
         (
             "a missing at_tick",
-            one(ok(&[("foundry", 300, 130.0)], &[("sentinel", 1)]))
-                .replace("at_tick: 300, ", ""),
+            one(ok(&[("foundry", 300, 130.0)], &[("sentinel", 1)])).replace("at_tick: 300, ", ""),
         ),
     ];
     for (i, (what, text)) in cases.iter().enumerate() {
@@ -488,8 +501,14 @@ fn the_fingerprint_covers_every_strategy_and_every_field() {
         ("worker_target: 6", "worker_target: 7"),
         ("at_tick: 300", "at_tick: 301"),
         ("offset: 130.0", "offset: 131.0"),
-        ("(unit: \"sentinel\", count: 2)", "(unit: \"sentinel\", count: 3)"),
-        ("(unit: \"sentinel\", count: 2)", "(unit: \"bulwark\", count: 2)"),
+        (
+            "(unit: \"sentinel\", count: 2)",
+            "(unit: \"sentinel\", count: 3)",
+        ),
+        (
+            "(unit: \"sentinel\", count: 2)",
+            "(unit: \"bulwark\", count: 2)",
+        ),
         ("attack_at_army: 3", "attack_at_army: 4"),
         ("attack_interval_ticks: 600", "attack_interval_ticks: 601"),
         ("attack_spread: 60.0", "attack_spread: 61.0"),
@@ -498,7 +517,10 @@ fn the_fingerprint_covers_every_strategy_and_every_field() {
     ];
     let shipped = shipped_strategies();
     for (i, (from, to)) in edits.iter().enumerate() {
-        assert!(shipped.contains(from), "anchor `{from}` is not in strategies.ron");
+        assert!(
+            shipped.contains(from),
+            "anchor `{from}` is not in strategies.ron"
+        );
         let text = shipped.replace(from, to);
         // Some edits (an id rename) only load when the default follows; either
         // way, what matters is that the content that *does* load hashes
@@ -544,7 +566,9 @@ fn the_fingerprint_covers_every_strategy_and_every_field() {
     // And an untouched copy hashes the same, so the test above is not merely
     // detecting "a different directory".
     assert_eq!(
-        load_with_strategies("fp-same", &shipped).unwrap().fingerprint(),
+        load_with_strategies("fp-same", &shipped)
+            .unwrap()
+            .fingerprint(),
         base,
         "the fingerprint depends on something other than the content"
     );
@@ -580,7 +604,10 @@ fn the_fingerprint_covers_every_strategy_and_every_field() {
 /// values under this identical binary, and F-049 tabulates old -> new.
 #[test]
 fn the_one_barracks_default_replays_exactly_as_it_did_before_b1() {
-    for (seed, golden) in [(4u64, 0x6e9c_c8ac_0fd0_e90cu64), (11, 0xdf96_9b58_73d1_4961)] {
+    for (seed, golden) in [
+        (4u64, 0x6e9c_c8ac_0fd0_e90cu64),
+        (11, 0xdf96_9b58_73d1_4961),
+    ] {
         let mut app = ai_vs_ai_on(content(), seed);
         tick(&mut app, 3_000);
         let got = onus::sim::state_hash(app.world_mut());
@@ -591,7 +618,12 @@ fn the_one_barracks_default_replays_exactly_as_it_did_before_b1() {
         );
         // ...and it still opens exactly one barracks: the Foundry.
         let placed = placements(&app, Faction::A);
-        assert_eq!(placed.len(), 1, "the MVP opener placed {} barracks", placed.len());
+        assert_eq!(
+            placed.len(),
+            1,
+            "the MVP opener placed {} barracks",
+            placed.len()
+        );
         let foundry = content().building_index("foundry").unwrap();
         assert_eq!(placed[0].0, foundry);
         let hq = Vec2::new(-750.0, 0.0);

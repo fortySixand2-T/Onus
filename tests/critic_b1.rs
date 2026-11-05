@@ -93,7 +93,10 @@ fn set(default: &str, entries: &[&str]) -> String {
 }
 
 fn edited(from: &str, to: &str) -> String {
-    assert!(PROBE.contains(from), "probe fixture drifted: `{from}` missing");
+    assert!(
+        PROBE.contains(from),
+        "probe fixture drifted: `{from}` missing"
+    );
     PROBE.replace(from, to)
 }
 
@@ -110,11 +113,20 @@ fn every_broken_non_default_strategy_is_refused_by_name() {
     let cases: Vec<(&str, String)> = vec![
         ("unknown unit", edited("\"sentinel\"", "\"nonesuch\"")),
         ("unknown building", edited("\"foundry\"", "\"nonesuch\"")),
-        ("victory building as barracks", edited("\"foundry\"", "\"hq\"")),
+        (
+            "victory building as barracks",
+            edited("\"foundry\"", "\"hq\""),
+        ),
         // Producible by `gene_vats`, which this strategy does not open.
-        ("unit from a barracks it never opens", edited("\"sentinel\"", "\"ripper\"")),
+        (
+            "unit from a barracks it never opens",
+            edited("\"sentinel\"", "\"ripper\""),
+        ),
         ("count 0", edited("count: 2", "count: 0")),
-        ("empty army", edited("army: [ (unit: \"sentinel\", count: 2) ]", "army: []")),
+        (
+            "empty army",
+            edited("army: [ (unit: \"sentinel\", count: 2) ]", "army: []"),
+        ),
         (
             "no barracks at all",
             edited(
@@ -130,16 +142,28 @@ fn every_broken_non_default_strategy_is_refused_by_name() {
                  (unit: \"bulwark\", count: 2) ]",
             ),
         ),
-        ("think_interval_ticks 0", edited("think_interval_ticks: 30", "think_interval_ticks: 0")),
+        (
+            "think_interval_ticks 0",
+            edited("think_interval_ticks: 30", "think_interval_ticks: 0"),
+        ),
         (
             "attack_interval_ticks 0",
             edited("attack_interval_ticks: 600", "attack_interval_ticks: 0"),
         ),
-        ("worker_target 0", edited("worker_target: 6", "worker_target: 0")),
-        ("attack_at_army 0", edited("attack_at_army: 3", "attack_at_army: 0")),
+        (
+            "worker_target 0",
+            edited("worker_target: 6", "worker_target: 0"),
+        ),
+        (
+            "attack_at_army 0",
+            edited("attack_at_army: 3", "attack_at_army: 0"),
+        ),
         ("offset 0", edited("offset: 130.0", "offset: 0.0")),
         ("offset negative", edited("offset: 130.0", "offset: -130.0")),
-        ("attack_spread negative", edited("attack_spread: 60.0", "attack_spread: -1.0")),
+        (
+            "attack_spread negative",
+            edited("attack_spread: 60.0", "attack_spread: -1.0"),
+        ),
     ];
 
     let mut admitted: Vec<&str> = Vec::new();
@@ -177,7 +201,10 @@ fn a_duplicate_strategy_id_is_refused() {
 fn a_default_naming_no_strategy_is_refused() {
     let ron = set("nonesuch", &[MVP]);
     let e = try_strategies("bad-default", &ron).expect_err("the default names nothing");
-    assert!(e.contains("nonesuch"), "the refusal does not name the default: {e}");
+    assert!(
+        e.contains("nonesuch"),
+        "the refusal does not name the default: {e}"
+    );
 }
 
 #[test]
@@ -192,8 +219,14 @@ fn an_empty_strategy_set_is_refused() {
 fn a_multi_barracks_multi_domain_strategy_loads() {
     let c = try_strategies("positive", &set("mvp", &[MVP, MULTI]))
         .expect("a strategy opening two barracks and spanning two domains must load");
-    let s = c.strategy("multi").expect("the multi strategy is in the set");
-    assert_eq!(s.barracks.len(), 2, "the opening list did not survive the load");
+    let s = c
+        .strategy("multi")
+        .expect("the multi strategy is in the set");
+    assert_eq!(
+        s.barracks.len(),
+        2,
+        "the opening list did not survive the load"
+    );
     assert_eq!(c.ai.id, "mvp", "the default resolved to the wrong entry");
 }
 
@@ -338,7 +371,11 @@ fn a_placement_the_commander_cannot_afford_consumes_no_randomness() {
     let strategies = set("mvp", &[MVP]);
     let rich = content_with(
         "rng-rich",
-        &[("resources.ron", "starting_alloy: 300", "starting_alloy: 3000")],
+        &[(
+            "resources.ron",
+            "starting_alloy: 300",
+            "starting_alloy: 3000",
+        )],
         &strategies,
     );
     let poor = content_with(
@@ -517,19 +554,43 @@ fn the_fingerprint_moves_for_any_edit_anywhere_in_the_set() {
         // A field of the *non-default* entry.
         (
             "a non-default strategy's at_tick",
-            set("mvp", &[MVP, &MULTI.replace("at_tick: 600", "at_tick: 601")]),
+            set(
+                "mvp",
+                &[MVP, &MULTI.replace("at_tick: 600", "at_tick: 601")],
+            ),
         ),
         (
             "a non-default strategy's offset",
-            set("mvp", &[MVP, &MULTI.replace("offset: 160.0", "offset: 161.0")]),
+            set(
+                "mvp",
+                &[MVP, &MULTI.replace("offset: 160.0", "offset: 161.0")],
+            ),
         ),
         (
             "a non-default strategy's army count",
-            set("mvp", &[MVP, &MULTI.replace("(unit: \"ripper\", count: 1)", "(unit: \"ripper\", count: 2)")]),
+            set(
+                "mvp",
+                &[
+                    MVP,
+                    &MULTI.replace(
+                        "(unit: \"ripper\", count: 1)",
+                        "(unit: \"ripper\", count: 2)",
+                    ),
+                ],
+            ),
         ),
         (
             "a non-default strategy's second opening",
-            set("mvp", &[MVP, &MULTI.replace("\"gene_vats\"", "\"aether_spire\"").replace("(unit: \"ripper\", count: 1)", "(unit: \"arclight\", count: 1)")]),
+            set(
+                "mvp",
+                &[
+                    MVP,
+                    &MULTI.replace("\"gene_vats\"", "\"aether_spire\"").replace(
+                        "(unit: \"ripper\", count: 1)",
+                        "(unit: \"arclight\", count: 1)",
+                    ),
+                ],
+            ),
         ),
         // Which entry is the default.
         ("the default id", set("multi", &[MVP, MULTI])),

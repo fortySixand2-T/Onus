@@ -7,8 +7,8 @@
 use bevy::prelude::*;
 
 use crate::sim::content::Content;
-use crate::sim::spatial::Faction;
 use crate::sim::economy::Stockpiles;
+use crate::sim::spatial::Faction;
 use crate::sim::three::{Bank, EconomyMode, WellState};
 use crate::sim::{MatchOutcome, UnitKind};
 
@@ -84,7 +84,9 @@ pub fn match_result_text(outcome: MatchOutcome, timestep_secs: f32) -> String {
 /// let a float's last bit decide an integer" rule the damage path follows
 /// (F-005/F-006), applied to a display figure.
 pub fn match_clock(tick: u32, timestep_secs: f32) -> String {
-    let millis = (tick as f64 * timestep_secs as f64 * 1000.0).round().max(0.0) as u64;
+    let millis = (tick as f64 * timestep_secs as f64 * 1000.0)
+        .round()
+        .max(0.0) as u64;
     let seconds = millis / 1000;
     format!("{}:{:02}", seconds / 60, seconds % 60)
 }
@@ -168,7 +170,11 @@ pub fn cycle_nation(current: Option<usize>, count: usize, forward: bool) -> Opti
     // Position in the cycle: 0 is no nation, k + 1 is nation k.
     let len = count + 1;
     let at = current.map_or(0, |k| k.min(count - 1) + 1);
-    let next = if forward { (at + 1) % len } else { (at + len - 1) % len };
+    let next = if forward {
+        (at + 1) % len
+    } else {
+        (at + len - 1) % len
+    };
     next.checked_sub(1)
 }
 
@@ -192,7 +198,11 @@ pub fn nation_color(content: &Content, nation: Option<usize>) -> Color {
 
 /// The label a side wears on screen: who it is, and its nation.
 pub fn nation_label_text(content: &Content, faction: Faction, nation: Option<usize>) -> String {
-    let who = if faction == PLAYER_FACTION { "You" } else { "Opponent" };
+    let who = if faction == PLAYER_FACTION {
+        "You"
+    } else {
+        "Opponent"
+    };
     format!("{who}: {}", nation_name(content, nation))
 }
 

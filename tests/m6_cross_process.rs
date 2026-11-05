@@ -128,10 +128,18 @@ fn two_processes_play_one_match_and_end_in_the_same_state() {
     let (host, client) = play_across_processes(TICKS, 7);
 
     assert_eq!(host.failure, "none", "the host reported {}", host.failure);
-    assert_eq!(client.failure, "none", "the client reported {}", client.failure);
+    assert_eq!(
+        client.failure, "none",
+        "the client reported {}",
+        client.failure
+    );
     // The machinery ran: they really played, and really compared hashes.
     assert_eq!(host.tick, TICKS, "the host stopped early at {}", host.tick);
-    assert_eq!(client.tick, TICKS, "the client stopped early at {}", client.tick);
+    assert_eq!(
+        client.tick, TICKS,
+        "the client stopped early at {}",
+        client.tick
+    );
     assert!(
         host.agreed >= 10 && client.agreed >= 10,
         "the peers exchanged almost no hashes (host {}, client {})",

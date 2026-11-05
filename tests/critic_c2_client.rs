@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use bevy::prelude::*;
-use onus::client::{NATION_PREV_KEY, OPPONENT_PREV_KEY, START_KEY, NationPick};
+use onus::client::{NationPick, NATION_PREV_KEY, OPPONENT_PREV_KEY, START_KEY};
 use onus::sim::content::Content;
 use onus::sim::economy::Stockpiles;
 use onus::sim::{CommandQueue, RateReport, StateHashLog, TickGate};
@@ -44,7 +44,9 @@ fn frame(app: &mut App) {
 }
 
 fn press(app: &mut App, key: KeyCode) {
-    app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(key);
     frame(app);
     let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
     keys.release(key);
@@ -72,7 +74,10 @@ fn a_no_nation_pick_plays_the_pre_c2_client_match_hash_for_hash() {
     let a = &reference.world().resource::<StateHashLog>().0[..TICKS];
     let b = &client.world().resource::<StateHashLog>().0[..TICKS];
     let first = a.iter().zip(b).position(|(x, y)| x != y);
-    assert_eq!(first, None, "the no-nation client diverges from the pre-C2 client");
+    assert_eq!(
+        first, None,
+        "the no-nation client diverges from the pre-C2 client"
+    );
 }
 
 /// Control: the harness above is deterministic (two reference runs agree).

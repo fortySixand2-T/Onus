@@ -706,7 +706,8 @@ fn hash_trait(h: &mut Fnv, t: &crate::sim::nation::TraitDef) {
         T::Buildings => h.u64(5),
     };
     h.u64(t.stat as u64);
-    h.bool(t.add.is_some()).u64(t.add.unwrap_or(0) as i64 as u64);
+    h.bool(t.add.is_some())
+        .u64(t.add.unwrap_or(0) as i64 as u64);
     h.bool(t.mul.is_some()).u32(t.mul_milli());
 }
 
@@ -899,7 +900,10 @@ impl Content {
             // A building is killable (M4c: the win condition is a dead HQ), so
             // it needs a real pool, on the same design scale the units use.
             if b.mvp_defense == 0 {
-                return bad(format!("building `{}` has no HP pool (mvp_defense 0)", b.id));
+                return bad(format!(
+                    "building `{}` has no HP pool (mvp_defense 0)",
+                    b.id
+                ));
             }
             for (stat, value) in [("mvp_defense", b.mvp_defense), ("mvp_armor", b.mvp_armor)] {
                 if value > self.combat.max_stat {
@@ -1042,10 +1046,17 @@ impl Content {
         for g in &self.generals {
             let a = &g.aura;
             if !(a.radius.is_finite() && a.radius > 0.0) {
-                return bad(format!("general `{}` aura radius must be finite and positive", g.id));
+                return bad(format!(
+                    "general `{}` aura radius must be finite and positive",
+                    g.id
+                ));
             }
-            check_aura_modifiers(&format!("general `{}` aura", g.id), &a.modifiers, &self.combat)
-                .map_err(|msg| ContentError::Invalid { msg })?;
+            check_aura_modifiers(
+                &format!("general `{}` aura", g.id),
+                &a.modifiers,
+                &self.combat,
+            )
+            .map_err(|msg| ContentError::Invalid { msg })?;
             if let AuraScaling::PerDistinctDomain { max } = a.scaling {
                 if max == 0 || max as usize > self.resources.len() {
                     return bad(format!(
@@ -1224,10 +1235,14 @@ impl Content {
         for s in &self.strategies {
             let who = &s.id;
             if s.think_interval_ticks == 0 {
-                return bad(format!("strategy `{who}` think_interval_ticks must be positive"));
+                return bad(format!(
+                    "strategy `{who}` think_interval_ticks must be positive"
+                ));
             }
             if s.attack_interval_ticks == 0 {
-                return bad(format!("strategy `{who}` attack_interval_ticks must be positive"));
+                return bad(format!(
+                    "strategy `{who}` attack_interval_ticks must be positive"
+                ));
             }
             if s.worker_target == 0 {
                 return bad(format!("strategy `{who}` worker_target must be positive"));
@@ -1633,7 +1648,9 @@ impl Content {
     /// unit no resource powers (the Worker, a General).
     pub fn domain_of(&self, i: usize) -> Option<usize> {
         let id = &self.units.get(i)?.id;
-        self.resources.iter().position(|r| r.powers.iter().any(|p| p == id))
+        self.resources
+            .iter()
+            .position(|r| r.powers.iter().any(|p| p == id))
     }
 
     /// The General behind a `UnitDefIdx` value, if it names one.
@@ -1769,7 +1786,13 @@ mod tests {
         .unwrap();
         let entry = &text[text.find("id: \"arclight\"").unwrap()..];
         let at = entry.find("offense: ").unwrap() + "offense: ".len();
-        let written: u32 = entry[at..].split(',').next().unwrap().trim().parse().unwrap();
+        let written: u32 = entry[at..]
+            .split(',')
+            .next()
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
         assert_eq!(c.unit("arclight").unwrap().offense, written);
         assert_eq!(c.building_index("hq"), Some(0));
         assert_eq!(c.unit_index("nonesuch"), None);
@@ -1827,7 +1850,10 @@ mod tests {
                 s.id, s.queue_depth
             );
         }
-        assert_eq!(c.ai.queue_depth, 1, "the resolved default is not at depth 1");
+        assert_eq!(
+            c.ai.queue_depth, 1,
+            "the resolved default is not at depth 1"
+        );
     }
 
     /// Depth 0 means "never put a unit in production" — a script with an army
@@ -1837,10 +1863,18 @@ mod tests {
         let mut c = content();
         let who = c.strategies[1].id.clone();
         c.strategies[1].queue_depth = 0;
-        let err = c.validate().expect_err("depth 0 is content the sim cannot run");
+        let err = c
+            .validate()
+            .expect_err("depth 0 is content the sim cannot run");
         let msg = format!("{err:?}");
-        assert!(msg.contains(&who), "the error does not name the strategy: {msg}");
-        assert!(msg.contains("queue_depth"), "the error does not name the field: {msg}");
+        assert!(
+            msg.contains(&who),
+            "the error does not name the strategy: {msg}"
+        );
+        assert!(
+            msg.contains("queue_depth"),
+            "the error does not name the field: {msg}"
+        );
     }
 
     /// ...and a *missing* depth is a load error, not a silent default: the

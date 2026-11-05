@@ -7075,3 +7075,38 @@ and Gene-Vats `per_interval` 2 → 4, `storage` 250 → 500.
   with the well detachments.
 - Only AI `guards: 0` removed it (1 timeout of 18). That changes C3 AC5's behaviour (the AI contests the
   middle well), so it is the user's call, not an economy tune.
+
+## F-083 — Why the Sentinel mirror stalls; a fallen guard is replaced once per wave (C3 AC5, AC8)
+
+**Diagnosis.** A per-1800-tick trace of `mass_sentinel` v `mass_sentinel` (scratch harness, not shipped)
+shows two separate stalls.
+
+- **Three-resource only: the army never forms.** Each fighter column sat at **0–1 Sentinels for the
+  whole match**. `Posts::assign` refilled a fallen guard from the army at once. In a mirror, each new
+  Sentinel was detailed as a guard, walked alone to the middle well, and traded 1-for-1 with the
+  enemy's replacement. The journal shows `TrainArmy`, then `Guard {force: 1}` about 930 ticks later,
+  forever. The detachment of 2 never even filled. Neither side reached `attack_at_army` (8), and
+  **no wave was ever sent**. Production equalled the deaths at the well, so the match ran to the cap
+  (4 of 4 in F-081). This is a C3 AC5 AI bug, not an economy number. It is why no Biomass setting
+  helped (F-082) and why `guards: 0` "fixed" it.
+- **Alloy only too: the mirror itself.** The income is small: 6 workers, about one Sentinel per
+  1800 ticks. Both sides reach 8 on the same tick, the waves meet in mid-field and annihilate
+  (7 lost each), and the cycle repeats every ~13000 ticks. Only `attack_spread` jitter ever breaks
+  the symmetry. Later Foundries (150 Alloy each, at 18000 and 24000) add no rate to an
+  income-bound side, so they only slow the next wave. Pre-C3, not touched here. That is why
+  Alloy-only Sentinel mirrors also time out 2 of 4.
+
+**Decision.** `AiCommander.guard_recruits` counts the guards detailed since the last wave. At most
+`ai.guards` are recruited per wave cycle (the start counts as one), and the count resets when a
+wave goes out. Standing guards keep their post. So the AI still contests the middle well (AC5), and
+the losses there are bounded at one detachment per wave instead of the whole army. No RON changed.
+Alloy-only play is untouched, because posts are empty there.
+
+**Tried first and dropped:** "fill a guard only from the surplus beyond `attack_at_army`". A wave goes
+the moment the army reaches its size, so there is almost never a surplus. The AI stopped guarding
+(it broke both of `c3_ai`'s guard tests).
+
+**Tests.** `tests/c3_ai.rs::a_mirror_still_sends_its_waves_while_guards_fall_at_the_middle_well`:
+in a three-resource Sentinel mirror, both sides still guard the middle well and send an attack wave
+within 20000 ticks. It fails before the fix (no wave) and passes after. Every other C3 suite passes.
+With the fix, the traced seed is decided at about 48000 ticks: B destroys A's HQ.

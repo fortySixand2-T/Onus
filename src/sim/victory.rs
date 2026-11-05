@@ -164,10 +164,7 @@ pub fn match_end(
     }
 
     let outcome = match (standing[0], standing[1]) {
-        (0, 0) => Some(MatchOutcome {
-            winner: None,
-            tick,
-        }),
+        (0, 0) => Some(MatchOutcome { winner: None, tick }),
         (0, _) => Some(MatchOutcome {
             winner: Some(Faction::B),
             tick,

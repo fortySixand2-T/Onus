@@ -33,8 +33,7 @@ use onus::sim::content::{Content, StrategyDef};
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
 use onus::sim::spatial::Faction;
 use onus::sim::{
-    AiAction, AiCommanders, AiJournal, CommandQueue, MatchState, Position, RateReport,
-    ResourceNode,
+    AiAction, AiCommanders, AiJournal, CommandQueue, MatchState, Position, RateReport, ResourceNode,
 };
 
 // ---- harness ----------------------------------------------------------------
@@ -281,7 +280,10 @@ fn every_combat_unit_is_massed_by_exactly_one_probe() {
     // makes its unit (three: scripted by B3.5, F-029; trimmed in F-035; built
     // since B4's opening reservation, F-041).
     for (id, unit) in &probes {
-        assert!(roster.contains(unit), "`{id}` masses non-combatant `{unit}`");
+        assert!(
+            roster.contains(unit),
+            "`{id}` masses non-combatant `{unit}`"
+        );
         let s = c.strategy(id).unwrap();
         assert_eq!(
             s.barracks.len(),
@@ -381,7 +383,10 @@ fn the_mass_probes_are_knob_identical() {
         }
         // One army entry each, of the same size: only the unit id differs.
         assert_eq!(s.army.len(), 1, "{who}: a mass probe has one army entry");
-        assert_eq!(s.army[0].count, first.army[0].count, "{who}: the army count differs");
+        assert_eq!(
+            s.army[0].count, first.army[0].count,
+            "{who}: the army count differs"
+        );
         assert_eq!(
             s.cycle_len(),
             first.cycle_len(),
@@ -394,7 +399,11 @@ fn the_mass_probes_are_knob_identical() {
     let mut sorted = units.clone();
     sorted.sort();
     sorted.dedup();
-    assert_eq!(sorted.len(), units.len(), "two probes mass the same unit: {units:?}");
+    assert_eq!(
+        sorted.len(),
+        units.len(),
+        "two probes mass the same unit: {units:?}"
+    );
 }
 
 // ---- the synthesis builds span domains --------------------------------------
@@ -440,9 +449,9 @@ fn the_synthesis_builds_span_domains() {
         for opening in &s.barracks {
             let def = c.building_index(&opening.building).unwrap();
             assert!(
-                army_units(s).iter().any(|u| {
-                    c.unit_index(u).is_some_and(|idx| c.produces(def, idx))
-                }),
+                army_units(s)
+                    .iter()
+                    .any(|u| { c.unit_index(u).is_some_and(|idx| c.produces(def, idx)) }),
                 "`{}` opens `{}` but trains nothing from it",
                 s.id,
                 opening.building
@@ -539,8 +548,10 @@ fn every_strategy_eventually_attacks() {
         let mut app = solo(id, 4);
         tick(&mut app, BUDGET);
         let (at, force) = first_attack(&app).unwrap_or_else(|| {
-            panic!("`{id}` never attacked in {BUDGET} ticks — it cannot reach its own \
-                    attack_at_army threshold")
+            panic!(
+                "`{id}` never attacked in {BUDGET} ticks — it cannot reach its own \
+                    attack_at_army threshold"
+            )
         });
         let want = content().strategy(id).unwrap().attack_at_army;
         assert!(

@@ -85,7 +85,10 @@ fn only_unlabelled_records_total_nothing() {
         produced: ProductionCounts::default(),
         ..played(&c)
     };
-    assert_eq!(batch::production_totals(&[unlabelled.clone(), unlabelled]), Vec::new());
+    assert_eq!(
+        batch::production_totals(&[unlabelled.clone(), unlabelled]),
+        Vec::new()
+    );
 }
 
 /// The schema is the **union** of the headers. A later record naming a unit
@@ -101,12 +104,19 @@ fn the_schema_is_the_union_of_every_records_unit_ids() {
 
     let a = played(&shipped);
     let b = played(&extended);
-    assert_eq!(b.produced.unit_ids().last().map(String::as_str), Some("phantom"));
+    assert_eq!(
+        b.produced.unit_ids().last().map(String::as_str),
+        Some("phantom")
+    );
 
     let totals = batch::production_totals(&[a.clone(), b.clone()]);
     let mut want: Vec<&str> = shipped.units.iter().map(|u| u.id.as_str()).collect();
     want.push("phantom");
-    assert_eq!(ids_of(&totals), want, "first-appearance order, union of headers");
+    assert_eq!(
+        ids_of(&totals),
+        want,
+        "first-appearance order, union of headers"
+    );
     for (id, n) in &totals {
         let by_hand: u32 = [&a, &b]
             .iter()

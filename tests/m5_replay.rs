@@ -18,8 +18,8 @@ use bevy::prelude::*;
 use onus::sim::combat::{Casualties, Health};
 use onus::sim::content::Content;
 use onus::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
-use onus::sim::spatial::Faction;
 use onus::sim::replay::{CommandFate, LoggedCommand, LoggedOrder, MatchLog, SimId, SimIds};
+use onus::sim::spatial::Faction;
 use onus::sim::{
     AiCommanders, AiJournal, Attribution, CommandLog, CommandQueue, CommandTick, MatchState,
     MoveTarget, Order, Position, RateReport, ReplaySource, ResourceNode, StateHashLog,
@@ -327,7 +327,10 @@ fn a_hand_composed_app_without_the_tick_counter_still_applies_its_orders() {
         .init_resource::<CommandQueue>()
         .init_resource::<RateReport>()
         .insert_resource(Stockpiles::starting(0))
-        .add_systems(Update, (onus::sim::apply_commands, onus::sim::movement).chain());
+        .add_systems(
+            Update,
+            (onus::sim::apply_commands, onus::sim::movement).chain(),
+        );
     let unit = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
     app.world_mut().resource_mut::<CommandQueue>().0.push_back(
         Order::MoveTo {
@@ -471,7 +474,7 @@ fn every_coordinate_survives_the_file_exactly() {
         1234.5678,
         f32::MIN_POSITIVE,
         -f32::MIN_POSITIVE,
-        f32::from_bits(1),       // smallest subnormal
+        f32::from_bits(1),               // smallest subnormal
         f32::from_bits(0x0080_0000 - 1), // largest subnormal
         f32::MAX,
         f32::MIN,
@@ -560,12 +563,10 @@ fn an_unreadable_log_is_an_error_not_a_panic() {
     assert_eq!(MatchLog::from_ron(&text).expect("reads"), good);
 
     // Version.
-    assert!(MatchLog::from_ron(
-        &text.replace(
-            &format!("version: {}", onus::sim::replay::LOG_FORMAT_VERSION),
-            "version: 99"
-        )
-    )
+    assert!(MatchLog::from_ron(&text.replace(
+        &format!("version: {}", onus::sim::replay::LOG_FORMAT_VERSION),
+        "version: 99"
+    ))
     .is_err());
 
     // Tick order, and a command naming an entity the sim never identified: no
@@ -785,7 +786,10 @@ fn a_replay_records_the_same_log_it_was_given() {
     let (_, log, _) = recorded_run(4, TICKS);
     let (_, app) = replay_run(log.clone(), TICKS);
     let again = app.world().resource::<CommandLog>().log().clone();
-    assert_eq!(again.commands, log.commands, "the replay logged a different stream");
+    assert_eq!(
+        again.commands, log.commands,
+        "the replay logged a different stream"
+    );
     assert_eq!(app.world().resource::<CommandLog>().late(), 0);
 }
 
@@ -1084,10 +1088,9 @@ fn the_only_generator_lives_in_the_sim_and_nothing_else_rolls_a_number() {
 
     // ...and no RNG crate is a dependency at all, so there is nothing else to
     // roll with.
-    let manifest = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
-    )
-    .expect("read Cargo.toml");
+    let manifest =
+        std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"))
+            .expect("read Cargo.toml");
     for line in manifest.lines() {
         let dep = line.split('#').next().unwrap_or("").trim();
         assert!(
@@ -1186,7 +1189,10 @@ fn a_replay_reproduces_the_match_without_stepping_the_rng() {
         .iter()
         .map(|c| c.rng_state())
         .collect();
-    assert!(!before.is_empty(), "the replay app has no commanders to freeze");
+    assert!(
+        !before.is_empty(),
+        "the replay app has no commanders to freeze"
+    );
     tick(&mut app, TICKS);
     let after: Vec<u64> = app
         .world()
@@ -1241,8 +1247,10 @@ fn every_command_a_shipped_match_applies_is_signed() {
         let queue_unsigned = {
             let q = app.world().resource::<CommandQueue>();
             q.0.iter()
-                .filter(|c| c.attribution() != Attribution::By(Faction::A)
-                    && c.attribution() != Attribution::By(Faction::B))
+                .filter(|c| {
+                    c.attribution() != Attribution::By(Faction::A)
+                        && c.attribution() != Attribution::By(Faction::B)
+                })
                 .count()
         };
         assert_eq!(
@@ -1264,10 +1272,13 @@ fn every_command_a_shipped_match_applies_is_signed() {
     // And the log distinguishes them, so this test could fail: an unsigned
     // order pushed by hand is recorded as self-signed.
     let unit = spawn_unit(&mut app, "ripper", Faction::A, Vec2::new(-700.0, 0.0));
-    app.world_mut().resource_mut::<CommandQueue>().0.push_back(Order::MoveTo {
-        units: vec![unit],
-        dest: Vec2::new(0.0, 0.0),
-    });
+    app.world_mut()
+        .resource_mut::<CommandQueue>()
+        .0
+        .push_back(Order::MoveTo {
+            units: vec![unit],
+            dest: Vec2::new(0.0, 0.0),
+        });
     step(&mut app);
     assert!(
         app.world()
@@ -1342,10 +1353,7 @@ fn the_hash_sees_the_next_sim_id_to_be_issued() {
     );
     // One world has issued an id the other has not: the entity that took it is
     // gone, so *nothing else* distinguishes the two worlds.
-    let ghost = a
-        .world_mut()
-        .spawn(Position(Vec2::new(1.0, 1.0)))
-        .id();
+    let ghost = a.world_mut().spawn(Position(Vec2::new(1.0, 1.0))).id();
     step(&mut a);
     step(&mut b);
     a.world_mut().despawn(ghost);
@@ -1464,7 +1472,10 @@ fn a_command_held_across_ticks_records_the_tick_it_was_queued_on() {
     assert_eq!(c.fate, CommandFate::Taken);
     assert_eq!(c.tick, apply_on);
     assert!(log.log().validate().is_ok(), "{:?}", log.log().validate());
-    assert!(app.world().get::<MoveTarget>(unit).is_some(), "it never applied");
+    assert!(
+        app.world().get::<MoveTarget>(unit).is_some(),
+        "it never applied"
+    );
 }
 
 /// The direction the stamp could break: a command **taken on sight** still logs
@@ -1701,9 +1712,7 @@ fn a_command_still_held_when_the_match_ends_is_recorded_and_released() {
     // Recorded, released, and the log still validates.
     let log = rec.world().resource::<CommandLog>().log().clone();
     assert!(
-        log.commands
-            .iter()
-            .any(|c| c.fate == CommandFate::Unplayed),
+        log.commands.iter().any(|c| c.fate == CommandFate::Unplayed),
         "the held command is in no log: {:?}",
         log.commands
     );
@@ -1721,9 +1730,10 @@ fn a_command_still_held_when_the_match_ends_is_recorded_and_released() {
     rep.world_mut().despawn(rep_theirs);
     tick(&mut rep, 20);
     assert_eq!(
-        rec.world().resource::<StateHashLog>().clone().first_divergence(
-            &rep.world().resource::<StateHashLog>().clone()
-        ),
+        rec.world()
+            .resource::<StateHashLog>()
+            .clone()
+            .first_divergence(&rep.world().resource::<StateHashLog>().clone()),
         None,
         "the replay of a match that ended holding a command diverged"
     );
@@ -1783,7 +1793,11 @@ fn every_scheduler_is_declared_and_only_the_sim_stamps_a_schedule() {
             .unwrap()
             .to_string_lossy()
             .replace('\\', "/");
-        for (i, line) in std::fs::read_to_string(path).expect("read").lines().enumerate() {
+        for (i, line) in std::fs::read_to_string(path)
+            .expect("read")
+            .lines()
+            .enumerate()
+        {
             let code = line.split("//").next().unwrap_or("");
             if code.contains("push_at(") && !code.contains("pub fn push_at") {
                 callers.push((rel.clone(), format!("{rel}:{}: {}", i + 1, code.trim())));
@@ -2106,7 +2120,10 @@ fn a_replay_into_a_world_that_lost_units_still_records_a_writable_log() {
         .filter_map(|c| c.order.sim_ids().first().copied().map(|id| (c.tick, id)))
         .take(3)
         .collect();
-    assert!(!named.is_empty(), "the recording named no entity after tick 100");
+    assert!(
+        !named.is_empty(),
+        "the recording named no entity after tick 100"
+    );
 
     let mut app = ai_vs_ai(log.seed);
     app.insert_resource(CommandLog::new(log.seed));
@@ -2127,7 +2144,9 @@ fn a_replay_into_a_world_that_lost_units_still_records_a_writable_log() {
     }
     let produced = app.world().resource::<CommandLog>().log().clone();
     let path = scratch("replay-lost-units");
-    produced.save(&path).expect("the log of a damaged replay must still save");
+    produced
+        .save(&path)
+        .expect("the log of a damaged replay must still save");
     assert_eq!(
         produced.commands, log.commands,
         "killing a named unit changed the stream the replay recorded"
@@ -2223,10 +2242,8 @@ fn a_command_held_for_a_later_tick_is_hashed_either_way() {
 /// the session. Input stops when the match does.
 #[test]
 fn the_shipped_app_stops_emitting_orders_once_the_match_is_decided() {
-    let lib = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"),
-    )
-    .expect("read src/lib.rs");
+    let lib = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"))
+        .expect("read src/lib.rs");
     for emitter in ["input::emit_commands", "input::emit_build_commands"] {
         let at = lib
             .find(emitter)
@@ -2359,12 +2376,19 @@ fn a_log_recorded_against_other_content_is_refused() {
 #[test]
 fn the_fingerprint_covers_the_whole_content_exactly() {
     let base = content().fingerprint();
-    assert_eq!(base, content().fingerprint(), "the fingerprint is not stable");
+    assert_eq!(
+        base,
+        content().fingerprint(),
+        "the fingerprint is not stable"
+    );
     assert!(base.is_known());
 
     let moved = |name: &str, from: &str, to: &str| content_edited(name, from, to).fingerprint();
     // A field the MVP sim reads.
-    assert_ne!(base, moved("cost", "mvp_alloy_cost: 10", "mvp_alloy_cost: 11"));
+    assert_ne!(
+        base,
+        moved("cost", "mvp_alloy_cost: 10", "mvp_alloy_cost: 11")
+    );
     // A field it does **not** read: the post-MVP per-domain cost.
     assert_ne!(
         base,
@@ -2377,7 +2401,10 @@ fn the_fingerprint_covers_the_whole_content_exactly() {
          — the scope decision is not implemented"
     );
     // A name, which nothing at all reads.
-    assert_ne!(base, moved("name", "name: \"Worker\"", "name: \"Labourer\""));
+    assert_ne!(
+        base,
+        moved("name", "name: \"Worker\"", "name: \"Labourer\"")
+    );
     // A float, changed by one representable step.
     // F-044: the shipped value, read, and its next representable f32.
     let spp = content().combat.speed_per_point;
@@ -2522,7 +2549,10 @@ fn a_version_one_log_is_refused_rather_than_upgraded() {
 fn a_duplicated_content_id_is_impossible_to_load() {
     // A building id twice — the critic's repro: same line, different price.
     // F-044: the cost is read off the loaded content, not pinned.
-    let cost = format!("alloy_cost: {}", content().building("foundry").unwrap().alloy_cost);
+    let cost = format!(
+        "alloy_cost: {}",
+        content().building("foundry").unwrap().alloy_cost
+    );
     assert_ne!(cost, "alloy_cost: 999", "the twin's cost must differ");
     let foundry = duplicated_definition("dupe", "foundry", (&cost, "alloy_cost: 999"));
     let one_line = std::fs::read_to_string(data_dir().join("units.ron"))
@@ -2541,11 +2571,22 @@ fn a_duplicated_content_id_is_impossible_to_load() {
 
     // A unit id twice — the whole entry copied, which is what a designer does.
     let units = std::fs::read_to_string(data_dir().join("units.ron")).expect("units.ron");
-    let start = units.find("        (\n            id: \"worker\",").expect("the worker entry");
-    let end = units[start..].find("\n        ),").expect("the worker entry ends") + start + 11;
+    let start = units
+        .find("        (\n            id: \"worker\",")
+        .expect("the worker entry");
+    let end = units[start..]
+        .find("\n        ),")
+        .expect("the worker entry ends")
+        + start
+        + 11;
     let entry = &units[start..end];
-    let err = try_content_edited("dup-unit2", "units.ron", entry, &format!("{entry}\n{entry}"))
-        .expect_err("content with two `worker` definitions must not load");
+    let err = try_content_edited(
+        "dup-unit2",
+        "units.ron",
+        entry,
+        &format!("{entry}\n{entry}"),
+    )
+    .expect_err("content with two `worker` definitions must not load");
     assert!(
         err.to_string().contains("duplicate unit id `worker`"),
         "the refusal does not name the duplicate unit: {err}"
@@ -2624,9 +2665,17 @@ fn the_shipped_content_loads_and_a_shared_id_across_namespaces_is_legal() {
         "shared-id",
         &[
             ("units.ron", "id: \"gene_vats\"", "id: \"worker\""),
-            ("strategies.ron", "building: \"gene_vats\"", "building: \"worker\""),
+            (
+                "strategies.ron",
+                "building: \"gene_vats\"",
+                "building: \"worker\"",
+            ),
             // C3: the three-resource block's growth source names it too.
-            ("resources.ron", "building: \"gene_vats\"", "building: \"worker\""),
+            (
+                "resources.ron",
+                "building: \"gene_vats\"",
+                "building: \"worker\"",
+            ),
         ],
     );
     assert_eq!(
@@ -2647,7 +2696,10 @@ fn the_shipped_content_loads_and_a_shared_id_across_namespaces_is_legal() {
         building: shared.buildings[building].id.clone(),
         pos: (1.0, 2.0),
     };
-    match logged.to_order(&SimIds::default(), &shared).expect("resolves") {
+    match logged
+        .to_order(&SimIds::default(), &shared)
+        .expect("resolves")
+    {
         Order::Place { building: back, .. } => assert_eq!(back, building),
         other => panic!("resolved to {other:?}"),
     }
@@ -2686,7 +2738,10 @@ fn a_content_change_mid_match_is_followed_and_poisons_the_log() {
     tick(&mut app, 3);
 
     let log = app.world().resource::<CommandLog>().log().clone();
-    assert!(!log.commands.is_empty(), "nothing was recorded after the swap");
+    assert!(
+        !log.commands.is_empty(),
+        "nothing was recorded after the swap"
+    );
     // It follows the content actually in use...
     assert_eq!(
         log.content.hash(),
@@ -2699,7 +2754,10 @@ fn a_content_change_mid_match_is_followed_and_poisons_the_log() {
     assert!(err.contains("content changed"), "unhelpful refusal: {err}");
     let path = scratch("poisoned");
     let _ = std::fs::remove_file(&path);
-    assert!(log.save(&path).is_err(), "a poisoned log was written to disk");
+    assert!(
+        log.save(&path).is_err(),
+        "a poisoned log was written to disk"
+    );
     assert!(!path.exists());
     assert!(log.matches_content(&after).is_err());
 }
@@ -2715,13 +2773,21 @@ fn an_ordinary_match_is_never_poisoned_and_a_late_log_is_still_stamped() {
         step(&mut app);
         if t % 300 == 0 || t == 1_499 {
             let log = app.world().resource::<CommandLog>().log();
-            assert!(!log.content_changed, "tick {t}: an unchanged match was poisoned");
+            assert!(
+                !log.content_changed,
+                "tick {t}: an unchanged match was poisoned"
+            );
             log.validate().unwrap_or_else(|e| panic!("tick {t}: {e}"));
         }
     }
     // A fresh log installed mid-match, long after the content last changed.
     app.insert_resource(CommandLog::new(4));
-    assert!(!app.world().resource::<CommandLog>().log().content.is_known());
+    assert!(!app
+        .world()
+        .resource::<CommandLog>()
+        .log()
+        .content
+        .is_known());
     step(&mut app);
     let log = app.world().resource::<CommandLog>().log().clone();
     assert!(
@@ -2729,7 +2795,8 @@ fn an_ordinary_match_is_never_poisoned_and_a_late_log_is_still_stamped() {
         "a log installed mid-match never got stamped, so `load_for` would refuse it"
     );
     assert!(!log.content_changed);
-    log.matches_content(&content()).expect("it describes the running content");
+    log.matches_content(&content())
+        .expect("it describes the running content");
 }
 
 // ---- a log names content by id, not by position -----------------------------
@@ -2769,14 +2836,20 @@ fn a_log_still_names_the_same_things_after_the_roster_is_reordered() {
     let ids = app.world().resource::<SimIds>();
     let mut differed = 0;
     for c in &log.commands {
-        let a = c.order.to_order(ids, &base).expect("resolves under its own content");
+        let a = c
+            .order
+            .to_order(ids, &base)
+            .expect("resolves under its own content");
         let b = c
             .order
             .to_order(ids, &moved)
             .expect("resolves under a reordered roster");
         match (&a, &b) {
             (Order::Train { unit: x, .. }, Order::Train { unit: y, .. }) => {
-                assert_eq!(base.units[*x].id, moved.units[*y].id, "a Train changed unit");
+                assert_eq!(
+                    base.units[*x].id, moved.units[*y].id,
+                    "a Train changed unit"
+                );
                 differed += usize::from(x != y);
             }
             (Order::Place { building: x, .. }, Order::Place { building: y, .. }) => {
@@ -2873,7 +2946,13 @@ fn a_log_naming_content_this_build_does_not_have_is_refused() {
     );
     // ...and resolving it is an error, not a guess at an index.
     let ids = app.world().resource::<SimIds>();
-    assert!(log.commands.last().unwrap().order.to_order(ids, &content()).is_err());
+    assert!(log
+        .commands
+        .last()
+        .unwrap()
+        .order
+        .to_order(ids, &content())
+        .is_err());
 }
 
 // ---- the log records the schedule, not only the applied tick ----------------
@@ -2901,11 +2980,19 @@ fn a_command_that_missed_its_tick_is_logged_with_its_schedule_and_reason() {
     assert!(app.world().get::<MoveTarget>(unit).is_none());
     // ...and recorded, as late, with the schedule it carried.
     let log = app.world().resource::<CommandLog>();
-    assert_eq!(log.commands().len(), 1, "the dropped command is missing from the log");
+    assert_eq!(
+        log.commands().len(),
+        1,
+        "the dropped command is missing from the log"
+    );
     let c = &log.commands()[0];
     assert_eq!(c.fate, CommandFate::Late);
     assert_eq!(c.schedule, CommandTick::At(stale));
-    assert_eq!(c.tick, stale + 4, "the log does not say when the sim saw it");
+    assert_eq!(
+        c.tick,
+        stale + 4,
+        "the log does not say when the sim saw it"
+    );
     assert_eq!(log.late(), 1);
     assert!(log.log().validate().is_ok());
 }
@@ -2926,7 +3013,9 @@ fn a_replay_re_pushes_on_the_recorded_schedule_and_re_records_the_same_log() {
     };
     let mut rec = build();
     let unit = {
-        let mut q = rec.world_mut().query_filtered::<Entity, With<onus::sim::UnitKind>>();
+        let mut q = rec
+            .world_mut()
+            .query_filtered::<Entity, With<onus::sim::UnitKind>>();
         q.iter(rec.world()).next().expect("a unit")
     };
     for t in 0..TICKS {
@@ -3032,32 +3121,108 @@ fn what_the_writer_accepts_the_reader_accepts_and_the_other_way_round() {
         (
             "ordinary",
             vec![
-                cmd(0, LoggedOrder::MoveTo { units: vec![0, 1], dest: (1.5, -2.5) }),
-                cmd(0, LoggedOrder::Train { building: 2, unit: "ripper".into() }),
-                cmd(9, LoggedOrder::Gather { units: vec![3], node: 4, node_pos: (0.0, -0.0) }),
-                cmd(9, LoggedOrder::Place { faction: Faction::B, building: "hq".into(), pos: (7.0, 8.0) }),
+                cmd(
+                    0,
+                    LoggedOrder::MoveTo {
+                        units: vec![0, 1],
+                        dest: (1.5, -2.5),
+                    },
+                ),
+                cmd(
+                    0,
+                    LoggedOrder::Train {
+                        building: 2,
+                        unit: "ripper".into(),
+                    },
+                ),
+                cmd(
+                    9,
+                    LoggedOrder::Gather {
+                        units: vec![3],
+                        node: 4,
+                        node_pos: (0.0, -0.0),
+                    },
+                ),
+                cmd(
+                    9,
+                    LoggedOrder::Place {
+                        faction: Faction::B,
+                        building: "hq".into(),
+                        pos: (7.0, 8.0),
+                    },
+                ),
             ],
         ),
-        ("nan", vec![cmd(1, LoggedOrder::MoveTo { units: vec![0], dest: (f32::NAN, 0.0) })]),
-        ("inf", vec![cmd(1, LoggedOrder::Place { faction: Faction::A, building: "hq".into(), pos: (0.0, f32::INFINITY) })]),
+        (
+            "nan",
+            vec![cmd(
+                1,
+                LoggedOrder::MoveTo {
+                    units: vec![0],
+                    dest: (f32::NAN, 0.0),
+                },
+            )],
+        ),
+        (
+            "inf",
+            vec![cmd(
+                1,
+                LoggedOrder::Place {
+                    faction: Faction::A,
+                    building: "hq".into(),
+                    pos: (0.0, f32::INFINITY),
+                },
+            )],
+        ),
         (
             "backwards",
             vec![
-                cmd(5, LoggedOrder::Train { building: 0, unit: "worker".into() }),
-                cmd(4, LoggedOrder::Train { building: 0, unit: "worker".into() }),
+                cmd(
+                    5,
+                    LoggedOrder::Train {
+                        building: 0,
+                        unit: "worker".into(),
+                    },
+                ),
+                cmd(
+                    4,
+                    LoggedOrder::Train {
+                        building: 0,
+                        unit: "worker".into(),
+                    },
+                ),
             ],
         ),
         (
             "unidentified in a move",
-            vec![cmd(1, LoggedOrder::MoveTo { units: vec![0, SimId::UNIDENTIFIED.0], dest: (1.0, 1.0) })],
+            vec![cmd(
+                1,
+                LoggedOrder::MoveTo {
+                    units: vec![0, SimId::UNIDENTIFIED.0],
+                    dest: (1.0, 1.0),
+                },
+            )],
         ),
         (
             "unidentified node",
-            vec![cmd(1, LoggedOrder::Gather { units: vec![0], node: SimId::UNIDENTIFIED.0, node_pos: (1.0, 1.0) })],
+            vec![cmd(
+                1,
+                LoggedOrder::Gather {
+                    units: vec![0],
+                    node: SimId::UNIDENTIFIED.0,
+                    node_pos: (1.0, 1.0),
+                },
+            )],
         ),
         (
             "unidentified building",
-            vec![cmd(1, LoggedOrder::Train { building: SimId::UNIDENTIFIED.0, unit: "worker".into() })],
+            vec![cmd(
+                1,
+                LoggedOrder::Train {
+                    building: SimId::UNIDENTIFIED.0,
+                    unit: "worker".into(),
+                },
+            )],
         ),
     ];
     for (name, commands) in cases {
@@ -3174,10 +3339,8 @@ fn resolve_sim_fn(path: &str) -> Result<String, String> {
 /// Every `sim::…` function path the chain names, in source order, with its byte
 /// offset in `src/lib.rs`. Upper-camel names are resource/type paths.
 fn chain_fn_paths() -> Vec<(usize, String)> {
-    let lib = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"),
-    )
-    .expect("read src/lib.rs");
+    let lib = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"))
+        .expect("read src/lib.rs");
     let mut out = Vec::new();
     let mut at = 0usize;
     while let Some(i) = lib[at..].find("sim::") {
@@ -3211,7 +3374,10 @@ fn sweep_offset() -> usize {
 #[test]
 fn every_function_the_chain_names_resolves_to_exactly_one_body() {
     let paths = chain_fn_paths();
-    assert!(paths.len() >= 8, "the chain walker found almost nothing: {paths:?}");
+    assert!(
+        paths.len() >= 8,
+        "the chain walker found almost nothing: {paths:?}"
+    );
     let mut unresolved = Vec::new();
     for (_, path) in &paths {
         match resolve_sim_fn(path) {
@@ -3222,7 +3388,10 @@ fn every_function_the_chain_names_resolves_to_exactly_one_body() {
             Err(e) => unresolved.push(e),
         }
     }
-    assert!(unresolved.is_empty(), "the chain names systems the guard cannot read: {unresolved:#?}");
+    assert!(
+        unresolved.is_empty(),
+        "the chain names systems the guard cannot read: {unresolved:#?}"
+    );
 }
 
 /// F-008's rule, checked **per system** rather than per file: nothing the chain
@@ -3257,10 +3426,8 @@ fn no_system_the_chain_runs_before_the_sweep_touches_the_gather_claim() {
     }
     // A run condition is evaluated before the systems it gates, so it is
     // "before the sweep" wherever in the file it is written.
-    let lib = std::fs::read_to_string(
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"),
-    )
-    .expect("read src/lib.rs");
+    let lib = std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src/lib.rs"))
+        .expect("read src/lib.rs");
     for (_, path) in chain_fn_paths() {
         if !lib.contains(&format!("run_if({path})")) {
             continue;

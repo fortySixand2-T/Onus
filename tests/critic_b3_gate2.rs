@@ -23,7 +23,14 @@ const A: MatchResult = MatchResult::Decided(Faction::A);
 const B: MatchResult = MatchResult::Decided(Faction::B);
 const MIN: u32 = 60 * SIM_HZ;
 
-fn rec(a: &str, b: &str, seed: u64, o: Orientation, result: MatchResult, ticks: u32) -> MatchRecord {
+fn rec(
+    a: &str,
+    b: &str,
+    seed: u64,
+    o: Orientation,
+    result: MatchResult,
+    ticks: u32,
+) -> MatchRecord {
     MatchRecord {
         strategies: [a.to_string(), b.to_string()],
         seed,
@@ -97,7 +104,11 @@ fn gate(records: &[MatchRecord]) -> KillGate {
 }
 
 fn mirror<'g>(g: &'g KillGate, s: &str) -> &'g onus::gate::MirrorRow {
-    g.seat.mirrors.iter().find(|m| m.strategy == s).expect("mirror row")
+    g.seat
+        .mirrors
+        .iter()
+        .find(|m| m.strategy == s)
+        .expect("mirror row")
 }
 
 // ---------------------------------------------------------------- K2
@@ -116,7 +127,11 @@ fn k2_a_left_base_per_mirror_fail_fails_k2_with_a_fair_pool() {
     assert_eq!(g.seat.slot_a.value, Some(0.5));
     assert_eq!(g.seat.left_spawn.value, Some(0.5));
     assert_eq!(mirror(&g, "x").left_spawn.status, Status::Fail);
-    assert_eq!(g.seat.status, Status::Fail, "left-base per-mirror FAIL must fail K2");
+    assert_eq!(
+        g.seat.status,
+        Status::Fail,
+        "left-base per-mirror FAIL must fail K2"
+    );
     assert_ne!(g.status, Status::Pass);
 }
 
@@ -136,7 +151,11 @@ fn k2_a_mirror_resolved_at_57_percent_fails_k2() {
     let g = gate(&recs);
     let z = mirror(&g, "z");
     assert!((z.slot_a.value.unwrap() - 0.57).abs() < 1e-9);
-    assert_eq!(g.seat.slot_a.status, Status::Pass, "fixture: pooled slot A in tolerance");
+    assert_eq!(
+        g.seat.slot_a.status,
+        Status::Pass,
+        "fixture: pooled slot A in tolerance"
+    );
     assert_eq!(z.slot_a.status, Status::Fail);
     assert_eq!(g.seat.status, Status::Fail);
 }
@@ -168,8 +187,15 @@ fn k2_does_not_pass_while_a_mirror_reads_64_percent_left_with_an_interval_exclud
     let p = z.left_spawn.value.unwrap();
     assert!((p - 80.0 / 124.0).abs() < 1e-9, "fixture: {p}");
     let (lo, hi) = z.left_spawn.interval.unwrap();
-    assert!(lo > 0.5, "fixture: z's left-base interval excludes 50% ({lo:.3}, {hi:.3})");
-    assert_eq!(g.seat.left_spawn.status, Status::Pass, "fixture: pool in tolerance");
+    assert!(
+        lo > 0.5,
+        "fixture: z's left-base interval excludes 50% ({lo:.3}, {hi:.3})"
+    );
+    assert_eq!(
+        g.seat.left_spawn.status,
+        Status::Pass,
+        "fixture: pool in tolerance"
+    );
     assert_ne!(
         g.seat.status,
         Status::Pass,
@@ -199,7 +225,11 @@ fn k2_does_not_pass_a_mirror_known_from_six_matches_all_to_slot_a() {
     let z = mirror(&g, "z");
     assert_eq!(z.slot_a.value, Some(1.0));
     assert_eq!(z.slot_a.n, 6);
-    assert_eq!(g.seat.slot_a.status, Status::Pass, "fixture: pool in tolerance");
+    assert_eq!(
+        g.seat.slot_a.status,
+        Status::Pass,
+        "fixture: pool in tolerance"
+    );
     assert_ne!(
         g.seat.status,
         Status::Pass,
@@ -210,7 +240,10 @@ fn k2_does_not_pass_a_mirror_known_from_six_matches_all_to_slot_a() {
 
 // ---------------------------------------------------------------- K3
 
-fn fair_pairs_with_ticks(seeds: u64, ticks_of: impl Fn(usize) -> (MatchResult, u32)) -> Vec<MatchRecord> {
+fn fair_pairs_with_ticks(
+    seeds: u64,
+    ticks_of: impl Fn(usize) -> (MatchResult, u32),
+) -> Vec<MatchRecord> {
     let mut recs = Vec::new();
     for seed in 0..seeds {
         recs.extend(fair_mirror("x", seed));
@@ -246,7 +279,11 @@ fn k3_band_share_splits_below_half_never_pass() {
         let g = gate(&recs);
         assert_ne!(g.termination.status, Status::Pass, "{in_pct}% in band");
         if must_fail {
-            assert_eq!(g.termination.band_share.status, Status::Fail, "{in_pct}% in band");
+            assert_eq!(
+                g.termination.band_share.status,
+                Status::Fail,
+                "{in_pct}% in band"
+            );
             assert_eq!(g.termination.status, Status::Fail, "{in_pct}% in band");
         }
     }
@@ -311,10 +348,23 @@ fn losing_every_matchup_at_45_percent_is_named_and_not_gated() {
         recs.extend(pair_seed("a", "b", seed, 2));
     }
     let g = gate(&recs);
-    let low = g.strength.rows.iter().find(|r| r.strategy == "low").unwrap();
+    let low = g
+        .strength
+        .rows
+        .iter()
+        .find(|r| r.strategy == "low")
+        .unwrap();
     assert!((low.strength.value.unwrap() - 0.45).abs() < 1e-9);
-    assert!(g.strength.losing.iter().any(|s| s == "low"), "losing = {:?}", g.strength.losing);
-    assert_ne!(g.strength.status, Status::Fail, "naming a weak row must not fail K1");
+    assert!(
+        g.strength.losing.iter().any(|s| s == "low"),
+        "losing = {:?}",
+        g.strength.losing
+    );
+    assert_ne!(
+        g.strength.status,
+        Status::Fail,
+        "naming a weak row must not fail K1"
+    );
 }
 
 /// `low`'s row is 30% with a large sample, resolved below 35%, although it
@@ -334,9 +384,22 @@ fn a_row_resolved_at_30_percent_with_one_winning_cell_is_named() {
         recs.extend(pair_seed("b", "c", seed, 2));
     }
     let g = gate(&recs);
-    let low = g.strength.rows.iter().find(|r| r.strategy == "low").unwrap();
-    assert!((low.strength.value.unwrap() - 0.30).abs() < 1e-9, "{:?}", low.strength.value);
-    assert!(g.strength.losing.iter().any(|s| s == "low"), "losing = {:?}", g.strength.losing);
+    let low = g
+        .strength
+        .rows
+        .iter()
+        .find(|r| r.strategy == "low")
+        .unwrap();
+    assert!(
+        (low.strength.value.unwrap() - 0.30).abs() < 1e-9,
+        "{:?}",
+        low.strength.value
+    );
+    assert!(
+        g.strength.losing.iter().any(|s| s == "low"),
+        "losing = {:?}",
+        g.strength.losing
+    );
 }
 
 // ---------------------------------------------------------------- row mean
@@ -361,7 +424,11 @@ fn max_mean_variance_matches_a_brute_force_oracle() {
             let mut best = 0.0f64;
             let steps = 2000;
             let var = |p: &[f64]| -> f64 {
-                w.iter().zip(p).map(|(wi, pi)| wi * pi * (1.0 - pi)).sum::<f64>() / (k * k) as f64
+                w.iter()
+                    .zip(p)
+                    .map(|(wi, pi)| wi * pi * (1.0 - pi))
+                    .sum::<f64>()
+                    / (k * k) as f64
             };
             if k == 2 {
                 for i in 0..=steps {
@@ -385,8 +452,14 @@ fn max_mean_variance_matches_a_brute_force_oracle() {
                 }
             }
             let f = max_mean_variance(mu, w);
-            assert!(f + 1e-12 >= best, "w {w:?} mu {mu}: function {f} < brute {best}");
-            assert!(f <= best * 1.01 + 1e-9, "w {w:?} mu {mu}: function {f} > brute {best}");
+            assert!(
+                f + 1e-12 >= best,
+                "w {w:?} mu {mu}: function {f} < brute {best}"
+            );
+            assert!(
+                f <= best * 1.01 + 1e-9,
+                "w {w:?} mu {mu}: function {f} > brute {best}"
+            );
         }
     }
 }
@@ -458,7 +531,10 @@ fn the_row_mean_interval_contains_the_estimate() {
     ] {
         let r = Reading::mean_of(Some(mean), &ns, &ns, 0.17, Rule::AtMost(0.65));
         let (lo, hi) = r.interval.unwrap();
-        assert!(lo <= mean && mean <= hi, "{mean} not in [{lo}, {hi}] for {ns:?}");
+        assert!(
+            lo <= mean && mean <= hi,
+            "{mean} not in [{lo}, {hi}] for {ns:?}"
+        );
         assert!((0.0..=1.0).contains(&lo) && (0.0..=1.0).contains(&hi));
     }
 }
@@ -500,7 +576,10 @@ fn the_gate_does_not_depend_on_record_order() {
         let (al, ah) = a.interval.unwrap();
         let (bl, bh) = b.interval.unwrap();
         assert!((al - bl).abs() < 1e-9 && (ah - bh).abs() < 1e-9, "{what}");
-        assert!((a.value.unwrap() - b.value.unwrap()).abs() < 1e-12, "{what}");
+        assert!(
+            (a.value.unwrap() - b.value.unwrap()).abs() < 1e-12,
+            "{what}"
+        );
     };
     for other in [gate(&rev), gate(&shuf)] {
         assert_eq!(g1.status, other.status);
@@ -513,22 +592,46 @@ fn the_gate_does_not_depend_on_record_order() {
             v
         };
         assert_eq!(sorted(&g1.strength.losing), sorted(&other.strength.losing));
-        assert_eq!(sorted(&g1.strength.dominant), sorted(&other.strength.dominant));
-        assert_eq!(sorted(&g1.strength.failing), sorted(&other.strength.failing));
+        assert_eq!(
+            sorted(&g1.strength.dominant),
+            sorted(&other.strength.dominant)
+        );
+        assert_eq!(
+            sorted(&g1.strength.failing),
+            sorted(&other.strength.failing)
+        );
         for r in &g1.strength.rows {
-            let o = other.strength.rows.iter().find(|x| x.strategy == r.strategy).unwrap();
+            let o = other
+                .strength
+                .rows
+                .iter()
+                .find(|x| x.strategy == r.strategy)
+                .unwrap();
             close(&r.strength, &o.strength, &r.strategy);
             assert_eq!((r.dominant, r.losing), (o.dominant, o.losing));
         }
         for m in &g1.seat.mirrors {
-            let o = other.seat.mirrors.iter().find(|x| x.strategy == m.strategy).unwrap();
+            let o = other
+                .seat
+                .mirrors
+                .iter()
+                .find(|x| x.strategy == m.strategy)
+                .unwrap();
             close(&m.slot_a, &o.slot_a, &m.strategy);
             close(&m.left_spawn, &o.left_spawn, &m.strategy);
         }
         close(&g1.seat.slot_a, &other.seat.slot_a, "slot a");
         close(&g1.seat.left_spawn, &other.seat.left_spawn, "left");
-        close(&g1.termination.band_share, &other.termination.band_share, "band");
-        close(&g1.termination.timeout_rate, &other.termination.timeout_rate, "timeouts");
+        close(
+            &g1.termination.band_share,
+            &other.termination.band_share,
+            "band",
+        );
+        close(
+            &g1.termination.timeout_rate,
+            &other.termination.timeout_rate,
+            "timeouts",
+        );
     }
 }
 

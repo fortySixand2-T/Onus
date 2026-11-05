@@ -52,7 +52,9 @@ fn render(p: &Plan) -> String {
     let b: Vec<String> = p
         .barracks
         .iter()
-        .map(|(b, at, off)| format!("            (building: \"{b}\", at_tick: {at}, offset: {off:?}),"))
+        .map(|(b, at, off)| {
+            format!("            (building: \"{b}\", at_tick: {at}, offset: {off:?}),")
+        })
         .collect();
     let a: Vec<String> = p
         .army
@@ -163,8 +165,10 @@ fn match_app(c: Content, commanders: AiCommanders) -> App {
             faction,
             ProductionQueue::default(),
         ));
-        app.world_mut()
-            .spawn((Position(base + Vec2::new(0.0, 250.0)), ResourceNode { amount: 100_000 }));
+        app.world_mut().spawn((
+            Position(base + Vec2::new(0.0, 250.0)),
+            ResourceNode { amount: 100_000 },
+        ));
         for i in 0..3 {
             let (idx, kind, hp) = {
                 let c = app.world().resource::<Content>();
@@ -248,7 +252,11 @@ fn run_hashes(app: &mut App, samples: u32) -> (Vec<u64>, u64) {
 fn defaulting_and_naming_the_default_are_the_same_match_off_index_zero() {
     let c = content_of("dflt_named", "p_arc", &[rip(), arc(), bul()]);
     assert_eq!(c.default_strategy, "p_arc");
-    assert_ne!(c.strategy_index("p_arc"), Some(0), "fixture is not off-index-0");
+    assert_ne!(
+        c.strategy_index("p_arc"),
+        Some(0),
+        "fixture is not off-index-0"
+    );
 
     // `new` means the content's default, whatever its index.
     let plain = AiCommander::new(Faction::A, 5);
@@ -304,7 +312,11 @@ fn naming_a_non_default_strategy_does_not_fall_back_to_the_default() {
             })
             .collect()
     };
-    assert_eq!(placed(Faction::A), vec!["foundry".to_string()], "A did not play `mvp`");
+    assert_eq!(
+        placed(Faction::A),
+        vec!["foundry".to_string()],
+        "A did not play `mvp`"
+    );
     assert_eq!(
         placed(Faction::B),
         vec!["aether_spire".to_string()],
@@ -329,7 +341,10 @@ fn worker_target_is_read_from_each_sides_own_script() {
     };
     let a = workers(Faction::A); // target 6, starts with 3
     let b = workers(Faction::B); // target 10, starts with 3
-    assert!(a > 0 && b > 0, "a side trained no workers at all (A={a}, B={b})");
+    assert!(
+        a > 0 && b > 0,
+        "a side trained no workers at all (A={a}, B={b})"
+    );
     assert!(
         b > a,
         "both sides used one worker target (A wanted 6 -> {a}, B wanted 10 -> {b})"
@@ -347,8 +362,14 @@ fn each_side_acts_only_on_its_own_think_interval() {
     let a = ticks(Faction::A); // think 7
     let b = ticks(Faction::B); // think 40
     assert!(!a.is_empty() && !b.is_empty(), "a side never acted");
-    assert!(a.iter().all(|t| t % 7 == 0), "A acted off its 7-tick beat: {a:?}");
-    assert!(b.iter().all(|t| t % 40 == 0), "B acted off its 40-tick beat: {b:?}");
+    assert!(
+        a.iter().all(|t| t % 7 == 0),
+        "A acted off its 7-tick beat: {a:?}"
+    );
+    assert!(
+        b.iter().all(|t| t % 40 == 0),
+        "B acted off its 40-tick beat: {b:?}"
+    );
     assert!(
         a.iter().any(|t| t % 30 != 0),
         "A never acted off the default's 30-tick beat — the cadence may not be its own"
@@ -382,8 +403,14 @@ fn a_sides_opening_is_identical_whatever_the_opponent_plays() {
     assert!(!base.0.is_empty(), "A did nothing to compare");
     for (i, b) in ["p_arc", "p_bul", "mvp"].iter().enumerate() {
         let got = a_state(&format!("indep{}", i + 1), b);
-        assert_eq!(got.0, base.0, "A's decisions changed when only B's strategy did (B={b})");
-        assert_eq!(got.1, base.1, "A's RNG stream depends on B's strategy (B={b})");
+        assert_eq!(
+            got.0, base.0,
+            "A's decisions changed when only B's strategy did (B={b})"
+        );
+        assert_eq!(
+            got.1, base.1,
+            "A's RNG stream depends on B's strategy (B={b})"
+        );
         assert_eq!(got.2, base.2, "A's clock depends on B's strategy (B={b})");
     }
 }
@@ -401,7 +428,10 @@ fn a_non_default_pair_replays_bit_identically_across_runs_and_profiles() {
     };
     let first = run("rep_a", 4);
     let second = run("rep_b", 4);
-    assert_eq!(first.0, second.0, "per-tick state hashes diverged between two runs");
+    assert_eq!(
+        first.0, second.0,
+        "per-tick state hashes diverged between two runs"
+    );
     assert_eq!(first.1, second.1, "the commanders took different decisions");
 
     let pin_dir = scratch("pins");
@@ -409,12 +439,18 @@ fn a_non_default_pair_replays_bit_identically_across_runs_and_profiles() {
     let pin = pin_dir.join("p_rip_vs_p_bul_seed4.txt");
     let record = format!(
         "{}\n{:#018x}\n",
-        first.0.iter().map(|h| format!("{h:#018x}")).collect::<Vec<_>>().join(","),
+        first
+            .0
+            .iter()
+            .map(|h| format!("{h:#018x}"))
+            .collect::<Vec<_>>()
+            .join(","),
         first.1
     );
     match std::fs::read_to_string(&pin) {
         Ok(prev) => assert_eq!(
-            prev, record,
+            prev,
+            record,
             "the same (pair, seed) played a different match than a previous process did \
              (delete {} to re-pin)",
             pin.display()
@@ -424,7 +460,10 @@ fn a_non_default_pair_replays_bit_identically_across_runs_and_profiles() {
 
     // Identity includes the pairing and the seed.
     let other_seed = run("rep_c", 11);
-    assert_ne!(first.0, other_seed.0, "a different seed played the same match");
+    assert_ne!(
+        first.0, other_seed.0,
+        "a different seed played the same match"
+    );
     let mut swapped = named_match(probe_content("rep_d"), 4, "p_rip", "p_arc");
     let swapped = run_hashes(&mut swapped, 25);
     assert_ne!(first.0, swapped.0, "changing B's strategy changed nothing");
@@ -443,15 +482,21 @@ fn the_rng_stream_is_a_function_of_seed_and_slot_only() {
             let base = AiCommander::new(f, seed).rng_state();
             for id in ["mvp", "p_rip", "p_arc", "p_bul"] {
                 assert_eq!(
-                    AiCommander::with_strategy(&c, f, seed, id).unwrap().rng_state(),
+                    AiCommander::with_strategy(&c, f, seed, id)
+                        .unwrap()
+                        .rng_state(),
                     base,
                     "`{id}` perturbed the stream for {f:?} at seed {seed}"
                 );
             }
         }
         assert_ne!(
-            AiCommander::with_strategy(&c, Faction::A, seed, "p_rip").unwrap().rng_state(),
-            AiCommander::with_strategy(&c, Faction::B, seed, "p_rip").unwrap().rng_state(),
+            AiCommander::with_strategy(&c, Faction::A, seed, "p_rip")
+                .unwrap()
+                .rng_state(),
+            AiCommander::with_strategy(&c, Faction::B, seed, "p_rip")
+                .unwrap()
+                .rng_state(),
             "the two sides share a stream at seed {seed}"
         );
     }
@@ -497,7 +542,11 @@ fn degenerate_matchups_are_total_and_deterministic() {
         let dup = AiCommanders::matchup(
             &c,
             3,
-            &[(Faction::A, "p_rip"), (Faction::A, "p_bul"), (Faction::B, "p_arc")],
+            &[
+                (Faction::A, "p_rip"),
+                (Faction::A, "p_bul"),
+                (Faction::B, "p_arc"),
+            ],
         )
         .unwrap();
         assert_eq!(dup.commanders().len(), 2, "a faction was given two brains");

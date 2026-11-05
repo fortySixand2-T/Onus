@@ -65,9 +65,7 @@ fn combat_built(content: &Content, r: &MatchRecord) -> u32 {
         .units
         .iter()
         .filter(|u| u.offense > 0)
-        .map(|u| {
-            r.produced.get(Faction::A, &u.id) + r.produced.get(Faction::B, &u.id)
-        })
+        .map(|u| r.produced.get(Faction::A, &u.id) + r.produced.get(Faction::B, &u.id))
         .sum()
 }
 

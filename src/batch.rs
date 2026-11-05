@@ -110,7 +110,11 @@ impl ProductionCounts {
     /// Snapshot `produced` against `content`'s roster, padded to the full
     /// roster width.
     pub fn of(content: &Content, produced: &Produced) -> Self {
-        let column = |f: Faction| (0..content.units.len()).map(|u| produced.count(f, u)).collect();
+        let column = |f: Faction| {
+            (0..content.units.len())
+                .map(|u| produced.count(f, u))
+                .collect()
+        };
         Self {
             units: Self::header(content),
             counts: [column(Faction::A), column(Faction::B)],
@@ -653,7 +657,11 @@ pub enum NationAxis {
 }
 
 impl NationAxis {
-    pub const ALL: [NationAxis; 3] = [NationAxis::Mirror, NationAxis::Cross, NationAxis::Personality];
+    pub const ALL: [NationAxis; 3] = [
+        NationAxis::Mirror,
+        NationAxis::Cross,
+        NationAxis::Personality,
+    ];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -725,7 +733,10 @@ pub fn nation_roster(
     only: Option<&[String]>,
 ) -> Result<Vec<String>, NationBatchError> {
     if let Some(only) = only {
-        if let Some(bad) = only.iter().find(|id| !content.nations.iter().any(|n| &n.id == *id)) {
+        if let Some(bad) = only
+            .iter()
+            .find(|id| !content.nations.iter().any(|n| &n.id == *id))
+        {
             return Err(NationBatchError::Nation(bad.clone()));
         }
     }
@@ -816,7 +827,10 @@ pub fn run_fixtures(
                     .settings(seed, orientation, settings.tick_cap)
                     .with_economy(settings.economy);
                 let record = NationRecord {
-                    nations: [fixture.sides[0].nation.clone(), fixture.sides[1].nation.clone()],
+                    nations: [
+                        fixture.sides[0].nation.clone(),
+                        fixture.sides[1].nation.clone(),
+                    ],
                     record: run_match(content, &s)?,
                 };
                 progress(&record);

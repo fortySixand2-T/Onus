@@ -61,18 +61,22 @@ fn the_default_band_is_five_to_eight_minutes_inclusive() {
 fn decided_and_all_bases_are_separate_and_hand_checkable() {
     let cap = 15 * MIN;
     let records = vec![
-        rec(A_WINS, 2 * MIN),     // below
-        rec(B_WINS, 5 * MIN),     // in (edge)
-        rec(A_WINS, 8 * MIN),     // in (edge)
-        rec(DRAW, 6 * MIN),       // in: a mutual loss is decided
-        rec(B_WINS, 10 * MIN),    // above
+        rec(A_WINS, 2 * MIN),  // below
+        rec(B_WINS, 5 * MIN),  // in (edge)
+        rec(A_WINS, 8 * MIN),  // in (edge)
+        rec(DRAW, 6 * MIN),    // in: a mutual loss is decided
+        rec(B_WINS, 10 * MIN), // above
         rec(CAPPED, cap),
         rec(CAPPED, cap),
     ];
     let d = LengthDistribution::of(&records, LengthBand::default());
     assert_eq!((d.total, d.decided, d.timeouts), (7, 5, 2));
     assert_eq!((d.below_band, d.in_band, d.above_band), (1, 3, 1));
-    assert_eq!(d.band_share(), Some(3.0 / 5.0), "in-band over DECIDED, not over all");
+    assert_eq!(
+        d.band_share(),
+        Some(3.0 / 5.0),
+        "in-band over DECIDED, not over all"
+    );
     assert_eq!(d.timeout_rate(), Some(2.0 / 7.0), "timeouts over ALL");
 
     // Decided basis: 2, 5, 6, 8, 10 minutes.
@@ -122,7 +126,11 @@ fn an_empty_batch_has_no_length_and_no_rates() {
     let d = LengthDistribution::of(&[], LengthBand::default());
     assert_eq!((d.total, d.decided, d.timeouts), (0, 0, 0));
     assert_eq!(d.band_share(), None);
-    assert_eq!(d.timeout_rate(), None, "no matches is not a 0% timeout rate");
+    assert_eq!(
+        d.timeout_rate(),
+        None,
+        "no matches is not a 0% timeout rate"
+    );
     assert_eq!(d.decided_percentile(50), None);
     assert_eq!(d.all_percentile(50), None);
 }
@@ -136,7 +144,11 @@ fn an_all_timeout_batch_has_no_decided_length() {
     assert_eq!(d.timeout_rate(), Some(1.0));
     assert_eq!(d.band_share(), None);
     assert_eq!(d.decided_percentile(50), None);
-    assert_eq!(d.all_percentile(50), Some(900), "the all basis still sees the cap");
+    assert_eq!(
+        d.all_percentile(50),
+        Some(900),
+        "the all basis still sees the cap"
+    );
     assert!(d.is_all_timeout());
     assert!(!LengthDistribution::of(&[rec(A_WINS, 1)], LengthBand::default()).is_all_timeout());
     assert!(!LengthDistribution::of(&[], LengthBand::default()).is_all_timeout());

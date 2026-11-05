@@ -196,11 +196,15 @@ fn hq(app: &mut App, faction: Faction) -> Entity {
 /// refusal spends nothing and queues nothing.
 fn order_unit(app: &mut App, base: Entity, faction: Faction, unit: usize) -> bool {
     let c = app.world().resource::<Content>().clone();
-    let hq_def = c.building_index("hq").expect("content has an `hq` building");
+    let hq_def = c
+        .building_index("hq")
+        .expect("content has an `hq` building");
     let mut stock = *app.world().resource::<Stockpiles>();
     let ok = {
         let mut base = app.world_mut().entity_mut(base);
-        let mut queue = base.get_mut::<ProductionQueue>().expect("the hq has a queue");
+        let mut queue = base
+            .get_mut::<ProductionQueue>()
+            .expect("the hq has a queue");
         enqueue_unit(&c, &mut stock, hq_def, faction, &mut queue, unit)
     };
     if ok {
@@ -254,7 +258,10 @@ fn an_unfinished_order_is_not_counted_until_it_spawns() {
         1,
         "the tick the unit spawns is the tick it is counted"
     );
-    assert_eq!(app.world().resource::<Produced>().count(Faction::A, worker), 1);
+    assert_eq!(
+        app.world().resource::<Produced>().count(Faction::A, worker),
+        1
+    );
     assert_eq!(
         app.world().resource::<Produced>().total(Faction::B),
         0,
@@ -276,7 +283,10 @@ fn a_produced_unit_that_dies_still_counts_as_produced() {
     let base = hq(&mut app, Faction::A);
     assert!(order_unit(&mut app, base, Faction::A, worker));
     step(&mut app, c.units[worker].mvp_train_ticks + 1);
-    assert_eq!(app.world().resource::<Produced>().count(Faction::A, worker), 1);
+    assert_eq!(
+        app.world().resource::<Produced>().count(Faction::A, worker),
+        1
+    );
 
     // Kill it: the harness despawns it directly, which is the strongest form of
     // "it is no longer alive".
@@ -323,7 +333,12 @@ fn short(a: &str, b: &str, cap: u32) -> MatchSettings {
 fn a_record_maps_its_counts_to_the_right_unit_ids() {
     let c = content();
     let record = batch::run_match(&c, &short("mass_ripper", "turtle", 1_800)).expect("shipped");
-    let ids: Vec<&str> = record.produced.unit_ids().iter().map(|s| s.as_str()).collect();
+    let ids: Vec<&str> = record
+        .produced
+        .unit_ids()
+        .iter()
+        .map(|s| s.as_str())
+        .collect();
     let expected: Vec<&str> = c.units.iter().map(|u| u.id.as_str()).collect();
     assert_eq!(ids, expected, "the header is the content's unit order");
 
@@ -337,8 +352,8 @@ fn a_record_maps_its_counts_to_the_right_unit_ids() {
     // column.
     assert_eq!(record.produced.get(Faction::A, "no_such_unit"), 0);
     // The record agrees with the world it was played in.
-    let mut app = headless::ai_vs_ai(c.clone(), &short("mass_ripper", "turtle", 1_800))
-        .expect("shipped");
+    let mut app =
+        headless::ai_vs_ai(c.clone(), &short("mass_ripper", "turtle", 1_800)).expect("shipped");
     headless::tick(&mut app, record.ticks);
     let world_counts = app.world().resource::<Produced>().clone();
     for f in headless::SIDES {
@@ -372,7 +387,10 @@ fn production_counts_are_deterministic() {
         .with_seeds(1);
     let first = batch::run_batch(&c, &settings, &mut |_| {}).expect("shipped");
     let second = batch::run_batch(&c, &settings, &mut |_| {}).expect("shipped");
-    assert_eq!(first, second, "a re-run batch is identical, production included");
+    assert_eq!(
+        first, second,
+        "a re-run batch is identical, production included"
+    );
     assert!(first.iter().any(|r| r.produced.total(Faction::A) > 0));
 }
 
@@ -435,7 +453,12 @@ fn every_outcome_carries_production() {
 fn a_batch_totals_production_per_unit_in_content_order() {
     let c = content();
     let settings = BatchSettings::default()
-        .with_only(["rush", "mass_ripper"].iter().map(|s| s.to_string()).collect())
+        .with_only(
+            ["rush", "mass_ripper"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        )
         .with_tick_cap(900)
         .with_seeds(1);
     let rows = batch::run_batch(&c, &settings, &mut |_| {}).expect("shipped");

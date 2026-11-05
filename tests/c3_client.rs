@@ -43,7 +43,10 @@ fn app_with(c: Content) -> App {
         .add_systems(Startup, onus::setup::setup);
     onus::add_sim_systems(&mut app, Update);
     onus::add_nation_pick(&mut app);
-    app.add_systems(Update, (onus::ui::update_options_panel, onus::ui::show_wells));
+    app.add_systems(
+        Update,
+        (onus::ui::update_options_panel, onus::ui::show_wells),
+    );
     app.update();
     app
 }
@@ -53,7 +56,9 @@ fn app() -> App {
 }
 
 fn press(app: &mut App, key: KeyCode) {
-    app.world_mut().resource_mut::<ButtonInput<KeyCode>>().press(key);
+    app.world_mut()
+        .resource_mut::<ButtonInput<KeyCode>>()
+        .press(key);
     app.update();
     let mut keys = app.world_mut().resource_mut::<ButtonInput<KeyCode>>();
     keys.release(key);
@@ -67,12 +72,16 @@ fn frames(app: &mut App, n: u32) {
 }
 
 fn picker_text(app: &mut App) -> String {
-    let mut q = app.world_mut().query_filtered::<&Text, With<NationPicker>>();
+    let mut q = app
+        .world_mut()
+        .query_filtered::<&Text, With<NationPicker>>();
     q.single(app.world()).expect("one picker").0.clone()
 }
 
 fn panel(app: &mut App) -> String {
-    let mut q = app.world_mut().query_filtered::<&Text, With<OptionsPanel>>();
+    let mut q = app
+        .world_mut()
+        .query_filtered::<&Text, With<OptionsPanel>>();
     q.single(app.world()).expect("one panel").0.clone()
 }
 
@@ -92,7 +101,10 @@ fn wells(app: &mut App) -> Vec<(Entity, Vec2, LeyWell, Option<Color>)> {
 #[test]
 fn the_pick_defaults_to_alloy_only_and_the_economy_key_toggles_it() {
     let mut app = app();
-    assert_eq!(app.world().resource::<NationPick>().economy, EconomyMode::Alloy);
+    assert_eq!(
+        app.world().resource::<NationPick>().economy,
+        EconomyMode::Alloy
+    );
     let text = picker_text(&mut app);
     assert!(text.contains(EconomyMode::Alloy.label()), "{text}");
     press(&mut app, ECONOMY_KEY);
@@ -104,7 +116,10 @@ fn the_pick_defaults_to_alloy_only_and_the_economy_key_toggles_it() {
     let text = picker_text(&mut app);
     assert!(text.contains(EconomyMode::ThreeResource.label()), "{text}");
     press(&mut app, ECONOMY_KEY);
-    assert_eq!(app.world().resource::<NationPick>().economy, EconomyMode::Alloy);
+    assert_eq!(
+        app.world().resource::<NationPick>().economy,
+        EconomyMode::Alloy
+    );
 }
 
 #[test]
@@ -113,7 +128,10 @@ fn content_without_the_block_offers_only_alloy() {
     c.three_resource = None;
     let mut app = app_with(c);
     press(&mut app, ECONOMY_KEY);
-    assert_eq!(app.world().resource::<NationPick>().economy, EconomyMode::Alloy);
+    assert_eq!(
+        app.world().resource::<NationPick>().economy,
+        EconomyMode::Alloy
+    );
     assert!(!picker_text(&mut app).contains(EconomyMode::ThreeResource.label()));
 }
 
@@ -124,17 +142,26 @@ fn an_alloy_only_start_is_todays_match() {
     frames(&mut app, 3);
     assert!(app.world().resource::<MatchState>().tick() > 0);
     assert!(!app.world().contains_resource::<ThreeEconomy>());
-    assert!(wells(&mut app).is_empty(), "no wells in an Alloy-only match");
+    assert!(
+        wells(&mut app).is_empty(),
+        "no wells in an Alloy-only match"
+    );
     // The panel's bank line is today's.
     let hq = {
         let mut q = app.world_mut().query::<(Entity, &Faction, &Building)>();
-        q.iter(app.world()).find(|(_, f, _)| **f == Faction::A).unwrap().0
+        q.iter(app.world())
+            .find(|(_, f, _)| **f == Faction::A)
+            .unwrap()
+            .0
     };
     app.world_mut().entity_mut(hq).insert(Selected);
     frames(&mut app, 1);
     let text = panel(&mut app);
     assert!(text.starts_with("Alloy: "), "{text}");
-    assert!(!text.contains("Biomass") && !text.contains("Aether"), "{text}");
+    assert!(
+        !text.contains("Biomass") && !text.contains("Aether"),
+        "{text}"
+    );
 }
 
 #[test]
@@ -144,7 +171,10 @@ fn a_three_resource_start_installs_the_economy_the_leans_and_the_wells() {
     let mut app = app();
     press(&mut app, ECONOMY_KEY);
     press(&mut app, START_KEY);
-    assert_eq!(app.world().resource::<NationPick>().phase, PickPhase::Playing);
+    assert_eq!(
+        app.world().resource::<NationPick>().phase,
+        PickPhase::Playing
+    );
     assert!(app.world().contains_resource::<ThreeEconomy>());
     let s = app.world().resource::<Stockpiles>();
     for f in [Faction::A, Faction::B] {
@@ -153,11 +183,8 @@ fn a_three_resource_start_installs_the_economy_the_leans_and_the_wells() {
     }
     // The nations were installed for the three-resource economy.
     let rules = app.world().resource::<NationRules>().clone();
-    let names = [Faction::A, Faction::B].map(|f| {
-        rules
-            .nation_of(f)
-            .map(|i| c.nations[i].id.clone())
-    });
+    let names =
+        [Faction::A, Faction::B].map(|f| rules.nation_of(f).map(|i| c.nations[i].id.clone()));
     let want = NationRules::resolve_in(&c, &names, EconomyMode::ThreeResource)
         .unwrap()
         .unwrap();
@@ -174,12 +201,22 @@ fn a_three_resource_start_installs_the_economy_the_leans_and_the_wells() {
         let mut q = app.world_mut().query::<(&Position, &Building, &Faction)>();
         [Faction::A, Faction::B]
             .iter()
-            .map(|f| q.iter(app.world()).find(|(_, b, g)| **g == *f && c.buildings[b.def].victory).unwrap().0 .0)
+            .map(|f| {
+                q.iter(app.world())
+                    .find(|(_, b, g)| **g == *f && c.buildings[b.def].victory)
+                    .unwrap()
+                    .0
+                     .0
+            })
             .collect()
     };
     let mut sites: Vec<usize> = w.iter().map(|(_, _, well, _)| well.site()).collect();
     sites.sort_unstable();
-    assert_eq!(sites, (0..t.wells.sites.len()).collect::<Vec<_>>(), "one well per site");
+    assert_eq!(
+        sites,
+        (0..t.wells.sites.len()).collect::<Vec<_>>(),
+        "one well per site"
+    );
     for (_, p, well, _) in &w {
         assert_eq!(*p, t.wells.sites[well.site()].at(hqs[0], hqs[1]));
     }

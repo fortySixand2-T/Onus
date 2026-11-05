@@ -77,10 +77,16 @@ fn spawn_unit(app: &mut App, id: &str, faction: Faction, pos: Vec2) -> Entity {
 fn spawn_building(app: &mut App, id: &str, faction: Faction, pos: Vec2) -> Entity {
     let def = {
         let c = app.world().resource::<Content>();
-        c.building_index(id).unwrap_or_else(|| panic!("building `{id}`"))
+        c.building_index(id)
+            .unwrap_or_else(|| panic!("building `{id}`"))
     };
     app.world_mut()
-        .spawn((Position(pos), Building { def }, faction, ProductionQueue::default()))
+        .spawn((
+            Position(pos),
+            Building { def },
+            faction,
+            ProductionQueue::default(),
+        ))
         .id()
 }
 
@@ -93,10 +99,17 @@ fn ai_vs_ai_padded(seed: u64, pad: usize) -> App {
         (Faction::B, Vec2::new(750.0, 0.0)),
     ] {
         spawn_building(&mut app, "hq", faction, base);
-        app.world_mut()
-            .spawn((Position(base + Vec2::new(0.0, 250.0)), ResourceNode { amount: 100_000 }));
+        app.world_mut().spawn((
+            Position(base + Vec2::new(0.0, 250.0)),
+            ResourceNode { amount: 100_000 },
+        ));
         for i in 0..3 {
-            spawn_unit(&mut app, "worker", faction, base + Vec2::new(0.0, 20.0 * i as f32));
+            spawn_unit(
+                &mut app,
+                "worker",
+                faction,
+                base + Vec2::new(0.0, 20.0 * i as f32),
+            );
         }
     }
     app.insert_resource(AiCommanders::new(seed, &[Faction::A, Faction::B]));
@@ -234,7 +247,9 @@ fn the_f008_instruction_names_the_sweep_and_not_whatever_follows_it() {
         .collect::<Vec<_>>()
         .join(" ");
     let marker = "Any new reader of the claim belongs after this system";
-    let i = flat.find(marker).expect("the F-008 instruction is in lib.rs");
+    let i = flat
+        .find(marker)
+        .expect("the F-008 instruction is in lib.rs");
     let after = &flat[i + marker.len()..];
     let next_sys = after
         .find("sim::")
@@ -331,7 +346,10 @@ fn a_damaged_log_file_is_an_error_never_a_panic() {
 // ---- 3. tick tagging --------------------------------------------------------
 
 fn push_at(app: &mut App, at: u32, order: Order) {
-    app.world_mut().resource_mut::<CommandQueue>().0.push_at(at, order);
+    app.world_mut()
+        .resource_mut::<CommandQueue>()
+        .0
+        .push_at(at, order);
 }
 
 /// Tick 0 is a tick like any other: a command tagged for it applies on the very
@@ -340,11 +358,23 @@ fn push_at(app: &mut App, at: u32, order: Order) {
 fn a_command_tagged_for_tick_zero_applies_on_tick_zero() {
     let mut app = sim_app_with(0, 0);
     let unit = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
-    push_at(&mut app, 0, Order::MoveTo { units: vec![unit], dest: Vec2::new(50.0, 0.0) }.issued_by(Faction::A));
+    push_at(
+        &mut app,
+        0,
+        Order::MoveTo {
+            units: vec![unit],
+            dest: Vec2::new(50.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
     step(&mut app);
     let log = app.world().resource::<CommandLog>();
     assert_eq!(log.commands().len(), 1, "the tick-0 command never applied");
-    assert_eq!(log.commands()[0].tick, 0, "it was stamped with the wrong tick");
+    assert_eq!(
+        log.commands()[0].tick,
+        0,
+        "it was stamped with the wrong tick"
+    );
     assert_eq!(log.late(), 0, "a tick-0 command was counted late");
 }
 
@@ -360,12 +390,26 @@ fn commands_pushed_out_of_order_each_apply_on_their_own_tick() {
         push_at(
             &mut app,
             at,
-            Order::MoveTo { units: vec![u], dest: Vec2::new(at as f32, 0.0) }.issued_by(Faction::A),
+            Order::MoveTo {
+                units: vec![u],
+                dest: Vec2::new(at as f32, 0.0),
+            }
+            .issued_by(Faction::A),
         );
     }
     tick(&mut app, 14);
-    let ticks: Vec<u32> = app.world().resource::<CommandLog>().commands().iter().map(|c| c.tick).collect();
-    assert_eq!(ticks, vec![3, 5, 7, 11], "commands did not land on their own ticks");
+    let ticks: Vec<u32> = app
+        .world()
+        .resource::<CommandLog>()
+        .commands()
+        .iter()
+        .map(|c| c.tick)
+        .collect();
+    assert_eq!(
+        ticks,
+        vec![3, 5, 7, 11],
+        "commands did not land on their own ticks"
+    );
     assert_eq!(app.world().resource::<CommandLog>().late(), 0);
 }
 
@@ -376,9 +420,20 @@ fn a_far_future_command_waits_and_then_lands_on_its_tick() {
     const AT: u32 = 900;
     let mut app = sim_app_with(0, 0);
     let u = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
-    push_at(&mut app, AT, Order::MoveTo { units: vec![u], dest: Vec2::new(400.0, 0.0) }.issued_by(Faction::A));
+    push_at(
+        &mut app,
+        AT,
+        Order::MoveTo {
+            units: vec![u],
+            dest: Vec2::new(400.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
     tick(&mut app, AT);
-    assert!(app.world().get::<MoveTarget>(u).is_none(), "the future command applied early");
+    assert!(
+        app.world().get::<MoveTarget>(u).is_none(),
+        "the future command applied early"
+    );
     assert_eq!(app.world().resource::<CommandLog>().commands().len(), 0);
     step(&mut app);
     assert_eq!(app.world().resource::<CommandLog>().commands().len(), 1);
@@ -393,7 +448,15 @@ fn two_commands_on_one_tick_keep_their_push_order() {
     let u = spawn_unit(&mut app, "ripper", Faction::A, Vec2::ZERO);
     tick(&mut app, 3);
     for x in [10.0f32, 20.0, 30.0] {
-        push_at(&mut app, 3, Order::MoveTo { units: vec![u], dest: Vec2::new(x, 0.0) }.issued_by(Faction::A));
+        push_at(
+            &mut app,
+            3,
+            Order::MoveTo {
+                units: vec![u],
+                dest: Vec2::new(x, 0.0),
+            }
+            .issued_by(Faction::A),
+        );
     }
     step(&mut app);
     let log = app.world().resource::<CommandLog>();
@@ -405,8 +468,16 @@ fn two_commands_on_one_tick_keep_their_push_order() {
             _ => panic!("shape"),
         })
         .collect();
-    assert_eq!(xs, vec![10.0, 20.0, 30.0], "same-tick commands were reordered");
-    assert_eq!(app.world().get::<MoveTarget>(u).map(|m| m.0.x), Some(30.0), "the last command did not win");
+    assert_eq!(
+        xs,
+        vec![10.0, 20.0, 30.0],
+        "same-tick commands were reordered"
+    );
+    assert_eq!(
+        app.world().get::<MoveTarget>(u).map(|m| m.0.x),
+        Some(30.0),
+        "the last command did not win"
+    );
 }
 
 /// A command whose tick has gone by is **dropped and never applied late**.
@@ -433,11 +504,29 @@ fn a_late_command_is_dropped_never_applied_and_replays_as_dropped() {
     tick(&mut app, 10);
     // A command whose tick has gone, and — on the same tick — one that has not:
     // the fates have to be decided per command, and the order kept.
-    push_at(&mut app, 2, Order::MoveTo { units: vec![u], dest: Vec2::new(1.0, 0.0) }.issued_by(Faction::A));
-    push(&mut app, Order::MoveTo { units: vec![v], dest: Vec2::new(2.0, 0.0) }.issued_by(Faction::A));
+    push_at(
+        &mut app,
+        2,
+        Order::MoveTo {
+            units: vec![u],
+            dest: Vec2::new(1.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
+    push(
+        &mut app,
+        Order::MoveTo {
+            units: vec![v],
+            dest: Vec2::new(2.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
     tick(&mut app, 3);
 
-    assert!(app.world().get::<MoveTarget>(u).is_none(), "a stale command was applied");
+    assert!(
+        app.world().get::<MoveTarget>(u).is_none(),
+        "a stale command was applied"
+    );
     assert_eq!(
         app.world().get::<MoveTarget>(v).map(|m| m.0.x),
         Some(2.0),
@@ -447,20 +536,36 @@ fn a_late_command_is_dropped_never_applied_and_replays_as_dropped() {
 
     // Recorded: both of them, in push order, each with its own schedule and fate.
     let log = app.world().resource::<CommandLog>().log().clone();
-    assert_eq!(log.commands.len(), 2, "the account of the tick is incomplete");
+    assert_eq!(
+        log.commands.len(),
+        2,
+        "the account of the tick is incomplete"
+    );
     assert_eq!(log.commands[0].fate, CommandFate::Late);
     assert_eq!(log.commands[0].schedule, CommandTick::At(2));
-    assert!(log.commands[0].tick > 2, "the log does not say when the sim saw it");
+    assert!(
+        log.commands[0].tick > 2,
+        "the log does not say when the sim saw it"
+    );
     assert_eq!(log.commands[1].fate, CommandFate::Taken);
     assert_eq!(log.commands[1].schedule, CommandTick::Asap);
-    assert_eq!(log.commands[0].tick, log.commands[1].tick, "the two were taken on one tick");
+    assert_eq!(
+        log.commands[0].tick, log.commands[1].tick,
+        "the two were taken on one tick"
+    );
 
     // The account survives a file exactly.
-    assert!(log.validate().is_ok(), "the sim wrote an account it calls impossible");
+    assert!(
+        log.validate().is_ok(),
+        "the sim wrote an account it calls impossible"
+    );
     let path = scratch("late-account");
     log.save(&path).expect("save");
     let back = MatchLog::load(&path).expect("load");
-    assert_eq!(back.commands, log.commands, "a `Late` entry did not survive the file");
+    assert_eq!(
+        back.commands, log.commands,
+        "a `Late` entry did not survive the file"
+    );
 
     // ...and replaying it applies the late one exactly as the recording did:
     // never — while the timely one still lands, so the replay demonstrably ran.
@@ -491,7 +596,11 @@ fn a_late_command_is_dropped_never_applied_and_replays_as_dropped() {
         back.commands,
         "the replay recorded a different account of the drop"
     );
-    assert_eq!(r.world().resource::<CommandLog>().late(), 1, "the replay's own drop count differs");
+    assert_eq!(
+        r.world().resource::<CommandLog>().late(),
+        1,
+        "the replay's own drop count differs"
+    );
 }
 
 // ---- 4. the state hash ------------------------------------------------------
@@ -529,7 +638,11 @@ fn the_state_hash_is_a_pure_function_of_the_world() {
     let a = onus::sim::state_hash(app.world_mut());
     let b = onus::sim::state_hash(app.world_mut());
     let c = onus::sim::state_hash(app.world_mut());
-    assert_eq!((a, b), (a, c), "the hash is not a function of the world alone");
+    assert_eq!(
+        (a, b),
+        (a, c),
+        "the hash is not a function of the world alone"
+    );
 }
 
 /// **The hash must be blind to the ECS's entity allocation.** Two identical
@@ -575,7 +688,15 @@ fn the_hash_observes_a_command_the_sim_is_still_holding() {
         onus::sim::state_hash(b.world_mut()),
         "the two fixtures were not identical to begin with"
     );
-    push_at(&mut a, 500, Order::MoveTo { units: vec![ua], dest: Vec2::new(9.0, 9.0) }.issued_by(Faction::A));
+    push_at(
+        &mut a,
+        500,
+        Order::MoveTo {
+            units: vec![ua],
+            dest: Vec2::new(9.0, 9.0),
+        }
+        .issued_by(Faction::A),
+    );
     step(&mut a);
     step(&mut b);
     assert_ne!(
@@ -620,7 +741,11 @@ fn a_replay_reproduces_every_tick_and_re_records_the_identical_file() {
     let app = replay_of(loaded, TICKS);
 
     let replayed = app.world().resource::<StateHashLog>().clone();
-    assert_eq!(hashes.first_divergence(&replayed), None, "the replay diverged");
+    assert_eq!(
+        hashes.first_divergence(&replayed),
+        None,
+        "the replay diverged"
+    );
 
     let again = app.world().resource::<CommandLog>().log().clone();
     let path2 = scratch("fixedpoint-b");
@@ -658,7 +783,10 @@ fn the_ai_neither_thinks_nor_rolls_a_number_during_a_replay() {
         .map(|c| c.rng_state())
         .collect();
     assert_eq!(before, after, "the RNG advanced during a replay");
-    assert!(app.world().resource::<AiJournal>().0.is_empty(), "the AI thought during a replay");
+    assert!(
+        app.world().resource::<AiJournal>().0.is_empty(),
+        "the AI thought during a replay"
+    );
 }
 
 /// A live order injected during a replay — at any tick, and tagged for any tick
@@ -678,8 +806,21 @@ fn no_live_order_of_any_tag_can_reach_a_replay() {
         let victim = app.world().resource::<SimIds>().entity(SimId(2));
         if let Some(v) = victim {
             let q = &mut app.world_mut().resource_mut::<CommandQueue>().0;
-            q.push_back(Order::MoveTo { units: vec![v], dest: Vec2::new(0.0, 900.0) }.issued_by(Faction::A));
-            q.push_at(t + 3, Order::MoveTo { units: vec![v], dest: Vec2::new(0.0, -900.0) }.issued_by(Faction::A));
+            q.push_back(
+                Order::MoveTo {
+                    units: vec![v],
+                    dest: Vec2::new(0.0, 900.0),
+                }
+                .issued_by(Faction::A),
+            );
+            q.push_at(
+                t + 3,
+                Order::MoveTo {
+                    units: vec![v],
+                    dest: Vec2::new(0.0, -900.0),
+                }
+                .issued_by(Faction::A),
+            );
         }
         step(&mut app);
     }
@@ -704,7 +845,10 @@ fn a_log_that_names_an_impossible_entity_neither_panics_nor_guesses() {
         schedule: CommandTick::Asap,
         fate: CommandFate::Taken,
         attribution: Attribution::By(Faction::A),
-        order: LoggedOrder::MoveTo { units: vec![9_999_999], dest: (5.0, 5.0) },
+        order: LoggedOrder::MoveTo {
+            units: vec![9_999_999],
+            dest: (5.0, 5.0),
+        },
     });
     damaged.commands.sort_by_key(|c| c.tick);
     let app = replay_of(damaged, TICKS);
@@ -726,7 +870,10 @@ fn the_ticks_after_the_match_ends_are_frozen_in_the_replay_too() {
         step(&mut app);
         played += 1;
     }
-    assert!(app.world().resource::<MatchState>().outcome().is_some(), "the match never decided");
+    assert!(
+        app.world().resource::<MatchState>().outcome().is_some(),
+        "the match never decided"
+    );
     let extra = 120;
     tick(&mut app, extra);
     let hashes = app.world().resource::<StateHashLog>().clone();
@@ -741,11 +888,18 @@ fn the_ticks_after_the_match_ends_are_frozen_in_the_replay_too() {
 
     // Frozen: every hash after the deciding tick is the same value.
     let tail = &hashes.0[hashes.0.len() - extra as usize..];
-    assert!(tail.iter().all(|h| *h == tail[0]), "the sim kept changing after the match ended");
+    assert!(
+        tail.iter().all(|h| *h == tail[0]),
+        "the sim kept changing after the match ended"
+    );
 
     let app2 = replay_of(log, played + extra);
     let replayed = app2.world().resource::<StateHashLog>().clone();
-    assert_eq!(hashes.first_divergence(&replayed), None, "the replay diverged over the frozen tail");
+    assert_eq!(
+        hashes.first_divergence(&replayed),
+        None,
+        "the replay diverged over the frozen tail"
+    );
     let rng2: Vec<u64> = app2
         .world()
         .resource::<AiCommanders>()
@@ -769,17 +923,30 @@ fn the_rng_does_not_move_when_the_sim_chain_is_not_running() {
         played += 1;
     }
     let rng = |app: &App| -> Vec<u64> {
-        app.world().resource::<AiCommanders>().commanders().iter().map(|c| c.rng_state()).collect()
+        app.world()
+            .resource::<AiCommanders>()
+            .commanders()
+            .iter()
+            .map(|c| c.rng_state())
+            .collect()
     };
     let before = rng(&app);
     tick(&mut app, 300);
-    assert_eq!(before, rng(&app), "the RNG advanced after the sim chain stopped");
+    assert_eq!(
+        before,
+        rng(&app),
+        "the RNG advanced after the sim chain stopped"
+    );
     // And no wall-clock: stepping the app without advancing the fixed clock is
     // still not a sim tick's worth of randomness.
     for _ in 0..50 {
         app.update();
     }
-    assert_eq!(before, rng(&app), "the RNG moved on an app update with no sim tick");
+    assert_eq!(
+        before,
+        rng(&app),
+        "the RNG moved on an app update with no sim tick"
+    );
 }
 
 /// Two runs of the same seed in the same process agree tick for tick — the
@@ -790,8 +957,15 @@ fn the_same_seed_twice_in_one_process_is_the_same_match() {
     for seed in [1u64, 4, 0xA11CE] {
         let (a, la) = recorded(seed, TICKS);
         let (b, lb) = recorded(seed, TICKS);
-        assert_eq!(a.first_divergence(&b), None, "seed {seed} played two different matches");
-        assert_eq!(la.commands, lb.commands, "seed {seed} produced two different logs");
+        assert_eq!(
+            a.first_divergence(&b),
+            None,
+            "seed {seed} played two different matches"
+        );
+        assert_eq!(
+            la.commands, lb.commands,
+            "seed {seed} produced two different logs"
+        );
     }
 }
 
@@ -950,7 +1124,10 @@ fn nothing_in_the_world_is_ever_unidentified_at_a_tick_boundary() {
             .query_filtered::<Entity, (With<Position>, Without<SimId>)>()
             .iter(app.world())
             .count();
-        assert_eq!(n, 0, "tick {t} ended with {n} unidentified things in the world");
+        assert_eq!(
+            n, 0,
+            "tick {t} ended with {n} unidentified things in the world"
+        );
     }
 }
 
@@ -960,7 +1137,9 @@ fn nothing_in_the_world_is_ever_unidentified_at_a_tick_boundary() {
 fn nothing_between_the_sweep_and_identify_puts_anything_into_the_world() {
     let lib = std::fs::read_to_string(src_dir().join("lib.rs")).expect("src/lib.rs");
     let sweep = sweep_offset();
-    let identify = lib.find("sim::replay::identify").expect("identify is in the chain");
+    let identify = lib
+        .find("sim::replay::identify")
+        .expect("identify is in the chain");
     assert!(sweep < identify, "identify is no longer after the sweep");
     let between: Vec<String> = chain_system_paths()
         .into_iter()
@@ -990,7 +1169,11 @@ fn a_first_tick_order_is_still_logged_against_a_real_id() {
     push_at(
         &mut app,
         0,
-        Order::MoveTo { units: vec![u], dest: Vec2::new(5.0, 0.0) }.issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![u],
+            dest: Vec2::new(5.0, 0.0),
+        }
+        .issued_by(Faction::A),
     );
     step(&mut app);
     let log = app.world().resource::<CommandLog>();
@@ -1000,7 +1183,10 @@ fn a_first_tick_order_is_still_logged_against_a_real_id() {
         ids.iter().all(|i| i.is_identified()),
         "a first-tick order was logged against an unidentified entity: {ids:?}"
     );
-    assert!(log.log().validate().is_ok(), "the sim wrote a log it calls invalid");
+    assert!(
+        log.log().validate().is_ok(),
+        "the sim wrote a log it calls invalid"
+    );
 }
 
 // ---- F3's fix: one validity predicate --------------------------------------
@@ -1063,9 +1249,14 @@ fn decided_match() -> App {
     tick(&mut app, 2);
     app.world_mut().despawn(b);
     tick(&mut app, 3);
-    assert!(app.world().resource::<MatchState>().outcome().is_some(), "the fixture never decided");
+    assert!(
+        app.world().resource::<MatchState>().outcome().is_some(),
+        "the fixture never decided"
+    );
     // The unit is only here so a live order has something real to name.
-    app.world_mut().entity_mut(u).insert(Position(Vec2::new(-90.0, 0.0)));
+    app.world_mut()
+        .entity_mut(u)
+        .insert(Position(Vec2::new(-90.0, 0.0)));
     app
 }
 
@@ -1090,7 +1281,11 @@ fn a_click_after_the_match_is_over_does_not_move_the_frozen_hash() {
         .next()
         .expect("a unit to name");
     app.world_mut().resource_mut::<CommandQueue>().0.push_back(
-        Order::MoveTo { units: vec![unit], dest: Vec2::new(0.0, 0.0) }.issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![unit],
+            dest: Vec2::new(0.0, 0.0),
+        }
+        .issued_by(Faction::A),
     );
     tick(&mut app, 5);
     assert_eq!(
@@ -1126,7 +1321,11 @@ fn an_asap_command_is_not_a_command_held_for_a_future_tick() {
         "the fixtures were not identical to begin with"
     );
     a.world_mut().resource_mut::<CommandQueue>().0.push_back(
-        Order::MoveTo { units: vec![ua], dest: Vec2::new(1.0, 1.0) }.issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![ua],
+            dest: Vec2::new(1.0, 1.0),
+        }
+        .issued_by(Faction::A),
     );
     assert_eq!(
         onus::sim::state_hash(a.world_mut()),
@@ -1215,7 +1414,9 @@ fn the_to_bits_key_is_a_bijection_and_survives_any_index_reuse() {
         let mut by_index: std::collections::BTreeMap<String, Vec<u64>> = Default::default();
         let mut by_bits: std::collections::BTreeMap<u64, u64> = Default::default();
         for i in 0..ids.issued() {
-            let e = ids.entity(SimId(i)).unwrap_or_else(|| panic!("tick {t}: id {i} names nothing"));
+            let e = ids
+                .entity(SimId(i))
+                .unwrap_or_else(|| panic!("tick {t}: id {i} names nothing"));
             assert_eq!(
                 ids.id_of(e),
                 Some(SimId(i)),
@@ -1226,7 +1427,10 @@ fn the_to_bits_key_is_a_bijection_and_survives_any_index_reuse() {
             if let Some(first) = by_bits.insert(e.to_bits(), i) {
                 panic!("tick {t}: SimId({first}) and SimId({i}) share the key {e:?}");
             }
-            by_index.entry(format!("{:?}", e.index())).or_default().push(i);
+            by_index
+                .entry(format!("{:?}", e.index()))
+                .or_default()
+                .push(i);
         }
         reused = reused.max(by_index.values().filter(|v| v.len() > 1).count());
     }
@@ -1252,7 +1456,11 @@ fn the_registry_grows_identically_in_two_runs_of_the_same_match() {
         }
         out
     };
-    assert_eq!(trace(4), trace(4), "two runs of one seed issued ids differently");
+    assert_eq!(
+        trace(4),
+        trace(4),
+        "two runs of one seed issued ids differently"
+    );
 }
 
 // ---- lazy issuance during logging ------------------------------------------
@@ -1265,8 +1473,10 @@ fn world_with_a_bare_entity() -> (App, Entity, Entity) {
     let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
     spawn_building(&mut app, "hq", Faction::B, Vec2::new(100.0, 0.0));
     spawn_unit(&mut app, "worker", Faction::A, Vec2::new(-90.0, 0.0));
-    app.world_mut()
-        .spawn((Position(Vec2::new(-60.0, 60.0)), ResourceNode { amount: 100_000 }));
+    app.world_mut().spawn((
+        Position(Vec2::new(-60.0, 60.0)),
+        ResourceNode { amount: 100_000 },
+    ));
     let bare = app.world_mut().spawn_empty().id();
     app.insert_resource(CommandLog::new(11));
     (app, hq, bare)
@@ -1292,22 +1502,32 @@ fn an_order_naming_a_thing_outside_the_world_does_not_desync_its_own_replay() {
             push_at(
                 &mut app,
                 10,
-                Order::MoveTo { units: vec![bare], dest: Vec2::new(3.0, 4.0) }
-                    .issued_by(Faction::A),
+                Order::MoveTo {
+                    units: vec![bare],
+                    dest: Vec2::new(3.0, 4.0),
+                }
+                .issued_by(Faction::A),
             );
         }
         if t == 20 {
             push_at(
                 &mut app,
                 20,
-                Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A),
+                Order::Train {
+                    building: hq,
+                    unit: worker_index(),
+                }
+                .issued_by(Faction::A),
             );
         }
         step(&mut app);
     }
     let recorded = app.world().resource::<StateHashLog>().clone();
     let log = app.world().resource::<CommandLog>().log().clone();
-    assert!(log.validate().is_ok(), "the sim recorded a log it calls invalid");
+    assert!(
+        log.validate().is_ok(),
+        "the sim recorded a log it calls invalid"
+    );
 
     // The same starting world, rebuilt identically — bare entity and all.
     let (mut back, _, _) = world_with_a_bare_entity();
@@ -1348,8 +1568,11 @@ fn a_building_placed_after_a_logged_order_gets_the_same_id_in_a_replay() {
                 push_at(
                     &mut app,
                     10,
-                    Order::MoveTo { units: vec![bare], dest: Vec2::new(3.0, 4.0) }
-                        .issued_by(Faction::A),
+                    Order::MoveTo {
+                        units: vec![bare],
+                        dest: Vec2::new(3.0, 4.0),
+                    }
+                    .issued_by(Faction::A),
                 );
             }
             if live && t == 20 {
@@ -1381,22 +1604,45 @@ fn a_building_placed_after_a_logged_order_gets_the_same_id_in_a_replay() {
         (placed, issued, n)
     };
     let (rec_ids, rec_issued, n) = play(None);
-    assert_eq!(n, 1, "the fixture placed no building, so nothing is being tested");
+    assert_eq!(
+        n, 1,
+        "the fixture placed no building, so nothing is being tested"
+    );
     let log = {
         let (mut app, _hq, bare) = world_with_a_bare_entity();
         for t in 0..TICKS {
             if t == 10 {
-                push_at(&mut app, 10, Order::MoveTo { units: vec![bare], dest: Vec2::new(3.0, 4.0) }.issued_by(Faction::A));
+                push_at(
+                    &mut app,
+                    10,
+                    Order::MoveTo {
+                        units: vec![bare],
+                        dest: Vec2::new(3.0, 4.0),
+                    }
+                    .issued_by(Faction::A),
+                );
             }
             if t == 20 {
-                push_at(&mut app, 20, Order::Place { faction: Faction::A, building: foundry, pos: Vec2::new(-140.0, 40.0) }.issued_by(Faction::A));
+                push_at(
+                    &mut app,
+                    20,
+                    Order::Place {
+                        faction: Faction::A,
+                        building: foundry,
+                        pos: Vec2::new(-140.0, 40.0),
+                    }
+                    .issued_by(Faction::A),
+                );
             }
             step(&mut app);
         }
         app.world().resource::<CommandLog>().log().clone()
     };
     let (rep_ids, rep_issued, rep_n) = play(Some(log));
-    assert_eq!(rep_n, 1, "the replay did not place the building the log records");
+    assert_eq!(
+        rep_n, 1,
+        "the replay did not place the building the log records"
+    );
     assert_eq!(
         rec_ids, rep_ids,
         "the building placed by the replay carries a different SimId than the \
@@ -1427,7 +1673,10 @@ fn a_replay_issues_the_same_ids_at_the_same_ticks_as_the_recording() {
         step(&mut app);
         rep_trace.push(app.world().resource::<SimIds>().issued());
     }
-    assert_eq!(rec_trace, rep_trace, "the replay's registry drifted from the recording's");
+    assert_eq!(
+        rec_trace, rep_trace,
+        "the replay's registry drifted from the recording's"
+    );
 }
 
 // ---- `SimId::UNIDENTIFIED` is unreachable from the sim ----------------------
@@ -1449,29 +1698,67 @@ fn no_order_of_any_shape_can_put_unidentified_into_a_log() {
     app.world_mut().despawn(ghost);
 
     let orders: Vec<Order> = vec![
-        Order::MoveTo { units: vec![bare], dest: Vec2::ZERO }.issued_by(Faction::A),
-        Order::MoveTo { units: vec![doomed], dest: Vec2::ZERO }.issued_by(Faction::A),
-        Order::MoveTo { units: vec![ghost], dest: Vec2::ZERO }.issued_by(Faction::A),
-        Order::MoveTo { units: vec![doomed, enemy], dest: Vec2::ZERO },
-        Order::Gather { units: vec![ghost], node: bare, node_pos: Vec2::ZERO },
-        Order::Train { building: ghost, unit: worker_index() },
-        Order::Train { building: hq, unit: usize::MAX },
-        Order::Place { faction: Faction::A, building: usize::MAX, pos: Vec2::ZERO },
+        Order::MoveTo {
+            units: vec![bare],
+            dest: Vec2::ZERO,
+        }
+        .issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![doomed],
+            dest: Vec2::ZERO,
+        }
+        .issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![ghost],
+            dest: Vec2::ZERO,
+        }
+        .issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![doomed, enemy],
+            dest: Vec2::ZERO,
+        },
+        Order::Gather {
+            units: vec![ghost],
+            node: bare,
+            node_pos: Vec2::ZERO,
+        },
+        Order::Train {
+            building: ghost,
+            unit: worker_index(),
+        },
+        Order::Train {
+            building: hq,
+            unit: usize::MAX,
+        },
+        Order::Place {
+            faction: Faction::A,
+            building: usize::MAX,
+            pos: Vec2::ZERO,
+        },
     ];
     for o in orders {
-        app.world_mut().resource_mut::<CommandQueue>().0.push_back(o);
+        app.world_mut()
+            .resource_mut::<CommandQueue>()
+            .0
+            .push_back(o);
     }
     // And the same again, signed by two different factions, so the queue peels
     // the signature into `Attribution::Void` — which is still recorded.
     app.world_mut().resource_mut::<CommandQueue>().0.push_back(
-        Order::MoveTo { units: vec![bare], dest: Vec2::ZERO }
-            .issued_by(Faction::A)
-            .issued_by(Faction::B),
+        Order::MoveTo {
+            units: vec![bare],
+            dest: Vec2::ZERO,
+        }
+        .issued_by(Faction::A)
+        .issued_by(Faction::B),
     );
     tick(&mut app, 3);
 
     let log = app.world().resource::<CommandLog>().log().clone();
-    assert!(!log.commands.is_empty(), "nothing was recorded, so nothing was tested");
+    assert!(
+        !log.commands.is_empty(),
+        "nothing was recorded, so nothing was tested"
+    );
     for c in &log.commands {
         for id in c.order.sim_ids() {
             assert!(
@@ -1482,10 +1769,20 @@ fn no_order_of_any_shape_can_put_unidentified_into_a_log() {
             );
         }
     }
-    assert!(log.validate().is_ok(), "the sim recorded a log it calls invalid: {:?}", log.validate());
+    assert!(
+        log.validate().is_ok(),
+        "the sim recorded a log it calls invalid: {:?}",
+        log.validate()
+    );
     let path = scratch("every-bad-order");
-    assert!(log.save(&path).is_ok(), "the sim recorded a log it cannot save");
-    assert!(MatchLog::load(&path).is_ok(), "the sim saved a log it cannot load");
+    assert!(
+        log.save(&path).is_ok(),
+        "the sim recorded a log it cannot save"
+    );
+    assert!(
+        MatchLog::load(&path).is_ok(),
+        "the sim saved a log it cannot load"
+    );
     assert_eq!(app.world().resource::<CommandLog>().unrecorded(), 0);
     assert!(registry_is_injective(&app).is_ok());
 }
@@ -1498,7 +1795,9 @@ fn no_order_of_any_shape_can_put_unidentified_into_a_log() {
 fn both_order_emitters_are_gated_on_the_sims_own_run_condition() {
     let lib = std::fs::read_to_string(src_dir().join("lib.rs")).expect("src/lib.rs");
     for emitter in ["input::emit_commands", "input::emit_build_commands"] {
-        let at = lib.find(emitter).unwrap_or_else(|| panic!("{emitter} is not registered"));
+        let at = lib
+            .find(emitter)
+            .unwrap_or_else(|| panic!("{emitter} is not registered"));
         let window = &lib[at..lib.len().min(at + 220)];
         assert!(
             window.contains("run_if(sim::victory::match_running)"),
@@ -1521,7 +1820,11 @@ fn an_order_landing_on_the_deciding_tick_is_still_applied() {
     // B's HQ is gone: the *next* tick is the deciding one.
     app.world_mut().despawn(b_hq);
     app.world_mut().resource_mut::<CommandQueue>().0.push_back(
-        Order::MoveTo { units: vec![u], dest: Vec2::new(-40.0, 0.0) }.issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![u],
+            dest: Vec2::new(-40.0, 0.0),
+        }
+        .issued_by(Faction::A),
     );
     step(&mut app);
     assert!(
@@ -1569,19 +1872,29 @@ fn every_chain_function_resolves_to_exactly_one_readable_definition() {
         let mut hits: Vec<String> = Vec::new();
         for f in &files {
             let text = std::fs::read_to_string(f).expect("read");
-            let Some(at) = text.find(&needle) else { continue };
+            let Some(at) = text.find(&needle) else {
+                continue;
+            };
             if text[at + 1..].find("\n}\n").is_none() {
-                problems.push(format!("{path}: body in {} has no `}}` at column 0", f.display()));
+                problems.push(format!(
+                    "{path}: body in {} has no `}}` at column 0",
+                    f.display()
+                ));
             }
             hits.push(f.display().to_string());
         }
         match hits.len() {
             1 => {}
             0 => problems.push(format!("{path}: no `{needle}` under src/sim")),
-            n => problems.push(format!("{path}: `{needle}` defined in {n} places: {hits:?}")),
+            n => problems.push(format!(
+                "{path}: `{needle}` defined in {n} places: {hits:?}"
+            )),
         }
     }
-    assert!(problems.is_empty(), "the F-008 guard cannot resolve: {problems:#?}");
+    assert!(
+        problems.is_empty(),
+        "the F-008 guard cannot resolve: {problems:#?}"
+    );
 }
 
 /// **Run conditions, however they are spelled.** The guard checks a condition
@@ -1669,7 +1982,11 @@ fn the_pass_three_fixes_did_not_cost_the_earlier_guarantees() {
     let mut unwatched = ai_vs_ai(4);
     tick(&mut unwatched, TICKS);
     let a = onus::sim::state_hash(watched.world_mut());
-    assert_eq!(a, onus::sim::state_hash(watched.world_mut()), "the hash is not pure");
+    assert_eq!(
+        a,
+        onus::sim::state_hash(watched.world_mut()),
+        "the hash is not pure"
+    );
     assert_eq!(
         a,
         onus::sim::state_hash(unwatched.world_mut()),
@@ -1679,9 +1996,17 @@ fn the_pass_three_fixes_did_not_cost_the_earlier_guarantees() {
     let mut held = ai_vs_ai(4);
     tick(&mut held, 20);
     let before = onus::sim::state_hash(held.world_mut());
-    let victim = held.world().resource::<SimIds>().entity(SimId(2)).expect("a thing");
+    let victim = held
+        .world()
+        .resource::<SimIds>()
+        .entity(SimId(2))
+        .expect("a thing");
     held.world_mut().resource_mut::<CommandQueue>().0.push_back(
-        Order::MoveTo { units: vec![victim], dest: Vec2::ZERO }.issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![victim],
+            dest: Vec2::ZERO,
+        }
+        .issued_by(Faction::A),
     );
     assert_eq!(
         onus::sim::state_hash(held.world_mut()),
@@ -1690,7 +2015,11 @@ fn the_pass_three_fixes_did_not_cost_the_earlier_guarantees() {
     );
     held.world_mut().resource_mut::<CommandQueue>().0.push_at(
         9_000,
-        Order::MoveTo { units: vec![victim], dest: Vec2::ZERO }.issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![victim],
+            dest: Vec2::ZERO,
+        }
+        .issued_by(Faction::A),
     );
     assert_ne!(
         onus::sim::state_hash(held.world_mut()),
@@ -1723,12 +2052,22 @@ fn nameable_fixture() -> Named {
     let worker = spawn_unit(&mut app, "worker", Faction::A, Vec2::new(-90.0, 0.0));
     let node = app
         .world_mut()
-        .spawn((Position(Vec2::new(-60.0, 60.0)), ResourceNode { amount: 100_000 }))
+        .spawn((
+            Position(Vec2::new(-60.0, 60.0)),
+            ResourceNode { amount: 100_000 },
+        ))
         .id();
     let bare = app.world_mut().spawn_empty().id();
     let bare2 = app.world_mut().spawn_empty().id();
     app.insert_resource(CommandLog::new(21));
-    Named { app, hq, worker, node, bare, bare2 }
+    Named {
+        app,
+        hq,
+        worker,
+        node,
+        bare,
+        bare2,
+    }
 }
 
 fn alloy(app: &App, f: Faction) -> u32 {
@@ -1740,7 +2079,10 @@ fn issued(app: &App) -> u64 {
 }
 
 fn push(app: &mut App, order: Order) {
-    app.world_mut().resource_mut::<CommandQueue>().0.push_back(order);
+    app.world_mut()
+        .resource_mut::<CommandQueue>()
+        .0
+        .push_back(order);
 }
 
 // ---- 1. the invariant, stated generally -------------------------------------
@@ -1756,19 +2098,48 @@ fn applying_commands_never_issues_an_id() {
     tick(&mut f.app, 5);
     let before = issued(&f.app);
     let orders = vec![
-        Order::MoveTo { units: vec![f.bare], dest: Vec2::ZERO }.issued_by(Faction::A),
-        Order::MoveTo { units: vec![f.bare, f.bare2], dest: Vec2::ZERO }.issued_by(Faction::A),
-        Order::MoveTo { units: vec![f.worker, f.bare], dest: Vec2::new(-50.0, 0.0) }
-            .issued_by(Faction::A),
-        Order::Gather { units: vec![f.worker], node: f.bare, node_pos: Vec2::ZERO }
-            .issued_by(Faction::A),
-        Order::Gather { units: vec![f.bare], node: f.node, node_pos: Vec2::new(-60.0, 60.0) }
-            .issued_by(Faction::A),
-        Order::Train { building: f.bare, unit: worker_index() }.issued_by(Faction::A),
-        Order::MoveTo { units: vec![f.bare], dest: Vec2::ZERO },
-        Order::MoveTo { units: vec![f.bare], dest: Vec2::ZERO }
-            .issued_by(Faction::A)
-            .issued_by(Faction::B),
+        Order::MoveTo {
+            units: vec![f.bare],
+            dest: Vec2::ZERO,
+        }
+        .issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![f.bare, f.bare2],
+            dest: Vec2::ZERO,
+        }
+        .issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![f.worker, f.bare],
+            dest: Vec2::new(-50.0, 0.0),
+        }
+        .issued_by(Faction::A),
+        Order::Gather {
+            units: vec![f.worker],
+            node: f.bare,
+            node_pos: Vec2::ZERO,
+        }
+        .issued_by(Faction::A),
+        Order::Gather {
+            units: vec![f.bare],
+            node: f.node,
+            node_pos: Vec2::new(-60.0, 60.0),
+        }
+        .issued_by(Faction::A),
+        Order::Train {
+            building: f.bare,
+            unit: worker_index(),
+        }
+        .issued_by(Faction::A),
+        Order::MoveTo {
+            units: vec![f.bare],
+            dest: Vec2::ZERO,
+        },
+        Order::MoveTo {
+            units: vec![f.bare],
+            dest: Vec2::ZERO,
+        }
+        .issued_by(Faction::A)
+        .issued_by(Faction::B),
     ];
     for o in orders {
         push(&mut f.app, o);
@@ -1780,8 +2151,17 @@ fn applying_commands_never_issues_an_id() {
         "applying commands issued {} new id(s): naming a thing created one",
         issued(&f.app) - before
     );
-    assert!(f.app.world().resource::<CommandLog>().unnameable() > 0, "nothing was refused");
-    assert!(f.app.world().resource::<CommandLog>().log().validate().is_ok());
+    assert!(
+        f.app.world().resource::<CommandLog>().unnameable() > 0,
+        "nothing was refused"
+    );
+    assert!(f
+        .app
+        .world()
+        .resource::<CommandLog>()
+        .log()
+        .validate()
+        .is_ok());
 }
 
 /// An unnameable order must be **inert**: two identical worlds, one of which is
@@ -1798,11 +2178,31 @@ fn an_unnameable_order_changes_no_state_at_all() {
         onus::sim::state_hash(b.app.world_mut()),
         "the fixtures were not identical to begin with"
     );
-    push(&mut a.app, Order::MoveTo { units: vec![a.bare, a.bare2], dest: Vec2::new(7.0, 7.0) }
-        .issued_by(Faction::A));
-    push(&mut a.app, Order::Train { building: a.bare, unit: worker_index() }.issued_by(Faction::A));
-    push(&mut a.app, Order::Gather { units: vec![a.worker], node: a.bare, node_pos: Vec2::ZERO }
-        .issued_by(Faction::A));
+    push(
+        &mut a.app,
+        Order::MoveTo {
+            units: vec![a.bare, a.bare2],
+            dest: Vec2::new(7.0, 7.0),
+        }
+        .issued_by(Faction::A),
+    );
+    push(
+        &mut a.app,
+        Order::Train {
+            building: a.bare,
+            unit: worker_index(),
+        }
+        .issued_by(Faction::A),
+    );
+    push(
+        &mut a.app,
+        Order::Gather {
+            units: vec![a.worker],
+            node: a.bare,
+            node_pos: Vec2::ZERO,
+        }
+        .issued_by(Faction::A),
+    );
     tick(&mut a.app, 3);
     tick(&mut b.app, 3);
     assert_eq!(
@@ -1820,11 +2220,14 @@ fn an_unnameable_order_changes_no_state_at_all() {
 fn a_list_order_keeps_the_names_the_sim_knows_and_drops_the_rest() {
     let mut f = nameable_fixture();
     tick(&mut f.app, 3);
-    push(&mut f.app, Order::MoveTo {
-        units: vec![f.bare, f.worker, f.bare2],
-        dest: Vec2::new(-40.0, 0.0),
-    }
-    .issued_by(Faction::A));
+    push(
+        &mut f.app,
+        Order::MoveTo {
+            units: vec![f.bare, f.worker, f.bare2],
+            dest: Vec2::new(-40.0, 0.0),
+        }
+        .issued_by(Faction::A),
+    );
     step(&mut f.app);
     assert!(
         f.app.world().get::<MoveTarget>(f.worker).is_some(),
@@ -1834,7 +2237,11 @@ fn a_list_order_keeps_the_names_the_sim_knows_and_drops_the_rest() {
     assert_eq!(log.commands().len(), 1, "the order was not logged");
     match &log.commands()[0].order {
         LoggedOrder::MoveTo { units, .. } => {
-            assert_eq!(units.len(), 1, "the log kept a name the sim dropped: {units:?}");
+            assert_eq!(
+                units.len(),
+                1,
+                "the log kept a name the sim dropped: {units:?}"
+            );
         }
         other => panic!("wrong shape: {other:?}"),
     }
@@ -1856,11 +2263,14 @@ fn an_all_unnameable_list_order_is_inert_and_replays_as_itself() {
         }
         for t in 0..TICKS {
             if live && t == 10 {
-                push(&mut f.app, Order::MoveTo {
-                    units: vec![f.bare, f.bare2],
-                    dest: Vec2::new(7.0, 7.0),
-                }
-                .issued_by(Faction::A));
+                push(
+                    &mut f.app,
+                    Order::MoveTo {
+                        units: vec![f.bare, f.bare2],
+                        dest: Vec2::new(7.0, 7.0),
+                    }
+                    .issued_by(Faction::A),
+                );
             }
             step(&mut f.app);
         }
@@ -1869,11 +2279,17 @@ fn an_all_unnameable_list_order_is_inert_and_replays_as_itself() {
         (h, log, issued(&f.app))
     };
     let (rec_hash, log, rec_issued) = build(None);
-    assert!(log.validate().is_ok(), "the sim recorded a log it calls invalid");
+    assert!(
+        log.validate().is_ok(),
+        "the sim recorded a log it calls invalid"
+    );
     let (rep_hash, again, rep_issued) = build(Some(log.clone()));
     assert_eq!(rec_issued, rep_issued, "the registries drifted");
     assert_eq!(rec_hash, rep_hash, "an inert order desynced its own replay");
-    assert_eq!(again.commands, log.commands, "the replay logged a different stream");
+    assert_eq!(
+        again.commands, log.commands,
+        "the replay logged a different stream"
+    );
 }
 
 /// An order whose **single** subject is unnameable is refused whole: no half of
@@ -1884,12 +2300,15 @@ fn a_refused_single_subject_order_applies_no_half_of_itself() {
     use onus::sim::GatherTarget;
     let mut f = nameable_fixture();
     tick(&mut f.app, 3);
-    push(&mut f.app, Order::Gather {
-        units: vec![f.worker],
-        node: f.bare,
-        node_pos: Vec2::new(500.0, 500.0),
-    }
-    .issued_by(Faction::A));
+    push(
+        &mut f.app,
+        Order::Gather {
+            units: vec![f.worker],
+            node: f.bare,
+            node_pos: Vec2::new(500.0, 500.0),
+        }
+        .issued_by(Faction::A),
+    );
     step(&mut f.app);
     assert!(
         f.app.world().get::<GatherTarget>(f.worker).is_none(),
@@ -1916,22 +2335,51 @@ fn refusal_is_free_and_acceptance_charges_exactly_once() {
     tick(&mut f.app, 3);
     let start = alloy(&f.app, Faction::A);
     let queued = |app: &App, e: Entity| {
-        app.world().get::<ProductionQueue>(e).map(|q| q.items.len()).unwrap_or(0)
+        app.world()
+            .get::<ProductionQueue>(e)
+            .map(|q| q.items.len())
+            .unwrap_or(0)
     };
     let q0 = queued(&f.app, f.hq);
 
     // Refused: the building it names is not a thing in the world.
-    push(&mut f.app, Order::Train { building: f.bare, unit: worker_index() }.issued_by(Faction::A));
+    push(
+        &mut f.app,
+        Order::Train {
+            building: f.bare,
+            unit: worker_index(),
+        }
+        .issued_by(Faction::A),
+    );
     tick(&mut f.app, 2);
-    assert_eq!(alloy(&f.app, Faction::A), start, "a refused Train charged Alloy");
-    assert_eq!(queued(&f.app, f.hq), q0, "a refused Train queued a unit somewhere");
+    assert_eq!(
+        alloy(&f.app, Faction::A),
+        start,
+        "a refused Train charged Alloy"
+    );
+    assert_eq!(
+        queued(&f.app, f.hq),
+        q0,
+        "a refused Train queued a unit somewhere"
+    );
     assert!(f.app.world().resource::<CommandLog>().commands().is_empty());
 
     // Accepted: exactly one charge, once.
     let cost = content().units[worker_index()].mvp_alloy_cost;
-    push(&mut f.app, Order::Train { building: f.hq, unit: worker_index() }.issued_by(Faction::A));
+    push(
+        &mut f.app,
+        Order::Train {
+            building: f.hq,
+            unit: worker_index(),
+        }
+        .issued_by(Faction::A),
+    );
     tick(&mut f.app, 2);
-    assert_eq!(alloy(&f.app, Faction::A), start - cost, "a Train did not charge exactly once");
+    assert_eq!(
+        alloy(&f.app, Faction::A),
+        start - cost,
+        "a Train did not charge exactly once"
+    );
     assert_eq!(queued(&f.app, f.hq), q0 + 1);
 
     // `Place` names no entity, so nameability cannot refuse it — and it still
@@ -1939,10 +2387,21 @@ fn refusal_is_free_and_acceptance_charges_exactly_once() {
     let after_train = alloy(&f.app, Faction::A);
     let foundry = content().building_index("foundry").expect("foundry");
     let bcost = content().buildings[foundry].alloy_cost;
-    push(&mut f.app, Order::Place { faction: Faction::A, building: foundry, pos: Vec2::new(-140.0, 40.0) }
-        .issued_by(Faction::A));
+    push(
+        &mut f.app,
+        Order::Place {
+            faction: Faction::A,
+            building: foundry,
+            pos: Vec2::new(-140.0, 40.0),
+        }
+        .issued_by(Faction::A),
+    );
     tick(&mut f.app, 2);
-    assert_eq!(alloy(&f.app, Faction::A), after_train - bcost, "Place did not charge exactly once");
+    assert_eq!(
+        alloy(&f.app, Faction::A),
+        after_train - bcost,
+        "Place did not charge exactly once"
+    );
 }
 
 // ---- 4. the M4 semantics the new control flow runs through ------------------
@@ -1963,16 +2422,36 @@ fn the_signing_rules_survive_the_nameability_filter() {
 
     // Unsigned, two factions: refused whole.
     let a = Vec2::new(-500.0, 0.0);
-    push(&mut f.app, Order::MoveTo { units: vec![mine, theirs], dest: a });
+    push(
+        &mut f.app,
+        Order::MoveTo {
+            units: vec![mine, theirs],
+            dest: a,
+        },
+    );
     step(&mut f.app);
-    assert_ne!(target(&f.app, mine), Some(a), "an unsigned two-faction order moved the first unit");
-    assert_ne!(target(&f.app, theirs), Some(a), "an unsigned two-faction order moved the second unit");
+    assert_ne!(
+        target(&f.app, mine),
+        Some(a),
+        "an unsigned two-faction order moved the first unit"
+    );
+    assert_ne!(
+        target(&f.app, theirs),
+        Some(a),
+        "an unsigned two-faction order moved the second unit"
+    );
 
     // The same shape with one member unnameable must not become *coherent* by
     // dropping it: A's unit plus a bare entity is still one faction, and this
     // is the case where the new filter and F-009 could disagree.
     let b = Vec2::new(-400.0, 0.0);
-    push(&mut f.app, Order::MoveTo { units: vec![mine, f.bare], dest: b });
+    push(
+        &mut f.app,
+        Order::MoveTo {
+            units: vec![mine, f.bare],
+            dest: b,
+        },
+    );
     step(&mut f.app);
     assert_eq!(
         target(&f.app, mine),
@@ -1982,9 +2461,20 @@ fn the_signing_rules_survive_the_nameability_filter() {
 
     // Signed by A, two factions: commands A's own, and only that.
     let c = Vec2::new(-300.0, 0.0);
-    push(&mut f.app, Order::MoveTo { units: vec![mine, theirs], dest: c }.issued_by(Faction::A));
+    push(
+        &mut f.app,
+        Order::MoveTo {
+            units: vec![mine, theirs],
+            dest: c,
+        }
+        .issued_by(Faction::A),
+    );
     step(&mut f.app);
-    assert_eq!(target(&f.app, mine), Some(c), "the issuer's own unit was not moved");
+    assert_eq!(
+        target(&f.app, mine),
+        Some(c),
+        "the issuer's own unit was not moved"
+    );
     assert_ne!(
         target(&f.app, theirs),
         Some(c),
@@ -1999,16 +2489,40 @@ fn the_signing_rules_survive_the_nameability_filter() {
 fn ordering_a_dead_but_registered_unit_is_named_logged_and_harmless() {
     let mut f = nameable_fixture();
     tick(&mut f.app, 3);
-    let id = f.app.world().resource::<SimIds>().id_of(f.worker).expect("identified");
+    let id = f
+        .app
+        .world()
+        .resource::<SimIds>()
+        .id_of(f.worker)
+        .expect("identified");
     f.app.world_mut().despawn(f.worker);
     let before = issued(&f.app);
-    push(&mut f.app, Order::MoveTo { units: vec![f.worker], dest: Vec2::ZERO }.issued_by(Faction::A));
+    push(
+        &mut f.app,
+        Order::MoveTo {
+            units: vec![f.worker],
+            dest: Vec2::ZERO,
+        }
+        .issued_by(Faction::A),
+    );
     tick(&mut f.app, 2);
     assert_eq!(issued(&f.app), before, "naming a dead unit issued a new id");
     let log = f.app.world().resource::<CommandLog>();
-    assert_eq!(log.commands().len(), 1, "an order naming a dead-but-known unit was dropped");
-    assert_eq!(log.commands()[0].order.sim_ids(), vec![id], "it was logged against the wrong id");
-    assert_eq!(log.unnameable(), 0, "a unit the registry knows was called unnameable");
+    assert_eq!(
+        log.commands().len(),
+        1,
+        "an order naming a dead-but-known unit was dropped"
+    );
+    assert_eq!(
+        log.commands()[0].order.sim_ids(),
+        vec![id],
+        "it was logged against the wrong id"
+    );
+    assert_eq!(
+        log.unnameable(),
+        0,
+        "a unit the registry knows was called unnameable"
+    );
     assert!(log.log().validate().is_ok());
 }
 
@@ -2055,7 +2569,11 @@ fn the_one_chain_definition_always_installs_the_registry() {
 fn nothing_but_assign_touches_the_registrys_storage() {
     let replay = std::fs::read_to_string(src_dir().join("sim/replay.rs")).expect("replay.rs");
     let at = replay.find("fn assign(").expect("assign exists");
-    let end = at + replay[at..].find("\n    }\n").map(|i| i + 6).expect("assign has a body");
+    let end = at
+        + replay[at..]
+            .find("\n    }\n")
+            .map(|i| i + 6)
+            .expect("assign has a body");
     let mut offenders: Vec<String> = Vec::new();
     for (i, line) in replay.lines().enumerate() {
         let code = line.split("//").next().unwrap_or("");
@@ -2111,15 +2629,81 @@ fn a_match_full_of_unnameable_orders_still_replays_exactly() {
     let script = |f: &mut Named, t: u32| {
         let (bare, bare2, worker, node, hq) = (f.bare, f.bare2, f.worker, f.node, f.hq);
         match t {
-            10 => push(&mut f.app, Order::MoveTo { units: vec![worker, bare], dest: Vec2::new(-40.0, 0.0) }.issued_by(Faction::A)),
-            15 => push(&mut f.app, Order::Gather { units: vec![worker], node: bare, node_pos: Vec2::new(9.0, 9.0) }.issued_by(Faction::A)),
-            20 => push(&mut f.app, Order::Place { faction: Faction::A, building: foundry, pos: Vec2::new(-140.0, 40.0) }.issued_by(Faction::A)),
-            25 => push(&mut f.app, Order::MoveTo { units: vec![bare, bare2], dest: Vec2::new(7.0, 7.0) }.issued_by(Faction::A)),
-            30 => push(&mut f.app, Order::Train { building: bare2, unit: worker_index() }.issued_by(Faction::A)),
-            35 => push(&mut f.app, Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A)),
-            40 => push(&mut f.app, Order::Gather { units: vec![worker, bare], node, node_pos: Vec2::new(-60.0, 60.0) }.issued_by(Faction::A)),
-            45 => push(&mut f.app, Order::MoveTo { units: vec![bare], dest: Vec2::ZERO }),
-            50 => push(&mut f.app, Order::Gather { units: vec![bare], node: bare2, node_pos: Vec2::ZERO }.issued_by(Faction::A)),
+            10 => push(
+                &mut f.app,
+                Order::MoveTo {
+                    units: vec![worker, bare],
+                    dest: Vec2::new(-40.0, 0.0),
+                }
+                .issued_by(Faction::A),
+            ),
+            15 => push(
+                &mut f.app,
+                Order::Gather {
+                    units: vec![worker],
+                    node: bare,
+                    node_pos: Vec2::new(9.0, 9.0),
+                }
+                .issued_by(Faction::A),
+            ),
+            20 => push(
+                &mut f.app,
+                Order::Place {
+                    faction: Faction::A,
+                    building: foundry,
+                    pos: Vec2::new(-140.0, 40.0),
+                }
+                .issued_by(Faction::A),
+            ),
+            25 => push(
+                &mut f.app,
+                Order::MoveTo {
+                    units: vec![bare, bare2],
+                    dest: Vec2::new(7.0, 7.0),
+                }
+                .issued_by(Faction::A),
+            ),
+            30 => push(
+                &mut f.app,
+                Order::Train {
+                    building: bare2,
+                    unit: worker_index(),
+                }
+                .issued_by(Faction::A),
+            ),
+            35 => push(
+                &mut f.app,
+                Order::Train {
+                    building: hq,
+                    unit: worker_index(),
+                }
+                .issued_by(Faction::A),
+            ),
+            40 => push(
+                &mut f.app,
+                Order::Gather {
+                    units: vec![worker, bare],
+                    node,
+                    node_pos: Vec2::new(-60.0, 60.0),
+                }
+                .issued_by(Faction::A),
+            ),
+            45 => push(
+                &mut f.app,
+                Order::MoveTo {
+                    units: vec![bare],
+                    dest: Vec2::ZERO,
+                },
+            ),
+            50 => push(
+                &mut f.app,
+                Order::Gather {
+                    units: vec![bare],
+                    node: bare2,
+                    node_pos: Vec2::ZERO,
+                }
+                .issued_by(Faction::A),
+            ),
             _ => {}
         }
     };
@@ -2139,7 +2723,8 @@ fn a_match_full_of_unnameable_orders_still_replays_exactly() {
         "the script did not actually exercise the refusal paths"
     );
     let path = scratch("nameable-match");
-    log.save(&path).expect("the sim must be able to save its own log");
+    log.save(&path)
+        .expect("the sim must be able to save its own log");
     let loaded = MatchLog::load(&path).expect("load");
 
     // Replay, through the file.
@@ -2193,18 +2778,39 @@ fn an_unnameable_order_on_the_deciding_tick_changes_nothing() {
         .find(|e| f.app.world().get::<Faction>(*e) == Some(&Faction::B))
         .expect("B's HQ");
     f.app.world_mut().despawn(b_hq);
-    push(&mut f.app, Order::MoveTo { units: vec![f.bare, f.bare2], dest: Vec2::ZERO }
-        .issued_by(Faction::A));
-    push(&mut f.app, Order::Train { building: f.bare, unit: worker_index() }.issued_by(Faction::A));
+    push(
+        &mut f.app,
+        Order::MoveTo {
+            units: vec![f.bare, f.bare2],
+            dest: Vec2::ZERO,
+        }
+        .issued_by(Faction::A),
+    );
+    push(
+        &mut f.app,
+        Order::Train {
+            building: f.bare,
+            unit: worker_index(),
+        }
+        .issued_by(Faction::A),
+    );
     let before = issued(&f.app);
     step(&mut f.app);
-    let outcome = f.app.world().resource::<MatchState>().outcome().expect("decided");
+    let outcome = f
+        .app
+        .world()
+        .resource::<MatchState>()
+        .outcome()
+        .expect("decided");
     assert_eq!(outcome.winner, Some(Faction::A), "the verdict moved");
     assert_eq!(issued(&f.app), before, "the deciding tick issued an id");
     tick(&mut f.app, 20);
     let h = f.app.world().resource::<StateHashLog>().clone();
     let tail = &h.0[h.0.len() - 15..];
-    assert!(tail.iter().all(|x| *x == tail[0]), "the frozen tail is not frozen: {tail:?}");
+    assert!(
+        tail.iter().all(|x| *x == tail[0]),
+        "the frozen tail is not frozen: {tail:?}"
+    );
 }
 
 /// **Logging can never change what the sim does.** The nameability decision is
@@ -2222,11 +2828,31 @@ fn whether_a_log_exists_does_not_change_what_the_sim_obeys() {
         }
         tick(&mut f.app, 3);
         let alloy_before = alloy(&f.app, Faction::A);
-        push(&mut f.app, Order::MoveTo { units: vec![f.worker, f.bare], dest: Vec2::new(-40.0, 0.0) }
-            .issued_by(Faction::A));
-        push(&mut f.app, Order::Gather { units: vec![f.worker], node: f.bare, node_pos: Vec2::ZERO }
-            .issued_by(Faction::A));
-        push(&mut f.app, Order::Train { building: f.bare, unit: worker_index() }.issued_by(Faction::A));
+        push(
+            &mut f.app,
+            Order::MoveTo {
+                units: vec![f.worker, f.bare],
+                dest: Vec2::new(-40.0, 0.0),
+            }
+            .issued_by(Faction::A),
+        );
+        push(
+            &mut f.app,
+            Order::Gather {
+                units: vec![f.worker],
+                node: f.bare,
+                node_pos: Vec2::ZERO,
+            }
+            .issued_by(Faction::A),
+        );
+        push(
+            &mut f.app,
+            Order::Train {
+                building: f.bare,
+                unit: worker_index(),
+            }
+            .issued_by(Faction::A),
+        );
         tick(&mut f.app, 2);
         (
             f.app.world().get::<MoveTarget>(f.worker).is_some(),
@@ -2251,8 +2877,16 @@ fn a_shipped_match_never_names_anything_it_cannot_name() {
     let mut app = ai_vs_ai(4);
     tick(&mut app, 2_000);
     let log = app.world().resource::<CommandLog>();
-    assert_eq!(log.unnameable(), 0, "the AI named something the sim could not name");
-    assert_eq!(log.unrecorded(), 0, "a shipped chain failed to record a command");
+    assert_eq!(
+        log.unnameable(),
+        0,
+        "the AI named something the sim could not name"
+    );
+    assert_eq!(
+        log.unrecorded(),
+        0,
+        "a shipped chain failed to record a command"
+    );
     assert_eq!(log.late(), 0, "a shipped chain applied a command late");
     assert!(log.log().validate().is_ok());
 }
@@ -2299,7 +2933,10 @@ fn duplicate_building_id_content() -> Result<Content, onus::sim::content::Conten
             .expect("the foundry line")
             .to_string();
         // F-044: the cost is read off the loaded content, not pinned.
-        let cost = format!("alloy_cost: {}", content().building("foundry").unwrap().alloy_cost);
+        let cost = format!(
+            "alloy_cost: {}",
+            content().building("foundry").unwrap().alloy_cost
+        );
         assert_ne!(cost, "alloy_cost: 999", "the twin's cost must differ");
         let twin = original.replace(&cost, "alloy_cost: 999");
         assert_ne!(twin, original, "the twin is not actually different");
@@ -2333,7 +2970,10 @@ fn every_content_id_resolves_back_to_the_definition_it_came_from() {
     if let Ok(c) = shared_id_across_namespaces() {
         sets.push(("a unit and a resource sharing an id".into(), c));
     }
-    assert!(sets.len() >= 2, "the probe is only exercising one content set");
+    assert!(
+        sets.len() >= 2,
+        "the probe is only exercising one content set"
+    );
     for (what, c) in sets {
         for (i, b) in c.buildings.iter().enumerate() {
             assert_eq!(
@@ -2386,14 +3026,13 @@ fn content_that_would_break_the_round_trip_cannot_be_loaded() {
 
     // (c) resources — named by `economy.currency`.
     let rtext = std::fs::read_to_string(data_dir().join("resources.ron")).expect("resources.ron");
-    let rdir = content_dir_with("dupe-resource", std::fs::read_to_string(data_dir().join("units.ron")).unwrap());
+    let rdir = content_dir_with(
+        "dupe-resource",
+        std::fs::read_to_string(data_dir().join("units.ron")).unwrap(),
+    );
     std::fs::write(
         rdir.join("resources.ron"),
-        rtext.replacen(
-            "id: \"biomass\"",
-            "id: \"alloy\"",
-            1,
-        ),
+        rtext.replacen("id: \"biomass\"", "id: \"alloy\"", 1),
     )
     .unwrap();
     let err = Content::load_from_dir(&rdir)
@@ -2548,14 +3187,22 @@ fn play_a_place(c: &Content, def: usize, replay: Option<MatchLog>) -> (u32, Matc
     for t in 0..40u32 {
         if live && t == 10 {
             app.world_mut().resource_mut::<CommandQueue>().0.push_back(
-                Order::Place { faction: Faction::A, building: def, pos: Vec2::new(-200.0, 0.0) }
-                    .issued_by(Faction::A),
+                Order::Place {
+                    faction: Faction::A,
+                    building: def,
+                    pos: Vec2::new(-200.0, 0.0),
+                }
+                .issued_by(Faction::A),
             );
         }
         step(&mut app);
     }
     if let Some(src) = app.world().get_resource::<ReplaySource>() {
-        assert_eq!(src.rejection(), None, "the replay was refused, so nothing is proved");
+        assert_eq!(
+            src.rejection(),
+            None,
+            "the replay was refused, so nothing is proved"
+        );
         assert!(src.cursor() > 0, "the replay fed nothing");
     }
     let built = app
@@ -2564,7 +3211,10 @@ fn play_a_place(c: &Content, def: usize, replay: Option<MatchLog>) -> (u32, Matc
         .iter(app.world())
         .filter(|b| b.def == def)
         .count();
-    assert_eq!(built, 1, "the building was never placed, so the probe is vacuous");
+    assert_eq!(
+        built, 1,
+        "the building was never placed, so the probe is vacuous"
+    );
     let spent = 5_000 - app.world().resource::<Stockpiles>().alloy(Faction::A);
     let log = app.world().resource::<CommandLog>().log().clone();
     let h = onus::sim::state_hash(app.world_mut());
@@ -2583,7 +3233,10 @@ fn a_log_naming_the_last_building_definition_replays_as_that_definition() {
     assert!(cost > 0, "the fixture cannot tell a charge from a refusal");
 
     let (rec_spent, log, rec_hash) = play_a_place(&c, last, None);
-    assert_eq!(rec_spent, cost, "the recording did not charge that building");
+    assert_eq!(
+        rec_spent, cost,
+        "the recording did not charge that building"
+    );
     assert_eq!(log.commands.len(), 1, "the order was not logged");
     assert!(log.validate().is_ok(), "the recording is not a valid log");
     assert!(
@@ -2596,8 +3249,14 @@ fn a_log_naming_the_last_building_definition_replays_as_that_definition() {
         "the replay charged {rep_spent} where the recording charged {rec_spent}: \
          the logged id resolved to a different definition"
     );
-    assert_eq!(rec_hash, rep_hash, "the replayed world is not the recorded world");
-    assert_eq!(again.commands, log.commands, "the replay logged a different stream");
+    assert_eq!(
+        rec_hash, rep_hash,
+        "the replayed world is not the recorded world"
+    );
+    assert_eq!(
+        again.commands, log.commands,
+        "the replay logged a different stream"
+    );
 }
 
 /// Every shipped content file still loads, and the stricter validator did not
@@ -2631,8 +3290,17 @@ fn the_fingerprint_reads_every_field_of_every_content_struct() {
 
     // Field names of the content structs, read off the source.
     let structs = [
-        "Cost", "UnitDef", "BuildingDef", "ArmyItem", "BarracksOpening", "StrategyDef",
-        "NemesisBonus", "CombatDef", "ResourceDef", "EconomyDef", "Content",
+        "Cost",
+        "UnitDef",
+        "BuildingDef",
+        "ArmyItem",
+        "BarracksOpening",
+        "StrategyDef",
+        "NemesisBonus",
+        "CombatDef",
+        "ResourceDef",
+        "EconomyDef",
+        "Content",
     ];
     let mut missing: Vec<String> = Vec::new();
     for name in structs {
@@ -2642,8 +3310,12 @@ fn the_fingerprint_reads_every_field_of_every_content_struct() {
         let end = at + src[at..].find("\n}\n").expect("struct has an end");
         for line in src[at..end].lines() {
             let code = line.split("//").next().unwrap_or("").trim();
-            let Some(field) = code.strip_prefix("pub ") else { continue };
-            let Some(field) = field.split(':').next() else { continue };
+            let Some(field) = code.strip_prefix("pub ") else {
+                continue;
+            };
+            let Some(field) = field.split(':').next() else {
+                continue;
+            };
             let field = field.trim();
             if field.is_empty() || !field.chars().all(|c| c.is_alphanumeric() || c == '_') {
                 continue;
@@ -2670,7 +3342,10 @@ fn every_log_the_shipped_chain_writes_is_stamped_and_loadable() {
     let mut app = ai_vs_ai(4);
     tick(&mut app, 200);
     let log = app.world().resource::<CommandLog>().log().clone();
-    assert!(log.content.is_known(), "an ordinary match wrote an unstamped log");
+    assert!(
+        log.content.is_known(),
+        "an ordinary match wrote an unstamped log"
+    );
     assert!(log.matches_content(&content()).is_ok());
 
     // (b) a match decided on its very first tick: the play block never runs
@@ -2681,7 +3356,10 @@ fn every_log_the_shipped_chain_writes_is_stamped_and_loadable() {
     step(&mut over);
     over.world_mut().despawn(b);
     step(&mut over);
-    assert!(over.world().resource::<MatchState>().is_over(), "the fixture did not decide");
+    assert!(
+        over.world().resource::<MatchState>().is_over(),
+        "the fixture did not decide"
+    );
     let short = over.world().resource::<CommandLog>().log().clone();
     assert!(
         short.content.is_known(),
@@ -2690,7 +3368,12 @@ fn every_log_the_shipped_chain_writes_is_stamped_and_loadable() {
 
     // (c) and the stamp keeps working after the match is over.
     tick(&mut over, 20);
-    assert!(over.world().resource::<CommandLog>().log().content.is_known());
+    assert!(over
+        .world()
+        .resource::<CommandLog>()
+        .log()
+        .content
+        .is_known());
 
     // (d) a log the sim wrote always survives the front door, through a file.
     let path = scratch("stamped");
@@ -2712,7 +3395,11 @@ fn the_stamp_describes_the_content_every_recorded_command_was_taken_under() {
             .replacen("mvp_alloy_cost: 10,", "mvp_alloy_cost: 11,", 1),
     ))
     .expect("the edited content loads");
-    assert_ne!(a.fingerprint().hash(), b.fingerprint().hash(), "the fixture changed nothing");
+    assert_ne!(
+        a.fingerprint().hash(),
+        b.fingerprint().hash(),
+        "the fixture changed nothing"
+    );
 
     let mut app = sim_app_with(5_000, 0);
     let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
@@ -2721,11 +3408,21 @@ fn the_stamp_describes_the_content_every_recorded_command_was_taken_under() {
     tick(&mut app, 3);
     // The content the sim runs on changes; the stamp does not.
     app.insert_resource(b.clone());
-    push(&mut app, Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A));
+    push(
+        &mut app,
+        Order::Train {
+            building: hq,
+            unit: worker_index(),
+        }
+        .issued_by(Faction::A),
+    );
     tick(&mut app, 3);
 
     let log = app.world().resource::<CommandLog>().log().clone();
-    assert!(!log.commands.is_empty(), "nothing was recorded after the swap");
+    assert!(
+        !log.commands.is_empty(),
+        "nothing was recorded after the swap"
+    );
     let ran_under = app.world().resource::<Content>().fingerprint();
     assert_eq!(
         log.content.hash(),
@@ -2753,28 +3450,60 @@ fn an_order_naming_content_this_build_lacks_is_free_and_unlogged() {
     let units = f.app.world().resource::<Content>().units.len();
     let before_ids = issued(&f.app);
     let queued = |app: &App, e: Entity| {
-        app.world().get::<ProductionQueue>(e).map(|q| q.items.len()).unwrap_or(0)
+        app.world()
+            .get::<ProductionQueue>(e)
+            .map(|q| q.items.len())
+            .unwrap_or(0)
     };
     let q0 = queued(&f.app, f.hq);
-    let placed = |app: &mut App| app.world_mut().query::<&Building>().iter(app.world()).count();
+    let placed = |app: &mut App| {
+        app.world_mut()
+            .query::<&Building>()
+            .iter(app.world())
+            .count()
+    };
     let p0 = placed(&mut f.app);
 
     for o in [
-        Order::Place { faction: Faction::A, building: buildings, pos: Vec2::new(-140.0, 40.0) }
-            .issued_by(Faction::A),
-        Order::Place { faction: Faction::A, building: usize::MAX, pos: Vec2::new(-160.0, 40.0) }
-            .issued_by(Faction::A),
-        Order::Train { building: f.hq, unit: units }.issued_by(Faction::A),
-        Order::Train { building: f.hq, unit: usize::MAX }.issued_by(Faction::A),
+        Order::Place {
+            faction: Faction::A,
+            building: buildings,
+            pos: Vec2::new(-140.0, 40.0),
+        }
+        .issued_by(Faction::A),
+        Order::Place {
+            faction: Faction::A,
+            building: usize::MAX,
+            pos: Vec2::new(-160.0, 40.0),
+        }
+        .issued_by(Faction::A),
+        Order::Train {
+            building: f.hq,
+            unit: units,
+        }
+        .issued_by(Faction::A),
+        Order::Train {
+            building: f.hq,
+            unit: usize::MAX,
+        }
+        .issued_by(Faction::A),
     ] {
         push(&mut f.app, o);
     }
     tick(&mut f.app, 3);
 
-    assert_eq!(alloy(&f.app, Faction::A), start, "an unknown definition was charged for");
+    assert_eq!(
+        alloy(&f.app, Faction::A),
+        start,
+        "an unknown definition was charged for"
+    );
     assert_eq!(queued(&f.app, f.hq), q0, "an unknown unit was queued");
     assert_eq!(placed(&mut f.app), p0, "an unknown building was placed");
-    assert_eq!(issued(&f.app), before_ids, "refusing an unknown definition issued an id");
+    assert_eq!(
+        issued(&f.app),
+        before_ids,
+        "refusing an unknown definition issued an id"
+    );
     let log = f.app.world().resource::<CommandLog>();
     assert!(
         log.commands().is_empty(),
@@ -2802,7 +3531,10 @@ fn the_schedule_and_fate_the_validator_accepts_are_the_ones_the_sim_produces() {
             schedule,
             fate,
             attribution: Attribution::By(Faction::A),
-            order: LoggedOrder::MoveTo { units: vec![0], dest: (1.0, 2.0) },
+            order: LoggedOrder::MoveTo {
+                units: vec![0],
+                dest: (1.0, 2.0),
+            },
         });
         log
     };
@@ -2812,7 +3544,10 @@ fn the_schedule_and_fate_the_validator_accepts_are_the_ones_the_sim_produces() {
         (5, CommandTick::At(5), CommandFate::Taken),
         (5, CommandTick::At(2), CommandFate::Late),
     ] {
-        assert!(entry(t, s, f).validate().is_ok(), "the sim's own ({s:?}, {f:?}) is refused");
+        assert!(
+            entry(t, s, f).validate().is_ok(),
+            "the sim's own ({s:?}, {f:?}) is refused"
+        );
     }
     // Everything else describes a run the sim cannot have had.
     for (t, s, f) in [
@@ -2842,18 +3577,55 @@ fn a_match_with_late_commands_replays_byte_for_byte() {
         match t {
             10 => f.app.world_mut().resource_mut::<CommandQueue>().0.push_at(
                 3,
-                Order::MoveTo { units: vec![worker], dest: Vec2::new(-10.0, 0.0) }
-                    .issued_by(Faction::A),
+                Order::MoveTo {
+                    units: vec![worker],
+                    dest: Vec2::new(-10.0, 0.0),
+                }
+                .issued_by(Faction::A),
             ),
-            11 => push(f_app(f), Order::Place { faction: Faction::A, building: foundry, pos: Vec2::new(-140.0, 40.0) }.issued_by(Faction::A)),
-            20 => push(f_app(f), Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A)),
+            11 => push(
+                f_app(f),
+                Order::Place {
+                    faction: Faction::A,
+                    building: foundry,
+                    pos: Vec2::new(-140.0, 40.0),
+                }
+                .issued_by(Faction::A),
+            ),
+            20 => push(
+                f_app(f),
+                Order::Train {
+                    building: hq,
+                    unit: worker_index(),
+                }
+                .issued_by(Faction::A),
+            ),
             25 => f.app.world_mut().resource_mut::<CommandQueue>().0.push_at(
                 1,
-                Order::Gather { units: vec![worker], node, node_pos: Vec2::new(-60.0, 60.0) }
-                    .issued_by(Faction::A),
+                Order::Gather {
+                    units: vec![worker],
+                    node,
+                    node_pos: Vec2::new(-60.0, 60.0),
+                }
+                .issued_by(Faction::A),
             ),
-            30 => push(f_app(f), Order::Gather { units: vec![worker], node, node_pos: Vec2::new(-60.0, 60.0) }.issued_by(Faction::A)),
-            35 => push(f_app(f), Order::MoveTo { units: vec![worker, bare], dest: Vec2::new(-30.0, 0.0) }.issued_by(Faction::A)),
+            30 => push(
+                f_app(f),
+                Order::Gather {
+                    units: vec![worker],
+                    node,
+                    node_pos: Vec2::new(-60.0, 60.0),
+                }
+                .issued_by(Faction::A),
+            ),
+            35 => push(
+                f_app(f),
+                Order::MoveTo {
+                    units: vec![worker, bare],
+                    dest: Vec2::new(-30.0, 0.0),
+                }
+                .issued_by(Faction::A),
+            ),
             _ => {}
         }
     };
@@ -2874,7 +3646,8 @@ fn a_match_with_late_commands_replays_byte_for_byte() {
     assert!(log.commands.iter().any(|c| c.fate == CommandFate::Taken));
     let path = scratch("late-match");
     log.save(&path).expect("save");
-    let loaded = MatchLog::load_for(&path, &content()).expect("the front door refused the sim's own log");
+    let loaded =
+        MatchLog::load_for(&path, &content()).expect("the front door refused the sim's own log");
 
     let mut g = nameable_fixture();
     g.app.insert_resource(StateHashLog::default());
@@ -2886,7 +3659,11 @@ fn a_match_with_late_commands_replays_byte_for_byte() {
         rep_ids.push(issued(&g.app));
     }
     let source = g.app.world().resource::<ReplaySource>();
-    assert_eq!(source.rejection(), None, "the replay was refused, so this proves nothing");
+    assert_eq!(
+        source.rejection(),
+        None,
+        "the replay was refused, so this proves nothing"
+    );
     assert!(source.cursor() > 0, "the replay fed nothing");
     assert_eq!(rec_ids, rep_ids, "the registries drifted");
     assert_eq!(
@@ -2954,7 +3731,10 @@ fn a_version_one_log_is_refused_and_never_half_read() {
     ok.content = content().fingerprint();
     let text = ok.to_ron().expect("serialize");
     let downgraded = text.replacen(&format!("version: {LOG_FORMAT_VERSION}"), "version: 1", 1);
-    assert!(MatchLog::from_ron(&downgraded).is_err(), "a v1-labelled log was accepted");
+    assert!(
+        MatchLog::from_ron(&downgraded).is_err(),
+        "a v1-labelled log was accepted"
+    );
 }
 
 /// An unstamped log is refused by the front door but still **readable** — the
@@ -2967,14 +3747,23 @@ fn a_refused_log_is_still_readable_for_diagnosis() {
         schedule: CommandTick::Asap,
         fate: CommandFate::Taken,
         attribution: Attribution::By(Faction::A),
-        order: LoggedOrder::Place { faction: Faction::A, building: "hq".into(), pos: (0.0, 0.0) },
+        order: LoggedOrder::Place {
+            faction: Faction::A,
+            building: "hq".into(),
+            pos: (0.0, 0.0),
+        },
     });
     assert!(!unstamped.content.is_known());
     let path = scratch("unstamped");
-    unstamped.save(&path).expect("an unstamped log still writes");
+    unstamped
+        .save(&path)
+        .expect("an unstamped log still writes");
     let back = MatchLog::load(&path).expect("...and still reads, for diagnosis");
     assert_eq!(back.commands, unstamped.commands);
-    assert!(back.matches_content(&content()).is_err(), "an unstamped log was accepted to play");
+    assert!(
+        back.matches_content(&content()).is_err(),
+        "an unstamped log was accepted to play"
+    );
     assert!(MatchLog::load_for(&path, &content()).is_err());
 }
 
@@ -3005,24 +3794,53 @@ fn a_poisoned_log_is_refused_loudly_at_every_boundary_and_matches_nothing() {
     let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
     spawn_building(&mut app, "hq", Faction::B, Vec2::new(100.0, 0.0));
     app.insert_resource(CommandLog::new(3));
-    push(&mut app, Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A));
+    push(
+        &mut app,
+        Order::Train {
+            building: hq,
+            unit: worker_index(),
+        }
+        .issued_by(Faction::A),
+    );
     tick(&mut app, 3);
-    assert!(!app.world().resource::<CommandLog>().log().content_changed, "poisoned already");
+    assert!(
+        !app.world().resource::<CommandLog>().log().content_changed,
+        "poisoned already"
+    );
     app.insert_resource(b.clone());
-    push(&mut app, Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A));
+    push(
+        &mut app,
+        Order::Train {
+            building: hq,
+            unit: worker_index(),
+        }
+        .issued_by(Faction::A),
+    );
     tick(&mut app, 3);
 
     let log = app.world().resource::<CommandLog>().log().clone();
-    assert!(log.content_changed, "the mid-match content change was not recorded");
-    assert!(log.commands.len() >= 2, "the fixture recorded nothing on either side");
+    assert!(
+        log.content_changed,
+        "the mid-match content change was not recorded"
+    );
+    assert!(
+        log.commands.len() >= 2,
+        "the fixture recorded nothing on either side"
+    );
 
     // Loud, at the write, and the message says what happened.
     let err = log.to_ron().expect_err("a poisoned log was serialized");
-    assert!(err.to_lowercase().contains("content"), "the refusal is not diagnosable: {err}");
+    assert!(
+        err.to_lowercase().contains("content"),
+        "the refusal is not diagnosable: {err}"
+    );
     let path = scratch("poisoned");
     let _ = std::fs::remove_file(&path);
     assert!(log.save(&path).is_err(), "a poisoned log was written");
-    assert!(!path.exists(), "a log that cannot be read back was still written to disk");
+    assert!(
+        !path.exists(),
+        "a log that cannot be read back was still written to disk"
+    );
 
     // And it matches *no* content — including both of the two it was played
     // under, which is what makes refusing it a loss of nothing.
@@ -3046,7 +3864,14 @@ fn a_poisoned_log_cannot_be_replayed_even_in_memory() {
     app.insert_resource(CommandLog::new(3));
     tick(&mut app, 2);
     app.insert_resource(b);
-    push(&mut app, Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A));
+    push(
+        &mut app,
+        Order::Train {
+            building: hq,
+            unit: worker_index(),
+        }
+        .issued_by(Faction::A),
+    );
     tick(&mut app, 3);
     let log = app.world().resource::<CommandLog>().log().clone();
     assert!(log.content_changed);
@@ -3070,7 +3895,11 @@ fn a_poisoned_log_cannot_be_replayed_even_in_memory() {
 #[test]
 fn touching_the_content_without_changing_it_does_not_poison_the_log() {
     // The fingerprint is a function of the content, not of the load.
-    assert_eq!(content().fingerprint(), content().fingerprint(), "the fingerprint is unstable");
+    assert_eq!(
+        content().fingerprint(),
+        content().fingerprint(),
+        "the fingerprint is unstable"
+    );
 
     let mut app = sim_app_with(5_000, 0);
     let hq = spawn_building(&mut app, "hq", Faction::A, Vec2::new(-100.0, 0.0));
@@ -3083,7 +3912,14 @@ fn touching_the_content_without_changing_it_does_not_poison_the_log() {
         tick(&mut app, 2);
         // ...and a byte-identical reinsertion.
         app.insert_resource(content());
-        push(&mut app, Order::Train { building: hq, unit: worker_index() }.issued_by(Faction::A));
+        push(
+            &mut app,
+            Order::Train {
+                building: hq,
+                unit: worker_index(),
+            }
+            .issued_by(Faction::A),
+        );
         tick(&mut app, 2);
     }
     let log = app.world().resource::<CommandLog>().log().clone();
@@ -3091,9 +3927,15 @@ fn touching_the_content_without_changing_it_does_not_poison_the_log() {
         !log.content_changed,
         "touching the content without changing it marked the log as describing none"
     );
-    assert!(log.validate().is_ok(), "a clean match produced an unwritable log");
+    assert!(
+        log.validate().is_ok(),
+        "a clean match produced an unwritable log"
+    );
     assert!(log.matches_content(&content()).is_ok());
-    assert!(!log.commands.is_empty(), "nothing was recorded, so nothing is tested");
+    assert!(
+        !log.commands.is_empty(),
+        "nothing was recorded, so nothing is tested"
+    );
 }
 
 /// The "recompute only when unstamped or `Content` changed" shortcut must not
@@ -3103,10 +3945,20 @@ fn touching_the_content_without_changing_it_does_not_poison_the_log() {
 fn a_log_installed_mid_match_is_still_stamped() {
     let mut app = ai_vs_ai(4);
     tick(&mut app, 50);
-    assert!(app.world().resource::<CommandLog>().log().content.is_known());
+    assert!(app
+        .world()
+        .resource::<CommandLog>()
+        .log()
+        .content
+        .is_known());
     // A fresh, unstamped log, with the content untouched since tick 0.
     app.insert_resource(CommandLog::new(4));
-    assert!(!app.world().resource::<CommandLog>().log().content.is_known());
+    assert!(!app
+        .world()
+        .resource::<CommandLog>()
+        .log()
+        .content
+        .is_known());
     step(&mut app);
     let log = app.world().resource::<CommandLog>().log().clone();
     assert!(
@@ -3114,7 +3966,10 @@ fn a_log_installed_mid_match_is_still_stamped() {
         "a log installed after the content last changed was never stamped, so \
          `load_for` would refuse it"
     );
-    assert!(!log.content_changed, "a fresh log was marked as spanning a change");
+    assert!(
+        !log.content_changed,
+        "a fresh log was marked as spanning a change"
+    );
     assert!(log.matches_content(&content()).is_ok());
 }
 
@@ -3126,11 +3981,15 @@ fn a_shipped_match_never_poisons_its_log() {
     let mut app = ai_vs_ai(4);
     tick(&mut app, 2_000);
     let log = app.world().resource::<CommandLog>().log().clone();
-    assert!(!log.content_changed, "an ordinary AI match marked its own log poisoned");
+    assert!(
+        !log.content_changed,
+        "an ordinary AI match marked its own log poisoned"
+    );
     assert!(log.content.is_known());
     assert!(log.validate().is_ok());
     let path = scratch("shipped-clean");
-    log.save(&path).expect("a shipped match must be able to save its log");
+    log.save(&path)
+        .expect("a shipped match must be able to save its log");
     MatchLog::load_for(&path, &content()).expect("...and load it back through the front door");
 }
 
@@ -3146,7 +4005,11 @@ fn a_v2_log_without_the_poison_field_still_loads_as_clean() {
         schedule: CommandTick::Asap,
         fate: CommandFate::Taken,
         attribution: Attribution::By(Faction::A),
-        order: LoggedOrder::Place { faction: Faction::A, building: "hq".into(), pos: (1.0, 2.0) },
+        order: LoggedOrder::Place {
+            faction: Faction::A,
+            building: "hq".into(),
+            pos: (1.0, 2.0),
+        },
     });
     let text = ok.to_ron().expect("serialize");
     // Strip the field, as a log written by the build before F2 would not have it.

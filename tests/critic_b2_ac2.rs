@@ -8,7 +8,7 @@
 
 use std::process::Command;
 
-use onus::batch::{self, BatchSettings, MatchResult, MatchRecord};
+use onus::batch::{self, BatchSettings, MatchRecord, MatchResult};
 use onus::headless::{self, MatchSettings, Orientation, DEFAULT_TICK_CAP, SIM_HZ};
 use onus::sim::content::Content;
 use onus::sim::replay::StateHashLog;
@@ -67,7 +67,10 @@ fn probe_recorded_ticks_agree_with_the_sims_own_counters() {
     let c = content();
     let record = batch::run_match(&c, &decider(DEFAULT_TICK_CAP)).expect("known names");
     assert!(record.result.is_decided());
-    assert_eq!(record.ticks, steps, "recorded length == ticks actually played");
+    assert_eq!(
+        record.ticks, steps,
+        "recorded length == ticks actually played"
+    );
     assert_eq!(record.ticks, outcome_tick + 1);
     assert_eq!(record.seconds(), steps as f32 / SIM_HZ as f32);
 
@@ -111,7 +114,10 @@ fn probe_cap_boundary_is_inclusive_of_the_deciding_tick() {
 
     let long = batch::run_match(&c, &decider(t + 1)).expect("known names");
     assert_eq!(long.result, at.result);
-    assert_eq!(long.ticks, t, "a decided match is not stepped past its decision");
+    assert_eq!(
+        long.ticks, t,
+        "a decided match is not stepped past its decision"
+    );
 }
 
 /// Degenerate caps are total: no panic, no winner, `ticks == cap`.
@@ -144,7 +150,10 @@ fn probe_degenerate_caps_are_total() {
 #[test]
 fn probe_timeout_is_never_conflated_with_a_mutual_loss() {
     assert_ne!(MatchResult::Timeout, MatchResult::MutualLoss);
-    assert_eq!(MatchResult::Timeout.winner(), MatchResult::MutualLoss.winner());
+    assert_eq!(
+        MatchResult::Timeout.winner(),
+        MatchResult::MutualLoss.winner()
+    );
     assert!(MatchResult::MutualLoss.is_decided());
     assert!(!MatchResult::Timeout.is_decided());
 
@@ -257,7 +266,11 @@ fn probe_full_roster_coverage_is_complete_and_ordered() {
             for b in &ids {
                 for o in Orientation::ALL {
                     let r = &rows[i];
-                    assert_eq!((r.strategies[0].as_str(), r.strategies[1].as_str()), (*a, *b), "row {i}");
+                    assert_eq!(
+                        (r.strategies[0].as_str(), r.strategies[1].as_str()),
+                        (*a, *b),
+                        "row {i}"
+                    );
                     assert_eq!(r.seed, seed, "row {i} seed-major order");
                     assert_eq!(r.orientation, o, "row {i} orientation order");
                     i += 1;
@@ -266,7 +279,9 @@ fn probe_full_roster_coverage_is_complete_and_ordered() {
         }
     }
     assert_eq!(
-        rows.iter().filter(|r| r.strategies[0] == r.strategies[1]).count(),
+        rows.iter()
+            .filter(|r| r.strategies[0] == r.strategies[1])
+            .count(),
         n * k as usize * 2,
         "one mirror per strategy per seed per orientation"
     );
@@ -296,7 +311,9 @@ fn probe_only_filters_without_reordering() {
     reversed_pick.push("rush".to_string()); // a duplicate must not duplicate rows
     let backward = batch::run_batch(
         &c,
-        &BatchSettings::default().with_tick_cap(2).with_only(reversed_pick),
+        &BatchSettings::default()
+            .with_tick_cap(2)
+            .with_only(reversed_pick),
         &mut |_| {},
     )
     .expect("names");
@@ -304,7 +321,9 @@ fn probe_only_filters_without_reordering() {
 
     let expect: Vec<&MatchRecord> = full
         .iter()
-        .filter(|r| pick.contains(&r.strategies[0].as_str()) && pick.contains(&r.strategies[1].as_str()))
+        .filter(|r| {
+            pick.contains(&r.strategies[0].as_str()) && pick.contains(&r.strategies[1].as_str())
+        })
         .collect();
     assert_eq!(expect.len(), 8);
     let got: Vec<&MatchRecord> = forward.iter().collect();
@@ -317,8 +336,11 @@ fn probe_filtered_rows_are_the_same_matches_that_a_wider_batch_plays() {
     let c = content();
     let wide = batch::run_batch(
         &c,
-        &BatchSettings::default()
-            .with_only(vec!["rush".into(), "turtle".into(), "mass_ripper".into()]),
+        &BatchSettings::default().with_only(vec![
+            "rush".into(),
+            "turtle".into(),
+            "mass_ripper".into(),
+        ]),
         &mut |_| {},
     )
     .expect("names");
@@ -330,7 +352,11 @@ fn probe_filtered_rows_are_the_same_matches_that_a_wider_batch_plays() {
     .expect("names");
     let expect: Vec<&MatchRecord> = wide
         .iter()
-        .filter(|r| r.strategies.iter().all(|s| s == "rush" || s == "mass_ripper"))
+        .filter(|r| {
+            r.strategies
+                .iter()
+                .all(|s| s == "rush" || s == "mass_ripper")
+        })
         .collect();
     assert_eq!(narrow.iter().collect::<Vec<_>>(), expect);
 }
@@ -422,7 +448,9 @@ fn probe_unknown_names_are_refused_at_every_entry_point() {
     assert!(batch::roster(&c, Some(&["nope".to_string()])).is_err());
     assert!(batch::run_match(
         &c,
-        &MatchSettings::default().with_strategies("rush", "nope").with_tick_cap(2)
+        &MatchSettings::default()
+            .with_strategies("rush", "nope")
+            .with_tick_cap(2)
     )
     .is_err());
     assert!(batch::run_batch(
@@ -476,9 +504,15 @@ fn probe_cli_run_separates_report_from_progress() {
     assert!(ok, "stderr: {stderr}");
     assert!(stdout.contains("matches"), "{stdout}");
     assert!(stdout.contains("timeouts"), "{stdout}");
-    assert!(!stdout.contains("[1/2]"), "progress leaked into stdout: {stdout}");
+    assert!(
+        !stdout.contains("[1/2]"),
+        "progress leaked into stdout: {stdout}"
+    );
     assert!(stderr.contains("[1/2]"), "no progress on stderr: {stderr}");
-    assert!(stderr.contains("[2/2]"), "both orientations must be played: {stderr}");
+    assert!(
+        stderr.contains("[2/2]"),
+        "both orientations must be played: {stderr}"
+    );
     // The same run twice is the same report, out of process.
     let (_, stdout2, _) = balance(&["--only", "rush", "--seeds", "1", "--tick-cap", "5"]);
     assert_eq!(stdout, stdout2, "the report is not reproducible");
@@ -508,7 +542,10 @@ fn probe_cli_cap_flags_are_self_consistent() {
             .lines()
             .find_map(|l| l.split(" in ").nth(1)?.split(' ').next()?.parse().ok())
             .unwrap_or_else(|| panic!("no match line: {stderr}"));
-        assert!(played <= cap, "{args:?} played {played} ticks past a {cap} cap");
+        assert!(
+            played <= cap,
+            "{args:?} played {played} ticks past a {cap} cap"
+        );
         assert!(ok);
     }
 }
