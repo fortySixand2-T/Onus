@@ -7140,3 +7140,38 @@ Timeouts per cell, out of 4 (rows Bulwark, Sentinel, Ripper, Ravager, Arclight; 
   Alloy), and the C3 AI fix does not touch it.
 - **Next lever (the user's call; strategy RON, not economy):** the mass-Machine scripts' late Foundries
   and `worker_target`, or the Alloy-only mirror stall as a B-series question. K3 stays **Fail** until then.
+
+## F-084 — Strategy overrides for three resources; the Machine probes keep 9 workers (C3 AC8)
+
+**Decision (the user's).** The two Machine probes are tuned only in three-resource matches, through a
+new optional `three_resource: (worker_target, barracks)` block on a strategy in `strategies.ron`.
+- Each field left out keeps the strategy's own value.
+- The AI reads the override (`StrategyDef::worker_target_in` / `barracks_in`) only when the match has
+  the three-resource economy.
+- An Alloy-only match never reads it, so every Alloy-only pin holds and the C3 golden licence is kept.
+- `validate` checks the overridden script with every strategy rule.
+- The fingerprint hashes the block only when it is present, so content without one fingerprints as before.
+
+**Tests.** `tests/c3_strategy.rs`:
+- without an override, both economies play the strategy's own values;
+- an override leaves an Alloy-only match identical, action for action, and is played in a three-resource one;
+- an override changes the fingerprint, and its absence does not;
+- a zero worker target, no barracks, an unknown building and a barracks that cannot train the army are
+  each refused at load.
+
+**Probe.** Scratch harness, not shipped: `mass_bulwark`, `mass_sentinel` and `mass_ripper` against each
+other on three resources, 1 seed, 18 matches. The variant was applied to both Machine probes.
+
+| variant | timeouts | decided median |
+|---|---|---|
+| as shipped (6 workers, Foundries at 300/18000/24000) | 8 | 43360 |
+| one Foundry only | 3 | 39469 |
+| **9 workers** | **0** | 36071 |
+| 9 workers, Foundries at 300/9000 | 0 | 36071 (different matches; the median is the unchanged Ripper mirror) |
+
+- The stall was income. With 6 workers a Machine side is bound to about one unit per 1800 ticks.
+  The Foundries are not the bottleneck, which is why moving or dropping them barely helps.
+- With 9 workers the waves grow faster than they are traded, and every cell is decided.
+
+**Shipped:** `mass_bulwark` and `mass_sentinel` get `three_resource: (worker_target: 9)`. The Foundry
+schedule is unchanged, and so is every other probe. Base unit combat stats are untouched.
