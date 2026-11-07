@@ -7242,3 +7242,25 @@ matches per variant, with F-084's 9-worker Machine probes. The K3 band is 5–8 
   (single-threaded, about 4.4 h).
 - **Not re-run since F-084:** the full test suite and `cargo clippy --all-targets -- -D warnings`.
   Every C3 suite passes.
+
+## F-086 — Critic C3 round 1: the fixes (C3 AC4, AC5, AC8)
+
+The C3 critic returned FAIL with five findings. Each is fixed test-first, one commit per finding.
+The critic's eight tests are now `tests/critic_c3.rs`.
+
+**F3 — AC5's guard replacement now has a test.** `critic_a_fallen_guard_detachment_is_replaced_after_the_next_wave`
+kills side A's whole guard detachment as it is sent. It checks that A does not re-guard the middle well
+before its next wave, and that it does re-guard within 600 ticks after it. It passes on the shipped AI
+(F-083) and kills the critic's mutation M7 (recruit count never reset). No code changed.
+- A box note: on the first run this test failed, because the box held a stale `src/sim/ai.rs`. rsync's
+  size-and-mtime check had skipped it. The box sync now compares by checksum and does not copy mtimes,
+  so a changed file always gets a fresh mtime and is rebuilt.
+
+**F4 — a Growth trait on a building that grows nothing is refused at load.** `SideRules::build_in`:
+- `Growth` on `Building(id)` is an error unless `id` is a growth source of `three_resource.growth`.
+- `Growth` on `Buildings` applies to the growth sources only, and is an error if there are none.
+
+No behaviour change: the growth factor is only ever read for a source (`three::grow`), so every
+shipped match is unchanged. Verdant's `Buildings` Growth loads as before.
+Tests: `critic_growth_on_a_building_that_grows_nothing_is_refused` (it failed before; the trait loaded),
+and `c3_economy::a_growth_trait_acts_only_on_growth_sources` (non-sources keep 1000; no sources means refused).

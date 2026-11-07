@@ -854,3 +854,7 @@
 - [2026-11-04] Created: tests/c3_client.rs — C3 AC6 client tests
 - [2026-11-04] Modified: FINDINGS.md — F-080 client and Mac checks
 - [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC6 (client)
+- [2026-11-07] Created: tests/critic_c3.rs — the C3 critic's eight tests (guard replacement, Growth refusal, wells, Biomass, replay, determinism)
+- [2026-11-07] Modified: src/sim/nation.rs — a Growth trait acts only on growth sources; one on a non-source is refused at load
+- [2026-11-07] Modified: tests/c3_economy.rs — Growth acts only on growth sources
+- [2026-11-07] Modified: FINDINGS.md — F-086 critic C3 round 1 fixes (F3, F4)

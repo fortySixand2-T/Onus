@@ -309,6 +309,30 @@ impl SideRules {
                         .ok_or_else(|| format!("{who}: names unknown building `{id}`"))?],
                     _ => (0..buildings.len()).collect(),
                 };
+                // Growth acts only on a building that grows Biomass in this
+                // economy: on any other it would load and do nothing (as a
+                // yield trait on a unit that does not gather, which `check`
+                // refuses). `Buildings` means every growth source.
+                let targets = if t.stat == TraitStat::Growth {
+                    let sources: Vec<&str> = content
+                        .three_resource
+                        .as_ref()
+                        .map(|r| r.growth.sources.iter().map(|g| g.building.as_str()).collect())
+                        .unwrap_or_default();
+                    let grows = |i: &usize| sources.contains(&buildings[*i].id.as_str());
+                    if let TraitTarget::Building(id) = &t.applies_to {
+                        if !targets.iter().all(grows) {
+                            return Err(format!("{who}: building `{id}` is no growth source"));
+                        }
+                    }
+                    let targets: Vec<usize> = targets.into_iter().filter(grows).collect();
+                    if targets.is_empty() {
+                        return Err(format!("{who}: applies to no growth source"));
+                    }
+                    targets
+                } else {
+                    targets
+                };
                 for i in targets {
                     let b = &mut buildings[i];
                     match t.stat {

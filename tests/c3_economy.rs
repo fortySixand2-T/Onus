@@ -758,3 +758,34 @@ fn a_trait_that_cannot_act_in_its_list_s_economy_is_refused() {
     let err = SideRules::build_in(&bad, k, EconomyMode::ThreeResource).unwrap_err();
     assert!(err.contains("Alloy-only"), "{err}");
 }
+
+/// Growth acts only on a growth source (critic C3 F4). Verdant's
+/// `Buildings` Growth scales exactly the sources and leaves every other
+/// building at 1000; with no source in the content it acts on nothing and is
+/// refused.
+#[test]
+fn a_growth_trait_acts_only_on_growth_sources() {
+    let c = shipped();
+    let k = c.nations.iter().position(|n| n.id == "verdant").unwrap();
+    let side = SideRules::build_in(&c, k, EconomyMode::ThreeResource).unwrap();
+    let sources: Vec<String> = c
+        .three_resource
+        .as_ref()
+        .unwrap()
+        .growth
+        .sources
+        .iter()
+        .map(|g| g.building.clone())
+        .collect();
+    for (b, &m) in c.buildings.iter().zip(&side.growth_milli) {
+        if sources.contains(&b.id) {
+            assert!(m > 1000, "source `{}` grows faster: {m}", b.id);
+        } else {
+            assert_eq!(m, 1000, "`{}` grows nothing, so no factor", b.id);
+        }
+    }
+    let mut bare = c.clone();
+    bare.three_resource.as_mut().unwrap().growth.sources.clear();
+    let err = SideRules::build_in(&bare, k, EconomyMode::ThreeResource).unwrap_err();
+    assert!(err.contains("no growth source"), "{err}");
+}
