@@ -174,8 +174,8 @@
             attack_spread: 60.0,
             queue_depth: 1,
             wave_order: attack_move,
-            // Three-resource only (F-084): more workers, so a Machine mirror is not
-            // income-starved into trading equal waves to the cap.
+            // Three-resource only (F-084, F-086): every mass probe keeps 9 workers, so the
+            // probes stay identical in every field but the unit (B3's pentagon measures units).
             three_resource: (worker_target: 9),
         ),
         // Machine / skirmish. Fast, mid-range, nemesis Ripper.
@@ -196,8 +196,8 @@
             attack_spread: 60.0,
             queue_depth: 1,
             wave_order: attack_move,
-            // Three-resource only (F-084): more workers, so a Machine mirror is not
-            // income-starved into trading equal waves to the cap.
+            // Three-resource only (F-084, F-086): every mass probe keeps 9 workers, so the
+            // probes stay identical in every field but the unit (B3's pentagon measures units).
             three_resource: (worker_target: 9),
         ),
         // Flesh / swarm. The cheapest body in the game, nemesis Arclight.
@@ -218,6 +218,9 @@
             attack_spread: 60.0,
             queue_depth: 1,
             wave_order: attack_move,
+            // Three-resource only (F-084, F-086): every mass probe keeps 9 workers, so the
+            // probes stay identical in every field but the unit (B3's pentagon measures units).
+            three_resource: (worker_target: 9),
         ),
         // Flesh / bruiser. Heavy hitter, nemesis Sentinel.
         (
@@ -237,6 +240,9 @@
             attack_spread: 60.0,
             queue_depth: 1,
             wave_order: attack_move,
+            // Three-resource only (F-084, F-086): every mass probe keeps 9 workers, so the
+            // probes stay identical in every field but the unit (B3's pentagon measures units).
+            three_resource: (worker_target: 9),
         ),
         // Energy / artillery. Glass cannon at 120 range, nemesis Bulwark. Pays
         // 200 for its Aether Spire where the other four pay 150 — a designed
@@ -258,6 +264,9 @@
             attack_spread: 60.0,
             queue_depth: 1,
             wave_order: attack_move,
+            // Three-resource only (F-084, F-086): every mass probe keeps 9 workers, so the
+            // probes stay identical in every field but the unit (B3's pentagon measures units).
+            three_resource: (worker_target: 9),
         ),
 
         // ---- the synthesis builds ------------------------------------------

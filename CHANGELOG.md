@@ -864,3 +864,5 @@
 - [2026-11-07] Modified: src/sim/ai.rs — Posts' on-well distance read from RON, not / 2.0
 - [2026-11-07] Modified: tests/c3_ai.rs — on_well_fraction is validated, fingerprinted and ships as one half
 - [2026-11-07] Modified: FINDINGS.md — F-086 F5
+- [2026-11-07] Modified: assets/data/strategies.ron — every mass probe carries three_resource (worker_target: 9), so the probes stay identical (critic F1)
+- [2026-11-07] Modified: FINDINGS.md — F-086 F1: equal probes, both variants read on the full B3 gate

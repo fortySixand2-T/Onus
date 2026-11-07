@@ -7274,3 +7274,28 @@ It is now `resources.ron` `three_resource.ai.on_well_fraction: 0.5`: a keeper or
   plays as before.
 
 Test: `c3_ai::the_on_well_distance_is_a_validated_fingerprinted_ron_fraction`.
+
+**F1 — the five mass probes are identical again: all carry `three_resource: (worker_target: 9)`.**
+F-084 gave the override to `mass_bulwark` and `mass_sentinel` only. That broke
+`critic_b1_ac3::the_mass_probes_are_identical_in_every_field_of_the_struct`, so the harness was red. The test
+was right to fail: with unequal probes, B3's pentagon measures a worker count as well as a unit. **The F-084 and F-085
+readings were taken on unequal probes**: the two Machine probes had 9 workers and the three others had 6. So
+they are not readings of the pentagon as B3 defines it.
+
+The two ways to equalise the probes, each read on the full B3 gate on three resources: 5 mass probes, 2 seeds,
+100 matches, release, on the box (single-threaded), with every other number as shipped (F-085's ×1.5 pace,
+`on_well_fraction` 0.5).
+
+| | **all five at 9 workers (shipped)** | none (all at 6) |
+|---|---|---|
+| timeouts | **3% (undetermined)** | 15% **FAIL** |
+| K1 | undetermined, none dominant: bulwark 50.0, sentinel 75.0, ripper 25.0, ravager 75.0, arclight 25.0 | undetermined: bulwark 50.0, sentinel 6.2, ripper 68.8, ravager 75.0, arclight 50.0 |
+| K2 slot A / left base | 35.3% / 35.3% (n 17) undetermined | 38.5% / 23.1% (n 13) undetermined |
+| K3 | **undetermined**: median 23691 (6:35), band share 55.7% [44.0, 66.8], 2% below, 44% beyond | **FAIL** (timeouts): median 27667, band share 51.8% [39.6, 63.7], 3% below, 53% beyond |
+| run time | 438 s | 501 s |
+
+- Without the override, the Machine mirror stall of F-083 and F-084 is back: the Bulwark mirror times out 4 of 4,
+  Sentinel v Ripper 4 of 4, and the Sentinel mirror 3 of 4.
+- With 9 workers for every probe, the timeouts stay at F-084's 3%, and they are confined to the two Machine mirrors.
+- **Shipped: all five at 9 workers.** It gives the better reading, and it is the only one of the two in which no K reads Fail.
+  The override is still read only in three-resource matches. Alloy-only play is untouched, so the golden licence holds.
