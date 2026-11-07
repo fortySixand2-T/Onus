@@ -858,3 +858,9 @@
 - [2026-11-07] Modified: src/sim/nation.rs — a Growth trait acts only on growth sources; one on a non-source is refused at load
 - [2026-11-07] Modified: tests/c3_economy.rs — Growth acts only on growth sources
 - [2026-11-07] Modified: FINDINGS.md — F-086 critic C3 round 1 fixes (F3, F4)
+- [2026-11-07] Modified: assets/data/resources.ron — three_resource.ai.on_well_fraction (0.5, the old hardcoded half)
+- [2026-11-07] Modified: src/sim/three.rs — ThreeAiDef.on_well_fraction, validated in (0, 1]
+- [2026-11-07] Modified: src/sim/content.rs — fingerprint hashes on_well_fraction
+- [2026-11-07] Modified: src/sim/ai.rs — Posts' on-well distance read from RON, not / 2.0
+- [2026-11-07] Modified: tests/c3_ai.rs — on_well_fraction is validated, fingerprinted and ships as one half
+- [2026-11-07] Modified: FINDINGS.md — F-086 F5

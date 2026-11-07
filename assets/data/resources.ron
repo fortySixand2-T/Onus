@@ -76,6 +76,8 @@
         //     fighters sent to contest the nearest other well that is not the
         //     enemy's home (the middle), and back to the home well while an
         //     enemy is on it. Both are taken from its lowest-entity units.
-        ai: (keepers: 1, guards: 2),
+        //     A keeper or guard within `on_well_fraction` of `hold_radius` of its
+        //     well is on it and gets no new order (in (0, 1]).
+        ai: (keepers: 1, guards: 2, on_well_fraction: 0.5),
     ),
 )

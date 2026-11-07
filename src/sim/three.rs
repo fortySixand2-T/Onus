@@ -122,6 +122,9 @@ pub struct ThreeAiDef {
     /// fighters), out of the attack waves; called back to the home well when
     /// an enemy reaches it.
     pub guards: u32,
+    /// A keeper or guard within this fraction of `wells.hold_radius` of its
+    /// well is on it and gets no new order. In (0, 1].
+    pub on_well_fraction: f32,
 }
 
 /// How Biomass grows.
@@ -250,6 +253,10 @@ pub(crate) fn validate(content: &Content) -> Result<(), String> {
     }
     if w.interval_ticks == 0 || w.per_interval == 0 {
         return Err(format!("{who}: wells interval_ticks and per_interval must be > 0"));
+    }
+    let f = t.ai.on_well_fraction;
+    if !(f.is_finite() && f > 0.0 && f <= 1.0) {
+        return Err(format!("{who}: ai on_well_fraction must be in (0, 1]"));
     }
     if w.sites.is_empty() {
         return Err(format!("{who}: wells needs at least one site"));

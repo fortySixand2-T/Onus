@@ -279,3 +279,45 @@ fn a_mirror_still_sends_its_waves_while_guards_fall_at_the_middle_well() {
         );
     }
 }
+
+// ---- the "on its well" distance is content (critic C3 F5) ----------------------
+
+/// The shipped content with resources.ron's AI block replaced by `ai`.
+fn load_with_ai(name: &str, ai: &str) -> Result<Content, String> {
+    let data = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data");
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target/c3_ai").join(name);
+    std::fs::create_dir_all(&dir).expect("scratch dir");
+    for entry in std::fs::read_dir(&data).expect("data dir") {
+        let p = entry.expect("entry").path();
+        if p.extension().is_some_and(|e| e == "ron") {
+            std::fs::copy(&p, dir.join(p.file_name().unwrap())).expect("copy");
+        }
+    }
+    let r = std::fs::read_to_string(data.join("resources.ron")).expect("read");
+    let shipped_ai = "ai: (keepers: 1, guards: 2, on_well_fraction: 0.5)";
+    assert!(r.contains(shipped_ai), "the shipped AI block");
+    std::fs::write(dir.join("resources.ron"), r.replace(shipped_ai, ai)).expect("write");
+    Content::load_from_dir(&dir).map_err(|e| e.to_string())
+}
+
+/// A keeper or guard within `on_well_fraction` of `hold_radius` of its well is
+/// on it and gets no new order. The shipped fraction is one half (the value the
+/// code used to hardcode), so a shipped match plays as before.
+#[test]
+fn the_on_well_distance_is_a_validated_fingerprinted_ron_fraction() {
+    let c = shipped();
+    let t = c.three_resource.as_ref().unwrap();
+    assert_eq!(t.ai.on_well_fraction, 0.5);
+    assert_eq!(t.wells.hold_radius * t.ai.on_well_fraction, t.wells.hold_radius / 2.0);
+
+    let same = load_with_ai("same", "ai: (keepers: 1, guards: 2, on_well_fraction: 0.5)").unwrap();
+    assert_eq!(same.fingerprint(), c.fingerprint());
+    let other = load_with_ai("other", "ai: (keepers: 1, guards: 2, on_well_fraction: 0.25)").unwrap();
+    assert_ne!(other.fingerprint(), c.fingerprint(), "the fraction is content");
+
+    for (name, v) in [("zero", "0.0"), ("over", "1.5"), ("neg", "-0.5")] {
+        let err = load_with_ai(name, &format!("ai: (keepers: 1, guards: 2, on_well_fraction: {v})"))
+            .unwrap_err();
+        assert!(err.contains("on_well_fraction"), "{v}: {err}");
+    }
+}

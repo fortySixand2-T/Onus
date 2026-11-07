@@ -7264,3 +7264,13 @@ No behaviour change: the growth factor is only ever read for a source (`three::g
 shipped match is unchanged. Verdant's `Buildings` Growth loads as before.
 Tests: `critic_growth_on_a_building_that_grows_nothing_is_refused` (it failed before; the trait loaded),
 and `c3_economy::a_growth_trait_acts_only_on_growth_sources` (non-sources keep 1000; no sources means refused).
+
+**F5 — the AI's "on its well" distance is content.** The `/ 2.0` in `Posts::assign` was a hardcoded number.
+It is now `resources.ron` `three_resource.ai.on_well_fraction: 0.5`: a keeper or guard within
+`hold_radius × on_well_fraction` of its well is on it and gets no new order.
+- The load check requires a value in (0, 1].
+- The content fingerprint hashes the value.
+- The shipped value is one half, and `110.0 × 0.5` is exactly `110.0 / 2.0` in f32, so every shipped match
+  plays as before.
+
+Test: `c3_ai::the_on_well_distance_is_a_validated_fingerprinted_ron_fraction`.

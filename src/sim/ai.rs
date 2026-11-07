@@ -988,7 +988,7 @@ impl Posts {
         Posts {
             home: Some(home),
             guard_well,
-            near: t.wells.hold_radius / 2.0,
+            near: t.wells.hold_radius * t.ai.on_well_fraction,
             keepers,
             guards,
         }
