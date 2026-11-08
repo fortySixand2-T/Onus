@@ -918,3 +918,7 @@
 - [2026-11-08] Modified: assets/data/nations.ron — Verdant three-resource Growth 1.15 -> 1.10 (user instruction)
 - [2026-11-08] Modified: tests/c4_autoresolve.rs — campaign golden re-pinned (content fingerprint moved with Verdant Growth)
 - [2026-11-08] Modified: FINDINGS.md — F-090 Verdant Growth 1.10 and the three-resource cross re-read
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC4 taking a capital absorbs its General (cap 3), leading a new army; no trait transfers
+- [2026-11-08] Created: tests/c4_absorb.rs — C4 AC4 absorbed General tests
+- [2026-11-08] Modified: tests/c4_autoresolve.rs — C4 AC4 campaign golden re-pinned (absorbed armies take the field)
+- [2026-11-08] Modified: FINDINGS.md — F-089 AC4 readings

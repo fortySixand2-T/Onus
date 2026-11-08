@@ -149,6 +149,9 @@ pub struct NationState {
     /// Alloy from its cities' levies (C4 AC8), spent on raising Generals
     /// and rebuilding.
     pub treasury: u32,
+    /// Generals it has absorbed by taking capitals (C4 AC4), at most
+    /// `max_absorbed_generals` over the campaign.
+    pub absorbed: u32,
 }
 
 /// What a nation decides in its turn. The player's are logged
@@ -314,6 +317,7 @@ impl Campaign {
             .map(|_| NationState {
                 alive: true,
                 treasury: 0,
+                absorbed: 0,
             })
             .collect();
         let cities = campaign
@@ -498,7 +502,7 @@ impl Campaign {
             });
         h.u64(self.nations.len() as u64);
         for n in &self.nations {
-            h.u64(n.alive as u64).u64(n.treasury as u64);
+            h.u64(n.alive as u64).u64(n.treasury as u64).u64(n.absorbed as u64);
         }
         h.u64(self.cities.len() as u64);
         for c in &self.cities {
@@ -994,7 +998,10 @@ impl Campaign {
     }
 
     /// `conqueror` took `fallen`'s capital: `fallen` is out of the campaign.
-    /// Its cities pass to the conqueror and its armies are disbanded.
+    /// Its cities pass to the conqueror and its armies are disbanded. Under
+    /// the cap (C4 AC4), its house General passes to the conqueror, rank 0,
+    /// leading a new and empty army of the conqueror's at the fallen
+    /// capital: the General's aura comes with him, no trait does.
     fn absorb(&mut self, fallen: usize, conqueror: usize) {
         self.nations[fallen].alive = false;
         for c in &mut self.cities {
@@ -1003,6 +1010,12 @@ impl Campaign {
             }
         }
         self.armies.retain(|a| a.nation != fallen);
+        if self.nations[conqueror].absorbed < self.campaign.rules.max_absorbed_generals {
+            self.nations[conqueror].absorbed += 1;
+            let kind = self.campaign.nation_general[fallen];
+            let at = self.campaign.capital[fallen];
+            self.spawn_army(conqueror, kind, Vec::new(), at);
+        }
     }
 
     fn end_checks(&mut self) {

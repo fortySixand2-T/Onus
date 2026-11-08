@@ -7517,6 +7517,19 @@ Every number lives in `assets/data/campaign.ron`.
 - The campaign golden (`c4_autoresolve::campaign_golden`, my own) re-pinned at AC3, because
   building HP now carries: 0x181b0e1f579e6d5a -> 0xc3c869fe51c6841c.
 
+**Absorbed Generals (AC4).**
+- P26. Taking a capital absorbs its nation (P5). If the conqueror has absorbed fewer than
+  `max_absorbed_generals`, he gains a General of the fallen nation's kind, so he carries that
+  nation's aura. The General stands at rank 0 at the fallen capital, at the head of a new, empty
+  army that fills from the levy like any other. The cap counts every absorption over the
+  campaign; a General who later falls does not free a place. The fallen nation's own absorbed
+  Generals are removed with its armies; they do not pass on.
+- P27. No trait transfers. The new army is the conqueror's, so it plays the conqueror's nation
+  and traits in every battle; only the General's kind, and so his aura, comes from the fallen
+  nation.
+- The campaign golden re-pinned at AC4 (an absorbed army now takes the field):
+  0x900de33b295916e6 -> 0x4e8757b5a5c9847c.
+
 ## F-090 — Verdant's three-resource Growth lowered to ×1.10, by the user's instruction (C3 AC8 RON step)
 
 **The user's instruction (2026-11-08): "lower verdant growth to 1.10".** In `assets/data/nations.ron`, Verdant's
