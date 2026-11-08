@@ -312,13 +312,14 @@ impl SideRules {
                 // Growth acts only on a building that grows Biomass in this
                 // economy: on any other it would load and do nothing (as a
                 // yield trait on a unit that does not gather, which `check`
-                // refuses). `Buildings` means every growth source.
-                let targets = if t.stat == TraitStat::Growth {
-                    let sources: Vec<&str> = content
-                        .three_resource
-                        .as_ref()
-                        .map(|r| r.growth.sources.iter().map(|g| g.building.as_str()).collect())
-                        .unwrap_or_default();
+                // refuses). `Buildings` means every growth source. Content
+                // without a `three_resource` block plays only Alloy-only
+                // matches, so its three-resource list is never played and
+                // there are no sources to check it against: it is left as is.
+                let three = content.three_resource.as_ref().filter(|_| t.stat == TraitStat::Growth);
+                let targets = if let Some(r) = three {
+                    let sources: Vec<&str> =
+                        r.growth.sources.iter().map(|g| g.building.as_str()).collect();
                     let grows = |i: &usize| sources.contains(&buildings[*i].id.as_str());
                     if let TraitTarget::Building(id) = &t.applies_to {
                         if !targets.iter().all(grows) {

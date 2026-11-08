@@ -7382,3 +7382,11 @@ what the AC asks, so it stays ticked. **Neither gate reads Pass:**
 
 **Open, the user's call:** more B3 seeds to settle K1, K2 and K3; Verdant's Growth size; Bulwark's pace (a base
 combat stat, so outside AC8).
+
+**R2-1 (critic round 2) — the F4 check refused valid Alloy-only content.** The `three_resource` block in
+`resources.ron` is optional. Load builds every nation's three-resource list even when the block is missing, and
+F4's check then found no growth sources, so it refused Verdant's `Buildings` Growth. The whole content failed to
+load, even for Alloy-only play. The check now runs only when the block is present. Content without the block
+cannot play a three-resource match, so its three-resource list is never played and is left as it was before F4.
+Test: `tests/critic_c3_r2.rs::critic_shipped_nations_load_without_the_optional_three_resource_block`. It panicked
+before the fix and passes after; F4's test still passes.
