@@ -3,24 +3,26 @@
 //! the campaign RNG, in army-id order.
 //!
 //! Each army standing at a city it holds, with at least
-//! `ai.attack_min_units` units:
-//! - marches on the weakest adjacent hostile city (fewest defending units,
-//!   ties broken by the RNG);
-//! - with no hostile neighbour, takes the first road toward the nearest
-//!   hostile city.
+//! `ai.attack_min_units` units, takes the first road toward the nearest
+//! hostile **capital** (by road cost; equal routes broken by the RNG). A
+//! hostile city on the way is assaulted, since the next hop is a march on it.
+//! Aiming at capitals ends wars: taking one absorbs a nation, where trading
+//! outlying cities can go on forever (F-089).
 //!
 //! An army standing at a hostile city (waiting its turn to assault) holds.
 
 use super::{Campaign, Decision};
 
-/// The units holding `city` for its owner: every owner army standing there.
+/// The units holding `city` for its owner: every owner army standing there
+/// (its units and its General), and the city's garrison.
 pub fn defence(c: &Campaign, city: usize) -> u32 {
     let owner = c.cities()[city].owner;
     c.armies()
         .iter()
         .filter(|a| a.nation == owner && a.at() == Some(city))
         .map(|a| a.units.len() as u32 + 1)
-        .sum()
+        .sum::<u32>()
+        + c.cities()[city].garrison.len() as u32
 }
 
 /// Nation `n`'s decisions for this round.
@@ -35,25 +37,7 @@ pub fn decide(c: &mut Campaign, n: usize) -> Vec<Decision> {
         .filter(|&(_, at)| c.cities()[at].owner == n)
         .collect();
     for (id, at) in ready {
-        let neighbours: Vec<usize> = c.campaign().roads_of(at).map(|(_, r)| r.other(at)).collect();
-        let hostile: Vec<usize> = neighbours
-            .iter()
-            .copied()
-            .filter(|&o| c.cities()[o].owner != n)
-            .collect();
-        let to = if hostile.is_empty() {
-            toward_hostile(c, n, at)
-        } else {
-            let weakest = hostile.iter().map(|&o| defence(c, o)).min().expect("not empty");
-            let mut tied: Vec<usize> = hostile
-                .into_iter()
-                .filter(|&o| defence(c, o) == weakest)
-                .collect();
-            tied.sort_unstable();
-            let k = (c.rng().next_u64() % tied.len() as u64) as usize;
-            Some(tied[k])
-        };
-        if let Some(to) = to {
+        if let Some(to) = toward_capital(c, n, at) {
             out.push(Decision::March {
                 army: id,
                 to: c.campaign().cities[to].id.clone(),
@@ -63,19 +47,34 @@ pub fn decide(c: &mut Campaign, n: usize) -> Vec<Decision> {
     out
 }
 
-/// The first city on the cheapest road route from `at` to the nearest city
-/// `n` does not hold (ties to the lower index), if there is one.
-fn toward_hostile(c: &Campaign, n: usize, at: usize) -> Option<usize> {
+/// The first city on a cheapest road route from `at` to the nearest hostile
+/// capital (ties to the lower city index), if one can be reached. Of several
+/// first hops on equally cheap routes, the RNG picks one.
+fn toward_capital(c: &mut Campaign, n: usize, at: usize) -> Option<usize> {
     let dist = c.distances(at);
-    let target = (0..c.cities().len())
-        .filter(|&o| c.cities()[o].owner != n && dist[o] != u32::MAX)
-        .min_by_key(|&o| (dist[o], o))?;
-    // Walk back from the target: the neighbour of `at` on a cheapest route.
+    let target = c
+        .campaign()
+        .capital
+        .iter()
+        .enumerate()
+        .filter(|&(m, _)| m != n && c.nations()[m].alive)
+        .map(|(_, &cap)| cap)
+        .filter(|&cap| c.cities()[cap].owner != n && dist[cap] != u32::MAX)
+        .min_by_key(|&cap| (dist[cap], cap))?;
+    // Walk back from the target: the neighbours of `at` on a cheapest route.
     let back = c.distances(target);
-    c.campaign()
+    let mut hops: Vec<usize> = c
+        .campaign()
         .roads_of(at)
         .map(|(_, r)| (r.other(at), r.cost))
         .filter(|&(o, cost)| cost.saturating_add(back[o]) == dist[target])
         .map(|(o, _)| o)
-        .min()
+        .collect();
+    hops.sort_unstable();
+    hops.dedup();
+    if hops.len() <= 1 {
+        return hops.first().copied();
+    }
+    let k = (c.rng().next_u64() % hops.len() as u64) as usize;
+    Some(hops[k])
 }

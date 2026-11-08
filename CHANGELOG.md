@@ -889,3 +889,10 @@
 - [2026-11-08] Modified: tests/c4_converge.rs — C4 AC8 plan units' army is now an Option
 - [2026-11-08] Created: tests/c4_persist.rs — C4 AC8 survivors, levy, cap and garrison tests
 - [2026-11-08] Modified: FINDINGS.md — F-089 C4 provisional campaign readings
+- [2026-11-08] Modified: src/headless.rs — C4 AC9 MatchSettings.starting_alloy: per-side starting Alloy (default None keeps the content's)
+- [2026-11-08] Modified: src/sim/economy.rs — C4 AC9 Stockpiles::starting_each
+- [2026-11-08] Modified: src/campaign/battle.rs — C4 AC9 battle_settings: MatchSettings from a BattlePlan; plan seed, map side, nation size
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC9 a fought battle draws its seed and map side from the campaign rng
+- [2026-11-08] Modified: src/campaign/ai.rs — C4 AC9 the AI marches on the nearest hostile capital; defence counts the garrison
+- [2026-11-08] Created: tests/c4_settings.rs — C4 AC9 battle settings from campaign state tests
+- [2026-11-08] Modified: FINDINGS.md — F-089 AC9 readings and the AI fix

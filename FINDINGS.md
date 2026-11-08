@@ -7443,3 +7443,23 @@ Every number lives in `assets/data/campaign.ron`.
 - P11. The garrison defends its city, and its survivors stay there. A captured city's garrison is
   lost.
 - P12. Upkeep runs after the battles, in map order.
+
+**The battle a round launches (AC9).**
+- P13. The attacker plays Faction A and the holder Faction B. A fought battle draws its match seed
+  and its map side from the campaign rng; an undefended city draws neither.
+- P14. Each side plays its nation (and so its traits) and its nation's own strategy, on the
+  campaign's economy, under the campaign's battle tick cap.
+- P15. A nation's size reaches the battle through its purse: it starts with
+  `starting_alloy + alloy_per_city x` the cities it holds. `MatchSettings::starting_alloy`
+  (default `None`, which keeps the content's figure for both sides) carries this.
+- P16. Each roster is that side's plan units at their HP, followed by its battle-only workers
+  (`attacker_workers`, `defender_workers`). The holder also fields the city's standing buildings
+  at their HP.
+
+**The campaign AI (AC9 fix).**
+- P17. A ready AI army takes the first road toward the nearest hostile capital, and assaults any
+  hostile city on the way. Before this it marched on the weakest neighbouring city. Once AC9's
+  rng draws changed the stream, `domination_ends_the_campaign` (seed 11) showed the problem: the
+  last two nations traded outlying cities until the round cap, because their armies never met.
+  Aiming at capitals ends wars, since taking one absorbs a nation. `ai::defence` now counts the
+  garrison too.

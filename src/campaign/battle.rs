@@ -2,7 +2,10 @@
 //! ([`BattlePlan`]), what comes back ([`BattleOutcome`]), and who decides it
 //! (a [`Resolver`]).
 
+use crate::headless::{MatchSettings, Orientation};
+use crate::sim::battle::{BattleSetup, Roster};
 use crate::sim::content::Content;
+use crate::sim::spatial::Faction;
 
 use super::content::CampaignContent;
 use super::Campaign;
@@ -44,6 +47,8 @@ pub struct PlanSide {
     /// Their units, army by army in army order, each in roster order; for
     /// the defender, the city's garrison last.
     pub units: Vec<PlanUnit>,
+    /// The cities its nation holds: its size, which sets its purse.
+    pub cities: u32,
 }
 
 impl PlanSide {
@@ -68,6 +73,12 @@ pub struct BattlePlan {
     pub round: u32,
     /// The city fought over.
     pub city: usize,
+    /// The battle's match seed, drawn from the campaign's rng (0 for a
+    /// battle never fought: an undefended city).
+    pub seed: u64,
+    /// The battle is fought on the reflected map (the attacker on the
+    /// right), drawn from the campaign's rng.
+    pub flipped: bool,
     pub attack: PlanSide,
     pub defend: PlanSide,
     /// The city's standing buildings (a destroyed one does not take the
@@ -152,6 +163,7 @@ fn side(c: &Campaign, nation: usize, armies: Vec<u32>) -> PlanSide {
         armies: armies.clone(),
         generals: Vec::new(),
         units: Vec::new(),
+        cities: c.cities_of(nation).len() as u32,
     };
     for id in armies {
         let a = c.army(id).expect("an army in the plan exists");
@@ -191,6 +203,8 @@ pub(crate) fn plan(c: &Campaign, city: usize, attacker: usize) -> BattlePlan {
     BattlePlan {
         round: c.round(),
         city,
+        seed: 0,
+        flipped: false,
         attack: side(c, attacker, attack),
         defend,
         buildings: c.cities()[city]
@@ -205,4 +219,51 @@ pub(crate) fn plan(c: &Campaign, city: usize, attacker: usize) -> BattlePlan {
             })
             .collect(),
     }
+}
+
+/// The match a [`BattlePlan`] is fought as (C4 AC9), built from campaign
+/// state alone. The attacker plays [`Faction::A`] and the holder
+/// [`Faction::B`], on the map side and seed the plan drew. Each side plays
+/// its nation (so its traits) and that nation's strategy, on the campaign's
+/// economy, and starts with `starting_alloy + alloy_per_city x` the cities
+/// it holds. Its roster is its plan units at their HP, then its battle-only
+/// workers; the holder also fields the city's standing buildings at their
+/// HP. The tick cap is the campaign's.
+pub fn battle_settings(content: &Content, campaign: &CampaignContent, plan: &BattlePlan) -> MatchSettings {
+    let rules = &campaign.rules.battle;
+    let nation = |s: &PlanSide| &content.nations[s.nation];
+    let roster = |s: &PlanSide, workers: u32| {
+        let mut r = Roster::default();
+        for u in &s.units {
+            r = r.unit_hp(&content.units[u.def].id, u.hp);
+        }
+        for _ in 0..workers {
+            r = r.unit("worker");
+        }
+        r
+    };
+    let mut defend = roster(&plan.defend, rules.defender_workers);
+    for b in &plan.buildings {
+        defend = defend.building_hp(&content.buildings[b.def].id, b.hp);
+    }
+    let mut setup = BattleSetup::default()
+        .with_roster(Faction::A, roster(&plan.attack, rules.attacker_workers))
+        .with_roster(Faction::B, defend);
+    for (f, s) in [(Faction::A, &plan.attack), (Faction::B, &plan.defend)] {
+        for g in &s.generals {
+            let id = &content.general_at(g.kind).expect("a plan General is a General").id;
+            setup = setup.with_general(f, id);
+        }
+    }
+    let purse = |s: &PlanSide| rules.starting_alloy.saturating_add(rules.alloy_per_city.saturating_mul(s.cities));
+    let (a, d) = (nation(&plan.attack), nation(&plan.defend));
+    MatchSettings::default()
+        .with_seed(plan.seed)
+        .with_strategies(&a.strategy, &d.strategy)
+        .with_nations(Some(&a.id), Some(&d.id))
+        .with_economy(campaign.economy)
+        .with_tick_cap(rules.tick_cap)
+        .with_orientation(if plan.flipped { Orientation::Swapped } else { Orientation::Normal })
+        .with_starting_alloy(purse(&plan.attack), purse(&plan.defend))
+        .with_battle(setup)
 }

@@ -30,7 +30,7 @@ use crate::sim::content::Content;
 use crate::sim::nation::{Defs, NationRules};
 use crate::sim::spatial::{Faction, SplitMix64};
 
-pub use battle::{BattleOutcome, BattlePlan, PlanBuilding, PlanSide, Resolver, Side};
+pub use battle::{battle_settings, BattleOutcome, BattlePlan, PlanBuilding, PlanSide, Resolver, Side};
 pub use content::{CampaignContent, CampaignError, Fnv};
 
 // ---- state -----------------------------------------------------------------
@@ -689,10 +689,13 @@ impl Campaign {
             }) else {
                 continue;
             };
-            let plan = battle::plan(self, city, attacker);
+            let mut plan = battle::plan(self, city, attacker);
             let outcome = if plan.undefended() {
                 BattleOutcome::uncontested(&plan)
             } else {
+                // A fought battle draws its seed and map side (C4 AC9).
+                plan.seed = self.rng.next_u64();
+                plan.flipped = self.rng.next_u64() & 1 == 1;
                 resolver.resolve(&self.content, &self.campaign, &plan)
             };
             let rec = self.apply_outcome(&plan, &outcome);
