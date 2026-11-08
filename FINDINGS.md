@@ -7390,3 +7390,20 @@ load, even for Alloy-only play. The check now runs only when the block is presen
 cannot play a three-resource match, so its three-resource list is never played and is left as it was before F4.
 Test: `tests/critic_c3_r2.rs::critic_shipped_nations_load_without_the_optional_three_resource_block`. It panicked
 before the fix and passes after; F4's test still passes.
+
+## F-088 — C4 starts ahead of B5, by the user's decision (C4)
+
+**Context.** `CAMPAIGN_PLAN.md` gates C1 onward on B5 Go, the human play test, which has not
+run. The user overrode that gate for C1 (2026-11-02), C2 (2026-11-03, F-062) and C3
+(2026-11-04, F-075). On 2026-11-07 the user said "merge after ci, then start c4".
+
+**Decision.** C4 (the campaign core: headless, render-free) starts now, on the same terms as C1
+to C3: B5 still runs when the user can play, and its findings can revise C1 to C4 and later
+milestones. The C4 heading in `CAMPAIGN_PLAN.md` now says "started 2026-11-08, ahead of B5 by
+user decision", and the plan's gate section records the override.
+
+**What this does not change.** C1's open AC (the B5 human re-read) and C2's open AC (the nation
+cross gate, F-074) stay open. Nothing in C4 re-pins a golden: battle, nation and three-resource
+play outside the campaign must stay byte-identical (C4 golden licence). Campaign numbers live in
+a new `assets/data/campaign.ron`, with its own fingerprint, so the battle content's fingerprint
+does not move.

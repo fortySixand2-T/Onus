@@ -871,3 +871,5 @@
 - [2026-11-07] Modified: src/sim/nation.rs — the Growth source check runs only when the content has a three_resource block
 - [2026-11-07] Modified: FINDINGS.md — F-086 R2-1
 - [2026-11-07] Created: tests/critic_c3_r3.rs — critic C3 round 3: three_resource Growth gating cannot be bypassed (regression cover)
+- [2026-11-08] Modified: CAMPAIGN_PLAN.md — C4 started ahead of B5 by user decision: heading and gate override
+- [2026-11-08] Modified: FINDINGS.md — F-088: C4 starts ahead of B5 by the user's decision

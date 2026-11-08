@@ -24,6 +24,8 @@ balanced and fun. B5 needs a human to play, and that hasn't happened yet. So:
   play test, on the same terms as C1 (FINDINGS F-062).
 - **Overridden a third time by the user (2026-11-04): "start c3".** C3 also starts before the
   human play test, on the same terms as C1 and C2 (FINDINGS F-075).
+- **Overridden a fourth time by the user (2026-11-07): "merge after ci, then start c4".** C4
+  also starts before the human play test, on the same terms as C1 to C3 (FINDINGS F-088).
 - ~~**C1 onward waits for B5 Go.**~~ A B5 No-Go sends us back to the battle layer, and C0 is
   revised against what the play test found.
 
@@ -227,7 +229,7 @@ number lives in RON (`resources.ron`'s `three_resource` block, `nations.ron`).
   three-resource economy, and the numbers are recorded in FINDINGS. Economy numbers and trait
   sizes may be tuned in RON (each step recorded); base unit combat stats are not retuned.
 
-## C4 — Campaign core (headless, render-free)
+## C4 — Campaign core (headless, render-free) (started 2026-11-08, ahead of B5 by user decision)
 
 - [ ] `src/campaign/` is a deterministic, seeded, render-free campaign state machine that
   owns its own state hash. It holds the map, the nations and their cities, ownership, rounds,
