@@ -613,7 +613,7 @@ impl CampaignContent {
             h.bytes(format!("{f:?}").as_bytes());
             h.finish()
         };
-        Ok(CampaignContent {
+        Ok(Self {
             economy: f.economy,
             terrain: f.terrain,
             cities: f.cities,

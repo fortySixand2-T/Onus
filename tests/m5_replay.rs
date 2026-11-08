@@ -1056,7 +1056,10 @@ fn the_only_generator_lives_in_the_sim_and_nothing_else_rolls_a_number() {
             .unwrap()
             .to_string_lossy()
             .replace('\\', "/");
-        let in_sim = rel.starts_with("sim/");
+        // The campaign (C4) is the second render-free sim layer: it owns
+        // its own seeded generator and state hash, stepped only in its own
+        // round (F-089). Nothing else may hold one.
+        let in_sim = rel.starts_with("sim/") || rel.starts_with("campaign/");
         let text = std::fs::read_to_string(path).expect("read source");
         for (i, line) in text.lines().enumerate() {
             let code = line.split("//").next().unwrap_or("");
