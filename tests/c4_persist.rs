@@ -218,3 +218,27 @@ fn a_garrison_falls_with_its_city() {
         "the old garrison did not join the conqueror; the city's first levy did"
     );
 }
+
+#[test]
+fn every_unit_stays_within_its_own_nations_pool() {
+    // Everyone's assaults succeed, so cities change hands and nations are
+    // absorbed: no unit ever carries more HP than its holder's pool.
+    for seed in [1, 2, 3, 11] {
+        let cc = CampaignContent::from_ron(&shipped_text(), &content()).expect("loads");
+        let mut c = Campaign::new(content(), cc, seed, None).unwrap();
+        let mut r = |p: &BattlePlan| BattleOutcome::unchanged(p, Some(Side::Attack));
+        while !c.is_over() {
+            c.play_round(&[], &mut r).unwrap();
+            for a in c.armies() {
+                for u in &a.units {
+                    assert!(u.hp <= c.unit_max_hp(a.nation, u.def), "round {}: army {}", c.round(), a.id);
+                }
+            }
+            for (k, city) in c.cities().iter().enumerate() {
+                for u in &city.garrison {
+                    assert!(u.hp <= c.unit_max_hp(city.owner, u.def), "round {}: city {k}", c.round());
+                }
+            }
+        }
+    }
+}

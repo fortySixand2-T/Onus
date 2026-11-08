@@ -896,3 +896,8 @@
 - [2026-11-08] Modified: src/campaign/ai.rs — C4 AC9 the AI marches on the nearest hostile capital; defence counts the garrison
 - [2026-11-08] Created: tests/c4_settings.rs — C4 AC9 battle settings from campaign state tests
 - [2026-11-08] Modified: FINDINGS.md — F-089 AC9 readings and the AI fix
+- [2026-11-08] Created: src/campaign/resolve.rs — C4 AC10 HeadlessResolver: campaign battles played by the headless battle sim
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC10 resolve module and exports
+- [2026-11-08] Created: tests/c4_autoresolve.rs — C4 AC10 auto-resolve tests and the campaign golden
+- [2026-11-08] Modified: tests/c4_persist.rs — C4 every unit stays within its own nation's pool
+- [2026-11-08] Modified: FINDINGS.md — F-089 AC10 readings; Bevy 0.19 entity-bits order

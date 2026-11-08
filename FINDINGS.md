@@ -7463,3 +7463,18 @@ Every number lives in `assets/data/campaign.ron`.
   last two nations traded outlying cities until the round cap, because their armies never met.
   Aiming at capitals ends wars, since taking one absorbs a nation. `ai::defence` now counts the
   garrison too.
+
+**Auto-resolve (AC10).**
+- P18. `HeadlessResolver` plays every battle it is given in the headless battle sim, including a
+  battle the player is in: C4 has no battle screen, so a player's battles are auto-resolved as
+  well until a later milestone hands them to the player. The battle runs until the battle layer
+  decides it or the campaign's tick cap runs out. At the cap the battle is undecided, so the
+  defender holds, and everyone keeps the HP he has at that tick.
+- P19. Survivors are read back by sim id from the battle's own report. A unit the battle trains,
+  and the battle-only workers, are not plan units, so they never join an army.
+- Fact, not a choice. In Bevy 0.19 `Entity::to_bits` *falls* as the entity index rises, so
+  `replay::identify` numbers a fresh world's entities in reverse spawn order. The resolver
+  first matched plan units by ascending sim id, and that read survivors back onto the wrong
+  units (an 80-HP Arclight came back with a Sentinel's 100). The resolver now matches by
+  ascending `Entity::index_u32`, which is spawn order. Nothing else depends on this: replay ids
+  only need to be stable, and they are.

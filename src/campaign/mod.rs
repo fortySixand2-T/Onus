@@ -21,6 +21,7 @@
 pub mod ai;
 pub mod battle;
 pub mod content;
+pub mod resolve;
 
 use std::sync::Arc;
 
@@ -30,6 +31,7 @@ use crate::sim::content::Content;
 use crate::sim::nation::{Defs, NationRules};
 use crate::sim::spatial::{Faction, SplitMix64};
 
+pub use resolve::{resolve_battle, HeadlessResolver};
 pub use battle::{battle_settings, BattleOutcome, BattlePlan, PlanBuilding, PlanSide, Resolver, Side};
 pub use content::{CampaignContent, CampaignError, Fnv};
 
