@@ -111,11 +111,14 @@ fn each_held_city_pays_its_alloy_levy_every_round() {
             })
             .collect();
         let before: Vec<u32> = c.nations().iter().map(|n| n.treasury).collect();
+        let armies: Vec<u32> = c.armies().iter().map(|a| a.id).collect();
         c.play_round(&[], &mut r).unwrap();
         for n in 0..c.nations().len() {
+            // An AI may raise a General (C4 AC5), the one other spend.
+            let raised = c.armies().iter().filter(|a| a.nation == n && !armies.contains(&a.id)).count() as u32;
             assert_eq!(
                 c.nations()[n].treasury,
-                before[n] + paid[n],
+                before[n] + paid[n] - raised * c.campaign().rules.raise_general_cost,
                 "round {round}: {}'s levy",
                 c.content().nations[n].id
             );

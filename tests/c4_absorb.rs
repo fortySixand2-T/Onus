@@ -77,7 +77,8 @@ fn taking_a_capital_gives_the_conqueror_its_general_leading_a_new_army() {
     assert_eq!(c.nations()[h].absorbed, 1);
     let ironspire = c.city_index("ironspire").unwrap();
     let kind = c.campaign().nation_general[forge];
-    let new: Vec<_> = c.armies().iter().filter(|a| !before.contains(&a.id)).collect();
+    // (AI nations raise armies of their own: only House's count here.)
+    let new: Vec<_> = c.armies().iter().filter(|a| a.nation == h && !before.contains(&a.id)).collect();
     assert_eq!(new.len(), 1, "one new army: {new:?}");
     let a = new[0];
     assert_eq!(a.nation, h, "the conqueror's army");

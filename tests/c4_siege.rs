@@ -140,14 +140,18 @@ fn a_destroyed_building_stays_down_until_rebuilt_and_rebuilding_costs_alloy() {
     for _ in 0..40 {
         let before: Vec<u32> = c.cities()[fg].buildings.iter().map(|b| b.hp).collect();
         let t0 = c.nations()[owner].treasury;
+        let armies: Vec<u32> = c.armies().iter().map(|a| a.id).collect();
         let rep = c.play_round(&[], &mut r).unwrap();
+        // The AI may also raise a General (C4 AC5): that is the one other spend.
+        let raised = c.armies().iter().filter(|a| a.nation == owner && !armies.contains(&a.id)).count() as u32;
+        let raise = raised * c.campaign().rules.raise_general_cost;
         assert!(rep.battles.iter().all(|b| b.city != fg), "the fixture leaves Forge Gate alone");
         assert_eq!(c.cities()[fg].owner, owner);
         let levy: u32 = c.cities_of(owner).iter().map(|&k| c.campaign().cities[k].levy.alloy).sum();
         let after: Vec<u32> = c.cities()[fg].buildings.iter().map(|b| b.hp).collect();
         let rebuilt: Vec<usize> = (0..after.len()).filter(|&k| before[k] == 0 && after[k] > 0).collect();
         let paid: u32 = rebuilt.iter().map(|&k| costs[k]).sum();
-        assert_eq!(c.nations()[owner].treasury, t0 + levy - paid, "rebuilding is paid for, and only that");
+        assert_eq!(c.nations()[owner].treasury, t0 + levy - paid - raise, "rebuilding is paid for");
         for &k in &rebuilt {
             let max = c.building_max_hp(owner, c.cities()[fg].buildings[k].def);
             assert_eq!(after[k], repair(&c, owner).min(max), "rebuilt at one repair step");

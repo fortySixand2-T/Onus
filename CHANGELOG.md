@@ -922,3 +922,9 @@
 - [2026-11-08] Created: tests/c4_absorb.rs — C4 AC4 absorbed General tests
 - [2026-11-08] Modified: tests/c4_autoresolve.rs — C4 AC4 campaign golden re-pinned (absorbed armies take the field)
 - [2026-11-08] Modified: FINDINGS.md — F-089 AC4 readings
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC5 Decision::Raise raises a house General at a held city for raise_general_cost
+- [2026-11-08] Modified: src/campaign/ai.rs — C4 AC5 the AI raises a General at its capital when it can pay and has room
+- [2026-11-08] Created: tests/c4_raise.rs — C4 AC5 raised General and own-perks tests
+- [2026-11-08] Modified: tests/c4_absorb.rs, tests/c4_persist.rs, tests/c4_siege.rs — C4 AC5 account for AI raises
+- [2026-11-08] Modified: tests/c4_autoresolve.rs — C4 AC5 campaign golden re-pinned (the AI raises Generals)
+- [2026-11-08] Modified: FINDINGS.md — F-089 AC5 readings

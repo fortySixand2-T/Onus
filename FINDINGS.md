@@ -7530,6 +7530,20 @@ Every number lives in `assets/data/campaign.ron`.
 - The campaign golden re-pinned at AC4 (an absorbed army now takes the field):
   0x900de33b295916e6 -> 0x4e8757b5a5c9847c.
 
+**Raised Generals (AC5).**
+- P28. `Decision::Raise { city }` raises a General of the nation's own house at a city it holds,
+  for `raise_general_cost` treasury Alloy. A city it does not hold, an unknown city, or a
+  treasury short of the cost refuses the round. The General stands at rank 0 at the head of a
+  new, empty army in that city, and the army fills from the levy (P9). The player has no army
+  cap.
+- P29. The campaign AI raises one General per round, at its capital, when it holds the capital,
+  has fewer than `ai.max_armies` armies and can pay. It decides this before its marches.
+- P30. Perks act only on a nation's own armies and cities. A raised or absorbed army plays its
+  nation's traits. A captured city takes its new holder's pools and repair rate (P23, P24), so a
+  Forgeborn city taken by House Vael holds House Vael's building HP, not the Forgeborn's.
+- The campaign golden re-pinned at AC5 (the AI now raises Generals):
+  0x4e8757b5a5c9847c -> 0x1600ef997dbf8728.
+
 ## F-090 — Verdant's three-resource Growth lowered to ×1.10, by the user's instruction (C3 AC8 RON step)
 
 **The user's instruction (2026-11-08): "lower verdant growth to 1.10".** In `assets/data/nations.ron`, Verdant's

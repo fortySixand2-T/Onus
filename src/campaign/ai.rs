@@ -10,6 +10,10 @@
 //! outlying cities can go on forever (F-089).
 //!
 //! An army standing at a hostile city (waiting its turn to assault) holds.
+//!
+//! A nation with fewer than `ai.max_armies` armies that can pay
+//! `raise_general_cost` raises one General at its capital (C4 AC5), before
+//! it marches.
 
 use super::{Campaign, Decision};
 
@@ -28,6 +32,16 @@ pub fn defence(c: &Campaign, city: usize) -> u32 {
 /// Nation `n`'s decisions for this round.
 pub fn decide(c: &mut Campaign, n: usize) -> Vec<Decision> {
     let mut out = Vec::new();
+    let armies = c.armies().iter().filter(|a| a.nation == n).count();
+    let capital = c.campaign().capital[n];
+    if armies < c.campaign().ai.max_armies as usize
+        && c.nations()[n].treasury >= c.campaign().rules.raise_general_cost
+        && c.cities()[capital].owner == n
+    {
+        out.push(Decision::Raise {
+            city: c.campaign().cities[capital].id.clone(),
+        });
+    }
     let min = c.campaign().ai.attack_min_units as usize;
     let ready: Vec<(u32, usize)> = c
         .armies()

@@ -161,6 +161,10 @@ pub enum Decision {
     /// Army `army` (standing at a city) marches the road to the adjacent
     /// city `to` (a `campaign.ron` city id).
     March { army: u32, to: String },
+    /// Raise an extra General of the nation's own house (C4 AC5) at `city`
+    /// (a city it holds), for `raise_general_cost` treasury Alloy: he leads
+    /// a new, empty army standing there.
+    Raise { city: String },
 }
 
 /// How a campaign ended.
@@ -655,6 +659,23 @@ impl Campaign {
                     progress: 0,
                 };
                 a.came_from = from;
+                Ok(())
+            }
+            Decision::Raise { city } => {
+                let at = self
+                    .city_index(city)
+                    .ok_or_else(|| format!("unknown city `{city}`"))?;
+                if self.cities[at].owner != nation {
+                    return Err(format!("`{city}` is not this nation's"));
+                }
+                let cost = self.campaign.rules.raise_general_cost;
+                let t = &mut self.nations[nation].treasury;
+                if *t < cost {
+                    return Err(format!("the treasury holds {t} Alloy; a General costs {cost}"));
+                }
+                *t -= cost;
+                let kind = self.campaign.nation_general[nation];
+                self.spawn_army(nation, kind, Vec::new(), at);
                 Ok(())
             }
         }
