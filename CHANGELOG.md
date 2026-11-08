@@ -870,3 +870,4 @@
 - [2026-11-07] Created: tests/critic_c3_r2.rs — critic C3 round 2: shipped nations load without the optional three_resource block
 - [2026-11-07] Modified: src/sim/nation.rs — the Growth source check runs only when the content has a three_resource block
 - [2026-11-07] Modified: FINDINGS.md — F-086 R2-1
+- [2026-11-07] Created: tests/critic_c3_r3.rs — critic C3 round 3: three_resource Growth gating cannot be bypassed (regression cover)
