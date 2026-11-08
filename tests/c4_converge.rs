@@ -84,8 +84,8 @@ fn armies_arriving_together_fight_one_battle_with_every_general() {
         ]
     );
     assert_eq!(p.attack.units.len(), 8, "every unit of both armies");
-    assert_eq!(p.attack.units.iter().filter(|u| u.army == a).count(), 5);
-    assert_eq!(p.attack.units.iter().filter(|u| u.army == b).count(), 3);
+    assert_eq!(p.attack.units.iter().filter(|u| u.army == Some(a)).count(), 5);
+    assert_eq!(p.attack.units.iter().filter(|u| u.army == Some(b)).count(), 3);
     // The city fell to both, and both stand in it.
     let fg = c.city_index("forge_gate").unwrap();
     for id in [a, b] {

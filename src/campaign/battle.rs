@@ -24,10 +24,11 @@ pub struct PlanGeneral {
     pub kind: usize,
 }
 
-/// A roster unit on the field: whose army it belongs to, its type and HP.
+/// A roster unit on the field: whose army it belongs to (`None`: the city's
+/// garrison), its type and HP.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlanUnit {
-    pub army: u32,
+    pub army: Option<u32>,
     pub def: usize,
     pub hp: u32,
 }
@@ -40,7 +41,8 @@ pub struct PlanSide {
     pub armies: Vec<u32>,
     /// Their Generals, in army order.
     pub generals: Vec<PlanGeneral>,
-    /// Their units, army by army in army order, each in roster order.
+    /// Their units, army by army in army order, each in roster order; for
+    /// the defender, the city's garrison last.
     pub units: Vec<PlanUnit>,
 }
 
@@ -158,7 +160,7 @@ fn side(c: &Campaign, nation: usize, armies: Vec<u32>) -> PlanSide {
             kind: a.general.kind,
         });
         s.units.extend(a.units.iter().map(|u| PlanUnit {
-            army: id,
+            army: Some(id),
             def: u.def,
             hp: u.hp,
         }));
@@ -180,11 +182,17 @@ pub(crate) fn plan(c: &Campaign, city: usize, attacker: usize) -> BattlePlan {
             .collect()
     };
     let attack = here(attacker);
+    let mut defend = side(c, defender, here(defender));
+    defend.units.extend(c.cities()[city].garrison.iter().map(|u| PlanUnit {
+        army: None,
+        def: u.def,
+        hp: u.hp,
+    }));
     BattlePlan {
         round: c.round(),
         city,
         attack: side(c, attacker, attack),
-        defend: side(c, defender, here(defender)),
+        defend,
         buildings: c.cities()[city]
             .buildings
             .iter()

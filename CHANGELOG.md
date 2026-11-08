@@ -884,3 +884,8 @@
 - [2026-11-08] Created: tests/c4_movement.rs — C4 AC6 army movement tests
 - [2026-11-08] Modified: src/campaign/battle.rs — C4 AC7 every attacking army at the city fights: several Generals per side
 - [2026-11-08] Created: tests/c4_converge.rs — C4 AC7 converging armies and aura stacking tests
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC8 survivors persist in their armies; treasury and per-round city levy; garrisons
+- [2026-11-08] Modified: src/campaign/battle.rs — C4 AC8 plan units name their army or the garrison; the garrison defends
+- [2026-11-08] Modified: tests/c4_converge.rs — C4 AC8 plan units' army is now an Option
+- [2026-11-08] Created: tests/c4_persist.rs — C4 AC8 survivors, levy, cap and garrison tests
+- [2026-11-08] Modified: FINDINGS.md — F-089 C4 provisional campaign readings

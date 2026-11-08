@@ -7407,3 +7407,39 @@ cross gate, F-074) stay open. Nothing in C4 re-pins a golden: battle, nation and
 play outside the campaign must stay byte-identical (C4 golden licence). Campaign numbers live in
 a new `assets/data/campaign.ron`, with its own fingerprint, so the battle content's fingerprint
 does not move.
+
+## F-089 — C4 provisional readings of the campaign rules (C4)
+
+`CAMPAIGN_PLAN.md` C4 names the rules but not every detail. Where it is silent, C4 takes the
+simplest reading below. **Each one is provisional:** B5 or a later design pass may revise it.
+Every number lives in `assets/data/campaign.ron`.
+
+**Rounds and battles (AC1, AC7).**
+- P1. A round is: shuffle the turn order (the campaign rng), take each nation's decisions in that
+  order, move every army, fight every battle city by city in map order, pay the upkeep, then check
+  the end.
+- P2. The attacker at a city is the first hostile nation in turn order with an army there. Other
+  hostile nations wait in the city and fight next round. Every army of the attacker in the city
+  fights, so one side can field several Generals.
+- P3. A draw or a timeout means the defender holds. A city with no army, no garrison and no
+  standing building falls without a battle.
+- P4. A failed assault sends the attacker's armies straight back to the city they came from. If
+  that city has been lost, they go to their nation's nearest city by road cost. With no city
+  left, they are disbanded. A captured city's defending armies fall back the same way.
+- P5. Taking a nation's capital absorbs that nation: its other cities pass to the conqueror and
+  its armies are removed.
+- P6. A fallen player has lost the campaign, even in the round the last rival falls.
+
+**Movement (AC6).**
+- P7. An army marches one road at a time and stops at every city. Points left over on arrival are
+  lost. A road's cost is ceil(length × terrain multiplier).
+
+**Persistence and levy (AC8).**
+- P8. A city's levy Alloy goes to its holder's treasury.
+- P9. A city's levy units join the holder's lowest-id army standing in the city that is under
+  `army_cap`. Otherwise they join the city's garrison, which is also capped at `army_cap`. A levy
+  unit beyond both caps is lost.
+- P10. An army standing in a city it holds takes in that city's garrison first.
+- P11. The garrison defends its city, and its survivors stay there. A captured city's garrison is
+  lost.
+- P12. Upkeep runs after the battles, in map order.

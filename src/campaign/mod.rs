@@ -105,6 +105,9 @@ pub struct City {
     /// Its buildings, in `campaign.ron` order (the order a battle places
     /// them).
     pub buildings: Vec<CityBuilding>,
+    /// Levy units waiting in the city for an army (C4 AC8), at most
+    /// `army_cap`. They defend it; they fall with it.
+    pub garrison: Vec<Unit>,
 }
 
 impl City {
@@ -119,6 +122,9 @@ impl City {
 pub struct NationState {
     /// Still in the campaign: it holds its capital.
     pub alive: bool,
+    /// Alloy from its cities' levies (C4 AC8), spent on raising Generals
+    /// and rebuilding.
+    pub treasury: u32,
 }
 
 /// What a nation decides in its turn. The player's are logged
@@ -281,7 +287,10 @@ impl Campaign {
         let nations = content
             .nations
             .iter()
-            .map(|_| NationState { alive: true })
+            .map(|_| NationState {
+                alive: true,
+                treasury: 0,
+            })
             .collect();
         let cities = campaign
             .city_owner
@@ -296,6 +305,7 @@ impl Campaign {
                         hp: tables.building_hp[owner][def],
                     })
                     .collect(),
+                garrison: Vec::new(),
             })
             .collect();
         let mut c = Campaign {
@@ -464,13 +474,17 @@ impl Campaign {
             });
         h.u64(self.nations.len() as u64);
         for n in &self.nations {
-            h.u64(n.alive as u64);
+            h.u64(n.alive as u64).u64(n.treasury as u64);
         }
         h.u64(self.cities.len() as u64);
         for c in &self.cities {
             h.u64(c.owner as u64).u64(c.buildings.len() as u64);
             for b in &c.buildings {
                 h.u64(b.def as u64).u64(b.hp as u64);
+            }
+            h.u64(c.garrison.len() as u64);
+            for u in &c.garrison {
+                h.u64(u.def as u64).u64(u.hp as u64);
             }
         }
         h.u64(self.next_army as u64).u64(self.armies.len() as u64);
@@ -548,6 +562,7 @@ impl Campaign {
         }
         self.movement();
         let battles = self.battles(&order, resolver);
+        self.upkeep();
         self.end_checks();
         let h = self.state_hash();
         self.round_hashes.push(h);
@@ -702,9 +717,12 @@ impl Campaign {
             absorbed: false,
             ticks: outcome.ticks,
         };
+        self.survivors(plan, outcome);
         if outcome.winner == Some(Side::Attack) {
             rec.captured = true;
             self.cities[city].owner = attacker;
+            // A garrison falls with its city.
+            self.cities[city].garrison.clear();
             // The defenders withdraw to their nearest city.
             let defenders: Vec<u32> = plan.defend.armies.clone();
             for id in defenders {
@@ -722,6 +740,77 @@ impl Campaign {
             }
         }
         rec
+    }
+
+    /// Every unit back to where it came from (C4 AC8): an army's survivors
+    /// to the army, the garrison's to the garrison, each with its HP after
+    /// the battle and in its old order; the dead (HP 0) are gone.
+    fn survivors(&mut self, plan: &BattlePlan, outcome: &BattleOutcome) {
+        assert_eq!(outcome.attack.units.len(), plan.attack.units.len(), "outcome per plan unit");
+        assert_eq!(outcome.defend.units.len(), plan.defend.units.len(), "outcome per plan unit");
+        for (side, out) in [(&plan.attack, &outcome.attack), (&plan.defend, &outcome.defend)] {
+            for &id in &side.armies {
+                if let Some(a) = self.armies.iter_mut().find(|a| a.id == id) {
+                    a.units.clear();
+                }
+            }
+            if side.nation == plan.defend.nation {
+                self.cities[plan.city].garrison.clear();
+            }
+            for (u, &hp) in side.units.iter().zip(&out.units) {
+                if hp == 0 {
+                    continue;
+                }
+                let unit = Unit { def: u.def, hp };
+                match u.army {
+                    Some(id) => {
+                        if let Some(a) = self.armies.iter_mut().find(|a| a.id == id) {
+                            a.units.push(unit);
+                        }
+                    }
+                    None => self.cities[plan.city].garrison.push(unit),
+                }
+            }
+        }
+    }
+
+    /// The end of a round (C4 AC8), city by city in map order: each city
+    /// pays its holder its Alloy levy; an army of the holder standing in it
+    /// takes in its garrison; then its levy units join the holder's
+    /// lowest-id army there with room under `army_cap`, or else the
+    /// garrison (capped at `army_cap`; a levy beyond it is lost).
+    fn upkeep(&mut self) {
+        let cap = self.campaign.rules.army_cap as usize;
+        for city in 0..self.cities.len() {
+            let owner = self.cities[city].owner;
+            let alloy = self.campaign.cities[city].levy.alloy;
+            let t = &mut self.nations[owner].treasury;
+            *t = t.saturating_add(alloy);
+            let here: Vec<usize> = (0..self.armies.len())
+                .filter(|&i| self.armies[i].nation == owner && self.armies[i].at() == Some(city))
+                .collect();
+            for &i in &here {
+                while self.armies[i].units.len() < cap && !self.cities[city].garrison.is_empty() {
+                    let u = self.cities[city].garrison.remove(0);
+                    self.armies[i].units.push(u);
+                }
+            }
+            for k in 0..self.campaign.city_levy[city].len() {
+                let def = self.campaign.city_levy[city][k];
+                let unit = Unit {
+                    def,
+                    hp: self.tables.unit_hp[owner][def],
+                };
+                match here.iter().find(|&&i| self.armies[i].units.len() < cap) {
+                    Some(&i) => self.armies[i].units.push(unit),
+                    None => {
+                        if self.cities[city].garrison.len() < cap {
+                            self.cities[city].garrison.push(unit);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Army `id` falls back: to `to` if its nation still holds it, else to
@@ -794,10 +883,11 @@ impl Campaign {
 
     fn end_checks(&mut self) {
         let alive = self.alive();
-        if alive.len() == 1 {
-            self.outcome = Some(CampaignOutcome::Won { nation: alive[0] });
-        } else if self.player.is_some_and(|p| !self.nations[p].alive) {
+        // A fallen player has lost, even in the round the last rival falls.
+        if self.player.is_some_and(|p| !self.nations[p].alive) {
             self.outcome = Some(CampaignOutcome::PlayerLost);
+        } else if alive.len() == 1 {
+            self.outcome = Some(CampaignOutcome::Won { nation: alive[0] });
         } else if self.round >= self.campaign.rules.round_cap {
             self.outcome = Some(CampaignOutcome::Undecided);
         }
