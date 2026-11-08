@@ -31,6 +31,7 @@ use crate::sim::economy::{Building, Carrying, GatherPhase, ProductionQueue, Stoc
 use crate::sim::content::{Content, ContentFingerprint};
 use crate::sim::nation::{self, NationRules};
 use crate::sim::spatial::Faction;
+use crate::sim::three::{self, EconomyMode, ThreeEconomy};
 use crate::sim::victory::MatchState;
 use crate::sim::{
     AttackMoveDest, Attribution, CommandQueue, CommandTick, GatherTarget, MoveTarget, Order,
@@ -514,11 +515,26 @@ pub struct MatchLog {
     /// same bytes it wrote before C2.
     #[serde(default, skip_serializing_if = "no_nations")]
     pub nations: [Option<String>; 2],
+    /// The economy the match played (C3): part of its starting world, like
+    /// its nations. Stamped by the sim itself (`replay::stamp_content`);
+    /// applied by a replay ([`apply_log_economy`]) or refused; refused by
+    /// [`matches_content`](Self::matches_content) when the content cannot play
+    /// it.
+    ///
+    /// `#[serde(default)]` and **not written when Alloy-only**: a pre-C3 log
+    /// reads as Alloy-only, and an Alloy-only match writes the same bytes it
+    /// wrote before C3.
+    #[serde(default, skip_serializing_if = "alloy_only")]
+    pub economy: EconomyMode,
     pub commands: Vec<LoggedCommand>,
 }
 
 fn no_nations(n: &[Option<String>; 2]) -> bool {
     n.iter().all(Option::is_none)
+}
+
+fn alloy_only(e: &EconomyMode) -> bool {
+    e.is_alloy()
 }
 
 impl Default for MatchLog {
@@ -529,6 +545,7 @@ impl Default for MatchLog {
             content: ContentFingerprint::unknown(),
             content_changed: false,
             nations: [None, None],
+            economy: EconomyMode::Alloy,
             commands: Vec::new(),
         }
     }
@@ -688,6 +705,14 @@ impl MatchLog {
             return Err(
                 "log: the content changed while this match was being recorded, so \
                  it describes no single content and matches none"
+                    .to_string(),
+            );
+        }
+        // Before the fingerprint, so the refusal says why: content without the
+        // block cannot play a three-resource match at all.
+        if !self.economy.is_alloy() && content.three_resource.is_none() {
+            return Err(
+                "log: recorded in the three-resource economy, but this content has                  no `three_resource` block to play it with"
                     .to_string(),
             );
         }
@@ -903,6 +928,18 @@ impl CommandLog {
         }
     }
 
+    /// Record the match's economy (C3), as [`stamp_nations`](Self::stamp_nations)
+    /// records its nations: a later stamp that differs poisons the log.
+    pub(crate) fn stamp_economy(&mut self, now: EconomyMode, first: bool) {
+        if self.log.economy == now {
+            return;
+        }
+        self.log.economy = now;
+        if !first {
+            self.log.content_changed = true;
+        }
+    }
+
     pub(crate) fn record_unnameable(&mut self, n: u32) {
         self.unnameable = self.unnameable.saturating_add(n);
     }
@@ -955,6 +992,8 @@ pub struct ReplaySource {
     /// Has [`apply_log_nations`] looked at this log yet? It acts once, on the
     /// first tick the replay is in the world.
     nations_checked: bool,
+    /// Has [`apply_log_economy`] looked at this log yet? Likewise once.
+    economy_checked: bool,
 }
 
 impl ReplaySource {
@@ -973,6 +1012,7 @@ impl ReplaySource {
             unresolved: 0,
             rejection: None,
             nations_checked: false,
+            economy_checked: false,
         }
     }
 
@@ -1029,15 +1069,26 @@ impl ReplaySource {
 /// they are part of the starting world a replay has to rebuild. Compared every
 /// tick (two string compares, no allocation unless they differ), so a nation
 /// installed after the first stamp poisons the log rather than going unrecorded.
+///
+/// And its **economy** (C3), likewise: one compare per tick.
 pub fn stamp_content(
     content: Res<Content>,
     rules: Option<Res<NationRules>>,
+    three: Option<Res<ThreeEconomy>>,
     log: Option<ResMut<CommandLog>>,
 ) {
     let Some(mut log) = log else { return };
+    let first = !log.log().content.is_known();
+    let economy = if three.is_some() {
+        EconomyMode::ThreeResource
+    } else {
+        EconomyMode::Alloy
+    };
+    if log.log().economy != economy {
+        log.stamp_economy(economy, first);
+    }
     let now = nation::ids(&content, rules.as_deref());
     if !log.names_nations(now) {
-        let first = !log.log().content.is_known();
         log.stamp_nations(now, first);
     }
     // The fingerprint is a walk over the whole content, so it is computed when
@@ -1093,6 +1144,73 @@ pub fn record_unplayed(
             |e| ids.id_of(e).unwrap_or(SimId::UNIDENTIFIED),
         );
     }
+}
+
+/// Rebuild the recorded match's economy (C3) before a replay feeds anything,
+/// as [`apply_log_nations`] rebuilds its nations. Runs **first** in the chain
+/// on a replay's first tick: the wells it spawns must exist before
+/// `identify` gives the tick's new entities their ids, as they did in the
+/// recorded world, and the economy before the nations (a nation's traits
+/// depend on it).
+///
+/// - a log that does not belong to this content is refused here;
+/// - the world already plays the log's economy: nothing to do;
+/// - the world is Alloy-only and the match has not started (tick 0): the
+///   economy is installed through [`three::install`], any nations the setup
+///   installed are re-installed under it ([`nation::install`] reads the
+///   economy), and the wells are spawned between the two HQs
+///   ([`three::hq_frame`]) — the paths headless setup and the client use;
+/// - anything else (a three-resource world for an Alloy-only log, or a match
+///   already under way): refused.
+pub fn apply_log_economy(world: &mut World) {
+    let Some(src) = world.get_resource::<ReplaySource>() else {
+        return;
+    };
+    if src.economy_checked || src.rejection.is_some() {
+        return;
+    }
+    let wanted = src.log.economy;
+    let have = three::mode_of(world);
+    let verdict = match src.log.matches_content(world.resource::<Content>()) {
+        Err(why) => Err(why),
+        Ok(()) if have == wanted => Ok(false),
+        Ok(()) if have.is_alloy() && world.resource::<MatchState>().tick() == 0 => Ok(true),
+        Ok(()) => Err(format!(
+            "log: recorded in the {} economy, but this world plays {} at tick {} — a              replay would play a different match, so it is refused rather than run",
+            wanted.label(),
+            have.label(),
+            world.resource::<MatchState>().tick()
+        )),
+    };
+    let verdict = match verdict {
+        Ok(true) => install_economy(world, wanted),
+        Ok(false) => Ok(()),
+        Err(why) => Err(why),
+    };
+    let mut src = world.resource_mut::<ReplaySource>();
+    src.economy_checked = true;
+    if let Err(why) = verdict {
+        src.rejection = Some(why);
+    }
+}
+
+/// [`apply_log_economy`]'s install: the economy, the nations under it, the
+/// wells. The frame is checked first, so a refusal installs nothing.
+fn install_economy(world: &mut World, mode: EconomyMode) -> Result<(), String> {
+    let Some((a, b)) = three::hq_frame(world) else {
+        return Err(
+            "log: recorded in the three-resource economy, but this world has no HQ              pair to lay its ley-wells out between"
+                .to_string(),
+        );
+    };
+    three::install(world, mode).map_err(|e| format!("log: {e}"))?;
+    let names: [Option<String>; 2] = {
+        let content = world.resource::<Content>();
+        nation::ids(content, world.get_resource::<NationRules>()).map(|n| n.map(str::to_string))
+    };
+    nation::install(world, &names).map_err(|e| format!("log: {e}"))?;
+    three::spawn_wells(world, a, b);
+    Ok(())
 }
 
 /// Rebuild the recorded match's nations (C2) before a replay feeds anything.
@@ -1314,6 +1432,10 @@ mod tag {
     /// C2. Each side's nation: present only when a side has one, so a match
     /// with no nation hashes exactly as it did before the tag existed.
     pub const NATIONS: u64 = 25;
+    /// C3: the three-resource banks and economy state (three-resource only).
+    pub const THREE_ECONOMY: u64 = 26;
+    /// C3: a ley-well (three-resource only).
+    pub const LEY_WELL: u64 = 27;
 }
 
 /// A 64-bit digest of one command the sim is holding. Everything about it that
@@ -1702,6 +1824,30 @@ pub fn state_hash(world: &mut World) -> u64 {
             rows.push((slot, tag::NATIONS, i as u64, nation));
         }
     }
+
+    // The three-resource economy (C3), only in a three-resource match: its
+    // two new banks per side, and its own state. The Alloy row above is
+    // unchanged, so an Alloy-only match hashes exactly as before C3.
+    if let Some(three) = world.get_resource::<crate::sim::three::ThreeEconomy>() {
+        let words = three.hash_words();
+        if let Some(stock) = world.get_resource::<Stockpiles>() {
+            for (i, f) in [Faction::A, Faction::B].into_iter().enumerate() {
+                rows.push((
+                    slot,
+                    tag::THREE_ECONOMY,
+                    i as u64,
+                    (stock.biomass(f) as u64) << 32 | stock.aether(f) as u64,
+                ));
+            }
+        }
+        for (i, w) in words.into_iter().enumerate() {
+            rows.push((slot, tag::THREE_ECONOMY, 16 + i as u64, w));
+        }
+    }
+    collect!(&crate::sim::three::LeyWell, |e, c| {
+        let [site, state] = c.hash_words();
+        [row(e, tag::LEY_WELL, site, state)]
+    });
 
     rows.sort_unstable();
 

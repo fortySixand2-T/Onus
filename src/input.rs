@@ -243,7 +243,7 @@ pub fn emit_build_commands(
 }
 
 /// The pre-match nation pick (C2): arrows cycle your nation and the
-/// opponent's, Enter starts. Only ever writes the client-side [`NationPick`];
+/// opponent's, E toggles the economy (C3), Enter starts. Only ever writes the client-side [`NationPick`];
 /// applying it to the match is setup's job ([`crate::setup::start_match`]),
 /// once, before the first tick. Once the match is playing the keys do nothing.
 pub fn pick_nations(
@@ -265,6 +265,9 @@ pub fn pick_nations(
             let side = if opponent { &mut pick.opponent } else { &mut pick.player };
             *side = cycle_nation(*side, n, forward);
         }
+    }
+    if keys.just_pressed(ECONOMY_KEY) {
+        pick.economy = toggle_economy(&content, pick.economy);
     }
     if keys.just_pressed(START_KEY) {
         pick.phase = PickPhase::Chosen;

@@ -550,6 +550,8 @@ fn the_namespace_collision_still_collides_after_the_strategies_rename() {
         let text = match file {
             "units.ron" => text.replace("id: \"gene_vats\"", "id: \"worker\""),
             "strategies.ron" => text.replace("building: \"gene_vats\"", "building: \"worker\""),
+            // C3: the three-resource block's growth source names it too.
+            "resources.ron" => text.replace("building: \"gene_vats\"", "building: \"worker\""),
             _ => text,
         };
         std::fs::write(dir.join(file), text).expect("write");

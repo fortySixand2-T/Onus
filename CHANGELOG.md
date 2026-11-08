@@ -793,3 +793,81 @@
 - [2026-11-03] Modified: assets/data/nations.ron — C2 tuning step 2: Tollmarch GatherTicks 0.95→0.98 (90→88 ticks)
 - [2026-11-03] Modified: FINDINGS.md — F-074 steps 1 and 2: Tollmarch in band at GatherTicks 0.98; House the only nation not passing cross (structural)
 - [2026-11-03] Modified: CAMPAIGN_PLAN.md — C2 AC4 note: the cross reading after tuning, still unticked
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — C3 started ahead of B5 by user decision: heading, gate override, acceptance criteria
+- [2026-11-04] Modified: FINDINGS.md — F-075: C3 starts ahead of B5 by the user's decision
+- [2026-11-04] Created: src/sim/three.rs — C3 three-resource economy module: EconomyMode, Bank, the RON block's types and checks, ThreeEconomy, install, Biomass growth
+- [2026-11-04] Modified: src/sim/economy.rs — Stockpiles gain Biomass and Aether banks (amount/add_in/try_spend_in)
+- [2026-11-04] Modified: src/sim/content.rs — optional `three_resource` block: loaded, validated, fingerprinted only when present
+- [2026-11-04] Modified: src/sim/nation.rs — Defs::growth_milli (1000 until C3 AC4)
+- [2026-11-04] Modified: src/sim/mod.rs — register the `three` module
+- [2026-11-04] Modified: src/sim/replay.rs — state-hash rows for the Biomass/Aether banks and ThreeEconomy, three-resource matches only
+- [2026-11-04] Modified: src/headless.rs — MatchSettings::economy (default Alloy) and with_economy; economy installed before the nations
+- [2026-11-04] Modified: src/lib.rs — three::grow in the sim chain after gather, three-resource matches only
+- [2026-11-04] Modified: assets/data/resources.ron — `three_resource` block: starting banks and Biomass growth sources (HQ floor, Gene-Vats)
+- [2026-11-04] Created: tests/c3_economy.rs — C3 AC1 Biomass tests
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC1 (Biomass)
+- [2026-11-04] Modified: src/sim/three.rs — ley-wells: WellsDef/WellSite, LeyWell, spawn_wells, hq_frame, channel (hold, pause, restart)
+- [2026-11-04] Modified: src/sim/content.rs — fingerprint the wells block
+- [2026-11-04] Modified: src/sim/replay.rs — state-hash rows for each ley-well (tag 27)
+- [2026-11-04] Modified: src/headless.rs — spawn the ley-wells last in a three-resource match
+- [2026-11-04] Modified: src/lib.rs — three::channel in the sim chain after grow
+- [2026-11-04] Modified: assets/data/resources.ron — wells: hold radius, rate, three point-symmetric sites
+- [2026-11-04] Modified: tests/c3_economy.rs — C3 AC2 ley-well tests
+- [2026-11-04] Modified: FINDINGS.md — F-076: the three-resource economy as an opt-in mode; Biomass and Aether rules
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC2 (Aether)
+- [2026-11-04] Modified: src/sim/nation.rs — Defs carries the economy mode; Defs::unit_price (Alloy-only: mvp_alloy_cost in Alloy; three-resource: brief cost in its bank)
+- [2026-11-04] Modified: src/sim/economy.rs — enqueue_unit_with charges the unit's price in its bank
+- [2026-11-04] Modified: src/sim/mod.rs — apply_commands prices units by the match's economy mode
+- [2026-11-04] Modified: tests/c3_economy.rs — C3 AC3 unit price tests
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC3 (unit prices)
+- [2026-11-04] Modified: src/sim/nation.rs — three_resource_traits list per nation; Cost/Growth/AlloyYield stats; build_in/resolve_in by economy mode; mode load errors; growth/yield tables
+- [2026-11-04] Modified: src/sim/economy.rs — gather mints a nation's AlloyYield bonus in three-resource mode
+- [2026-11-04] Modified: src/sim/three.rs — ThreeEconomy accumulates the per-side yield remainder (hashed)
+- [2026-11-04] Modified: src/sim/content.rs — fingerprint a nation's three-resource traits when present
+- [2026-11-04] Modified: src/headless.rs — resolve nations in the match's economy mode
+- [2026-11-04] Modified: assets/data/nations.ron — each nation's brief lean as three_resource_traits; schema note
+- [2026-11-04] Modified: tests/c3_economy.rs — C3 AC4 lean tests
+- [2026-11-04] Modified: FINDINGS.md — F-077 two trait lists, one per economy
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC4 (real leans)
+- [2026-11-04] Modified: src/sim/ai.rs — three-resource AI: per-bank budgets, sticky keeper/guard well detachments, Keep/Guard actions
+- [2026-11-04] Modified: src/sim/three.rs — ThreeAiDef (keepers, guards) in the three_resource block
+- [2026-11-04] Modified: src/sim/content.rs — fingerprint the AI detachment sizes
+- [2026-11-04] Modified: assets/data/resources.ron — three_resource.ai detachment sizes
+- [2026-11-04] Created: tests/c3_ai.rs — C3 AC5 AI tests
+- [2026-11-04] Modified: tests/m4c_ai.rs — exhaustive match covers the new AiAction variants
+- [2026-11-04] Modified: FINDINGS.md — F-078 three-resource AI
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC5 (AI)
+- [2026-11-04] Modified: src/sim/replay.rs — MatchLog records its economy; apply_log_economy installs or refuses it
+- [2026-11-04] Modified: src/lib.rs — apply_log_economy first in the sim chain under replay
+- [2026-11-04] Modified: src/headless.rs — wells framed by the two HQs (hq_frame)
+- [2026-11-04] Created: tests/c3_golden.rs — C3 AC7 golden licence and economy replay tests
+- [2026-11-04] Modified: tests/m5_replay.rs — content-edit fixture renames gene_vats in resources.ron too
+- [2026-11-04] Modified: tests/critic_b1_ac3.rs — namespace fixture renames gene_vats in resources.ron too
+- [2026-11-04] Modified: tests/critic_m5.rs — shared-id fixture renames Arclight's aether cost with the resource
+- [2026-11-04] Modified: FINDINGS.md — F-079 economy in the match log
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC7 (golden licence)
+- [2026-11-04] Modified: src/client.rs — economy pick, well colours, three-bank and price text
+- [2026-11-04] Modified: src/input.rs — E toggles the pick's economy
+- [2026-11-04] Modified: src/setup.rs — start_match installs the economy, nations, then wells
+- [2026-11-04] Modified: src/ui.rs — panel shows three banks and bank-tagged prices; wells drawn by holder
+- [2026-11-04] Modified: src/lib.rs — register show_wells and draw_well_rings
+- [2026-11-04] Created: tests/c3_client.rs — C3 AC6 client tests
+- [2026-11-04] Modified: FINDINGS.md — F-080 client and Mac checks
+- [2026-11-04] Modified: CAMPAIGN_PLAN.md — tick C3 AC6 (client)
+- [2026-11-07] Created: tests/critic_c3.rs — the C3 critic's eight tests (guard replacement, Growth refusal, wells, Biomass, replay, determinism)
+- [2026-11-07] Modified: src/sim/nation.rs — a Growth trait acts only on growth sources; one on a non-source is refused at load
+- [2026-11-07] Modified: tests/c3_economy.rs — Growth acts only on growth sources
+- [2026-11-07] Modified: FINDINGS.md — F-086 critic C3 round 1 fixes (F3, F4)
+- [2026-11-07] Modified: assets/data/resources.ron — three_resource.ai.on_well_fraction (0.5, the old hardcoded half)
+- [2026-11-07] Modified: src/sim/three.rs — ThreeAiDef.on_well_fraction, validated in (0, 1]
+- [2026-11-07] Modified: src/sim/content.rs — fingerprint hashes on_well_fraction
+- [2026-11-07] Modified: src/sim/ai.rs — Posts' on-well distance read from RON, not / 2.0
+- [2026-11-07] Modified: tests/c3_ai.rs — on_well_fraction is validated, fingerprinted and ships as one half
+- [2026-11-07] Modified: FINDINGS.md — F-086 F5
+- [2026-11-07] Modified: assets/data/strategies.ron — every mass probe carries three_resource (worker_target: 9), so the probes stay identical (critic F1)
+- [2026-11-07] Modified: FINDINGS.md — F-086 F1: equal probes, both variants read on the full B3 gate
+- [2026-11-07] Modified: FINDINGS.md — F-087 C3 AC8 reading of record (B3 and C2 cross, 3 seeds, shipped settings)
+- [2026-11-07] Created: tests/critic_c3_r2.rs — critic C3 round 2: shipped nations load without the optional three_resource block
+- [2026-11-07] Modified: src/sim/nation.rs — the Growth source check runs only when the content has a three_resource block
+- [2026-11-07] Modified: FINDINGS.md — F-086 R2-1
+- [2026-11-07] Created: tests/critic_c3_r3.rs — critic C3 round 3: three_resource Growth gating cannot be bypassed (regression cover)

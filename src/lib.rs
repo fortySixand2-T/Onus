@@ -97,6 +97,8 @@ pub fn build_app() -> App {
                 ui::update_options_panel,
                 ui::report_rates,
                 ui::draw_nation_marks,
+                ui::show_wells,
+                ui::draw_well_rings,
             ),
         );
     add_nation_pick(&mut app);
@@ -196,6 +198,12 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
                 // half-claim swept here therefore reaches none of them. Any new
                 // reader of the claim belongs after this system — see F-008.
                 sim::economy::repair_gather_claims,
+                // A replay's starting economy (C3), before `identify`: the
+                // ley-wells it spawns must be numbered on tick 0, as they were
+                // in the recorded world. Replay-only, a no-op after its first
+                // tick, and after the sweep like every replay system (F-008).
+                sim::replay::apply_log_economy
+                    .run_if(resource_exists::<sim::replay::ReplaySource>),
                 // Every thing in the world carries the sim's own stable id, so
                 // the command log and the state hash address entities by
                 // something that does not move when the app's configuration
@@ -227,6 +235,13 @@ pub fn add_sim_systems(app: &mut App, schedule: impl ScheduleLabel) {
                 sim::battle::withdraw.run_if(resource_exists::<sim::battle::BattleState>),
                 sim::economy::production,
                 sim::economy::gather,
+                // The three-resource economy (C3): Biomass grows. Only in a
+                // three-resource match; an Alloy-only one has no
+                // `ThreeEconomy`, so this never runs there.
+                sim::three::grow.run_if(resource_exists::<sim::three::ThreeEconomy>),
+                // ...and the held ley-wells channel Aether, from the positions
+                // the tick's fighting starts at.
+                sim::three::channel.run_if(resource_exists::<sim::three::ThreeEconomy>),
                 // A campaign battle's auras (C1): this tick's bonuses, from the
                 // positions the fighting starts at. Battle-only.
                 sim::battle::auras.run_if(resource_exists::<sim::battle::AuraField>),

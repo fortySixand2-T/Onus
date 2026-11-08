@@ -33,4 +33,51 @@
         gather_range: 40.0,
         deposit_range: 48.0,
     ),
+
+    // SCHEMA NOTE (C3): the three-resource economy, opt-in per match
+    // (MatchSettings::economy, the client's pick). An Alloy-only match never
+    // reads this block. In a three-resource match units are paid in their
+    // `cost` resource (units.ron) and buildings stay priced in Alloy.
+    //   starting_biomass / starting_aether — each side's banks at match start
+    //   growth — Biomass (Grown): every `interval_ticks` ticks each standing
+    //     source building grows `per_interval` Biomass for its side, up to the
+    //     side's storage cap, the sum of its standing sources' `storage`.
+    three_resource: (
+        starting_biomass: 100,
+        starting_aether: 0,
+        growth: (
+            interval_ticks: 40,   // a landing every 2/3 s at 60 Hz (F-085: x1.5 pace)
+            sources: [
+                (building: "hq",        per_interval: 1, storage: 200),   // a floor every side has
+                (building: "gene_vats", per_interval: 2, storage: 250),   // build Vats to grow more
+            ],
+        ),
+        //   wells — Aether (Channeled): ley-wells placed relative to the two HQs,
+        //     `along` the line from side A's HQ to side B's (0..1) and `side`
+        //     world units across it (left of A->B). Keep the layout
+        //     point-symmetric ((along, side) and (1 - along, -side)) so neither
+        //     side has the better map. A side holds a well while one of its
+        //     units or buildings is within `hold_radius` and no enemy's is; a
+        //     held well banks `per_interval` Aether every `interval_ticks` of
+        //     holding (paused while empty or contested, restarted when the
+        //     holder changes).
+        wells: (
+            hold_radius: 110.0,
+            interval_ticks: 40,
+            per_interval: 2,
+            sites: [
+                (along: 0.2, side: -220.0),   // side A's home well
+                (along: 0.8, side: 220.0),    // side B's home well
+                (along: 0.5, side: 0.0),      // the contested middle
+            ],
+        ),
+        //   ai — the scripted AI's well detachments: `keepers` gatherers kept
+        //     standing on its home well (the well nearest its HQ), `guards`
+        //     fighters sent to contest the nearest other well that is not the
+        //     enemy's home (the middle), and back to the home well while an
+        //     enemy is on it. Both are taken from its lowest-entity units.
+        //     A keeper or guard within `on_well_fraction` of `hold_radius` of its
+        //     well is on it and gets no new order (in (0, 1]).
+        ai: (keepers: 1, guards: 2, on_well_fraction: 0.5),
+    ),
 )

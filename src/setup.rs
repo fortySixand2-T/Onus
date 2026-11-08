@@ -176,7 +176,7 @@ fn spawn_unit(
         .id()
 }
 
-/// Apply the player's nation pick to the match (C2): once, when Enter has been
+/// Apply the player's nation pick (C2) and economy pick (C3) to the match: once, when Enter has been
 /// pressed and before the first tick. The nations go in through the sim's own
 /// setup function (`sim::nation::install`, the one a headless match uses), the
 /// opponent's commander is given its nation's personality, and the tick gate
@@ -187,7 +187,14 @@ pub fn start_match(world: &mut World) {
     let content = world.resource::<Content>().clone();
     let id = |k: Option<usize>| k.and_then(|k| content.nations.get(k)).map(|n| n.id.clone());
     let names = [id(pick.player), id(pick.opponent)];
+    // The economy first (C3): a nation's traits depend on it. The pick only
+    // offers what the content can play.
+    crate::sim::three::install(world, pick.economy).expect("the pick offers only playable economies");
     crate::sim::nation::install(world, &names).expect("the pick names only loaded nations");
+    // The ley-wells last, framed by the two HQs, as a headless match lays them.
+    if let Some((a, b)) = crate::sim::three::hq_frame(world) {
+        crate::sim::three::spawn_wells(world, a, b);
+    }
     if let Some(nation) = pick.opponent.and_then(|k| content.nations.get(k)) {
         let ai = AiCommanders::matchup(&content, MATCH_SEED, &[(Faction::B, &nation.strategy)])
             .expect("the loader checked every nation's strategy");

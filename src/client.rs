@@ -8,6 +8,8 @@ use bevy::prelude::*;
 
 use crate::sim::content::Content;
 use crate::sim::spatial::Faction;
+use crate::sim::economy::Stockpiles;
+use crate::sim::three::{Bank, EconomyMode, WellState};
 use crate::sim::{MatchOutcome, UnitKind};
 
 // ---- presentation / interaction tunables -----------------------------------
@@ -114,6 +116,9 @@ pub const NATION_NEXT_KEY: KeyCode = KeyCode::ArrowRight;
 pub const OPPONENT_PREV_KEY: KeyCode = KeyCode::ArrowDown;
 pub const OPPONENT_NEXT_KEY: KeyCode = KeyCode::ArrowUp;
 pub const START_KEY: KeyCode = KeyCode::Enter;
+/// The pick's economy toggle (C3): Alloy only, or three resources. Offered
+/// only when the content has a `three_resource` block.
+pub const ECONOMY_KEY: KeyCode = KeyCode::KeyE;
 
 /// What a side with no nation is called on screen.
 pub const NO_NATION: &str = "No nation";
@@ -135,6 +140,8 @@ pub enum PickPhase {
 pub struct NationPick {
     pub player: Option<usize>,
     pub opponent: Option<usize>,
+    /// The economy the match will play (C3). Alloy only by default.
+    pub economy: EconomyMode,
     pub phase: PickPhase,
 }
 
@@ -146,6 +153,7 @@ impl NationPick {
         Self {
             player: (n > 0).then_some(0),
             opponent: (n > 1).then_some(1),
+            economy: EconomyMode::Alloy,
             phase: PickPhase::Picking,
         }
     }
@@ -190,14 +198,87 @@ pub fn nation_label_text(content: &Content, faction: Faction, nation: Option<usi
 
 /// The pick screen's text.
 pub fn picker_text(content: &Content, pick: &NationPick) -> String {
+    // The economy line only when there is a choice to make (C3).
+    let economy = if content.three_resource.is_some() {
+        format!("[E] Economy: {}\n", pick.economy.label())
+    } else {
+        String::new()
+    };
     format!(
         "Choose your nation\n\
          [Left/Right] You: {}\n\
          [Down/Up] Opponent: {}\n\
+         {economy}\
          [Enter] Start the match",
         nation_name(content, pick.player),
         nation_name(content, pick.opponent),
     )
+}
+
+/// The economy the pick's toggle moves to: the other one, when the content
+/// can play it; Alloy only otherwise.
+pub fn toggle_economy(content: &Content, current: EconomyMode) -> EconomyMode {
+    match current {
+        EconomyMode::Alloy if content.three_resource.is_some() => EconomyMode::ThreeResource,
+        _ => EconomyMode::Alloy,
+    }
+}
+
+// ---- the three-resource economy (C3) -------------------------------------------
+
+/// A ley-well nobody stands on.
+pub const WELL_COLOR: Color = Color::srgb(0.62, 0.42, 0.95);
+/// A ley-well both sides stand on.
+pub const WELL_CONTESTED_COLOR: Color = Color::srgb(0.95, 0.95, 0.95);
+pub const WELL_SIZE: f32 = 30.0;
+/// A held well's colour for a side with no nation: you blue, the opponent red
+/// (a side with a nation wears its nation's colour).
+pub const SIDE_COLORS: [Color; 2] = [Color::srgb(0.25, 0.55, 0.95), Color::srgb(0.90, 0.30, 0.25)];
+
+/// The colour a ley-well is drawn in: neutral when empty, its holder's when
+/// held (the holder's nation colour, else its side colour), white when
+/// contested. Pure: a function of sim state.
+pub fn well_color(
+    content: &Content,
+    rules: Option<&crate::sim::nation::NationRules>,
+    state: WellState,
+) -> Color {
+    match state {
+        WellState::Empty => WELL_COLOR,
+        WellState::Contested => WELL_CONTESTED_COLOR,
+        WellState::Held(f) => match rules.and_then(|r| r.nation_of(f)) {
+            Some(n) => nation_color(content, Some(n)),
+            None => SIDE_COLORS[if f == Faction::A { 0 } else { 1 }],
+        },
+    }
+}
+
+/// The panel's bank line: `Alloy: n` in an Alloy-only match (as before C3),
+/// all three banks in a three-resource one.
+pub fn banks_text(stock: &Stockpiles, faction: Faction, three: bool) -> String {
+    if !three {
+        return format!("Alloy: {}", stock.alloy(faction));
+    }
+    format!(
+        "Alloy: {}   Biomass: {}   Aether: {}",
+        stock.alloy(faction),
+        stock.biomass(faction),
+        stock.aether(faction)
+    )
+}
+
+/// A price as the panel shows it: the bare number in Alloy only (as before
+/// C3), the number and its bank in a three-resource match.
+pub fn price_text(bank: Bank, amount: u32, three: bool) -> String {
+    if !three {
+        return amount.to_string();
+    }
+    let name = match bank {
+        Bank::Alloy => "Alloy",
+        Bank::Biomass => "Biomass",
+        Bank::Aether => "Aether",
+    };
+    format!("{amount} {name}")
 }
 
 /// Run condition: the match has been started. True when there is no pick at

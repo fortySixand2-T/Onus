@@ -11,6 +11,11 @@
 //! faction [`Stockpiles`]. So at every tick
 //! `stockpile + carried + still-in-deposit` is invariant.
 //!
+//! The one exception is a three-resource match (C3) whose nation has an
+//! `AlloyYield` trait ("richer mines"): its deposits bank a per-mille bonus on
+//! top of the load, minted at the stockpile and accounted in
+//! [`crate::sim::three::ThreeEconomy`]. Alloy-only matches never mint.
+//!
 //! ## Determinism
 //! No wall-clock and no hash maps: stockpiles are a fixed-size array indexed by
 //! faction, definitions are looked up by index into the stable RON order, and
@@ -25,6 +30,7 @@ use std::collections::VecDeque;
 use crate::sim::content::Content;
 use crate::sim::nation::{Defs, NationRules};
 use crate::sim::spatial::Faction;
+use crate::sim::three::{Bank, ThreeEconomy};
 use crate::sim::{GatherTarget, MoveTarget, Position, ResourceNode};
 
 // ---- stockpiles ------------------------------------------------------------
@@ -38,9 +44,15 @@ fn faction_slot(f: Faction) -> usize {
 
 /// Banked Alloy per faction. A fixed-size array (not a map) so iteration order
 /// can never influence a sim outcome.
+///
+/// C3 adds a Biomass and an Aether bank per faction. They stay at 0 in an
+/// Alloy-only match (nothing ever adds to them there), and they are hashed
+/// only in a three-resource match ([`crate::sim::three`]).
 #[derive(Resource, Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Stockpiles {
     alloy: [u32; 2],
+    biomass: [u32; 2],
+    aether: [u32; 2],
 }
 
 impl Stockpiles {
@@ -48,11 +60,61 @@ impl Stockpiles {
     pub fn starting(amount: u32) -> Self {
         Self {
             alloy: [amount, amount],
+            ..Default::default()
         }
     }
 
     pub fn alloy(&self, f: Faction) -> u32 {
         self.alloy[faction_slot(f)]
+    }
+
+    /// Banked Biomass (C3; 0 in an Alloy-only match).
+    pub fn biomass(&self, f: Faction) -> u32 {
+        self.biomass[faction_slot(f)]
+    }
+
+    /// Banked Aether (C3; 0 in an Alloy-only match).
+    pub fn aether(&self, f: Faction) -> u32 {
+        self.aether[faction_slot(f)]
+    }
+
+    fn bank_mut(&mut self, f: Faction, bank: Bank) -> &mut u32 {
+        let s = faction_slot(f);
+        match bank {
+            Bank::Alloy => &mut self.alloy[s],
+            Bank::Biomass => &mut self.biomass[s],
+            Bank::Aether => &mut self.aether[s],
+        }
+    }
+
+    /// What `f` holds in `bank`.
+    pub fn amount(&self, f: Faction, bank: Bank) -> u32 {
+        match bank {
+            Bank::Alloy => self.alloy(f),
+            Bank::Biomass => self.biomass(f),
+            Bank::Aether => self.aether(f),
+        }
+    }
+
+    /// [`Stockpiles::add`] into any bank: returns the amount accepted.
+    #[must_use]
+    pub fn add_in(&mut self, f: Faction, bank: Bank, amount: u32) -> u32 {
+        let slot = self.bank_mut(f, bank);
+        let accepted = amount.min(u32::MAX - *slot);
+        *slot += accepted;
+        accepted
+    }
+
+    /// [`Stockpiles::try_spend`] from any bank: all or nothing.
+    #[must_use]
+    pub fn try_spend_in(&mut self, f: Faction, bank: Bank, amount: u32) -> bool {
+        let slot = self.bank_mut(f, bank);
+        if *slot >= amount {
+            *slot -= amount;
+            true
+        } else {
+            false
+        }
     }
 
     /// Bank as much of `amount` as the counter can actually hold and return the
@@ -266,12 +328,14 @@ fn nearest_dropoff(
 /// Drive every gathering worker one tick through walk → harvest → return →
 /// deposit. Runs in `FixedUpdate` before [`crate::sim::movement`] so the
 /// `MoveTarget` it sets is followed on the same tick.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub fn gather(
     content: Res<Content>,
     // The match's nations (C2): each side's carry and harvest time.
     nations: Option<Res<NationRules>>,
     mut stock: ResMut<Stockpiles>,
+    // The three-resource economy (C3), if this match plays it: the yield bonus.
+    mut three: Option<ResMut<ThreeEconomy>>,
     mut nodes: Query<(&Position, &mut ResourceNode)>,
     buildings: Query<(Entity, &Position, &Building, &Faction)>,
     // `Carrying` is optional here on purpose: the query must *see* every entity
@@ -386,6 +450,12 @@ pub fn gather(
                     // Only what the stockpile accepts leaves the worker's hands.
                     let accepted = stock.add(faction, carrying.0);
                     carrying.0 -= accepted;
+                    if let Some(three) = three.as_deref_mut() {
+                        let milli = defs.yield_milli(faction, def_idx.0);
+                        let bonus = three.yield_bonus(faction, accepted, milli);
+                        // A full stockpile simply refuses the bonus.
+                        let _ = stock.add(faction, bonus);
+                    }
                     if carrying.0 > 0 {
                         // A full stockpile took only part of the load; the rest
                         // stays in hand and the worker waits here with it.
@@ -467,8 +537,8 @@ pub fn enqueue_unit(
 }
 
 /// [`enqueue_unit`] at the price and training time of `faction`'s own
-/// definitions (C2). What a building can train is the content's, never a
-/// trait's.
+/// definitions (C2), in the bank the match's economy prices it in (C3). What
+/// a building can train is the content's, never a trait's.
 pub fn enqueue_unit_with(
     defs: Defs,
     stock: &mut Stockpiles,
@@ -477,13 +547,17 @@ pub fn enqueue_unit_with(
     queue: &mut ProductionQueue,
     unit: usize,
 ) -> bool {
-    let Some(def) = defs.roster_unit(faction, unit) else {
+    let (Some(def), Some((bank, price))) =
+        (defs.roster_unit(faction, unit), defs.unit_price(faction, unit))
+    else {
         return false;
     };
     if !defs.content.produces(building_def, unit) {
         return false;
     }
-    if !stock.try_spend(faction, def.mvp_alloy_cost) {
+    // Alloy-only: `mvp_alloy_cost` in Alloy. Three-resource (C3): the brief
+    // `cost`, in its own resource's bank. Either way, all or nothing.
+    if !stock.try_spend_in(faction, bank, price) {
         return false;
     }
     queue.items.push_back(QueuedUnit {

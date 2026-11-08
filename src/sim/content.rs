@@ -175,6 +175,52 @@ pub struct StrategyDef {
     /// wave order is a load error, so no strategy can play a wave order nobody
     /// chose.
     pub wave_order: WaveOrder,
+    /// Three-resource only (C3, F-084): what this script plays differently
+    /// when the match runs the three-resource economy. Absent for every
+    /// strategy before it, and never read in an Alloy-only match, so Alloy-only
+    /// play (and every pin on it) is unchanged.
+    #[serde(default)]
+    pub three_resource: Option<ThreeResourceScript>,
+}
+
+/// A strategy's three-resource overrides (C3, F-084). Each field left out
+/// keeps the strategy's own value.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ThreeResourceScript {
+    #[serde(default)]
+    pub worker_target: Option<u32>,
+    #[serde(default)]
+    pub barracks: Option<Vec<BarracksOpening>>,
+}
+
+impl StrategyDef {
+    /// The workers it keeps mining in a match on the given economy.
+    pub fn worker_target_in(&self, three: bool) -> u32 {
+        match &self.three_resource {
+            Some(o) if three => o.worker_target.unwrap_or(self.worker_target),
+            _ => self.worker_target,
+        }
+    }
+
+    /// Its tech openings in a match on the given economy.
+    pub fn barracks_in(&self, three: bool) -> &[BarracksOpening] {
+        match &self.three_resource {
+            Some(ThreeResourceScript { barracks: Some(b), .. }) if three => b,
+            _ => &self.barracks,
+        }
+    }
+
+    /// The script as a three-resource match plays it, if it differs: the one
+    /// `validate` also checks, so an override is held to every rule the
+    /// strategy itself is.
+    pub fn as_three_resource(&self) -> Option<StrategyDef> {
+        self.three_resource.as_ref()?;
+        let mut s = self.clone();
+        s.worker_target = self.worker_target_in(true);
+        s.barracks = self.barracks_in(true).to_vec();
+        s.three_resource = None;
+        Some(s)
+    }
 }
 
 /// Which order an AI attack wave is sent on (B4, F-048). Content, not code:
@@ -526,6 +572,9 @@ struct ResourcesFile {
     resources: Vec<ResourceDef>,
     mvp_active: Vec<String>,
     mvp_economy: EconomyDef,
+    /// C3: optional, so content without it loads (and fingerprints) as before.
+    #[serde(default)]
+    three_resource: Option<crate::sim::three::ThreeResourceDef>,
 }
 
 // ---- the loaded content ----------------------------------------------------
@@ -562,6 +611,10 @@ pub struct Content {
     /// The nations (C2), in RON order, from the optional `nations.ron`. Empty
     /// in content with no nations: then no match can name one.
     pub nations: Vec<crate::sim::nation::NationDef>,
+    /// The three-resource economy's numbers (C3), from `resources.ron`'s
+    /// optional `three_resource` block. `None`: the content can only play
+    /// Alloy-only matches.
+    pub three_resource: Option<crate::sim::three::ThreeResourceDef>,
 }
 
 // ---- content fingerprint ----------------------------------------------------
@@ -687,6 +740,22 @@ impl Fnv {
     }
 }
 
+/// One nation trait, into the fingerprint (C2's form, shared by both lists).
+fn hash_trait(h: &mut Fnv, t: &crate::sim::nation::TraitDef) {
+    use crate::sim::nation::TraitTarget as T;
+    match &t.applies_to {
+        T::Unit(id) => h.u64(0).str(id),
+        T::Barracks(id) => h.u64(1).str(id),
+        T::Workers => h.u64(2),
+        T::CombatUnits => h.u64(3),
+        T::Building(id) => h.u64(4).str(id),
+        T::Buildings => h.u64(5),
+    };
+    h.u64(t.stat as u64);
+    h.bool(t.add.is_some()).u64(t.add.unwrap_or(0) as i64 as u64);
+    h.bool(t.mul.is_some()).u32(t.mul_milli());
+}
+
 /// Why content failed to load. Carries the offending path/message so a startup
 /// failure is diagnosable without a debugger.
 #[derive(Debug)]
@@ -781,6 +850,7 @@ impl Content {
                 attack_spread: 0.0,
                 queue_depth: 0,
                 wave_order: WaveOrder::Move,
+                three_resource: None,
             },
             resources: resources_file.resources,
             mvp_active: resources_file.mvp_active,
@@ -789,6 +859,7 @@ impl Content {
             battle: units_file.mvp_battle,
             general_ai: units_file.mvp_general_ai,
             nations,
+            three_resource: resources_file.three_resource,
         };
         content.synthesise_general_units();
         content.validate()?;
@@ -1197,7 +1268,14 @@ impl Content {
         if self.strategies.is_empty() {
             return bad("strategies: the set is empty".to_string());
         }
-        for s in &self.strategies {
+        // Each strategy, and (C3, F-084) the script its three-resource
+        // overrides make of it: an override is held to the same rules.
+        let checked: Vec<StrategyDef> = self
+            .strategies
+            .iter()
+            .flat_map(|s| std::iter::once(s.clone()).chain(s.as_three_resource()))
+            .collect();
+        for s in &checked {
             let who = &s.id;
             if s.think_interval_ticks == 0 {
                 return bad(format!("strategy `{who}` think_interval_ticks must be positive"));
@@ -1324,6 +1402,9 @@ impl Content {
         {
             return bad("mvp_economy ranges must be finite and positive".to_string());
         }
+        // The three-resource block (C3), before the nations: their traits are
+        // checked against it.
+        crate::sim::three::validate(self).map_err(|msg| ContentError::Invalid { msg })?;
         // The nations (C2), last: their traits are checked against the rest.
         crate::sim::nation::validate(self).map_err(|msg| ContentError::Invalid { msg })?;
         Ok(())
@@ -1414,6 +1495,23 @@ impl Content {
             for item in &s.army {
                 h.str(&item.unit).u32(item.count);
             }
+            // C3 (F-084): hashed only when present, so content without an
+            // override fingerprints exactly as it did before the field existed.
+            if let Some(o) = &s.three_resource {
+                h.str("three_resource");
+                h.u32(o.worker_target.map_or(0, |w| w + 1));
+                match &o.barracks {
+                    None => {
+                        h.u64(0);
+                    }
+                    Some(b) => {
+                        h.u64(b.len() as u64 + 1);
+                        for x in b {
+                            h.str(&x.building).u32(x.at_tick).f32(x.offset);
+                        }
+                    }
+                }
+            }
         }
         // The default is part of the content: the same set with a different
         // default plays a different match.
@@ -1493,18 +1591,16 @@ impl Content {
                 h.str(&n.general).str(&n.strategy);
                 h.u64(n.traits.len() as u64);
                 for t in &n.traits {
-                    use crate::sim::nation::TraitTarget as T;
-                    match &t.applies_to {
-                        T::Unit(id) => h.u64(0).str(id),
-                        T::Barracks(id) => h.u64(1).str(id),
-                        T::Workers => h.u64(2),
-                        T::CombatUnits => h.u64(3),
-                        T::Building(id) => h.u64(4).str(id),
-                        T::Buildings => h.u64(5),
-                    };
-                    h.u64(t.stat as u64);
-                    h.bool(t.add.is_some()).u64(t.add.unwrap_or(0) as i64 as u64);
-                    h.bool(t.mul.is_some()).u32(t.mul_milli());
+                    hash_trait(&mut h, t);
+                }
+                // C3: mixed in only when present, so a nation without a
+                // three-resource list hashes as it did before C3.
+                if !n.three_resource_traits.is_empty() {
+                    h.str("three_resource_traits")
+                        .u64(n.three_resource_traits.len() as u64);
+                    for t in &n.three_resource_traits {
+                        hash_trait(&mut h, t);
+                    }
                 }
                 // Mixed in only when present, so a nation without one hashes
                 // as it did before the trait kind existed.
@@ -1520,6 +1616,30 @@ impl Content {
                     }
                 }
             }
+        }
+
+        // C3: the three-resource block, mixed in only when present (as C1's
+        // and C2's sections are), so content without it fingerprints exactly
+        // as before C3.
+        if let Some(t) = &self.three_resource {
+            h.str("three_resource")
+                .u32(t.starting_biomass)
+                .u32(t.starting_aether);
+            h.str("growth")
+                .u32(t.growth.interval_ticks)
+                .u64(t.growth.sources.len() as u64);
+            for g in &t.growth.sources {
+                h.str(&g.building).u32(g.per_interval).u32(g.storage);
+            }
+            h.str("wells")
+                .f32(t.wells.hold_radius)
+                .u32(t.wells.interval_ticks)
+                .u32(t.wells.per_interval)
+                .u64(t.wells.sites.len() as u64);
+            for site in &t.wells.sites {
+                h.f32(site.along).f32(site.side);
+            }
+            h.str("ai").u32(t.ai.keepers).u32(t.ai.guards).f32(t.ai.on_well_fraction);
         }
 
         let ids = |all: &[String]| {

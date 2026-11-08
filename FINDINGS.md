@@ -6721,3 +6721,672 @@ Matrix rows: house 40/40/38/38/45. Forgeborn 60/51/49/58/58. Verdant 60/49/48/48
   baseline. **AC4 stays unticked.** Two things are needed, and both are the user's decision:
   - a cross probe that lets a mixed-army trait act, or a cross-only perk for House;
   - a pentagon criterion that is not held hostage by the baseline sen>rip link.
+
+## F-075 — C3 starts ahead of B5, by the user's decision (C3)
+
+**Context.** `CAMPAIGN_PLAN.md` gates C1 onward on B5 Go, the human play test, which has not
+run. The user overrode that gate for C1 on 2026-11-02 (F-052 onward) and for C2 on 2026-11-03
+(F-062). On 2026-11-04 the user said "start c3".
+
+**Decision.** C3 (the three-resource economy: Biomass grown, Aether channelled) starts now, on
+the same terms as C1 and C2: B5 still runs when the user can play, and its findings can revise
+C1, C2, C3 and later milestones. The C3 heading in `CAMPAIGN_PLAN.md` now says "started
+2026-11-04, ahead of B5 by user decision", the plan's gate section records the override, and
+C3's acceptance criteria are written down as checkboxes.
+
+The three-resource economy is opt-in (`MatchSettings`, the client's pick), like nations and
+battles. The default stays Alloy-only.
+
+**What this does not change.** C1's open AC (the B5 human re-read) and C2's open AC (the nation
+cross gate, F-074) stay open. Nothing in C3 re-pins a golden: the Alloy-only default must
+reproduce today's results exactly (C3 golden licence). The Alloy-only stand-in traits keep
+working in Alloy-only mode.
+
+## F-076 — The three-resource economy is a mode a match opts into (C3 AC1, AC2)
+
+**Context.** C3 adds Biomass (grown) and Aether (channelled) beside Alloy. The golden licence says
+the default match must reproduce today's pinned hashes exactly, with no re-pin.
+
+**Decision.**
+- **A mode, not a content switch.** `EconomyMode { Alloy (default), ThreeResource }` is a field
+  of `MatchSettings`, like `nations` and `battle`. The numbers live in an optional
+  `three_resource` block in `resources.ron`. They are mixed into the content fingerprint only
+  when the block is present, as C1's and C2's sections are.
+- **The resource is the mode.** `three::install` inserts a `ThreeEconomy` resource, and every
+  three-resource system (`grow`, `channel`) runs with `run_if(resource_exists::<ThreeEconomy>)`.
+  It is installed before the nations, because a nation's traits depend on the mode (AC4).
+- **The banks.** `Stockpiles` gains a Biomass and an Aether array per faction. The Alloy
+  `STOCKPILES` state-hash row is untouched. The new banks, the economy's tick and its growth
+  remainders are hashed under a new tag (26), and each well under another (27), only when
+  `ThreeEconomy` exists. An Alloy-only match therefore emits exactly the rows it emitted
+  before C3.
+- **Wells spawn last.** Entity order is part of a match (F-011). The wells are spawned after
+  everything else in setup (after a battle's layer too), and only in three-resource mode.
+- **Biomass.** Every `growth.interval_ticks` (60), each standing source building grows its
+  `per_interval` for its side: the HQ 1 (a floor), each Gene-Vats 2. Growth stops at the
+  side's storage cap, the sum of its sources' `storage` (HQ 200, Vats 250). Growth is summed in
+  per-mille, so a nation's growth factor (AC4) never rounds per building. Starting banks are
+  Biomass 100 and Aether 0.
+- **Aether.** Three ley-wells at RON sites in the frame of the two HQs: `along` the line from
+  A's HQ to B's, and `side` units across it. A home well each at (0.2, -220) and (0.8, 220),
+  and the contested middle at (0.5, 0). The layout is point-symmetric, so both orientations of
+  one map get the same wells, and the same RON lays the wells out on the client's map
+  (different HQ positions) too. "Held" means at least one of the side's units or buildings is
+  within `hold_radius` (110) and no enemy unit or building is. A held well banks 2 Aether per
+  60 ticks of holding. Progress pauses while the well is empty or contested, and restarts from
+  zero when the holder changes.
+
+**What this does not change.** Alloy-only play: no resource is inserted, no system runs, no
+row is hashed, no entity is spawned. `c1_golden`, `c2_golden` and `critic_b35_ac0` pass
+unchanged.
+
+## F-077 — Each nation has two trait lists, one per economy (C3 AC4)
+
+**Context.** C2's traits are Alloy-only stand-ins for the brief's domain leans (F-063 onward).
+C3 must play the real leans in a three-resource match without changing a single Alloy-only
+outcome.
+
+**Decision.**
+- **Two lists.** `NationDef.traits` stays the Alloy-only list. A new optional
+  `three_resource_traits` is played **instead of** it in a three-resource match.
+  `SideRules::build_in(content, nation, mode)` and `NationRules::resolve_in(.., mode)` pick the
+  list. `build` and `resolve` are the Alloy-only ones, as before. `nation::install` reads the
+  world's mode, so the economy is installed first.
+- **Three new stats**, three-resource only, all `mul`:
+  - `Cost`: a unit's brief `cost`, in its own resource.
+  - `Growth`: a growth source's Biomass, kept as a per-building per-mille table and summed per
+    side before rounding (F-076).
+  - `AlloyYield` (>= 1, gatherers only): the Alloy a deposited load banks. The bonus is
+    accumulated per-mille per side in `ThreeEconomy` and minted at the stockpile. It is
+    hashed with the economy's other remainders, and a full stockpile refuses it. This is the
+    one place Alloy is minted rather than moved, and only in a three-resource match.
+- **A trait that cannot act is a load error.** The three new stats in `traits` are refused
+  ("acts only in the three-resource economy"). `AlloyCost` on units in `three_resource_traits`
+  is refused too ("Alloy-only": a unit's Alloy price is not charged there). `AlloyCost` on
+  buildings is allowed in both, since buildings are priced in Alloy in both. The loader builds
+  every nation in both modes.
+- **The shipped leans** (`nations.ron`; magnitudes are subject to the AC8 gate):
+  - House Vael: none (Synthesis plays in both).
+  - Forgeborn: Foundry units `Cost` 0.95, buildings `BuildingHp` 1.15.
+  - Verdant: buildings `Growth` 1.15, Gene-Vats units `TrainTicks` 0.90.
+  - Aetherkin: Aether Spire units `Cost` 0.90, Arclight `AttackRange` +12.
+  - Tollmarch: workers `AlloyYield` 1.10, `GatherTicks` 0.98.
+  - Ashen Reach: buildings `BuildingHp` 1.30.
+- **Fingerprint.** A nation's three-resource list is mixed in only when it is non-empty, so
+  content without one fingerprints as before.
+
+**What this does not change.** Alloy-only play resolves the same list it did in C2, so the
+goldens, `c2_nations` and the nation gate inputs are unchanged.
+
+## F-078 — The AI in the three-resource economy: per-bank budgets and sticky well detachments (C3 AC5)
+
+**Context.** In a three-resource match the scripted AI must pay each unit in its own resource,
+hold its home well and contest the middle one. Alloy-only AI traces must stay unchanged.
+
+**Decision.**
+- **Per-bank budgets.** A decision's budget is per bank (Alloy, Biomass, Aether). A unit is
+  priced through `Defs::unit_price`: Alloy in an Alloy-only match, its own resource in a
+  three-resource one. Buildings are always Alloy. The opening reservation (B4, F-041) is Alloy
+  held for a barracks, so it holds back only Alloy-priced units. In Alloy-only every unit is
+  Alloy-priced, so the commander decides number for number as before. The Gene-Vats come from
+  the script's openings, as every barracks does.
+- **Detachments from RON.** `three_resource.ai: (keepers: 1, guards: 2)`.
+  - **Keepers.** Gatherers kept standing on the home well, which is the well nearest the HQ.
+    They are out of mining and out of the `worker_target` count, so the economy replaces them.
+  - **Guards.** Fighters (never a General) sent to the nearest well that is neither home nor
+    the enemy's home: the middle. They go back to the home well while an enemy is on it, which
+    means it is contested or held by the enemy. A keeper standing there turns an enemy's take
+    into a contest. Guards are out of the attack waves. They move by attack-move, so they fight
+    on the way.
+  - A unit within `hold_radius / 2` of its well, or already ordered there, is not re-ordered.
+- **Sticky, not "lowest entity".** In Bevy 0.19 `Entity::to_bits` does not order by spawn: the
+  newest entity sorts first. Picking "the lowest-bits worker" every decision therefore relieved
+  the keeper each time a worker was trained. That was 4 keepers in 2400 ticks, each walking
+  out while the last walked back. The detachments are now commander state (`AiCommander.keepers`
+  and `.guards`). A member stays until it dies or stops fitting, and vacancies are filled in
+  the stable entity order. This is deterministic and not hashed; the AI is not replayed, its
+  orders are.
+- **Trace.** Two new `AiAction`s, `Keep { unit, well }` and `Guard { well, force }`. They are
+  emitted only in a three-resource match.
+
+**What this does not change.** Alloy-only: no wells, so there are no posts and every unit is
+Alloy-priced. `b1_matchup`'s journal pins, `m4c_ai`, `critic_m4c`, `c1_ai`, the goldens and
+`c2_nations` all pass unchanged.
+
+## F-079 — A match log records its economy, and a replay applies it or refuses (C3 AC7)
+
+**Context.** The golden licence: the Alloy-only default reproduces today's pinned results, with
+no re-pin, and a match log carries its economy so a replay can play it back or refuse it.
+
+**Decision.**
+- **The log field is optional.** `MatchLog.economy: EconomyMode`, `#[serde(default)]`, and it is
+  skipped when Alloy only. An Alloy-only log is byte for byte what it was before C3, and a
+  pre-C3 log (no field) reads as Alloy only. The sim stamps it the way it stamps the nations
+  (`stamp_content`): from whether `ThreeEconomy` exists on the first stamp. A later difference
+  marks the log `content_changed`.
+- **Content check.** `matches_content` refuses a three-resource log against content without
+  a `three_resource` block, before the fingerprint check, with a message that names the
+  economy. The fingerprint already covers the block when it is present (F-076).
+- **The replay applies the economy at tick 0, before `identify`.** `replay::apply_log_economy`
+  runs right after the gather-claim sweep, where every replay system sits (F-008, pinned by
+  `critic_m5`), and before `identify` and `apply_log_nations`. The wells are entities and must
+  exist when `identify` numbers the field on tick 0 (F-011). In an
+  Alloy-set-up world at tick 0 it installs the economy (`three::install`), re-installs the
+  nations so their three-resource lists apply, and spawns the wells framed by the two HQs
+  (`three::hq_frame`). That is the same layout a headless three-resource match gets, since
+  `headless` now frames its wells by `hq_frame` too, falling back to the bases when a side has
+  no HQ.
+- **Refusals.** A log of the other economy than the world plays is refused when the world is
+  three-resource and the log is Alloy only, and also when the match is already under way
+  (tick > 0). Nothing of a refused log is fed (cursor 0), and nothing is installed.
+
+**Fixture fixes (the full debug suite found them; not pins).**
+- `m5_replay` and `critic_b1_ac3` rename `gene_vats` in `units.ron`. Since AC1,
+  `resources.ron`'s growth sources also name it, so both fixtures now rename that line too.
+- `critic_m5`'s shared-id fixture renames the resource `aether` to `worker`, on the grounds
+  that nothing resolves `aether`. Since AC3, Arclight's `cost` resolves it (load-checked when
+  the `three_resource` block is present), so the fixture renames that reference too. The
+  collision is now tested at a reference site as well.
+
+**Golden status.** No pin moved: c1_golden, c2_golden, critic_b35_ac0, b1_matchup's journal pins,
+m4c, c1_ai, c2_nations, m5_replay, critic_m6, p2_log_writer and b4_attack_move all pass unchanged.
+`tests/c3_golden.rs` adds that an Alloy-only match plays identically with the three-resource
+content and without it (state hash per tick, AI journal and outcome, skirmish and nations).
+
+## F-080 — The client picks the economy, shows the three banks and draws the wells (C3 AC6)
+
+**Decision. Kept thin.**
+- **The pick.** `NationPick.economy` defaults to Alloy only. `E` (`ECONOMY_KEY`) toggles it on
+  the pick screen. The screen shows an `[E] Economy: ...` line only when the content has a
+  `three_resource` block, and without one the toggle stays on Alloy only. Like the nations,
+  it is client state until Enter.
+- **The start.** `start_match` hands the choice to the sim's own setup functions, in the order
+  a headless match uses: `three::install`, then `nation::install` (so the nations get their
+  three-resource lists), then `three::spawn_wells` framed by `three::hq_frame`, last. All of
+  it runs before the first tick, and the tick gate is still shut. No order and no input reach
+  the sim.
+- **The panel.** The bank line reads `Alloy: n` in an Alloy-only match, as before, and
+  `Alloy: a   Biomass: b   Aether: c` in a three-resource one. Training prices come from
+  `Defs::unit_price`, so they are what the player's nation pays and in which bank. Alloy only
+  shows the bare number as before (`(90)`); three-resource shows it with its bank (`(40 Biomass)`).
+- **The wells.** `ui::show_wells` (Update) gives each well a sprite the first time it sees it.
+  After that it sets the sprite's colour from the sim's `WellState` through `client::well_color`:
+  - empty: violet;
+  - held: the holder's nation colour, or its side colour (you blue, the opponent red) when the
+    side has no nation;
+  - contested: white.
+
+  `ui::draw_well_rings` draws the `hold_radius` in the same colour (gizmos). Both read the sim
+  and write nothing back.
+
+**Tests.** `tests/c3_client.rs`, headless under `MinimalPlugins` through the shipped `setup`,
+pick systems and sim chain:
+- the toggle, and content without the block;
+- an Alloy start is today's match (no economy, no wells, today's bank line);
+- a three-resource start installs the banks, the nations' three-resource tables and one
+  well per site at its framed position;
+- the panel's three banks and a Ripper priced in Biomass;
+- every well's sprite colour follows its state, and the palette is four distinct colours;
+- a well turns A's colour when an A unit stands on it, and contested when a B unit joins.
+
+**Human checks on the Mac (`cargo run`). The box cannot show a window.**
+1. The pick screen shows `[E] Economy: Alloy only`, and E flips it to `Three resources` and back.
+2. With Alloy only, the match looks and plays as before: no wells, and the panel shows only `Alloy:`.
+3. With three resources, three violet well squares sit along and across the line between the
+   HQs, each with a ring of its hold radius.
+4. Walk a unit onto a well: the square and ring take your nation's colour, and Aether climbs
+   in the panel. The opponent's keeper turns its home well its colour. When both sides stand on
+   one, it turns white.
+5. The bank line `Alloy / Biomass / Aether` fits in the panel. Biomass grows on its own and
+   stops at the cap.
+6. Select a Gene-Vats or an Aether Spire: the train line prices Rippers in Biomass and Arclights
+   in Aether, and the colours tell the sides and the empty and contested states apart.
+
+## F-081 — The B3 and C2 gates re-read on the three-resource economy (C3 AC8)
+
+**Decision.** `BatchSettings.economy` (default `EconomyMode::Alloy`, so every batch before C3 is
+unchanged) is handed to every match of `run_batch` and `run_fixtures`. The gates are then read
+on `EconomyMode::ThreeResource` by the `--ignored` measurements in `tests/c3_gate.rs`. These are
+readings, not pins. No RON was tuned in this step. Run on the cloud container (4 cores), release.
+
+**Tests.** `tests/c3_gate.rs`: a batch is Alloy only unless it names the economy, and each record
+is the match its settings name, played for real in either economy (and the two economies differ,
+because Rippers cost Biomass). A nation batch plays the economy it names. Both pass.
+
+**B3 kill gate on three resources** (the five mass probes, 2 seeds, 100 matches, 13 timeouts, 1443 s).
+
+| | value | 95% interval | status |
+|---|---|---|---|
+| K1 mass_bulwark | 50.0% | [27.3, 72.7] | undetermined |
+| K1 mass_sentinel | 75.0% | [53.8, 93.4] | undetermined |
+| K1 mass_ripper | 25.0% | [5.2, 47.7] | pass |
+| K1 mass_ravager | 75.0% | [53.8, 93.4] | undetermined |
+| K1 mass_arclight | 25.0% | [6.6, 46.2] | pass |
+| K2 slot A | 54.5% (n 11) | [24.6, 81.5] | undetermined |
+| K2 left base | 27.3% | [8.2, 61.1] | undetermined |
+| K3 decided median | 28363 ticks (7:53) | | |
+| K3 timeouts | **13%** | | **FAIL** |
+| K3 band share (5–8 min) | 43.7% | [32.1, 56.0] | undetermined |
+| K3 below / beyond band | 8% / 54% | | reported |
+
+Row vs column (win %, timeouts, mean of the probe's own unit trained A v B):
+bulwark 75 t0 28v25 | 0 16v20 | 100 t2 27v99 | 100 20v29 | 0 9v13.
+sentinel 100 21v18 | -- t4 32v32 | 100 12v21 | 0 12v14 | 100 15v13.
+ripper 0 t2 87v24 | 0 21v12 | 33 t1 72v72 | 0 39v20 | 100 17v7.
+ravager 0 32v21 | 100 15v12 | 100 19v37 | -- t4 51v51 | 100 21v13.
+arclight 100 14v9 | 0 12v15 | 0 7v17 | 0 14v21 | 50 18v17.
+
+- **No probe is dominant.** K1 is undetermined only because 2 seeds give 20 matches per probe. The
+  intervals are wide and none sits above the 65% line.
+- **Matches are much longer.** The three-resource economy moves the median into the 5–8 minute band
+  (54% now run beyond it). This is the direction the skirmish K3 wanted. The cost is timeouts: 13%,
+  and they are concentrated in the mirrors (sentinel/sentinel 4 of 4, ravager/ravager 4 of 4) and in
+  Ripper cells. Ripper armies are slow to grow on passive Biomass: the ripper mirror trains 72 a side
+  and still times out in 1 of 3.
+- **Ripper falls from the Alloy-only top to 25%.** Ripper is now paid in storage-capped Biomass,
+  so its mass is throttled. Arclight is paid in Aether from contested wells and reads 25% as well.
+  Sentinel and Ravager lead at 75%. Ravager is also Biomass-paid, so the Biomass price alone
+  does not explain Ripper's fall; it loses its old prey cells (0% v bulwark, sentinel, ravager).
+- **Status: not yet a pass.** The K3 timeout rate is the one hard Fail. More seeds would settle
+  K1 and K2. The tuning levers are RON (Biomass `per_interval` and storage, well `per_interval`),
+  and no base combat stat needs to move.
+
+**C2 nation cross gate on three resources** (every ordered pair of nations, the five mass probes,
+**1 seed** to fit the cloud session, 300 matches, **104 timeouts**, 5299 s). Strength: **undetermined**.
+
+| nation | strength | 95% interval | reading |
+|---|---|---|---|
+| house | 30.2% | [15.9, 45.6] | undetermined |
+| forgeborn | 50.1% | [34.7, 65.5] | undetermined |
+| verdant | 64.7% | [51.4, 77.3] | undetermined |
+| aetherkin | 52.0% | [36.5, 67.5] | undetermined |
+| tollmarch | 69.7% | [56.1, 82.3] | undetermined |
+| ashen_reach | 33.4% | [18.6, 49.0] | undetermined |
+
+Row vs column win %: house 30/25/30/21/44. Forgeborn 70/38/50/23/70. Verdant 75/62/62/50/73.
+Aetherkin 70/50/38/36/67. Tollmarch 79/77/50/64/79. Ashen Reach 56/30/27/33/21.
+
+- **Nothing reads Fail, nothing reads Pass.** One seed leaves every interval about 30 points wide.
+  Three seeds (as F-074) would be needed to settle it.
+- **Tollmarch is again the strongest** (69.7%). Its three-resource trait is richer Alloy mines plus
+  faster gathering, and in the mono-probe mirrors a steady income edge decides the race, as in
+  F-074. **Verdant** (Biomass grows faster) is next at 64.7%. House (30.2%) and Ashen Reach (33.4%)
+  are low, for the same reasons F-074 gives: Synthesis never acts on the mono-probe cross axis, and
+  building HP barely matters when two mass armies meet in the field.
+- **A third of matches time out** (104 of 300), against 69–112 of 900 under Alloy only (F-074). This
+  matches the B3 K3 reading above: the three-resource economy is slower, and any match-length or nation
+  verdict is noisy until it is tuned.
+
+**AC8 status.** The AC asks for the gates to be re-run on the three-resource economy and recorded. That
+is done, so the AC is ticked. **Neither gate reads Pass.** The next step is the user's call. The candidates are:
+- more seeds;
+- RON tuning of the economy numbers (Biomass `per_interval`/storage, well `per_interval`) to bring the
+  timeouts down;
+- then Tollmarch's and Verdant's three-resource trait sizes, each step recorded as F-074 did.
+
+Base unit combat stats are not to be retuned.
+
+## F-082 — Three-resource tuning step 1: Biomass ×2 tried and reverted (C3 AC8)
+
+**Probe.** A scratch harness (not shipped) played the three probes whose cells timed out most in
+F-081: `mass_sentinel`, `mass_ripper` and `mass_ravager`, against each other. 1 seed, 18 matches
+per variant, tick cap 54000 (15:00).
+
+| variant | timeouts | decided median |
+|---|---|---|
+| as shipped (HQ 1/200, Vats 2/250, guards 2) | 5 | 24065 |
+| **Biomass ×2 (HQ 2/400, Vats 4/500)** | **3** | 19719 |
+| guards 0 | 1 | 31191 |
+| Biomass ×2 and guards 0 | 1 | 29043 |
+
+- Doubling Biomass stops the Ravager mirror timing out (2 of 2 → 0 of 2). It speeds up decided
+  matches.
+- **Almost every timeout left is the Sentinel mirror.** Sentinels are Alloy-paid, and the Sentinel
+  mirror times out in **2 of 4** even under Alloy only (seeds 0–1). So that stall is the
+  mirror itself, made worse by the well detachments. It is not something a Biomass number moves.
+- Dropping the guards removes it, but then the AI never contests the middle well. That is AI
+  behaviour (C3 AC5), not economy, so it is not shipped here.
+
+**Tried:** `resources.ron` `three_resource.growth` set to HQ `per_interval` 1 → 2, `storage` 200 → 400,
+and Gene-Vats `per_interval` 2 → 4, `storage` 250 → 500.
+
+**Full B3 re-read on Biomass ×2** (5 mass probes, 2 seeds, 100 matches, 1136 s): **worse. Reverted.**
+
+| | as shipped (F-081) | Biomass ×2 |
+|---|---|---|
+| timeouts | 13% FAIL | **14% FAIL** |
+| K1 | undetermined | **FAIL: mass_ravager 100.0% [81.1, 100.0]** |
+| K1 others | bulwark 50, sentinel 75, ripper 25, arclight 25 | bulwark 25, sentinel 75, ripper 25, arclight 25 |
+| K2 | undetermined | undetermined (slot A 53.3%, n 15) |
+| K3 median / band share | 28363 / 43.7% | 20639 / 34.9% FAIL (25% below, 45% beyond) |
+
+- The timeouts did not fall. They moved:
+  - the Ravager mirror now ends (0 of 4 time out);
+  - Bulwark v Ravager now stalls (3 of 4: a Ravager army of about 94 cannot crack a Bulwark wall);
+  - the Sentinel mirror still times out 4 of 4.
+- Doubled Biomass makes Ravager, the Biomass-paid heavy, dominant. The 18-match probe missed this
+  because it left Bulwark and Arclight out. A probe that leaves out a predator cannot judge a K1 move.
+- One Biomass-cost probe step on its own is not a lever on the timeouts. Ripper and Ravager are both
+  Biomass-paid, so Biomass speed shifts the pentagon before it shortens matches.
+- Also tried, on the 3-probe harness on top of Biomass ×2: AI `guards` 2 → 1. Result: 4 timeouts of 18, no better.
+
+**Shipped: nothing.** The RON is back to F-081's values. The finding for the user:
+- **The dominant timeout is the Sentinel mirror.** It stalls 2 of 4 even under Alloy only, and 4 of 4
+  with the well detachments.
+- Only AI `guards: 0` removed it (1 timeout of 18). That changes C3 AC5's behaviour (the AI contests the
+  middle well), so it is the user's call, not an economy tune.
+
+## F-083 — Why the Sentinel mirror stalls; a fallen guard is replaced once per wave (C3 AC5, AC8)
+
+**Diagnosis.** A per-1800-tick trace of `mass_sentinel` v `mass_sentinel` (scratch harness, not shipped)
+shows two separate stalls.
+
+- **Three-resource only: the army never forms.** Each fighter column sat at **0–1 Sentinels for the
+  whole match**. `Posts::assign` refilled a fallen guard from the army at once. In a mirror, each new
+  Sentinel was detailed as a guard, walked alone to the middle well, and traded 1-for-1 with the
+  enemy's replacement. The journal shows `TrainArmy`, then `Guard {force: 1}` about 930 ticks later,
+  forever. The detachment of 2 never even filled. Neither side reached `attack_at_army` (8), and
+  **no wave was ever sent**. Production equalled the deaths at the well, so the match ran to the cap
+  (4 of 4 in F-081). This is a C3 AC5 AI bug, not an economy number. It is why no Biomass setting
+  helped (F-082) and why `guards: 0` "fixed" it.
+- **Alloy only too: the mirror itself.** The income is small: 6 workers, about one Sentinel per
+  1800 ticks. Both sides reach 8 on the same tick, the waves meet in mid-field and annihilate
+  (7 lost each), and the cycle repeats every ~13000 ticks. Only `attack_spread` jitter ever breaks
+  the symmetry. Later Foundries (150 Alloy each, at 18000 and 24000) add no rate to an
+  income-bound side, so they only slow the next wave. Pre-C3, not touched here. That is why
+  Alloy-only Sentinel mirrors also time out 2 of 4.
+
+**Decision.** `AiCommander.guard_recruits` counts the guards detailed since the last wave. At most
+`ai.guards` are recruited per wave cycle (the start counts as one), and the count resets when a
+wave goes out. Standing guards keep their post. So the AI still contests the middle well (AC5), and
+the losses there are bounded at one detachment per wave instead of the whole army. No RON changed.
+Alloy-only play is untouched, because posts are empty there.
+
+**Tried first and dropped:** "fill a guard only from the surplus beyond `attack_at_army`". A wave goes
+the moment the army reaches its size, so there is almost never a surplus. The AI stopped guarding
+(it broke both of `c3_ai`'s guard tests).
+
+**Tests.** `tests/c3_ai.rs::a_mirror_still_sends_its_waves_while_guards_fall_at_the_middle_well`:
+in a three-resource Sentinel mirror, both sides still guard the middle well and send an attack wave
+within 20000 ticks. It fails before the fix (no wave) and passes after. Every other C3 suite passes.
+With the fix, the traced seed is decided at about 48000 ticks: B destroys A's HQ.
+
+**Full B3 re-read with the fix** (5 mass probes, 2 seeds, 100 matches, 1095 s, RON as F-081).
+
+| | F-081 (before) | F-083 (guard fix) |
+|---|---|---|
+| timeouts | 13% FAIL | **15% FAIL** |
+| K1 | undetermined, none dominant | undetermined, none dominant (bulwark 50.0, sentinel 31.2, ripper 71.9, ravager 71.9, arclight 25.0) |
+| K2 | undetermined | undetermined (slot A 53.8%, n 13) |
+| K3 median / band share | 28363 / 43.7% | 32054 / 41.2% undetermined (2% below, 63% beyond) |
+
+Timeouts per cell, out of 4 (rows Bulwark, Sentinel, Ripper, Ravager, Arclight; columns in the same order):
+
+| | Bulwark | Sentinel | Ripper | Ravager | Arclight |
+|---|---|---|---|---|---|
+| Bulwark | 4 | 1 | 0 | 1 | 0 |
+| Sentinel | 2 | 3 | 4 | 0 | 0 |
+| Ripper | 0 | 0 | 0 | 0 | 0 |
+| Ravager | 0 | 0 | 0 | 0 | 0 |
+| Arclight | 0 | 0 | 0 | 0 | 0 |
+
+- **The grinder is gone.** The Ripper and Ravager mirrors no longer time out (1 and 4 of 4 before),
+  and no Biomass- or Aether-paid row times out at all. Ripper's K1 recovers from 25% to 71.9% now
+  that its army forms.
+- **The overall timeout rate did not fall.** What is left is entirely in the Alloy-paid Machine rows
+  (Bulwark and Sentinel): every timeout the matrix shows (14 tallied by cell). That is the second stall above, which predates C3. Both
+  sides reach `attack_at_army` on the same tick, the waves annihilate in mid-field, and the extra
+  Foundries spend the income. A three-resource economy number cannot reach it (those units pay
+  Alloy), and the C3 AI fix does not touch it.
+- **Next lever (the user's call; strategy RON, not economy):** the mass-Machine scripts' late Foundries
+  and `worker_target`, or the Alloy-only mirror stall as a B-series question. K3 stays **Fail** until then.
+
+## F-084 — Strategy overrides for three resources; the Machine probes keep 9 workers (C3 AC8)
+
+**Decision (the user's).** The two Machine probes are tuned only in three-resource matches, through a
+new optional `three_resource: (worker_target, barracks)` block on a strategy in `strategies.ron`.
+- Each field left out keeps the strategy's own value.
+- The AI reads the override (`StrategyDef::worker_target_in` / `barracks_in`) only when the match has
+  the three-resource economy.
+- An Alloy-only match never reads it, so every Alloy-only pin holds and the C3 golden licence is kept.
+- `validate` checks the overridden script with every strategy rule.
+- The fingerprint hashes the block only when it is present, so content without one fingerprints as before.
+
+**Tests.** `tests/c3_strategy.rs`:
+- without an override, both economies play the strategy's own values;
+- an override leaves an Alloy-only match identical, action for action, and is played in a three-resource one;
+- an override changes the fingerprint, and its absence does not;
+- a zero worker target, no barracks, an unknown building and a barracks that cannot train the army are
+  each refused at load.
+
+**Probe.** Scratch harness, not shipped: `mass_bulwark`, `mass_sentinel` and `mass_ripper` against each
+other on three resources, 1 seed, 18 matches. The variant was applied to both Machine probes.
+
+| variant | timeouts | decided median |
+|---|---|---|
+| as shipped (6 workers, Foundries at 300/18000/24000) | 8 | 43360 |
+| one Foundry only | 3 | 39469 |
+| **9 workers** | **0** | 36071 |
+| 9 workers, Foundries at 300/9000 | 0 | 36071 (different matches; the median is the unchanged Ripper mirror) |
+
+- The stall was income. With 6 workers a Machine side is bound to about one unit per 1800 ticks.
+  The Foundries are not the bottleneck, which is why moving or dropping them barely helps.
+- With 9 workers the waves grow faster than they are traded, and every cell is decided.
+
+**Shipped:** `mass_bulwark` and `mass_sentinel` get `three_resource: (worker_target: 9)`. The Foundry
+schedule is unchanged, and so is every other probe. Base unit combat stats are untouched.
+
+**Full B3 re-read with 9-worker Machine probes** (5 mass probes, 2 seeds, 100 matches, 1342 s).
+
+| | F-083 (guard fix) | F-084 (9 workers) |
+|---|---|---|
+| timeouts | 15% FAIL | **3% (undetermined)** |
+| K1 | undetermined | undetermined, none dominant (bulwark 50.0, sentinel 75.0, ripper 28.1, ravager 71.9, arclight 25.0) |
+| K2 | undetermined | undetermined (slot A 47.1%, n 17; left base 35.3%) |
+| K3 median / band share | 32054 / 41.2% | 30437 / **37.1% [26.7, 48.9] FAIL** (8% below, 56% beyond) |
+
+- **The timeouts are fixed.** 3 are left: Bulwark mirror 2, Sentinel mirror 1. The timeout rate no
+  longer reads Fail.
+- **K3 still reads Fail, now on band share, not timeouts.** Matches are decided but long: 56% end
+  past 8:00. The median of 30437 ticks (8:27) sits just beyond the 5–8 minute band. That is the
+  next lever if the band is to pass. Every unit probe is slower to mass on three resources, so it is
+  an economy-pace question (starting stocks, income rates). It is no longer a stall.
+
+## F-085 — Three-resource pace ×1.5: Biomass growth and well payouts every 40 ticks (C3 AC8)
+
+**Probe.** A scratch harness (not shipped) ran the five mass probes on three resources, 1 seed, 50
+matches per variant, with F-084's 9-worker Machine probes. The K3 band is 5–8 min (18000–28800 ticks).
+
+| variant (from 60-tick growth and wells, start 100 Biomass / 0 Aether) | timeouts | decided median | in band | beyond |
+|---|---|---|---|---|
+| as shipped (F-084 full B3, 2 seeds) | 3% | 30437 | 37.1% | 56% |
+| start 250 Biomass / 100 Aether | 0 | 28875 | 36% | 52% |
+| growth 45, well `per_interval` 2 → 4 | 0 | 28194 | 50% | 46% |
+| start 250/100, growth 45, wells 45 | 0 | 24985 | 50% | 40% |
+| **growth 40, wells 40 (×1.5)** | **0** | **24044** | **54%** | **42%** |
+| growth 40, wells 40, start 250/100 | 0 | 24357 | 52% | 40% |
+| growth 35, wells 35 (×1.7) | 0 | 23186 | 54% | 40% |
+| growth 30, wells 30 (×2) | 0 | 26144 | 58% | 38% |
+
+- **The tail is Bulwark, whatever the pace.** At ×1.5, 13 of Bulwark's 18 decided matches end past
+  8:00, with a median of 35711. That compares with 2–7 for every other probe. It reads 13 of 18 at
+  ×1.7 and ×2 too. Bulwark is Alloy-paid, slow (speed 2) and armoured (9/9), and a Biomass or Aether
+  rate cannot reach it.
+- Beyond ×1.5, band share plateaus at 54–58%. ±14 points is the noise at n = 50. ×2 was not taken:
+  F-082 showed doubling Biomass makes Ravager dominant.
+
+**Shipped:** `resources.ron` `three_resource`: `growth.interval_ticks` 60 → 40 and `wells.interval_ticks`
+60 → 40. Every C3 suite passes. Next lever: a three-resource override for `mass_bulwark`'s own production
+(F-084's mechanism). That is being probed, and C2 cross at 3 seeds is being re-run on this setting.
+
+**Bulwark overrides on top of ×1.5** (same harness, 50 matches; the override is on `mass_bulwark` only).
+
+| variant | in band | beyond | Bulwark beyond | Bulwark median | K1 Bulwark |
+|---|---|---|---|---|---|
+| ×1.5 alone | 54% | 42% | 13/18 | 35711 | 50% |
+| + `worker_target: 12` | 54% | 42% | 13/18 | 35024 | 75% |
+| + 12 workers, Foundries at 300/6000/12000 | 56% | 40% | 12/18 | 31859 | 69% |
+
+- **Neither override moves the tail.** More income and more Foundries make Bulwark win more, but not
+  faster. Its matches are long because a Bulwark army kills slowly: Offense 4, 90 attack ticks,
+  speed 2. That is a base combat stat, which AC8 forbids retuning. **Not shipped.**
+- So K3 band share on three resources sits at about 54–58% in every economy setting tried. That is
+  above the 50% bar but not provably so at n = 100. What is left is Bulwark's own pace, which is the
+  user's call.
+
+**Open (stopped by the user before it finished):**
+- **C2 cross on the ×1.5 pace, 3 seeds.** A parallel run, one thread per seed, so the same matches as
+  `with_seeds(3)`. It was stopped at about 2/3 done, so there is no reading. The last C2 cross reading
+  is F-081's: 1 seed, on the pre-F-083/F-084/F-085 settings.
+- **Re-run:** `ONUS_C3_C2_SEEDS=3 cargo test --release --test c3_gate the_three_resource_nation_cross_reading -- --ignored --nocapture`
+  (single-threaded, about 4.4 h).
+- **Not re-run since F-084:** the full test suite and `cargo clippy --all-targets -- -D warnings`.
+  Every C3 suite passes.
+
+## F-086 — Critic C3 round 1: the fixes (C3 AC4, AC5, AC8)
+
+The C3 critic returned FAIL with five findings. Each is fixed test-first, one commit per finding.
+The critic's eight tests are now `tests/critic_c3.rs`.
+
+**F3 — AC5's guard replacement now has a test.** `critic_a_fallen_guard_detachment_is_replaced_after_the_next_wave`
+kills side A's whole guard detachment as it is sent. It checks that A does not re-guard the middle well
+before its next wave, and that it does re-guard within 600 ticks after it. It passes on the shipped AI
+(F-083) and kills the critic's mutation M7 (recruit count never reset). No code changed.
+- A box note: on the first run this test failed, because the box held a stale `src/sim/ai.rs`. rsync's
+  size-and-mtime check had skipped it. The box sync now compares by checksum and does not copy mtimes,
+  so a changed file always gets a fresh mtime and is rebuilt.
+
+**F4 — a Growth trait on a building that grows nothing is refused at load.** `SideRules::build_in`:
+- `Growth` on `Building(id)` is an error unless `id` is a growth source of `three_resource.growth`.
+- `Growth` on `Buildings` applies to the growth sources only, and is an error if there are none.
+
+No behaviour change: the growth factor is only ever read for a source (`three::grow`), so every
+shipped match is unchanged. Verdant's `Buildings` Growth loads as before.
+Tests: `critic_growth_on_a_building_that_grows_nothing_is_refused` (it failed before; the trait loaded),
+and `c3_economy::a_growth_trait_acts_only_on_growth_sources` (non-sources keep 1000; no sources means refused).
+
+**F5 — the AI's "on its well" distance is content.** The `/ 2.0` in `Posts::assign` was a hardcoded number.
+It is now `resources.ron` `three_resource.ai.on_well_fraction: 0.5`: a keeper or guard within
+`hold_radius × on_well_fraction` of its well is on it and gets no new order.
+- The load check requires a value in (0, 1].
+- The content fingerprint hashes the value.
+- The shipped value is one half, and `110.0 × 0.5` is exactly `110.0 / 2.0` in f32, so every shipped match
+  plays as before.
+
+Test: `c3_ai::the_on_well_distance_is_a_validated_fingerprinted_ron_fraction`.
+
+**F1 — the five mass probes are identical again: all carry `three_resource: (worker_target: 9)`.**
+F-084 gave the override to `mass_bulwark` and `mass_sentinel` only. That broke
+`critic_b1_ac3::the_mass_probes_are_identical_in_every_field_of_the_struct`, so the harness was red. The test
+was right to fail: with unequal probes, B3's pentagon measures a worker count as well as a unit. **The F-084 and F-085
+readings were taken on unequal probes**: the two Machine probes had 9 workers and the three others had 6. So
+they are not readings of the pentagon as B3 defines it.
+
+The two ways to equalise the probes, each read on the full B3 gate on three resources: 5 mass probes, 2 seeds,
+100 matches, release, on the box (single-threaded), with every other number as shipped (F-085's ×1.5 pace,
+`on_well_fraction` 0.5).
+
+| | **all five at 9 workers (shipped)** | none (all at 6) |
+|---|---|---|
+| timeouts | **3% (undetermined)** | 15% **FAIL** |
+| K1 | undetermined, none dominant: bulwark 50.0, sentinel 75.0, ripper 25.0, ravager 75.0, arclight 25.0 | undetermined: bulwark 50.0, sentinel 6.2, ripper 68.8, ravager 75.0, arclight 50.0 |
+| K2 slot A / left base | 35.3% / 35.3% (n 17) undetermined | 38.5% / 23.1% (n 13) undetermined |
+| K3 | **undetermined**: median 23691 (6:35), band share 55.7% [44.0, 66.8], 2% below, 44% beyond | **FAIL** (timeouts): median 27667, band share 51.8% [39.6, 63.7], 3% below, 53% beyond |
+| run time | 438 s | 501 s |
+
+- Without the override, the Machine mirror stall of F-083 and F-084 is back: the Bulwark mirror times out 4 of 4,
+  Sentinel v Ripper 4 of 4, and the Sentinel mirror 3 of 4.
+- With 9 workers for every probe, the timeouts stay at F-084's 3%, and they are confined to the two Machine mirrors.
+- **Shipped: all five at 9 workers.** It gives the better reading, and it is the only one of the two in which no K reads Fail.
+  The override is still read only in three-resource matches. Alloy-only play is untouched, so the golden licence holds.
+
+## F-087 — C3 AC8 reading of record: B3 and the C2 cross on the shipped three-resource settings
+
+This is the AC8 reading of record. It replaces F-081, F-084 and F-085 as the AC8 reading: those were taken on
+earlier settings, and F-084 and F-085 on unequal probes (F-086 F1). The shipped settings are:
+- F-085's ×1.5 pace (growth and wells every 40 ticks);
+- F-083's once-per-wave guard replacement;
+- all five mass probes at `three_resource: (worker_target: 9)` (F-086 F1);
+- `on_well_fraction` 0.5 (F-086 F5, behaviour-identical).
+
+Every economy and strategy number is RON; no base unit combat stat has moved. Release builds on the box,
+single-threaded, nice'd, one job at a time.
+
+**B3 kill gate on three resources** (5 mass probes, 2 seeds, 100 matches, 3 timeouts, 438 s): **no K reads Pass
+or Fail overall. Every one is undetermined.**
+
+| | value | 95% interval | status |
+|---|---|---|---|
+| K1 mass_bulwark | 50.0% | [28.7, 71.3] | undetermined |
+| K1 mass_sentinel | 75.0% | [53.8, 93.4] | undetermined |
+| K1 mass_ripper | 25.0% | [6.6, 46.2] | pass |
+| K1 mass_ravager | 75.0% | [53.8, 93.4] | undetermined |
+| K1 mass_arclight | 25.0% | [6.6, 46.2] | pass |
+| K2 slot A | 35.3% (n 17) | [15.2, 62.4] | undetermined |
+| K2 left base | 35.3% | [15.2, 62.4] | undetermined |
+| K3 decided median | 23691 ticks (6:35) | | in band |
+| K3 timeouts | 3% | | undetermined |
+| K3 band share (5–8 min) | 55.7% | [44.0, 66.8] | undetermined |
+| K3 below / beyond band | 2% / 44% | | reported |
+
+Row vs column (win %, timeouts, mean of the probe's own unit trained A v B):
+bulwark 0 t2 36v41 | 0 32v37 | 100 26v54 | 100 27v40 | 0 11v16.
+sentinel 100 30v23 | 33 t1 34v36 | 100 17v21 | 0 14v16 | 100 16v12.
+ripper 0 69v31 | 0 20v17 | 75 52v52 | 0 32v25 | 100 24v14.
+ravager 0 42v29 | 100 17v14 | 100 26v32 | 25 49v50 | 100 17v13.
+arclight 100 16v11 | 0 11v16 | 0 13v24 | 0 13v18 | 25 28v34.
+
+- Every off-diagonal cell is decided (0 timeouts), and almost every one is 0% or 100% at 2 seeds.
+  - Bulwark beats Ripper and Ravager.
+  - Sentinel beats Bulwark, Ripper and Arclight.
+  - Ripper beats Arclight.
+  - Ravager beats Sentinel, Ripper and Arclight.
+  - Arclight beats Bulwark.
+
+  No probe beats all four others. Ripper and Arclight win one cell each, which is where their 25% comes from.
+- **No interval sits wholly above the 65% line.** K1 needs more seeds to read Pass, not a tune.
+- The median sits inside the band. Band share 55.7% is above the 50% bar but not provably so at n = 97 decided.
+  The remaining tail is Bulwark's own pace (F-085), a base-combat-stat question that AC8 forbids touching.
+
+**C2 nation cross gate on three resources** (every ordered pair of nations, 5 mass probes, **3 seeds**, 900
+matches, 40 timeouts, 5088 s). The strength verdict is **undetermined**: five nations Pass and one is undetermined.
+
+| nation | strength | 95% interval | reading |
+|---|---|---|---|
+| house | 44.6% | [37.5, 51.7] | pass |
+| forgeborn | 43.0% | [36.1, 50.0] | pass |
+| verdant | **63.6%** | [56.6, 70.5] | **undetermined** |
+| aetherkin | 57.5% | [50.4, 64.6] | pass |
+| tollmarch | 46.6% | [39.7, 53.6] | pass |
+| ashen_reach | 44.6% | [37.5, 51.7] | pass |
+
+Row vs column win % (columns in the same order): house -- 53 33 39 47 50; forgeborn 47 -- 32 37 53 47;
+verdant 67 68 -- 56 61 67; aetherkin 61 63 44 -- 58 61; tollmarch 53 47 39 42 -- 53; ashen_reach 50 53 33 39 47 --.
+
+- Timeouts fell from 104 of 300 (F-081, 1 seed, earlier settings) to 40 of 900 (4.4%).
+- Tollmarch, the strongest in F-081, is now at 46.6%. Its Alloy edge was the Machine probes' income
+  bottleneck, which 9 workers relieves for every probe alike.
+- **Verdant (Biomass grows ×1.15) is the one nation not yet a pass.** It is at 63.6%, under the 65% line, but its
+  interval reaches 70.5. It beats every nation (56–68%). Ripper and Ravager are Biomass-paid and well
+  over half the probe roster masses on Biomass or Aether, so faster growth is the strongest lean on this axis.
+  The RON lever is Verdant's `three_resource_traits` Growth `mul` (1.15). It is a trait size, which AC8
+  allows, but it is **not tuned here**: the reading is recorded as it stands, and the call is the user's.
+- **House and Ashen Reach read identically**, row for row. Neither nation's three-resource traits act
+  on the mono-probe cross axis, the same reason F-074 gives for the Alloy-only cross. Their 44.6% is the
+  no-lean baseline against the four nations that lean.
+
+**AC8 status.** Both gates have been re-run on the shipped three-resource settings and recorded here. That is
+what the AC asks, so it stays ticked. **Neither gate reads Pass:**
+- B3: everything is undetermined, with nothing failing. The only hard Fail on three resources (K3 timeouts) is gone.
+- C2 cross: undetermined, on Verdant.
+
+**Open, the user's call:** more B3 seeds to settle K1, K2 and K3; Verdant's Growth size; Bulwark's pace (a base
+combat stat, so outside AC8).
+
+**R2-1 (critic round 2) — the F4 check refused valid Alloy-only content.** The `three_resource` block in
+`resources.ron` is optional. Load builds every nation's three-resource list even when the block is missing, and
+F4's check then found no growth sources, so it refused Verdant's `Buildings` Growth. The whole content failed to
+load, even for Alloy-only play. The check now runs only when the block is present. Content without the block
+cannot play a three-resource match, so its three-resource list is never played and is left as it was before F4.
+Test: `tests/critic_c3_r2.rs::critic_shipped_nations_load_without_the_optional_three_resource_block`. It panicked
+before the fix and passes after; F4's test still passes.

@@ -21,6 +21,14 @@
 //                  AttackTicks (< 1 is faster), BuildingHp (buildings)
 //     `add` stats: CarryCapacity (gatherers), AttackRange (world units),
 //                  Speed, Offense, Defense, Armor (units; Armor also buildings)
+//   three_resource_traits — optional (C3), the same form: the nation's real
+//                 brief lean and speciality, played **instead of** `traits` in
+//                 a three-resource match (`traits` is the Alloy-only list).
+//     three-resource-only `mul` stats: Cost (a unit's brief cost, in its own
+//                  resource), Growth (Biomass a growth source grows),
+//                  AlloyYield (>= 1, Alloy a gatherer's load banks).
+//     A trait that cannot act in its list's economy is a load error: those
+//     three in `traits`, or AlloyCost on units in `three_resource_traits`.
 //   synthesis   — optional, the mixed-army trait: (radius: <world units>,
 //                 modifiers: [aura modifiers, as units.ron's], max: <1..=2>).
 //                 Each of the side's units with a domain gets the modifiers
@@ -30,9 +38,9 @@
 //   the traited content must still pass every load check (max_stat, reach
 //   within engage_range, ...), or the file is refused.
 //
-// These are the **Alloy-only stand-in** traits (CAMPAIGN_PLAN C0): the real
-// domain leans (Biomass grows faster, cheaper Aether, ...) arrive with C3's
-// three-resource economy. Magnitudes are bounded by the C0 rule — no trait may
+// `traits` are the **Alloy-only stand-in** traits (CAMPAIGN_PLAN C0); the real
+// domain leans (Biomass grows faster, cheaper Aether, ...) are the
+// `three_resource_traits`, played in C3's three-resource economy (F-077). Magnitudes are bounded by the C0 rule — no trait may
 // move a pentagon link out of "holds" or a nation's cross-nation strength
 // outside 35-65% — and checked by the C2 nation gate (FINDINGS F-063 onward).
 (
@@ -44,6 +52,7 @@
             general: "general_synthesis",
             strategy: "synth_triad",
             traits: [],
+            three_resource_traits: [],   // no lean: Synthesis is its edge
             // Its edge is the mix: every unit gets the modifiers once per
             // *other* domain among its own units within the radius, up to max.
             synthesis: (radius: 160.0, modifiers: [ (stat: Offense, add: 1) ], max: 2),
@@ -57,6 +66,10 @@
             traits: [
                 (applies_to: Barracks("foundry"), stat: AlloyCost, mul: 0.95),
             ],
+            three_resource_traits: [
+                (applies_to: Barracks("foundry"), stat: Cost, mul: 0.95),   // cheaper Foundry units
+                (applies_to: Buildings, stat: BuildingHp, mul: 1.15),       // sturdier buildings
+            ],
         ),
         (
             id: "verdant", name: "Verdant",
@@ -65,6 +78,10 @@
             general: "general_frenzy",
             strategy: "rush",   // Rippers, early and often
             traits: [
+                (applies_to: Barracks("gene_vats"), stat: TrainTicks, mul: 0.90),
+            ],
+            three_resource_traits: [
+                (applies_to: Buildings, stat: Growth, mul: 1.15),             // Biomass grows faster
                 (applies_to: Barracks("gene_vats"), stat: TrainTicks, mul: 0.90),
             ],
         ),
@@ -77,6 +94,10 @@
             traits: [
                 (applies_to: Unit("arclight"), stat: AttackRange, add: 12),
             ],
+            three_resource_traits: [
+                (applies_to: Barracks("aether_spire"), stat: Cost, mul: 0.90),   // cheaper Aether
+                (applies_to: Unit("arclight"), stat: AttackRange, add: 12),
+            ],
         ),
         (
             id: "tollmarch", name: "Tollmarch",
@@ -87,6 +108,10 @@
             traits: [
                 (applies_to: Workers, stat: GatherTicks, mul: 0.98),   // gather faster
             ],
+            three_resource_traits: [
+                (applies_to: Workers, stat: AlloyYield, mul: 1.10),    // richer Alloy mines
+                (applies_to: Workers, stat: GatherTicks, mul: 0.98),
+            ],
         ),
         (
             id: "ashen_reach", name: "Ashen Reach",
@@ -95,6 +120,9 @@
             general: "general_endurance",
             strategy: "turtle",   // defensive
             traits: [
+                (applies_to: Buildings, stat: BuildingHp, mul: 1.30),
+            ],
+            three_resource_traits: [
                 (applies_to: Buildings, stat: BuildingHp, mul: 1.30),
             ],
         ),

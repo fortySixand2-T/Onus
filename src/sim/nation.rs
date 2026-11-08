@@ -37,6 +37,7 @@ use serde::Deserialize;
 use crate::sim::combat::Health;
 use crate::sim::content::{AuraModifier, BuildingDef, Content, UnitDef};
 use crate::sim::spatial::Faction;
+use crate::sim::three::{Bank, EconomyMode};
 
 // ---- definitions -----------------------------------------------------------
 
@@ -59,8 +60,15 @@ pub struct NationDef {
     pub general: String,
     /// Its battle personality: a `strategies.ron` id the AI plays for it.
     pub strategy: String,
-    /// The modifiers its armies get, applied in this order.
+    /// The modifiers its armies get in an **Alloy-only** match, applied in
+    /// this order (C2's stand-ins).
     pub traits: Vec<TraitDef>,
+    /// The modifiers its armies get in a **three-resource** match (C3): its
+    /// brief lean and speciality, applied in this order instead of
+    /// [`NationDef::traits`]. `#[serde(default)]`: a nation without the line
+    /// has no trait there.
+    #[serde(default)]
+    pub three_resource_traits: Vec<TraitDef>,
     /// Its **mixed-army** trait, if it has one: see [`SynthesisDef`].
     /// `#[serde(default)]`: a nation without the line has no such trait.
     #[serde(default)]
@@ -136,6 +144,15 @@ pub enum TraitStat {
     Armor,
     /// `mul`: a building's HP pool.
     BuildingHp,
+    /// `mul`, three-resource only (C3): a unit's brief `cost`, in its own
+    /// resource.
+    Cost,
+    /// `mul`, three-resource only (C3): the Biomass a growth-source building
+    /// grows.
+    Growth,
+    /// `mul` of at least 1, three-resource only (C3): the Alloy a gatherer's
+    /// load banks ("richer mines"), accumulated per-mille per side.
+    AlloyYield,
 }
 
 impl TraitStat {
@@ -148,19 +165,41 @@ impl TraitStat {
                 | TraitStat::GatherTicks
                 | TraitStat::AttackTicks
                 | TraitStat::BuildingHp
+                | TraitStat::Cost
+                | TraitStat::Growth
+                | TraitStat::AlloyYield
         )
     }
 
     /// Whether the stat exists on a unit / on a building.
     fn on_units(self) -> bool {
-        !matches!(self, TraitStat::BuildingHp)
+        !matches!(self, TraitStat::BuildingHp | TraitStat::Growth)
     }
 
     fn on_buildings(self) -> bool {
         matches!(
             self,
-            TraitStat::AlloyCost | TraitStat::Armor | TraitStat::BuildingHp
+            TraitStat::AlloyCost | TraitStat::Armor | TraitStat::BuildingHp | TraitStat::Growth
         )
+    }
+
+    /// Whether the stat can act in a match playing `economy` on what the
+    /// trait names (`buildings`: a building target). The three-resource
+    /// stats act only there; a unit's Alloy price (`mvp_alloy_cost`) is not
+    /// charged there (its brief `cost` is), so `AlloyCost` on units acts only
+    /// in Alloy-only. Buildings are priced in Alloy in both.
+    fn acts_in(self, economy: EconomyMode, buildings: bool) -> Result<(), String> {
+        match (self, economy) {
+            (TraitStat::Cost | TraitStat::Growth | TraitStat::AlloyYield, EconomyMode::Alloy) => {
+                Err("acts only in the three-resource economy, not in an Alloy-only list"
+                    .to_string())
+            }
+            (TraitStat::AlloyCost, EconomyMode::ThreeResource) if !buildings => Err(
+                "a unit's Alloy price is Alloy-only: in the three-resource economy use `Cost`"
+                    .to_string(),
+            ),
+            _ => Ok(()),
+        }
     }
 }
 
@@ -209,16 +248,34 @@ pub struct SideRules {
     pub buildings: Vec<BuildingDef>,
     /// Full HP pool per building definition.
     pub building_pools: Vec<u32>,
+    /// Per-mille growth factor per building definition (C3; 1000 unless a
+    /// `Growth` trait applies).
+    pub growth_milli: Vec<u32>,
+    /// Per-mille Alloy yield per unit definition (C3; 1000 unless an
+    /// `AlloyYield` trait applies).
+    pub yield_milli: Vec<u32>,
 }
 
 impl SideRules {
-    /// Apply nation `nation`'s traits, in RON order, to clones of the content's
-    /// definitions. Errors name the trait that produced an unplayable value.
+    /// [`SideRules::build_in`] for an Alloy-only match.
     pub fn build(content: &Content, nation: usize) -> Result<Self, String> {
+        Self::build_in(content, nation, EconomyMode::Alloy)
+    }
+
+    /// Apply nation `nation`'s traits for `economy` (its `traits` in an
+    /// Alloy-only match, its `three_resource_traits` in a three-resource one),
+    /// in RON order, to clones of the content's definitions. Errors name the
+    /// trait that produced an unplayable value, or that cannot act in the
+    /// economy its list is played in.
+    pub fn build_in(content: &Content, nation: usize, economy: EconomyMode) -> Result<Self, String> {
         let n = content
             .nations
             .get(nation)
             .ok_or_else(|| format!("no nation at index {nation}"))?;
+        let list = match economy {
+            EconomyMode::Alloy => &n.traits,
+            EconomyMode::ThreeResource => &n.three_resource_traits,
+        };
         let mut units = content.units.clone();
         let mut buildings = content.buildings.clone();
         // Each building's HP pool, scaled by every BuildingHp trait in RON order,
@@ -227,15 +284,55 @@ impl SideRules {
             .iter()
             .map(|b| b.mvp_defense.saturating_mul(content.combat.building_hp_per_defense))
             .collect();
-        for (k, t) in n.traits.iter().enumerate() {
-            let who = format!("nation `{}` trait {k} ({:?} {:?})", n.id, t.stat, t.applies_to);
+        let mut growth_milli = vec![TraitDef::MULT_SCALE; buildings.len()];
+        let mut yield_milli = vec![TraitDef::MULT_SCALE; units.len()];
+        let list_name = match economy {
+            EconomyMode::Alloy => "trait",
+            EconomyMode::ThreeResource => "three_resource trait",
+        };
+        for (k, t) in list.iter().enumerate() {
+            let who = format!(
+                "nation `{}` {list_name} {k} ({:?} {:?})",
+                n.id, t.stat, t.applies_to
+            );
             check_form(t).map_err(|e| format!("{who}: {e}"))?;
+            t.stat
+                .acts_in(economy, t.applies_to.is_buildings())
+                .map_err(|e| format!("{who}: {e}"))?;
+            if t.stat == TraitStat::AlloyYield && t.mul_milli() < TraitDef::MULT_SCALE {
+                return Err(format!("{who}: an Alloy yield is a bonus, mul >= 1"));
+            }
             if t.applies_to.is_buildings() {
                 let targets: Vec<usize> = match &t.applies_to {
                     TraitTarget::Building(id) => vec![content
                         .building_index(id)
                         .ok_or_else(|| format!("{who}: names unknown building `{id}`"))?],
                     _ => (0..buildings.len()).collect(),
+                };
+                // Growth acts only on a building that grows Biomass in this
+                // economy: on any other it would load and do nothing (as a
+                // yield trait on a unit that does not gather, which `check`
+                // refuses). `Buildings` means every growth source. Content
+                // without a `three_resource` block plays only Alloy-only
+                // matches, so its three-resource list is never played and
+                // there are no sources to check it against: it is left as is.
+                let three = content.three_resource.as_ref().filter(|_| t.stat == TraitStat::Growth);
+                let targets = if let Some(r) = three {
+                    let sources: Vec<&str> =
+                        r.growth.sources.iter().map(|g| g.building.as_str()).collect();
+                    let grows = |i: &usize| sources.contains(&buildings[*i].id.as_str());
+                    if let TraitTarget::Building(id) = &t.applies_to {
+                        if !targets.iter().all(grows) {
+                            return Err(format!("{who}: building `{id}` is no growth source"));
+                        }
+                    }
+                    let targets: Vec<usize> = targets.into_iter().filter(grows).collect();
+                    if targets.is_empty() {
+                        return Err(format!("{who}: applies to no growth source"));
+                    }
+                    targets
+                } else {
+                    targets
                 };
                 for i in targets {
                     let b = &mut buildings[i];
@@ -244,6 +341,9 @@ impl SideRules {
                         TraitStat::Armor => b.mvp_armor = add_points(b.mvp_armor, t.add)?,
                         TraitStat::BuildingHp => {
                             building_pools[i] = scale_milli(building_pools[i], t.mul_milli())
+                        }
+                        TraitStat::Growth => {
+                            growth_milli[i] = scale_milli(growth_milli[i], t.mul_milli())
                         }
                         _ => unreachable!("check_form admits only building stats here"),
                     }
@@ -293,7 +393,11 @@ impl SideRules {
                         TraitStat::Offense => u.offense = add_points(u.offense, t.add)?,
                         TraitStat::Defense => u.defense = add_points(u.defense, t.add)?,
                         TraitStat::Armor => u.armor = add_points(u.armor, t.add)?,
-                        TraitStat::BuildingHp => unreachable!("check_form refuses it on units"),
+                        TraitStat::Cost => u.cost.amount = scale_milli(u.cost.amount, m),
+                        TraitStat::AlloyYield => yield_milli[i] = scale_milli(yield_milli[i], m),
+                        TraitStat::BuildingHp | TraitStat::Growth => {
+                            unreachable!("check_form refuses it on units")
+                        }
                     }
                 }
             }
@@ -303,6 +407,8 @@ impl SideRules {
             units,
             buildings,
             building_pools,
+            growth_milli,
+            yield_milli,
         };
         side.check(content).map_err(|e| format!("nation `{}`: {e}", n.id))?;
         Ok(side)
@@ -325,12 +431,18 @@ impl SideRules {
                 return Err(format!("building `{}` would have no HP", b.id));
             }
         }
-        for (u, base) in self.units.iter().zip(&content.units) {
+        for ((u, base), &yield_milli) in self.units.iter().zip(&content.units).zip(&self.yield_milli) {
             if u.mvp_alloy_cost == 0 {
                 return Err(format!("unit `{}` would cost no Alloy", u.id));
             }
+            if u.cost.amount == 0 {
+                return Err(format!("unit `{}` would cost nothing", u.id));
+            }
             if u.mvp_train_ticks == 0 {
                 return Err(format!("unit `{}` would train in no time", u.id));
+            }
+            if !base.gathers && yield_milli != TraitDef::MULT_SCALE {
+                return Err(format!("unit `{}` does not gather: no yield trait", u.id));
             }
             if base.gathers && (u.mvp_carry_capacity == 0 || u.mvp_gather_ticks == 0) {
                 return Err(format!("unit `{}` would gather nothing", u.id));
@@ -452,7 +564,9 @@ pub(crate) fn validate(content: &Content) -> Result<(), String> {
                 return Err(format!("{who} max must be 1..={others} (the other domains)"));
             }
         }
-        SideRules::build(content, i)?;
+        // Both lists, each in the economy it is played in.
+        SideRules::build_in(content, i, EconomyMode::Alloy)?;
+        SideRules::build_in(content, i, EconomyMode::ThreeResource)?;
     }
     Ok(())
 }
@@ -493,11 +607,21 @@ fn slot(f: Faction) -> usize {
 const SIDES: [Faction; 2] = [Faction::A, Faction::B];
 
 impl NationRules {
-    /// The rules for nations named per faction slot (A, B). `Ok(None)` when
-    /// neither side names one. Refuses an unknown id.
+    /// [`NationRules::resolve_in`] for an Alloy-only match.
     pub fn resolve(
         content: &Content,
         names: &[Option<String>; 2],
+    ) -> Result<Option<Self>, UnknownNation> {
+        Self::resolve_in(content, names, EconomyMode::Alloy)
+    }
+
+    /// The rules for nations named per faction slot (A, B), in a match playing
+    /// `economy` (C3: which trait list each nation plays). `Ok(None)` when
+    /// neither side names one. Refuses an unknown id.
+    pub fn resolve_in(
+        content: &Content,
+        names: &[Option<String>; 2],
+        economy: EconomyMode,
     ) -> Result<Option<Self>, UnknownNation> {
         if names.iter().all(Option::is_none) {
             return Ok(None);
@@ -512,7 +636,8 @@ impl NationRules {
                 });
             };
             sides[k] = Some(
-                SideRules::build(content, i).expect("the loader validated every nation's traits"),
+                SideRules::build_in(content, i, economy)
+                    .expect("the loader validated every nation's traits"),
             );
         }
         Ok(Some(Self { sides }))
@@ -545,9 +670,13 @@ pub fn ids<'a>(content: &'a Content, rules: Option<&NationRules>) -> [Option<&'a
 /// side has one (nothing otherwise), and give every unit and building already
 /// on the field the full HP pool of its side's table. Call before the first
 /// tick, after the start has been spawned.
+///
+/// The trait lists played are the world's economy's (C3): install the economy
+/// ([`crate::sim::three::install`]) first.
 pub fn install(world: &mut World, names: &[Option<String>; 2]) -> Result<(), UnknownNation> {
     let content = world.resource::<Content>().clone();
-    let Some(rules) = NationRules::resolve(&content, names)? else {
+    let economy = crate::sim::three::mode_of(world);
+    let Some(rules) = NationRules::resolve_in(&content, names, economy)? else {
         return Ok(());
     };
     {
@@ -596,11 +725,43 @@ pub fn install(world: &mut World, names: &[Option<String>; 2]) -> Result<(), Unk
 pub struct Defs<'a> {
     pub content: &'a Content,
     rules: Option<&'a NationRules>,
+    /// The economy the match plays (C3): what a unit is priced in.
+    economy: EconomyMode,
 }
 
 impl<'a> Defs<'a> {
+    /// The definitions of an Alloy-only match (see [`Defs::in_economy`]).
     pub fn new(content: &'a Content, rules: Option<&'a NationRules>) -> Self {
-        Self { content, rules }
+        Self {
+            content,
+            rules,
+            economy: EconomyMode::Alloy,
+        }
+    }
+
+    /// The same definitions, in a match playing `economy` (C3).
+    pub fn in_economy(mut self, economy: EconomyMode) -> Self {
+        self.economy = economy;
+        self
+    }
+
+    /// The economy these definitions are priced for.
+    pub fn economy(&self) -> EconomyMode {
+        self.economy
+    }
+
+    /// What `faction` pays to train roster unit `i`, and from which bank.
+    /// Alloy-only: its `mvp_alloy_cost` in Alloy, as every milestone before C3.
+    /// Three-resource (C3): its brief `cost`, in the bank of that resource.
+    pub fn unit_price(&self, faction: Faction, i: usize) -> Option<(Bank, u32)> {
+        let u = self.roster_unit(faction, i)?;
+        match self.economy {
+            EconomyMode::Alloy => Some((Bank::Alloy, u.mvp_alloy_cost)),
+            EconomyMode::ThreeResource => Some((
+                Bank::of_resource(self.content, &u.cost.resource)?,
+                u.cost.amount,
+            )),
+        }
     }
 
     /// Plain content: no nation on either side.
@@ -634,6 +795,20 @@ impl<'a> Defs<'a> {
             Some(s) => s.buildings.get(i),
             None => self.content.buildings.get(i),
         }
+    }
+
+    /// `faction`'s per-mille factor on the Biomass building `i` grows (C3).
+    pub fn growth_milli(&self, faction: Faction, i: usize) -> u32 {
+        self.side(faction)
+            .and_then(|s| s.growth_milli.get(i).copied())
+            .unwrap_or(TraitDef::MULT_SCALE)
+    }
+
+    /// `faction`'s per-mille Alloy yield on a load banked by unit `i` (C3).
+    pub fn yield_milli(&self, faction: Faction, i: usize) -> u32 {
+        self.side(faction)
+            .and_then(|s| s.yield_milli.get(i).copied())
+            .unwrap_or(TraitDef::MULT_SCALE)
     }
 
     /// A full HP pool for unit `i` of `faction`.

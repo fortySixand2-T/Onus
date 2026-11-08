@@ -1464,6 +1464,8 @@ fn every_legitimate_order_still_applies_under_coherent_self_signing() {
                 AiAction::PlaceBarracks { .. } => saw.2 = true,
                 AiAction::TrainArmy { .. } => saw.3 = true,
                 AiAction::Attack { .. } => {}
+                // Three-resource only (C3): never in this Alloy-only match.
+                AiAction::Keep { .. } | AiAction::Guard { .. } => {}
             }
         }
         // Per tick: the AI's own units are never disowned by the ownership

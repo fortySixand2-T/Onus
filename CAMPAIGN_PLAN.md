@@ -22,6 +22,8 @@ balanced and fun. B5 needs a human to play, and that hasn't happened yet. So:
   revise C1 and later milestones.
 - **Overridden again by the user (2026-11-03): "start c2".** C2 also starts before the human
   play test, on the same terms as C1 (FINDINGS F-062).
+- **Overridden a third time by the user (2026-11-04): "start c3".** C3 also starts before the
+  human play test, on the same terms as C1 and C2 (FINDINGS F-075).
 - ~~**C1 onward waits for B5 Go.**~~ A B5 No-Go sends us back to the battle layer, and C0 is
   revised against what the play test found.
 
@@ -178,13 +180,52 @@ A **skirmish** mode keeps today's rules exactly.
   unticked, pending the user.)*
 - [x] **Client:** pick a nation, and see the opponent's nation at a glance (P3).
 
-## C3 — The three-resource economy (Biomass grown, Aether channelled)
+## C3 — The three-resource economy (Biomass grown, Aether channelled) (started 2026-11-04, ahead of B5 by user decision)
 
 This is the brief's "first economic expansion after fun":
 - Biomass is passive and capped by storage.
 - Aether comes from contested ley-wells you must hold.
 - Swap the Alloy-only stand-in traits for the real domain leans.
 - Re-run the balance and nation gates.
+
+The three-resource economy is **opt-in**, chosen through `MatchSettings` (and the client's pick)
+the way nations and battles are. The default stays Alloy-only and plays exactly as today. Every
+number lives in RON (`resources.ron`'s `three_resource` block, `nations.ron`).
+
+- [x] **Biomass:** passive, storage-capped, grown by building Gene-Vats. Each side's HQ grows a
+  small floor and each Gene-Vats adds growth and storage. Growth lands every `interval_ticks`
+  and stops at the side's storage cap: the sum of its standing buildings' `storage`. Rates,
+  storage and the starting Biomass are RON.
+- [x] **Aether:** channelled from ley-wells placed on the map from RON (positions along and
+  across the line between the two HQs, so every map and both orientations get the same layout).
+  A side **holds** a well while at least one of its units or buildings is within `hold_radius`
+  and no enemy unit or building is. A held well banks `per_interval` Aether to its holder every
+  `interval_ticks` ticks of holding. Holding progress pauses while the well is empty or
+  contested, and restarts when the holder changes. Radius, rate and sites are RON.
+- [x] **Unit prices:** in three-resource mode units are paid in their brief resource (the
+  `cost` in `units.ron`): Machine units and Workers in Alloy, Ripper and Ravager in Biomass,
+  Arclight in Aether. Buildings stay priced in Alloy. An order the side cannot pay in that
+  resource is refused and charges nothing.
+- [x] **Real leans:** in three-resource mode each nation plays its brief traits (lean plus
+  speciality) from `three_resource_traits` in `nations.ron`, instead of the Alloy-only
+  stand-in. Forgeborn: Foundry units cheaper, sturdier buildings. Verdant: Biomass grows
+  faster, Gene-Vats train faster. Aetherkin: Arclights cost less Aether, longer Arclight range.
+  Tollmarch: richer Alloy mines (more Alloy banked per load), faster gathering. Ashen Reach:
+  more building HP. House Vael: Synthesis. The Alloy-only stand-ins keep working in Alloy-only
+  mode, unchanged. A trait that cannot act in the mode its list is played in is a load error.
+- [x] **AI:** in three-resource mode the AI runs the three-resource economy. It builds its
+  Gene-Vats (its script's openings), keeps a worker on its home well, sends a guard detachment
+  to contest and hold the middle well (and back to its home well when an enemy takes it), and
+  pays each unit in its own resource. The detachment sizes are RON. Alloy-only AI traces are
+  unchanged.
+- [x] **Client:** the pick screen chooses the economy. The panel shows all three resources,
+  and the ley-wells are drawn with their holder. Kept thin; anything that needs a human look on
+  the Mac is listed in FINDINGS.
+- [x] **Golden licence:** the default (Alloy-only) setting reproduces today's pinned results
+  exactly: no re-pin. A match log records its economy mode, and a replay applies it or refuses.
+- [x] **Gates:** the B3 balance gate (K1/K2/K3) and the C2 nation cross gate are re-run on the
+  three-resource economy, and the numbers are recorded in FINDINGS. Economy numbers and trait
+  sizes may be tuned in RON (each step recorded); base unit combat stats are not retuned.
 
 ## C4 — Campaign core (headless, render-free)
 

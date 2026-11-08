@@ -4,6 +4,7 @@
 use bevy::prelude::*;
 
 use crate::client::*;
+use crate::sim::three::{EconomyMode, LeyWell};
 use crate::sim::*;
 
 /// Copy sim-space `Position` into the render `Transform`. One-way, every frame.
@@ -81,6 +82,7 @@ pub fn update_options_panel(
     content: Res<Content>,
     rules: Option<Res<crate::sim::nation::NationRules>>,
     stock: Res<Stockpiles>,
+    three: Option<Res<crate::sim::three::ThreeEconomy>>,
     state: Res<MatchState>,
     fixed: Res<Time<Fixed>>,
     mut text_q: Query<&mut Text, With<OptionsPanel>>,
@@ -107,8 +109,10 @@ pub fn update_options_panel(
         return;
     }
 
-    let alloy = format!("Alloy: {}", stock.alloy(PLAYER_FACTION));
-    let defs = crate::sim::nation::Defs::new(&content, rules.as_deref());
+    // The banks: Alloy alone, or all three (C3).
+    let alloy = banks_text(&stock, PLAYER_FACTION, three.is_some());
+    let economy = if three.is_some() { EconomyMode::ThreeResource } else { EconomyMode::Alloy };
+    let defs = crate::sim::nation::Defs::new(&content, rules.as_deref()).in_economy(economy);
 
     // A selected building shows what it can train and its queue.
     if let Some((building, queue)) = selected_buildings.iter().next() {
@@ -119,8 +123,12 @@ pub fn update_options_panel(
                 .enumerate()
                 .filter_map(|(i, id)| {
                     // What the player's nation pays (C2), not the base price.
-                    let u = defs.roster_unit(PLAYER_FACTION, content.unit_index(id)?)?;
-                    Some(format!("[{}] {} ({})", i + 1, u.name, u.mvp_alloy_cost))
+                    // ...and in which bank (C3).
+                    let k = content.unit_index(id)?;
+                    let u = defs.roster_unit(PLAYER_FACTION, k)?;
+                    let (bank, price) = defs.unit_price(PLAYER_FACTION, k)?;
+                    let price = price_text(bank, price, three.is_some());
+                    Some(format!("[{}] {} ({price})", i + 1, u.name))
                 })
                 .collect();
             text.0 = format!(
@@ -261,5 +269,55 @@ pub fn draw_nation_marks(
                 nation_color(&content, Some(nation)),
             );
         }
+    }
+}
+
+// ---- ley-wells (C3) ----------------------------------------------------------------
+
+/// Draw every ley-well in its holder's colour ([`well_color`]): the sim spawns
+/// wells render-free, so the first sight of one gives it a sprite; after that
+/// only the colour follows the sim's `WellState`. Reads the sim; changes none
+/// of it.
+pub fn show_wells(
+    mut commands: Commands,
+    content: Res<Content>,
+    rules: Option<Res<crate::sim::nation::NationRules>>,
+    mut wells: Query<(Entity, &Position, &LeyWell, Option<&mut Sprite>)>,
+) {
+    for (e, pos, well, sprite) in &mut wells {
+        let colour = well_color(&content, rules.as_deref(), well.state());
+        match sprite {
+            Some(mut s) => {
+                if s.color != colour {
+                    s.color = colour;
+                }
+            }
+            None => {
+                commands.entity(e).insert((
+                    Sprite::from_color(colour, Vec2::splat(WELL_SIZE)),
+                    Transform::from_translation(pos.0.extend(-0.5)),
+                ));
+            }
+        }
+    }
+}
+
+/// The hold radius around each well, in the same colour, so the player can
+/// see how close is close enough to hold it.
+pub fn draw_well_rings(
+    mut gizmos: Gizmos,
+    content: Res<Content>,
+    rules: Option<Res<crate::sim::nation::NationRules>>,
+    wells: Query<(&Position, &LeyWell)>,
+) {
+    let Some(t) = &content.three_resource else {
+        return;
+    };
+    for (pos, well) in &wells {
+        gizmos.circle_2d(
+            Isometry2d::from_translation(pos.0),
+            t.wells.hold_radius,
+            well_color(&content, rules.as_deref(), well.state()),
+        );
     }
 }

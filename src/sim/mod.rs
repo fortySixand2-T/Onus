@@ -20,6 +20,7 @@ pub mod nation;
 pub mod pathfind;
 pub mod replay;
 pub mod spatial;
+pub mod three;
 pub mod victory;
 pub use ai::{
     AiAction, AiCommander, AiCommanders, AiJournal, BattleAiAction, BattleAiJournal, UnknownStrategy,
@@ -699,9 +700,17 @@ pub fn apply_commands(
     ids: Option<Res<replay::SimIds>>,
     // The match's nations (C2): what each side's spending costs.
     nations: Option<Res<nation::NationRules>>,
+    // The three-resource economy (C3): its presence is the mode, and the mode
+    // is what a unit is priced in.
+    three: Option<Res<three::ThreeEconomy>>,
     mut commands: Commands,
 ) {
-    let side_defs = nation::Defs::new(&content, nations.as_deref());
+    let economy = if three.is_some() {
+        three::EconomyMode::ThreeResource
+    } else {
+        three::EconomyMode::Alloy
+    };
+    let side_defs = nation::Defs::new(&content, nations.as_deref()).in_economy(economy);
     let now = state.map(|s| s.tick()).unwrap_or(0);
     let mut log = log;
     let due = queue.0.take_due(now);
