@@ -166,8 +166,10 @@ fn side(c: &Campaign, nation: usize, armies: Vec<u32>) -> PlanSide {
     s
 }
 
-/// The battle at `city`, `attacker` marching on it: the attacker's first
-/// army there against every army of the holder standing in it.
+/// The battle at `city`, `attacker` marching on it (C4 AC7): **every**
+/// army of the attacker standing there (all arrived this round: a failed
+/// assault falls back) against every army of the holder standing in it.
+/// Several armies bring several Generals.
 pub(crate) fn plan(c: &Campaign, city: usize, attacker: usize) -> BattlePlan {
     let defender = c.cities()[city].owner;
     let here = |n: usize| -> Vec<u32> {
@@ -177,8 +179,7 @@ pub(crate) fn plan(c: &Campaign, city: usize, attacker: usize) -> BattlePlan {
             .map(|a| a.id)
             .collect()
     };
-    let mut attack = here(attacker);
-    attack.truncate(1);
+    let attack = here(attacker);
     BattlePlan {
         round: c.round(),
         city,

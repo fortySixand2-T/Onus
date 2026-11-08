@@ -882,3 +882,5 @@
 - [2026-11-08] Created: tests/c4_core.rs — C4 AC1 tests: load/validation, determinism, conquest, render-free scan
 - [2026-11-08] Modified: src/campaign/mod.rs — C4 AC6 march points (slowest unit Speed + Logistics bonus), road cost by terrain, partial progress carries
 - [2026-11-08] Created: tests/c4_movement.rs — C4 AC6 army movement tests
+- [2026-11-08] Modified: src/campaign/battle.rs — C4 AC7 every attacking army at the city fights: several Generals per side
+- [2026-11-08] Created: tests/c4_converge.rs — C4 AC7 converging armies and aura stacking tests
