@@ -54,8 +54,14 @@ pub struct Leader {
 pub enum Location {
     /// Standing at a city.
     At(usize),
-    /// On road `road`, walking from `from` to `to`.
-    Marching { road: usize, from: usize, to: usize },
+    /// On road `road`, walking from `from` to `to`, `progress` march
+    /// points along it (partial progress carries from round to round).
+    Marching {
+        road: usize,
+        from: usize,
+        to: usize,
+        progress: u32,
+    },
 }
 
 /// One army on the map: a General and his roster.
@@ -475,9 +481,17 @@ impl Campaign {
                 .u64(a.came_from as u64);
             match a.location {
                 Location::At(c) => h.u64(0).u64(c as u64),
-                Location::Marching { road, from, to } => {
-                    h.u64(1).u64(road as u64).u64(from as u64).u64(to as u64)
-                }
+                Location::Marching {
+                    road,
+                    from,
+                    to,
+                    progress,
+                } => h
+                    .u64(1)
+                    .u64(road as u64)
+                    .u64(from as u64)
+                    .u64(to as u64)
+                    .u64(progress as u64),
             };
             h.u64(a.units.len() as u64);
             for u in &a.units {
@@ -584,18 +598,65 @@ impl Campaign {
                     .road_between(from, to)
                     .ok_or_else(|| "no road joins those cities".to_string())?;
                 let a = &mut self.armies[i];
-                a.location = Location::Marching { road, from, to };
+                a.location = Location::Marching {
+                    road,
+                    from,
+                    to,
+                    progress: 0,
+                };
                 a.came_from = from;
                 Ok(())
             }
         }
     }
 
-    /// Every marching army walks its road: one road a round.
+    /// Army `id`'s march points per round (C4 AC6): the lowest Speed in its
+    /// roster (its nation's tables, so a Speed trait counts), or its
+    /// General's with no units; plus the Logistics bonus when the Logistics
+    /// General leads it. 0 for an unknown army.
+    pub fn march_points(&self, id: u32) -> u32 {
+        let Some(a) = self.army(id) else { return 0 };
+        let speed = &self.tables.unit_speed[a.nation];
+        let base = a
+            .units
+            .iter()
+            .map(|u| speed[u.def])
+            .min()
+            .unwrap_or(speed[a.general.kind]);
+        let bonus = if a.general.kind == self.campaign.logistics_general {
+            self.campaign.rules.march.logistics_bonus
+        } else {
+            0
+        };
+        base.saturating_add(bonus)
+    }
+
+    /// Every marching army walks its road, in id order: its march points
+    /// add to its progress, and once the progress covers the road's cost it
+    /// stands at the far city (points left over are not carried past a city:
+    /// an army stops at every city it reaches).
     fn movement(&mut self) {
-        for a in &mut self.armies {
-            if let Location::Marching { to, .. } = a.location {
-                a.location = Location::At(to);
+        for i in 0..self.armies.len() {
+            let pts = self.march_points(self.armies[i].id);
+            let a = &mut self.armies[i];
+            if let Location::Marching {
+                road,
+                from,
+                to,
+                progress,
+            } = a.location
+            {
+                let progress = progress.saturating_add(pts);
+                a.location = if progress >= self.campaign.roads[road].cost {
+                    Location::At(to)
+                } else {
+                    Location::Marching {
+                        road,
+                        from,
+                        to,
+                        progress,
+                    }
+                };
             }
         }
     }
