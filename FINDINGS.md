@@ -7478,3 +7478,26 @@ Every number lives in `assets/data/campaign.ron`.
   units (an 80-HP Arclight came back with a Sentinel's 100). The resolver now matches by
   ascending `Entity::index_u32`, which is spawn order. Nothing else depends on this: replay ids
   only need to be stable, and they are.
+
+**Veteran Generals (AC2).**
+- P20. Every General who took the field earns experience: `xp.win` if his side won and
+  `xp.survive` if it lost. An undecided battle (a draw or the tick cap) counts as the holder's
+  win. An uncontested capture is no battle, so nobody earns anything from it.
+- P21. His rank is the highest in `ranks` whose `xp` threshold he has reached; the last rank is
+  the cap, and experience past it does nothing more. A rank scales his aura's radius by
+  `radius_mult` and adds `extra_factor` to a scaling aura's factor. Rank 0 must be plain. A ranked
+  General carries an `AuraRank` component in the battle, and the replay state hash gains a row for
+  it (tag 28). A plain General carries no component and adds no row, so every existing skirmish
+  golden is unchanged.
+- P22. A General who falls loses his experience, and his army goes leaderless for
+  `general_replacement_rounds` full rounds. At the end of the round the wait runs out, a new
+  General of the same kind takes command at rank 0. A leaderless army fields no General, cannot
+  march (it can still defend where it stands) and gets no Logistics bonus.
+- Gate fix (AC1). The full debug suite showed two source-scanning guards that C4 had tripped
+  since AC1, both now fixed. `critic_m5::nothing_in_src_builds_a_content_that_skipped_validation`
+  matched `CampaignContent {` as a battle `Content` literal (a false positive); the constructor
+  now writes `Self {`. `m5_replay::the_only_generator_lives_in_the_sim_and_nothing_else_rolls_a_number`
+  allowed `SplitMix64` only under `src/sim/`. The campaign is the second render-free sim layer,
+  with its own seeded generator stepped only in its own round, so the guard now admits
+  `src/campaign/` as well. **Provisional**: this widens an existing guard; the critic should
+  confirm the reading. Everything else stays forbidden everywhere.

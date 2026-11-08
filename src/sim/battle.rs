@@ -76,6 +76,23 @@ const SLOTS: [Faction; 2] = [Faction::A, Faction::B];
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
 pub struct General;
 
+/// A veteran General's rank (C4 AC2), on the General: his aura reaches
+/// `radius_milli / 1000` times as far and applies its modifiers
+/// `extra_factor` more times. Inserted only for a rank above plain, so a
+/// battle without veterans hashes exactly as before.
+#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AuraRank {
+    pub radius_milli: u32,
+    pub extra_factor: u32,
+}
+
+impl AuraRank {
+    /// The plain rank: no change to the aura.
+    pub fn is_plain(&self) -> bool {
+        self.radius_milli == 1000 && self.extra_factor == 0
+    }
+}
+
 // ---- setup -----------------------------------------------------------------
 
 /// One unit in a [`Roster`]: a roster unit id and its HP (`None`: full).
@@ -137,6 +154,9 @@ pub struct SideSetup {
     /// Generals; the same type may appear more than once (a house raises
     /// extra Generals of its own kind).
     pub generals: Vec<String>,
+    /// Per General, in `generals` order, his rank (C4); missing or `None`
+    /// is plain.
+    pub ranks: Vec<Option<AuraRank>>,
     /// The side's army and buildings. `None`: the skirmish start (an HQ and
     /// its workers); `Some`: exactly this, and no skirmish start at all.
     pub roster: Option<Roster>,
@@ -163,6 +183,16 @@ impl BattleSetup {
     /// Field one more General, `id`, on `side`.
     pub fn with_general(mut self, side: Faction, id: &str) -> Self {
         self.sides[faction_slot(side)].generals.push(id.to_string());
+        self
+    }
+
+    /// Field one more General, `id`, on `side`, at `rank` (C4; `None`:
+    /// plain).
+    pub fn with_ranked_general(mut self, side: Faction, id: &str, rank: Option<AuraRank>) -> Self {
+        let s = &mut self.sides[faction_slot(side)];
+        s.ranks.resize(s.generals.len(), None);
+        s.generals.push(id.to_string());
+        s.ranks.push(rank);
         self
     }
 
@@ -400,6 +430,11 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
                     General,
                 ))
                 .id();
+            if let Some(rank) = setup.sides[slot].ranks.get(j).copied().flatten() {
+                if !rank.is_plain() {
+                    world.entity_mut(entity).insert(rank);
+                }
+            }
             fielded.push(Fielded {
                 entity,
                 side: *side,
@@ -1060,10 +1095,13 @@ pub fn auras(
     content: Res<Content>,
     nations: Option<Res<NationRules>>,
     mut field: ResMut<AuraField>,
-    generals: Query<(Entity, &Position, &Faction, &UnitDefIdx), With<General>>,
+    generals: Query<(Entity, &Position, &Faction, &UnitDefIdx, Option<&AuraRank>), With<General>>,
     units: Query<(Entity, &Position, &Faction, &UnitDefIdx), Without<General>>,
 ) {
-    let mut gs: Vec<_> = generals.iter().map(|(e, p, f, d)| (e.to_bits(), p.0, *f, d.0)).collect();
+    let mut gs: Vec<_> = generals
+        .iter()
+        .map(|(e, p, f, d, r)| (e.to_bits(), p.0, *f, d.0, r.copied()))
+        .collect();
     gs.sort_unstable_by_key(|g| g.0);
     let mut us: Vec<_> = units.iter().map(|(e, p, f, d)| (e.to_bits(), p.0, *f, d.0)).collect();
     us.sort_unstable_by_key(|u| u.0);
@@ -1074,12 +1112,17 @@ pub fn auras(
     let kinds = content.generals.len();
     let mut best: Vec<u32> = vec![0; us.len() * kinds];
     let mut in_reach: Vec<usize> = Vec::new();
-    for &(_, gpos, gside, gdef) in &gs {
+    for &(_, gpos, gside, gdef, rank) in &gs {
         let Some(g) = content.general_at(gdef) else {
             continue;
         };
         let kind = gdef - content.units.len();
-        let r2 = g.aura.radius * g.aura.radius;
+        // A veteran's rank (C4 AC2) widens the reach and adds steps.
+        let radius = match rank {
+            Some(r) => g.aura.radius * r.radius_milli as f32 / 1000.0,
+            None => g.aura.radius,
+        };
+        let r2 = radius * radius;
         in_reach.clear();
         in_reach.extend(
             us.iter()
@@ -1092,6 +1135,10 @@ pub fn auras(
             AuraScaling::PerDistinctDomain { max } => {
                 distinct_domains(domains, in_reach.iter().map(|&i| domain[i]), None).min(max)
             }
+        };
+        let factor = match rank {
+            Some(r) if factor > 0 => factor + r.extra_factor,
+            _ => factor,
         };
         for &i in &in_reach {
             let b = &mut best[i * kinds + kind];

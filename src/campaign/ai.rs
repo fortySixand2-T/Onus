@@ -32,7 +32,7 @@ pub fn decide(c: &mut Campaign, n: usize) -> Vec<Decision> {
     let ready: Vec<(u32, usize)> = c
         .armies()
         .iter()
-        .filter(|a| a.nation == n && a.units.len() >= min)
+        .filter(|a| a.nation == n && a.units.len() >= min && a.general.present())
         .filter_map(|a| a.at().map(|at| (a.id, at)))
         .filter(|&(_, at)| c.cities()[at].owner == n)
         .collect();

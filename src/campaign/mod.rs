@@ -49,6 +49,28 @@ pub struct Unit {
 pub struct Leader {
     /// His `UnitDefIdx` (a General type: `units.len() + k`).
     pub kind: usize,
+    /// His experience (C4 AC2); his rank is `CampaignContent::rank_of(xp)`.
+    pub xp: u32,
+    /// `Some(r)`: he fell, and his replacement (rank 0) takes command at
+    /// the end of round `r`. Until then the army has no General: it cannot
+    /// march and fields none.
+    pub vacant_until: Option<u32>,
+}
+
+impl Leader {
+    /// A new General of `kind`, at rank 0.
+    pub fn new(kind: usize) -> Self {
+        Leader {
+            kind,
+            xp: 0,
+            vacant_until: None,
+        }
+    }
+
+    /// He is in command (not fallen and waiting for a replacement).
+    pub fn present(&self) -> bool {
+        self.vacant_until.is_none()
+    }
 }
 
 /// Where an army is.
@@ -353,7 +375,7 @@ impl Campaign {
         self.armies.push(Army {
             id,
             nation,
-            general: Leader { kind },
+            general: Leader::new(kind),
             units,
             location: Location::At(at),
             came_from: at,
@@ -494,6 +516,8 @@ impl Campaign {
             h.u64(a.id as u64)
                 .u64(a.nation as u64)
                 .u64(a.general.kind as u64)
+                .u64(a.general.xp as u64)
+                .u64(a.general.vacant_until.map_or(0, |r| r as u64 + 1))
                 .u64(a.came_from as u64);
             match a.location {
                 Location::At(c) => h.u64(0).u64(c as u64),
@@ -565,6 +589,7 @@ impl Campaign {
         self.movement();
         let battles = self.battles(&order, resolver);
         self.upkeep();
+        self.replacements();
         self.end_checks();
         let h = self.state_hash();
         self.round_hashes.push(h);
@@ -607,6 +632,9 @@ impl Campaign {
                 if a.nation != nation {
                     return Err(format!("army {army} is not this nation's"));
                 }
+                if !a.general.present() {
+                    return Err(format!("army {army} has no General (his replacement is coming)"));
+                }
                 let Some(from) = a.at() else {
                     return Err(format!("army {army} is already marching"));
                 };
@@ -640,7 +668,7 @@ impl Campaign {
             .map(|u| speed[u.def])
             .min()
             .unwrap_or(speed[a.general.kind]);
-        let bonus = if a.general.kind == self.campaign.logistics_general {
+        let bonus = if a.general.present() && a.general.kind == self.campaign.logistics_general {
             self.campaign.rules.march.logistics_bonus
         } else {
             0
@@ -723,6 +751,7 @@ impl Campaign {
             ticks: outcome.ticks,
         };
         self.survivors(plan, outcome);
+        self.veterans(plan, outcome);
         if outcome.winner == Some(Side::Attack) {
             rec.captured = true;
             self.cities[city].owner = attacker;
@@ -775,6 +804,46 @@ impl Campaign {
                     }
                     None => self.cities[plan.city].garrison.push(unit),
                 }
+            }
+        }
+    }
+
+    /// Every General who took the field (C4 AC2): a survivor earns
+    /// `xp.win` if his side won (an undecided battle is the holder's) and
+    /// `xp.survive` if it lost; a fallen one loses his experience, and his
+    /// army waits `general_replacement_rounds` full rounds for a new one. An
+    /// uncontested city is no battle, and earns nothing.
+    fn veterans(&mut self, plan: &BattlePlan, outcome: &BattleOutcome) {
+        if plan.undefended() {
+            return;
+        }
+        let won = outcome.winner.unwrap_or(Side::Defend);
+        let xp = &self.campaign.rules.xp;
+        let back = self.round.saturating_add(self.campaign.rules.general_replacement_rounds);
+        for (side, ps, out) in [(Side::Attack, &plan.attack, &outcome.attack), (Side::Defend, &plan.defend, &outcome.defend)] {
+            let earned = if side == won { xp.win } else { xp.survive };
+            assert_eq!(out.generals.len(), ps.generals.len(), "outcome per plan General");
+            for (g, &alive) in ps.generals.iter().zip(&out.generals) {
+                let Some(a) = self.armies.iter_mut().find(|a| a.id == g.army) else {
+                    continue;
+                };
+                if alive {
+                    a.general.xp = a.general.xp.saturating_add(earned);
+                } else {
+                    a.general.xp = 0;
+                    a.general.vacant_until = Some(back);
+                }
+            }
+        }
+    }
+
+    /// The end of a round (C4 AC2): a fallen General's replacement, rank 0,
+    /// takes command when his army's wait is over.
+    fn replacements(&mut self) {
+        let round = self.round;
+        for a in &mut self.armies {
+            if a.general.vacant_until.is_some_and(|r| r <= round) {
+                a.general = Leader::new(a.general.kind);
             }
         }
     }

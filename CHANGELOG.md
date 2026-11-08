@@ -901,3 +901,13 @@
 - [2026-11-08] Created: tests/c4_autoresolve.rs — C4 AC10 auto-resolve tests and the campaign golden
 - [2026-11-08] Modified: tests/c4_persist.rs — C4 every unit stays within its own nation's pool
 - [2026-11-08] Modified: FINDINGS.md — F-089 AC10 readings; Bevy 0.19 entity-bits order
+- [2026-11-08] Modified: src/sim/battle.rs — C4 AC2 AuraRank: a ranked General's aura radius and factor
+- [2026-11-08] Modified: src/sim/replay.rs — C4 AC2 hash row for a ranked General's aura
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC2 General experience, fallen Generals and replacements
+- [2026-11-08] Modified: src/campaign/battle.rs — C4 AC2 plan Generals carry their rank; leaderless armies field none
+- [2026-11-08] Modified: src/campaign/ai.rs — C4 AC2 a leaderless army does not march
+- [2026-11-08] Created: tests/c4_veterans.rs — C4 AC2 veteran General tests
+- [2026-11-08] Modified: tests/c4_autoresolve.rs — C4 AC2 campaign golden re-pinned (the hash carries experience)
+- [2026-11-08] Modified: FINDINGS.md — F-089 AC2 readings
+- [2026-11-08] Modified: src/campaign/content.rs — C4 the constructor builds `Self`, not a `Content`-like literal the guard flags
+- [2026-11-08] Modified: tests/m5_replay.rs — C4 the randomness guard admits the campaign's own seeded generator

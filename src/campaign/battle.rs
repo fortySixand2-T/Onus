@@ -3,7 +3,7 @@
 //! (a [`Resolver`]).
 
 use crate::headless::{MatchSettings, Orientation};
-use crate::sim::battle::{BattleSetup, Roster};
+use crate::sim::battle::{AuraRank, BattleSetup, Roster};
 use crate::sim::content::Content;
 use crate::sim::spatial::Faction;
 
@@ -25,6 +25,8 @@ pub struct PlanGeneral {
     pub army: u32,
     /// His `UnitDefIdx`.
     pub kind: usize,
+    /// His rank (C4 AC2): an index into `CampaignContent::ranks`.
+    pub rank: usize,
 }
 
 /// A roster unit on the field: whose army it belongs to (`None`: the city's
@@ -167,10 +169,14 @@ fn side(c: &Campaign, nation: usize, armies: Vec<u32>) -> PlanSide {
     };
     for id in armies {
         let a = c.army(id).expect("an army in the plan exists");
-        s.generals.push(PlanGeneral {
-            army: id,
-            kind: a.general.kind,
-        });
+        // A fallen General's army fights without one (C4 AC2).
+        if a.general.present() {
+            s.generals.push(PlanGeneral {
+                army: id,
+                kind: a.general.kind,
+                rank: c.campaign().rank_of(a.general.xp),
+            });
+        }
         s.units.extend(a.units.iter().map(|u| PlanUnit {
             army: Some(id),
             def: u.def,
@@ -252,7 +258,12 @@ pub fn battle_settings(content: &Content, campaign: &CampaignContent, plan: &Bat
     for (f, s) in [(Faction::A, &plan.attack), (Faction::B, &plan.defend)] {
         for g in &s.generals {
             let id = &content.general_at(g.kind).expect("a plan General is a General").id;
-            setup = setup.with_general(f, id);
+            let r = &campaign.ranks[g.rank];
+            let rank = AuraRank {
+                radius_milli: r.radius_milli(),
+                extra_factor: r.extra_factor,
+            };
+            setup = setup.with_ranked_general(f, id, (!rank.is_plain()).then_some(rank));
         }
     }
     let purse = |s: &PlanSide| rules.starting_alloy.saturating_add(rules.alloy_per_city.saturating_mul(s.cities));
