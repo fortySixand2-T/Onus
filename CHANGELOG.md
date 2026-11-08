@@ -873,3 +873,10 @@
 - [2026-11-07] Created: tests/critic_c3_r3.rs — critic C3 round 3: three_resource Growth gating cannot be bypassed (regression cover)
 - [2026-11-08] Modified: CAMPAIGN_PLAN.md — C4 started ahead of B5 by user decision: heading and gate override
 - [2026-11-08] Modified: FINDINGS.md — F-088: C4 starts ahead of B5 by the user's decision
+- [2026-11-08] Created: assets/data/campaign.ron — C4 campaign content: the 16-city map, roads and terrain, start armies, General ranks, campaign rules and AI numbers
+- [2026-11-08] Created: src/campaign/content.rs — C4 campaign content loader, validated against the battle content, with its own fingerprint
+- [2026-11-08] Created: src/campaign/mod.rs — C4 AC1 campaign state machine: cities, ownership, armies, seeded rounds, conquest, state hash
+- [2026-11-08] Created: src/campaign/battle.rs — C4 battle plan/outcome types and the Resolver trait
+- [2026-11-08] Created: src/campaign/ai.rs — C4 campaign AI (march on the weakest hostile neighbour)
+- [2026-11-08] Modified: src/lib.rs — register the campaign module
+- [2026-11-08] Created: tests/c4_core.rs — C4 AC1 tests: load/validation, determinism, conquest, render-free scan

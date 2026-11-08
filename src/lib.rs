@@ -2,6 +2,8 @@
 //!
 //! Library root. Layers, innermost first:
 //! - [`sim`]  — render-free simulation core; the unit the harness judges.
+//! - [`campaign`] — the render-free campaign layer over the map (C4): rounds,
+//!   armies, conquest; its battles go to [`headless`] matches.
 //! - [`headless`] — the shared headless-match constructor (render-free driver:
 //!   `MinimalPlugins` + the shipped sim chain), used by the bench, the balance
 //!   runner and the tests.
@@ -21,6 +23,7 @@ use bevy::ecs::schedule::ScheduleLabel;
 use bevy::prelude::*;
 
 pub mod batch;
+pub mod campaign;
 pub mod client;
 pub mod gate;
 pub mod headless;

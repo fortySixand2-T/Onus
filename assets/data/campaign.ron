@@ -1,0 +1,152 @@
+// campaign.ron — the campaign layer's content (C4): the map, the start
+// armies, General ranks and every campaign rule. DESIGN_BRIEF "Campaign
+// design" and "Campaign data shape"; CAMPAIGN_PLAN C4. Loaded by
+// src/campaign/content.rs and validated against the battle content
+// (units.ron, nations.ron); a bad name or number is a load error.
+//
+// Kept apart from the battle content on purpose: the battle content's
+// fingerprint (every match log and golden) does not move when this file does.
+// A campaign save records this file's own fingerprint.
+//
+// SCHEMA NOTE (C4).
+//   economy      — the economy every campaign battle plays (Alloy or
+//                  ThreeResource, as MatchSettings::economy).
+//   terrain      — (id, length_mult >= 1): a road of that terrain costs
+//                  ceil(length x length_mult) march points.
+//   cities       — (id, name, owner: nation id, capital: bool, buildings:
+//                  [building ids, in battle placement order], levy: (alloy,
+//                  units: [combat unit ids])). Exactly one capital per nation.
+//                  A nation's size is its number of cities.
+//   roads        — (from, to, length: march points > 0, terrain), both ways.
+//                  Every city must be reachable.
+//   start_armies — (nation, general: units.ron generals id, at: a city the
+//                  nation holds, units: [(unit id, count)]).
+//   ranks        — (xp, radius_mult >= 1, extra_factor): a General with at
+//                  least `xp` experience holds the rank; the last is the cap.
+//                  radius_mult scales his aura radius; extra_factor adds steps
+//                  to its strength (modifiers applied factor times). Rank 0 is
+//                  (xp: 0, radius_mult: 1.0, extra_factor: 0).
+//   rules        — see each field below.
+//   ai           — the campaign AI's numbers.
+(
+    economy: Alloy,
+    terrain: [
+        (id: "plain",   length_mult: 1.0),
+        (id: "rough",   length_mult: 1.25),
+        (id: "scarred", length_mult: 1.5),   // the edge of the Rupture scar
+    ],
+    cities: [
+        // House Vael: the heir's last holding, bordering the three great houses.
+        (id: "cinderhold", name: "Cinderhold", owner: "house", capital: true,
+         buildings: ["hq", "foundry", "gene_vats"], levy: (alloy: 60, units: ["sentinel"])),
+        // Forgeborn (4).
+        (id: "ironspire", name: "Ironspire", owner: "forgeborn", capital: true,
+         buildings: ["hq", "foundry"], levy: (alloy: 50, units: ["sentinel"])),
+        (id: "forge_gate", name: "Forge Gate", owner: "forgeborn",
+         buildings: ["hq", "foundry"], levy: (alloy: 40, units: ["sentinel"])),
+        (id: "brasswork", name: "Brasswork", owner: "forgeborn",
+         buildings: ["hq"], levy: (alloy: 40, units: ["bulwark"])),
+        (id: "anvil_reach", name: "Anvil Reach", owner: "forgeborn",
+         buildings: ["hq"], levy: (alloy: 40, units: ["sentinel"])),
+        // Verdant (4).
+        (id: "greenmere", name: "Greenmere", owner: "verdant", capital: true,
+         buildings: ["hq", "gene_vats"], levy: (alloy: 50, units: ["ripper"])),
+        (id: "rootfall", name: "Rootfall", owner: "verdant",
+         buildings: ["hq", "gene_vats"], levy: (alloy: 40, units: ["ripper"])),
+        (id: "thornwick", name: "Thornwick", owner: "verdant",
+         buildings: ["hq"], levy: (alloy: 40, units: ["ravager"])),
+        (id: "bonegarden", name: "Bonegarden", owner: "verdant",
+         buildings: ["hq"], levy: (alloy: 40, units: ["ripper"])),
+        // Aetherkin (3).
+        (id: "leyhold", name: "Leyhold", owner: "aetherkin", capital: true,
+         buildings: ["hq", "aether_spire"], levy: (alloy: 50, units: ["arclight"])),
+        (id: "starfall", name: "Starfall", owner: "aetherkin",
+         buildings: ["hq", "aether_spire"], levy: (alloy: 40, units: ["arclight"])),
+        (id: "prism_vale", name: "Prism Vale", owner: "aetherkin",
+         buildings: ["hq"], levy: (alloy: 40, units: ["sentinel"])),
+        // Tollmarch (2).
+        (id: "tollgate", name: "Tollgate", owner: "tollmarch", capital: true,
+         buildings: ["hq", "foundry"], levy: (alloy: 60, units: ["sentinel"])),
+        (id: "silvermarket", name: "Silvermarket", owner: "tollmarch",
+         buildings: ["hq"], levy: (alloy: 60, units: ["ripper"])),
+        // The Ashen Reach (2).
+        (id: "ashgrave", name: "Ashgrave", owner: "ashen_reach", capital: true,
+         buildings: ["hq", "foundry"], levy: (alloy: 50, units: ["bulwark"])),
+        (id: "cinder_wastes", name: "Cinder Wastes", owner: "ashen_reach",
+         buildings: ["hq"], levy: (alloy: 40, units: ["sentinel"])),
+    ],
+    roads: [
+        // Cinderhold borders all three great houses and the Reach.
+        (from: "cinderhold", to: "forge_gate",    length: 8, terrain: "plain"),
+        (from: "cinderhold", to: "rootfall",      length: 8, terrain: "plain"),
+        (from: "cinderhold", to: "starfall",      length: 8, terrain: "scarred"),
+        (from: "cinderhold", to: "cinder_wastes", length: 8, terrain: "scarred"),
+        // Forgeborn.
+        (from: "forge_gate", to: "ironspire",     length: 7, terrain: "plain"),
+        (from: "ironspire",  to: "brasswork",     length: 7, terrain: "plain"),
+        (from: "ironspire",  to: "anvil_reach",   length: 7, terrain: "plain"),
+        // Tollmarch, west of the Forgeborn.
+        (from: "forge_gate", to: "silvermarket",  length: 8, terrain: "plain"),
+        (from: "brasswork",  to: "tollgate",      length: 8, terrain: "rough"),
+        (from: "silvermarket", to: "tollgate",    length: 6, terrain: "plain"),
+        // Aetherkin, east, guarding the ley-wells.
+        (from: "anvil_reach", to: "starfall",     length: 8, terrain: "rough"),
+        (from: "starfall",   to: "leyhold",       length: 7, terrain: "plain"),
+        (from: "leyhold",    to: "prism_vale",    length: 7, terrain: "plain"),
+        (from: "prism_vale", to: "thornwick",     length: 8, terrain: "scarred"),
+        // Verdant, south.
+        (from: "rootfall",   to: "greenmere",     length: 7, terrain: "plain"),
+        (from: "greenmere",  to: "thornwick",     length: 7, terrain: "plain"),
+        (from: "greenmere",  to: "bonegarden",    length: 7, terrain: "plain"),
+        // The Ashen Reach, south-west.
+        (from: "bonegarden", to: "ashgrave",      length: 8, terrain: "rough"),
+        (from: "ashgrave",   to: "cinder_wastes", length: 6, terrain: "plain"),
+        (from: "cinder_wastes", to: "rootfall",   length: 8, terrain: "plain"),
+        (from: "tollgate",   to: "ashgrave",      length: 10, terrain: "rough"),
+    ],
+    start_armies: [
+        (nation: "house",       general: "general_synthesis", at: "cinderhold",
+         units: [("sentinel", 2), ("ripper", 2), ("arclight", 2)]),
+        (nation: "forgeborn",   general: "general_bulwark",   at: "ironspire",
+         units: [("sentinel", 4), ("bulwark", 2)]),
+        (nation: "verdant",     general: "general_frenzy",    at: "greenmere",
+         units: [("ripper", 5), ("ravager", 2)]),
+        (nation: "aetherkin",   general: "general_focus",     at: "leyhold",
+         units: [("arclight", 4), ("sentinel", 2)]),
+        (nation: "tollmarch",   general: "general_logistics", at: "tollgate",
+         units: [("sentinel", 3), ("ripper", 2)]),
+        (nation: "ashen_reach", general: "general_endurance", at: "ashgrave",
+         units: [("bulwark", 2), ("sentinel", 3)]),
+    ],
+    ranks: [
+        (xp: 0, radius_mult: 1.0,  extra_factor: 0),
+        (xp: 3, radius_mult: 1.15, extra_factor: 0),
+        (xp: 7, radius_mult: 1.3,  extra_factor: 1),   // the top rank: the cap
+    ],
+    rules: (
+        // An army's march points per round are its slowest unit's Speed; an
+        // army led by the Logistics General adds this.
+        march: (logistics_general: "general_logistics", logistics_bonus: 2),
+        // Experience for a General who survives a battle: won / lost.
+        xp: (win: 3, survive: 1),
+        general_replacement_rounds: 3,   // a fallen General's army waits this long
+        max_absorbed_generals: 3,        // C0: at most 3 absorbed Generals
+        raise_general_cost: 300,         // treasury Alloy for a house General
+        repair_per_round: 1000,          // building HP, unattacked cities only
+        repair_mult: [("forgeborn", 1.5)],   // sturdier buildings repair faster
+        army_cap: 16,                    // roster units per army; levy beyond is lost
+        battle: (
+            tick_cap: 14400,             // 4 minutes; then the defender holds
+            attacker_workers: 0,
+            defender_workers: 3,
+            starting_alloy: 150,         // + alloy_per_city x the side's cities
+            alloy_per_city: 50,
+        ),
+        round_cap: 40,
+        length_target: (min_rounds: 15, max_rounds: 25),   // C0: 15-25 rounds
+    ),
+    ai: (
+        attack_min_units: 5,
+        max_armies: 3,
+    ),
+)
