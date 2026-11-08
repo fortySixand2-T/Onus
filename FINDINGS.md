@@ -7299,3 +7299,86 @@ The two ways to equalise the probes, each read on the full B3 gate on three reso
 - With 9 workers for every probe, the timeouts stay at F-084's 3%, and they are confined to the two Machine mirrors.
 - **Shipped: all five at 9 workers.** It gives the better reading, and it is the only one of the two in which no K reads Fail.
   The override is still read only in three-resource matches. Alloy-only play is untouched, so the golden licence holds.
+
+## F-087 — C3 AC8 reading of record: B3 and the C2 cross on the shipped three-resource settings
+
+This is the AC8 reading of record. It replaces F-081, F-084 and F-085 as the AC8 reading: those were taken on
+earlier settings, and F-084 and F-085 on unequal probes (F-086 F1). The shipped settings are:
+- F-085's ×1.5 pace (growth and wells every 40 ticks);
+- F-083's once-per-wave guard replacement;
+- all five mass probes at `three_resource: (worker_target: 9)` (F-086 F1);
+- `on_well_fraction` 0.5 (F-086 F5, behaviour-identical).
+
+Every economy and strategy number is RON; no base unit combat stat has moved. Release builds on the box,
+single-threaded, nice'd, one job at a time.
+
+**B3 kill gate on three resources** (5 mass probes, 2 seeds, 100 matches, 3 timeouts, 438 s): **no K reads Pass
+or Fail overall. Every one is undetermined.**
+
+| | value | 95% interval | status |
+|---|---|---|---|
+| K1 mass_bulwark | 50.0% | [28.7, 71.3] | undetermined |
+| K1 mass_sentinel | 75.0% | [53.8, 93.4] | undetermined |
+| K1 mass_ripper | 25.0% | [6.6, 46.2] | pass |
+| K1 mass_ravager | 75.0% | [53.8, 93.4] | undetermined |
+| K1 mass_arclight | 25.0% | [6.6, 46.2] | pass |
+| K2 slot A | 35.3% (n 17) | [15.2, 62.4] | undetermined |
+| K2 left base | 35.3% | [15.2, 62.4] | undetermined |
+| K3 decided median | 23691 ticks (6:35) | | in band |
+| K3 timeouts | 3% | | undetermined |
+| K3 band share (5–8 min) | 55.7% | [44.0, 66.8] | undetermined |
+| K3 below / beyond band | 2% / 44% | | reported |
+
+Row vs column (win %, timeouts, mean of the probe's own unit trained A v B):
+bulwark 0 t2 36v41 | 0 32v37 | 100 26v54 | 100 27v40 | 0 11v16.
+sentinel 100 30v23 | 33 t1 34v36 | 100 17v21 | 0 14v16 | 100 16v12.
+ripper 0 69v31 | 0 20v17 | 75 52v52 | 0 32v25 | 100 24v14.
+ravager 0 42v29 | 100 17v14 | 100 26v32 | 25 49v50 | 100 17v13.
+arclight 100 16v11 | 0 11v16 | 0 13v24 | 0 13v18 | 25 28v34.
+
+- Every off-diagonal cell is decided (0 timeouts), and almost every one is 0% or 100% at 2 seeds.
+  - Bulwark beats Ripper and Ravager.
+  - Sentinel beats Bulwark, Ripper and Arclight.
+  - Ripper beats Arclight.
+  - Ravager beats Sentinel, Ripper and Arclight.
+  - Arclight beats Bulwark.
+
+  No probe beats all four others. Ripper and Arclight win one cell each, which is where their 25% comes from.
+- **No interval sits wholly above the 65% line.** K1 needs more seeds to read Pass, not a tune.
+- The median sits inside the band. Band share 55.7% is above the 50% bar but not provably so at n = 97 decided.
+  The remaining tail is Bulwark's own pace (F-085), a base-combat-stat question that AC8 forbids touching.
+
+**C2 nation cross gate on three resources** (every ordered pair of nations, 5 mass probes, **3 seeds**, 900
+matches, 40 timeouts, 5088 s). The strength verdict is **undetermined**: five nations Pass and one is undetermined.
+
+| nation | strength | 95% interval | reading |
+|---|---|---|---|
+| house | 44.6% | [37.5, 51.7] | pass |
+| forgeborn | 43.0% | [36.1, 50.0] | pass |
+| verdant | **63.6%** | [56.6, 70.5] | **undetermined** |
+| aetherkin | 57.5% | [50.4, 64.6] | pass |
+| tollmarch | 46.6% | [39.7, 53.6] | pass |
+| ashen_reach | 44.6% | [37.5, 51.7] | pass |
+
+Row vs column win % (columns in the same order): house -- 53 33 39 47 50; forgeborn 47 -- 32 37 53 47;
+verdant 67 68 -- 56 61 67; aetherkin 61 63 44 -- 58 61; tollmarch 53 47 39 42 -- 53; ashen_reach 50 53 33 39 47 --.
+
+- Timeouts fell from 104 of 300 (F-081, 1 seed, earlier settings) to 40 of 900 (4.4%).
+- Tollmarch, the strongest in F-081, is now at 46.6%. Its Alloy edge was the Machine probes' income
+  bottleneck, which 9 workers relieves for every probe alike.
+- **Verdant (Biomass grows ×1.15) is the one nation not yet a pass.** It is at 63.6%, under the 65% line, but its
+  interval reaches 70.5. It beats every nation (56–68%). Ripper and Ravager are Biomass-paid and well
+  over half the probe roster masses on Biomass or Aether, so faster growth is the strongest lean on this axis.
+  The RON lever is Verdant's `three_resource_traits` Growth `mul` (1.15). It is a trait size, which AC8
+  allows, but it is **not tuned here**: the reading is recorded as it stands, and the call is the user's.
+- **House and Ashen Reach read identically**, row for row. Neither nation's three-resource traits act
+  on the mono-probe cross axis, the same reason F-074 gives for the Alloy-only cross. Their 44.6% is the
+  no-lean baseline against the four nations that lean.
+
+**AC8 status.** Both gates have been re-run on the shipped three-resource settings and recorded here. That is
+what the AC asks, so it stays ticked. **Neither gate reads Pass:**
+- B3: everything is undetermined, with nothing failing. The only hard Fail on three resources (K3 timeouts) is gone.
+- C2 cross: undetermined, on Verdant.
+
+**Open, the user's call:** more B3 seeds to settle K1, K2 and K3; Verdant's Growth size; Bulwark's pace (a base
+combat stat, so outside AC8).

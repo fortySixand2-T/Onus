@@ -866,3 +866,4 @@
 - [2026-11-07] Modified: FINDINGS.md — F-086 F5
 - [2026-11-07] Modified: assets/data/strategies.ron — every mass probe carries three_resource (worker_target: 9), so the probes stay identical (critic F1)
 - [2026-11-07] Modified: FINDINGS.md — F-086 F1: equal probes, both variants read on the full B3 gate
+- [2026-11-07] Modified: FINDINGS.md — F-087 C3 AC8 reading of record (B3 and C2 cross, 3 seeds, shipped settings)
