@@ -915,3 +915,6 @@
 - [2026-11-08] Created: tests/c4_siege.rs — C4 AC3 siege damage tests
 - [2026-11-08] Modified: tests/c4_autoresolve.rs — C4 AC3 campaign golden re-pinned (building HP carries)
 - [2026-11-08] Modified: FINDINGS.md — F-089 AC3 readings
+- [2026-11-08] Modified: assets/data/nations.ron — Verdant three-resource Growth 1.15 -> 1.10 (user instruction)
+- [2026-11-08] Modified: tests/c4_autoresolve.rs — campaign golden re-pinned (content fingerprint moved with Verdant Growth)
+- [2026-11-08] Modified: FINDINGS.md — F-090 Verdant Growth 1.10 and the three-resource cross re-read

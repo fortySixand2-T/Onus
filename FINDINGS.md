@@ -7516,3 +7516,43 @@ Every number lives in `assets/data/campaign.ron`.
   repair step. There is no rebuild decision yet: C4 has no player economy screen.
 - The campaign golden (`c4_autoresolve::campaign_golden`, my own) re-pinned at AC3, because
   building HP now carries: 0x181b0e1f579e6d5a -> 0xc3c869fe51c6841c.
+
+## F-090 — Verdant's three-resource Growth lowered to ×1.10, by the user's instruction (C3 AC8 RON step)
+
+**The user's instruction (2026-11-08): "lower verdant growth to 1.10".** In `assets/data/nations.ron`, Verdant's
+`three_resource_traits` entry `(applies_to: Buildings, stat: Growth, mul: 1.15)` is now `mul: 1.10`. Nothing
+else has moved, including Forgeborn's BuildingHp 1.15. It is a trait size, which C3 AC8 allows, and it acts
+only in three-resource play. Neither `DESIGN_BRIEF.md` nor `CAMPAIGN_PLAN.md` states the number, so neither
+changes. Committed on its own, between C4 AC3 and AC4.
+
+**Re-pins.** On the full debug suite only one pin moved: `c4_autoresolve::campaign_golden` (C4's own,
+Alloy-only), 0xc3c869fe51c6841c -> 0x900de33b295916e6. It moved only through the content fingerprint, which
+the campaign state hash includes. A one-off comparison of the 1.15 and 1.10 content over the golden's 6 rounds
+showed identical play; only the fingerprint differed (0x4bc1142d466fb4ca -> 0x6d30ed0603883160). Every
+battle, nation, Alloy-only and three-resource golden is byte-identical, since no three-resource golden plays
+Verdant's Growth.
+
+**C2 nation cross gate on three resources, re-read** (F-087's configuration: every ordered pair, 5 mass probes,
+3 seeds, 900 matches; release, nice'd, single-threaded; 40 timeouts; 5757 s). Strength verdict:
+**undetermined**. Five nations pass and one is undetermined.
+
+| nation | strength | 95% interval | reading | F-087 (×1.15) |
+|---|---|---|---|---|
+| house | 47.2% | [40.1, 54.3] | pass | 44.6% |
+| forgeborn | 45.3% | [38.4, 52.3] | pass | 43.0% |
+| verdant | **52.2%** | [45.0, 59.3] | **pass** | 63.6% undetermined |
+| aetherkin | **60.1%** | [53.0, 67.1] | **undetermined** | 57.5% pass |
+| tollmarch | 48.0% | [41.0, 55.0] | pass | 46.6% |
+| ashen_reach | 47.2% | [40.1, 54.3] | pass | 44.6% |
+
+Row vs column win %: house -- 53 46 39 47 50; forgeborn 47 -- 43 37 53 47; verdant 54 57 -- 43 54 54;
+aetherkin 61 63 57 -- 58 61; tollmarch 53 47 46 42 -- 53; ashen_reach 50 53 46 39 47 --.
+
+- Verdant now passes: its interval sits inside 35–65%.
+- **Not every nation passes.** Aetherkin, at 60.1%, is under the 65% line, but its interval reaches 67.1. It
+  rose from 57.5% mainly because it now beats Verdant (57%, was 44%).
+- House and Ashen Reach still read identically, for F-087's reason.
+- B3 was not re-run: Growth is a nation trait, and the B3 kill gate plays no nation.
+
+Open, for the user to decide: Aetherkin's three-resource lean (cheaper Aether ×0.90, Arclight range +12), or
+more seeds to settle its interval.
