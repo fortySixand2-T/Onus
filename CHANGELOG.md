@@ -911,3 +911,7 @@
 - [2026-11-08] Modified: FINDINGS.md — F-089 AC2 readings
 - [2026-11-08] Modified: src/campaign/content.rs — C4 the constructor builds `Self`, not a `Content`-like literal the guard flags
 - [2026-11-08] Modified: tests/m5_replay.rs — C4 the randomness guard admits the campaign's own seeded generator
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC3 building HP carries; unattacked cities repair; ruins are rebuilt for Alloy
+- [2026-11-08] Created: tests/c4_siege.rs — C4 AC3 siege damage tests
+- [2026-11-08] Modified: tests/c4_autoresolve.rs — C4 AC3 campaign golden re-pinned (building HP carries)
+- [2026-11-08] Modified: FINDINGS.md — F-089 AC3 readings

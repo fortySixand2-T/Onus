@@ -152,4 +152,4 @@ fn campaign_golden() {
 }
 
 const GOLDEN_ROUNDS: u32 = 6;
-const GOLDEN: (u32, u64) = (6, 0x181b_0e1f_579e_6d5a);
+const GOLDEN: (u32, u64) = (6, 0xc3c8_69fe_51c6_841c);

@@ -7501,3 +7501,18 @@ Every number lives in `assets/data/campaign.ron`.
   with its own seeded generator stepped only in its own round, so the guard now admits
   `src/campaign/` as well. **Provisional**: this widens an existing guard; the critic should
   confirm the reading. Everything else stays forbidden everywhere.
+
+**Siege damage (AC3).**
+- P23. Every building comes out of a battle with the HP the battle left it. A conqueror inherits
+  them, clamped to his own pool (a sturdier holder's building can be over the conqueror's maximum).
+- P24. A city is attacked in a round when a battle or an uncontested capture happens there. Every
+  other city repairs at the end of the round, after the levies: each standing building gains
+  `repair_per_round x` its holder's repair multiplier, up to the holder's pool. The multiplier is
+  a perk, so it follows the holder: a captured Forgeborn city repairs at the conqueror's rate.
+- P25. A destroyed building (HP 0) does not repair and does not take the field. At the end of a
+  round in which its city is not attacked, its holder rebuilds it automatically if the treasury
+  holds its `alloy_cost` (the building's own build cost in `units.ron`). Cities go in map order and
+  slots in city order; a building that cannot be paid for waits. A rebuilt building stands at one
+  repair step. There is no rebuild decision yet: C4 has no player economy screen.
+- The campaign golden (`c4_autoresolve::campaign_golden`, my own) re-pinned at AC3, because
+  building HP now carries: 0x181b0e1f579e6d5a -> 0xc3c869fe51c6841c.

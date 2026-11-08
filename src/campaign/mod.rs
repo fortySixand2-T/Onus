@@ -589,6 +589,7 @@ impl Campaign {
         self.movement();
         let battles = self.battles(&order, resolver);
         self.upkeep();
+        self.siege_works();
         self.replacements();
         self.end_checks();
         let h = self.state_hash();
@@ -752,6 +753,13 @@ impl Campaign {
         };
         self.survivors(plan, outcome);
         self.veterans(plan, outcome);
+        // Siege damage persists (C4 AC3): every building as the battle left
+        // it; a conqueror inherits it, within his own pool.
+        assert_eq!(outcome.buildings.len(), plan.buildings.len(), "outcome per plan building");
+        let holder = if outcome.winner == Some(Side::Attack) { attacker } else { defender };
+        for (b, &hp) in plan.buildings.iter().zip(&outcome.buildings) {
+            self.cities[city].buildings[b.slot].hp = hp.min(self.tables.building_hp[holder][b.def]);
+        }
         if outcome.winner == Some(Side::Attack) {
             rec.captured = true;
             self.cities[city].owner = attacker;
@@ -882,6 +890,48 @@ impl Campaign {
                             self.cities[city].garrison.push(unit);
                         }
                     }
+                }
+            }
+        }
+    }
+
+    /// One round's repair for a building of `nation`'s: `repair_per_round`
+    /// by its repair multiplier (a perk: it follows the holder).
+    pub fn repair_step(&self, nation: usize) -> u32 {
+        let r = self.campaign.rules.repair_per_round as u64 * self.campaign.repair_milli[nation] as u64 / 1000;
+        r.min(u32::MAX as u64) as u32
+    }
+
+    /// The end of a round (C4 AC3), after every levy: each city not attacked
+    /// this round (no battle, no capture) repairs its standing buildings by
+    /// its holder's repair step, up to the holder's pool; then, city by city
+    /// in map order and slot by slot, its holder rebuilds each destroyed
+    /// building it can pay `alloy_cost` for, which stands again at one
+    /// repair step. An attacked city neither repairs nor rebuilds.
+    fn siege_works(&mut self) {
+        let round = self.round;
+        let mut attacked = vec![false; self.cities.len()];
+        for r in self.history.iter().rev().take_while(|r| r.round == round) {
+            attacked[r.city] = true;
+        }
+        for city in (0..self.cities.len()).filter(|&c| !attacked[c]) {
+            let owner = self.cities[city].owner;
+            let step = self.repair_step(owner);
+            for b in &mut self.cities[city].buildings {
+                if b.hp > 0 {
+                    b.hp = b.hp.saturating_add(step).min(self.tables.building_hp[owner][b.def]);
+                }
+            }
+        }
+        for city in (0..self.cities.len()).filter(|&c| !attacked[c]) {
+            let owner = self.cities[city].owner;
+            let step = self.repair_step(owner);
+            for k in 0..self.cities[city].buildings.len() {
+                let b = self.cities[city].buildings[k];
+                let cost = self.content.buildings[b.def].alloy_cost;
+                if b.hp == 0 && self.nations[owner].treasury >= cost {
+                    self.nations[owner].treasury -= cost;
+                    self.cities[city].buildings[k].hp = step.min(self.tables.building_hp[owner][b.def]).max(1);
                 }
             }
         }
