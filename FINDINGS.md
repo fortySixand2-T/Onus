@@ -7798,3 +7798,13 @@ C6 or a design pass may revise it. Every number lives in `assets/data/diplomacy.
 - D14. The player wins when he stands and every other nation still standing is his ally (a
   diplomatic victory). AI nations do not win this way: two AI allies left alone fight on, and AC6's
   betrayal rule settles it.
+
+**Betrayal (AC4).**
+- D15. A betrayal is an action (it uses the round's one), free, and needs no answer. It sets the pair
+  Hostile at once, so the round's battles treat the two as enemies. The betrayer's armies standing in
+  the old ally's cities assault them, and the old ally's armies standing in the betrayer's cities do
+  the same. C0 names only the first; the second is the same rule seen from the other side.
+- D16. "Every nation's standing towards you drops" covers every other **living** nation, and the
+  victim is set to Hostile instead. Fallen nations keep their last standing. It is never read again.
+- D17. A nation refuses every offer, courting and alliance alike, from a nation whose betrayal count
+  is above its `betrayal_tolerance`. Betrayal counts never decay.

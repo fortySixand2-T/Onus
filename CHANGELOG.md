@@ -962,3 +962,6 @@
 - [2026-11-08] Modified: src/campaign/ai.rs — C5 ally-aware readiness and targeting, steered wars
 - [2026-11-08] Created: tests/c5_alliance.rs — C5 AC3 alliance tests
 - [2026-11-08] Modified: FINDINGS.md — F-095 alliance readings (D7-D14)
+- [2026-11-08] Modified: src/campaign/diplomacy.rs — C5 betrayal: pair Hostile, standing drop, betrayal count, tolerance refusals
+- [2026-11-08] Created: tests/c5_betrayal.rs — C5 AC4 betrayal tests
+- [2026-11-08] Modified: FINDINGS.md — F-095 betrayal readings (D15-D17)

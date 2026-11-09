@@ -460,10 +460,15 @@ impl Campaign {
     }
 
     /// Would nation `n` accept `offer` from `from`? An abstaining nation,
-    /// and the player (who has no answer in C5), refuse everything.
+    /// and the player (who has no answer in C5), refuse everything; so does
+    /// a nation `from` has betrayed more often than it forgives
+    /// (`betrayal_tolerance`).
     pub fn accepts(&self, n: usize, from: usize, offer: Offer) -> bool {
         let Some(dc) = self.diplomacy_content() else { return false };
         if n == from || Some(n) == self.player || dc.abstains(n) || !self.nations[n].alive {
+            return false;
+        }
+        if self.betrayals(from) > dc.betrayal_tolerance(n) {
             return false;
         }
         let Some(w) = self.willingness(n, from) else { return false };
@@ -580,7 +585,28 @@ impl Campaign {
                 self.record(nation, Act::Ask { ally, target: t }, true);
                 Ok(())
             }
-            Decision::Betray { .. } | Decision::Incite { .. } => Err("not played yet".to_string()),
+            Decision::Betray { nation: id } => {
+                let m = self.other_living(nation, id)?;
+                if !self.allied(nation, m) {
+                    return Err(format!("`{id}` is not this nation's ally"));
+                }
+                let alive: Vec<bool> = self.nations.iter().map(|n| n.alive).collect();
+                let st = self.diplo.as_mut().expect("diplomacy");
+                st.set(nation, m, Standing::Hostile);
+                // Everyone else learns of it.
+                for (o, &alive) in alive.iter().enumerate() {
+                    if alive && o != nation && o != m {
+                        let s = st.get(o, nation);
+                        st.set(o, nation, s.down(r.betrayal_standing_drop));
+                    }
+                }
+                st.betrayals[nation] += 1;
+                // Its armies standing in the old ally's cities are now
+                // hostile there, and assault them in this round's battles.
+                self.record(nation, Act::Betray { ally: m }, true);
+                Ok(())
+            }
+            Decision::Incite { .. } => Err("not played yet".to_string()),
             Decision::March { .. } | Decision::Raise { .. } => unreachable!("not diplomatic"),
         }
     }
