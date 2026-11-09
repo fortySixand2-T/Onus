@@ -388,6 +388,28 @@ impl DiploState {
         }
     }
 
+    /// Into the campaign state hash: every standing, betrayal count and
+    /// steered war, and how many actions have been recorded (as the battle
+    /// history counts). This round's action count is not hashed: it is
+    /// zero between rounds.
+    pub(super) fn hash_into(&self, h: &mut Fnv) {
+        h.u64(0xD1A0);
+        h.u64(self.n as u64);
+        for s in &self.standing {
+            h.u64(*s as u64);
+        }
+        for &b in &self.betrayals {
+            h.u64(b as u64);
+        }
+        for w in &self.war {
+            match w {
+                None => h.u64(0),
+                Some(w) => h.u64(1).u64(w.target as u64).u64(w.until as u64),
+            };
+        }
+        h.u64(self.log.len() as u64);
+    }
+
     fn get(&self, a: usize, b: usize) -> Standing {
         self.standing[a * self.n + b]
     }
@@ -837,6 +859,33 @@ mod tests {
         let incite = Decision::Incite { a: id(FORGE), b: id(VERDANT) };
         let why = c.apply_diplomacy(AETH, &incite).unwrap_err();
         assert!(why.contains("allies"), "{why}");
+    }
+
+    /// C5 AC7: each piece of diplomatic state moves the hash alone.
+    #[test]
+    fn standings_betrayals_and_wars_are_in_the_state_hash() {
+        let c = game(None, |d| d);
+        let h = c.state_hash();
+        let mut s = c.clone();
+        set(&mut s, AETH, TOLL, Standing::Tied);
+        assert_ne!(s.state_hash(), h, "a standing");
+        let mut b = c.clone();
+        b.diplo.as_mut().unwrap().betrayals[AETH] = 1;
+        assert_ne!(b.state_hash(), h, "a betrayal count");
+        let mut w = c.clone();
+        w.diplo.as_mut().unwrap().war[AETH] = Some(WarTarget { target: TOLL, until: 3 });
+        assert_ne!(w.state_hash(), h, "a war");
+        let mut w2 = w.clone();
+        w2.diplo.as_mut().unwrap().war[AETH] = Some(WarTarget { target: TOLL, until: 4 });
+        assert_ne!(w2.state_hash(), w.state_hash(), "a war's length");
+        let mut l = c.clone();
+        let rec = DiplomacyRecord { round: 0, actor: AETH, act: Act::Court { with: TOLL }, accepted: false };
+        l.diplo.as_mut().unwrap().log.push(rec);
+        assert_ne!(l.state_hash(), h, "the record of actions");
+        // What a nation did this round is not campaign state between rounds.
+        let mut a = c.clone();
+        a.diplo.as_mut().unwrap().acted[AETH] = 1;
+        assert_eq!(a.state_hash(), h);
     }
 
     #[test]

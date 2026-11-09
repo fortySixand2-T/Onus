@@ -582,6 +582,11 @@ impl Campaign {
             }
         }
         h.u64(self.history.len() as u64);
+        // C5: the diplomatic state, only when the campaign has diplomacy (a
+        // campaign without it hashes exactly as in C4).
+        if let Some(d) = &self.diplo {
+            d.hash_into(&mut h);
+        }
         h.finish()
     }
 

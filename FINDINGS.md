@@ -7839,3 +7839,15 @@ C6 or a design pass may revise it. Every number lives in `assets/data/diplomacy.
   reads the campaign through `&Campaign`, so it cannot draw from the rng.
 - D23. Passive (answers offers but never acts) is a test lever beside abstaining. It is not in the
   file and not a disposition.
+
+**Saved and hashed (AC7).**
+- D24. The state hash takes the diplomatic state only when the campaign has diplomacy, after
+  everything C4 hashes, so a campaign without it hashes exactly as in C4. That state is every
+  pair's standing, every betrayal count, every steered war (target and last round) and the number
+  of actions recorded. Like the battle history, the record of actions is counted, not hashed in
+  full; its effects are hashed. The per-round action count is zero between rounds and is not
+  hashed.
+- D25. The save format stays version 1. The new `Decision` variants serialize like the old ones, and
+  a save played with diplomacy carries the diplomatic campaign fingerprint, so content without it
+  refuses the save, and so does content with other diplomacy numbers. A C4 save is unchanged and
+  still loads.

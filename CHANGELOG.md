@@ -973,3 +973,7 @@
 - [2026-11-08] Modified: src/campaign/diplomacy.rs — C5 L1 tests for the diplomatic AI's rules and order
 - [2026-11-08] Created: tests/c5_ai.rs — C5 AC6 diplomatic AI tests
 - [2026-11-08] Modified: FINDINGS.md — F-095 diplomatic AI readings (D20-D23)
+- [2026-11-08] Modified: src/campaign/mod.rs — C5 state hash takes the diplomatic state when attached
+- [2026-11-08] Modified: src/campaign/diplomacy.rs — C5 DiploState::hash_into; hash unit test
+- [2026-11-08] Created: tests/c5_save.rs — C5 AC7 save/load/replay and divergence tests
+- [2026-11-08] Modified: FINDINGS.md — F-095 hash and save readings (D24-D25)
