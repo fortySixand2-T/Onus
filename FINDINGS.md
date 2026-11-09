@@ -7715,3 +7715,20 @@ removed (P5). So the garrison of an absorbed city is the only case this reaches.
   - without the garrison clamp it fails: "garrison holds a unit at 120 HP over its holder's pool 100";
   - without the building clamp it fails: "holds a building at 10920 HP over its holder's pool 8400".
 - The campaign golden does not move (0x1600ef997dbf8728). No other golden moves.
+
+## F-094 — C5 starts ahead of B5, by the user's decision (C5)
+
+**Context.** `CAMPAIGN_PLAN.md` gates C1 onward on B5 Go, the human play test, which has not
+run. The user overrode that gate for C1 (2026-11-02), C2 (2026-11-03, F-062), C3 (2026-11-04,
+F-075) and C4 (2026-11-07, F-088). On 2026-11-08 the user said "merge after ci, then start c5".
+
+**Decision.** C5 (diplomacy) starts now, on the same terms as C1 to C4: B5 still runs when the user
+can play, and its findings can revise C1 to C5 and later milestones. The C5 heading in
+`CAMPAIGN_PLAN.md` now says "started 2026-11-08, ahead of B5 by user decision", and the plan's gate
+section records the override. C5's five items are written there as eight testable ACs.
+
+**What this does not change.** The open boxes stay open: C1's B5 human re-read, C2's nation cross
+gate (F-074) and C4's campaign balance (F-091). Diplomacy is opt-in through campaign content, in a
+new `assets/data/diplomacy.ron` that a campaign takes on only when asked. So the shipped
+`campaign.ron`, its fingerprint and C4's campaign golden (0x1600ef997dbf8728) do not move, and nor
+does any battle golden.

@@ -945,3 +945,5 @@
 - [2026-11-08] Modified: tests/c4_siege.rs — C4 pool invariant covers buildings, garrisons and armies; a scenario that reaches an attacked, garrisoned, absorbed city
 - [2026-11-08] Modified: FINDINGS.md — F-093 critic C4 round 2 fix
 - [2026-11-08] Modified: CAMPAIGN_PLAN.md — C4 AC1–AC11 ticked after critic PASS (round 3); AC12 balance sim left open
+- [2026-11-08] Modified: CAMPAIGN_PLAN.md — C5 started ahead of B5 (user override recorded in the gate); C5's five items written as eight testable ACs
+- [2026-11-08] Modified: FINDINGS.md — F-094 C5 starts ahead of B5 by the user's decision

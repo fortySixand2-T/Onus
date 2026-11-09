@@ -26,6 +26,8 @@ balanced and fun. B5 needs a human to play, and that hasn't happened yet. So:
   human play test, on the same terms as C1 and C2 (FINDINGS F-075).
 - **Overridden a fourth time by the user (2026-11-07): "merge after ci, then start c4".** C4
   also starts before the human play test, on the same terms as C1 to C3 (FINDINGS F-088).
+- **Overridden a fifth time by the user (2026-11-08): "merge after ci, then start c5".** C5
+  also starts before the human play test, on the same terms as C1 to C4 (FINDINGS F-094).
 - ~~**C1 onward waits for B5 Go.**~~ A B5 No-Go sends us back to the battle layer, and C0 is
   revised against what the play test found.
 
@@ -259,13 +261,91 @@ number lives in RON (`resources.ron`'s `three_resource` block, `nations.ron`).
   sometimes, and length should land on the C0 target. This is balance-as-backtesting, one
   layer up.
 
-## C5 — Diplomacy
+## C5 — Diplomacy (started 2026-11-08, ahead of B5 by user decision)
 
-- Alliance with the ≤1 cap.
-- Betrayal and its cost.
-- Destabilize, i.e. proxy war, as C0 defines it.
-- Diplomatic AI driven by each nation's disposition.
-- The campaign sim measures whether diplomacy is a choice or a dominant strategy.
+The five items: alliance with the ≤1 cap; betrayal and its cost; destabilize, i.e. proxy war, as
+C0 defines it; diplomatic AI driven by each nation's disposition; and the campaign sim measuring
+whether diplomacy is a choice or a dominant strategy. The rules are C0's "Diplomacy" (the brief's
+"Diplomacy" section; "2 diplomacy" is **Tied standing with two nations**, as C0 resolved it).
+
+Diplomacy is **opt-in through campaign content**. Its numbers live in a new
+`assets/data/diplomacy.ron`, which a campaign's content takes on only when asked
+(`CampaignContent::with_diplomacy`). A campaign without it plays exactly as C4 did. Every number is
+RON. Readings the spec does not settle are in FINDINGS (F-095), marked provisional. No client or UI:
+that is C6.
+
+- [ ] **Content:** `diplomacy.ron` holds every diplomacy number:
+  - each nation's disposition, `(towards, ally_bias, betrayal_tolerance)`;
+  - the default standing;
+  - `ally_cap`, `betrayal_standing_drop` and `destabilize_requires_tied`;
+  - the diplomatic actions a nation may take per round, and each action's treasury cost;
+  - the AI's acceptance thresholds, `notice_per_city`, and how many rounds an incited or requested
+    war lasts.
+
+  It is validated at load against the battle content:
+  - exactly one disposition per nation;
+  - no unknown, self or repeated `towards` entry;
+  - no pair starts Allied;
+  - the ally cap is at most 1;
+  - a betrayal drops at least one step;
+  - destabilize needs at least two Tied nations.
+
+  Each pair of nations starts at the standing their dispositions give: the default standing when
+  neither names the other, and the more hostile one when both do. The file's fingerprint joins the
+  campaign content's.
+- [ ] **Golden licence:** without diplomacy, a campaign plays exactly as C4. C4's campaign golden
+  (0x1600ef997dbf8728) and every battle golden are unchanged, and a diplomatic decision is refused.
+  With diplomacy attached but every nation abstaining, a campaign fights the same battles, with the
+  same results, as C4.
+- [ ] **Alliance with the ≤1 cap:**
+  - Each pair of nations has a standing: Hostile, Neutral, Tied or Allied.
+  - A nation can **court** another, which raises their standing one step (no higher than Tied), for
+    `court_cost`.
+  - A nation can **ally** with a nation it is Tied with, for `ally_cost`, while both are under the
+    cap of one ally.
+  - An AI nation answers an offer by its disposition, and the cost is paid only when it accepts.
+  - Allies never fight: no battle starts at a city where the only foreign army belongs to the
+    holder's ally.
+  - A nation can **ask** its ally to attack a shared enemy. An AI ally then marches on that enemy's
+    capital for the RON number of rounds.
+  - A nation takes at most the RON number of diplomatic actions per round (one).
+  - An alliance ends when either nation falls.
+  - The player wins by domination when every rival still standing is his ally.
+- [ ] **Betrayal and its cost:** a nation can betray its ally.
+  - The pair goes Hostile.
+  - Every other living nation's standing towards the betrayer drops `betrayal_standing_drop` steps,
+    never below Hostile.
+  - The betrayal is counted. A nation refuses every offer from a nation whose betrayals exceed its
+    `betrayal_tolerance`.
+  - The betrayer's armies standing in the old ally's cities assault them that round.
+- [ ] **Destabilize (proxy war):** a nation with Tied standing with `destabilize_requires_tied`
+  nations (two) can incite two of them, not allied with each other, to war, for `incite_cost`. The
+  two go Hostile, and each of them that is AI marches on the other's capital for the RON number of
+  rounds. Both armies bleed in auto-resolved battles, and the inciter's army is never committed.
+- [ ] **Diplomatic AI:** each AI nation takes at most one diplomatic action per round, chosen from
+  its disposition and the map.
+  - Its **willingness** towards a nation is its `ally_bias`, plus their standing, less
+    `notice_per_city` for every city that nation holds above its own. This is C0's notice rule: a
+    small house is no one's target, and a grown one finds few friends.
+  - By fixed rules and in a fixed order it betrays its ally once that ally is its last rival, allies,
+    asks its ally to attack, incites, or courts.
+  - It draws nothing from the rng.
+  - It never makes an offer to the player.
+- [ ] **Saved and hashed:**
+  - Standings, betrayal counts and war targets are in the campaign state hash.
+  - The player's diplomatic decisions are in the save.
+  - A diplomatic campaign saves, loads, and replays to the same hashes.
+  - A changed diplomatic decision diverges at its round.
+  - A save played with diplomacy is refused by content without it, and the reverse.
+- [ ] **Diplomacy balance:** the campaign sim measures whether diplomacy is a choice or a dominant
+  strategy.
+  - Per seed it plays these AI-only campaigns:
+    - every nation diplomatic, then each nation abstaining alone;
+    - every nation abstaining, then each nation diplomatic alone.
+  - It compares each nation's placement (how many nations outlasted it) with and without its own
+    diplomacy.
+  - Diplomacy is **dominant** for a nation when engaging is never worse and sometimes better.
+  - The reading passes when diplomacy changes some outcome and is dominant for no nation.
 
 ## C6 — Campaign client
 
