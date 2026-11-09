@@ -944,3 +944,4 @@
 - [2026-11-08] Created: tests/critic_c4_r2.rs — C4 critic round 2 test (absorbed garrison unit pool)
 - [2026-11-08] Modified: tests/c4_siege.rs — C4 pool invariant covers buildings, garrisons and armies; a scenario that reaches an attacked, garrisoned, absorbed city
 - [2026-11-08] Modified: FINDINGS.md — F-093 critic C4 round 2 fix
+- [2026-11-08] Modified: CAMPAIGN_PLAN.md — C4 AC1–AC11 ticked after critic PASS (round 3); AC12 balance sim left open
