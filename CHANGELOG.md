@@ -965,3 +965,6 @@
 - [2026-11-08] Modified: src/campaign/diplomacy.rs — C5 betrayal: pair Hostile, standing drop, betrayal count, tolerance refusals
 - [2026-11-08] Created: tests/c5_betrayal.rs — C5 AC4 betrayal tests
 - [2026-11-08] Modified: FINDINGS.md — F-095 betrayal readings (D15-D17)
+- [2026-11-08] Modified: src/campaign/diplomacy.rs — C5 destabilize (Incite): Tied-count gate, cost, pair Hostile, mutual steered wars
+- [2026-11-08] Created: tests/c5_destabilize.rs — C5 AC5 destabilize tests
+- [2026-11-08] Modified: FINDINGS.md — F-095 destabilize readings (D18-D19)

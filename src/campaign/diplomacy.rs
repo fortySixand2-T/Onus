@@ -433,6 +433,13 @@ impl Campaign {
         self.allies_of(n).first().copied()
     }
 
+    /// How many living nations stand Tied with nation `n`.
+    pub fn tied_with(&self, n: usize) -> u32 {
+        (0..self.nations.len())
+            .filter(|&m| self.nations[m].alive && self.standing(n, m) == Some(Standing::Tied))
+            .count() as u32
+    }
+
     /// Betrayals nation `n` has committed.
     pub fn betrayals(&self, n: usize) -> u32 {
         self.diplo.as_ref().map_or(0, |d| d.betrayals[n])
@@ -606,7 +613,40 @@ impl Campaign {
                 self.record(nation, Act::Betray { ally: m }, true);
                 Ok(())
             }
-            Decision::Incite { .. } => Err("not played yet".to_string()),
+            Decision::Incite { a, b } => {
+                let x = self.other_living(nation, a)?;
+                let y = self.other_living(nation, b)?;
+                if x == y {
+                    return Err("inciting needs two different nations".to_string());
+                }
+                let tied = self.tied_with(nation);
+                let need = r.destabilize_requires_tied;
+                if tied < need {
+                    return Err(format!("Tied with {tied} nation(s): inciting needs Tied with {need}"));
+                }
+                for (m, id) in [(x, a), (y, b)] {
+                    let s = self.standing(nation, m).expect("diplomacy");
+                    if s != Standing::Tied {
+                        return Err(format!("{s} with `{id}`: only a Tied nation can be incited"));
+                    }
+                }
+                if self.allied(x, y) {
+                    return Err(format!("`{a}` and `{b}` are allies"));
+                }
+                self.pay(nation, r.incite_cost, "inciting")?;
+                self.nations[nation].treasury -= r.incite_cost;
+                let until = self.round.saturating_add(r.war_rounds - 1);
+                let player = self.player;
+                let st = self.diplo.as_mut().expect("diplomacy");
+                st.set(x, y, Standing::Hostile);
+                for (m, t) in [(x, y), (y, x)] {
+                    if Some(m) != player {
+                        st.war[m] = Some(WarTarget { target: t, until });
+                    }
+                }
+                self.record(nation, Act::Incite { a: x, b: y }, true);
+                Ok(())
+            }
             Decision::March { .. } | Decision::Raise { .. } => unreachable!("not diplomatic"),
         }
     }

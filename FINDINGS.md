@@ -7808,3 +7808,13 @@ C6 or a design pass may revise it. Every number lives in `assets/data/diplomacy.
   victim is set to Hostile instead. Fallen nations keep their last standing. It is never read again.
 - D17. A nation refuses every offer, courting and alliance alike, from a nation whose betrayal count
   is above its `betrayal_tolerance`. Betrayal counts never decay.
+
+**Destabilize (AC5).**
+- D18. Inciting needs the inciter Tied with at least `destabilize_requires_tied` living nations, and
+  both nations it incites must be among them. Allied does not count as Tied. The two nations must
+  differ and must not be allies of each other. It is paid in full, and it needs no answer: C0 makes
+  it the inciter's act alone.
+- D19. The incited pair goes Hostile. Each AI of the two is steered at the other's capital for
+  `war_rounds` rounds (the AC3 steering rule), and a new steer replaces an old one. A player who
+  is incited only has his standing changed. The inciter's standing towards both is untouched, and
+  so are its armies.
