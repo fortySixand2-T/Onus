@@ -7557,6 +7557,12 @@ Every number lives in `assets/data/campaign.ron`.
   part of the state hash: it is the input, and the hashes are its result. The campaign golden
   does not move at AC11.
 
+**The balance sim (AC12).**
+- P33. A balance batch plays one AI-only campaign per seed, to its end. A campaign's length is
+  the round it ended on, and an undecided one counts at the round cap. AC12 reads "lands on the
+  target" as a median length inside `length_target`, and "each nation wins sometimes" as at
+  least one won campaign per nation. The reading is F-091.
+
 ## F-090 — Verdant's three-resource Growth lowered to ×1.10, by the user's instruction (C3 AC8 RON step)
 
 **The user's instruction (2026-11-08): "lower verdant growth to 1.10".** In `assets/data/nations.ron`, Verdant's
@@ -7596,3 +7602,62 @@ aetherkin 61 63 57 -- 58 61; tollmarch 53 47 46 42 -- 53; ashen_reach 50 53 46 3
 
 Open, for the user to decide: Aetherkin's three-resource lean (cheaper Aether ×0.90, Arclight range +12), or
 more seeds to settle its interval.
+
+## F-091 — C4 AC12 reading: the campaign balance sim runs, and it reads Fail (C4)
+
+`campaign::balance` plays AI-only campaigns to their end on the headless battle sim
+(`HeadlessResolver`), one per seed, and reads AC12's two questions:
+- does each nation win sometimes?
+- does a campaign's length land on the C0 target, `rules.length_target` (15–25 rounds)?
+
+The readings are provisional (F-089 P33). A campaign's length is the round it ended on. An
+undecided campaign, where the round cap came first, counts at the cap. "Lands on the target" means
+the median length is inside the target. "Wins sometimes" means at least one won campaign per
+nation. A batch is deterministic and reports in seed order on any thread count. A fast test checks
+this, and another plays one real campaign. The measurement is
+`c4_balance::the_campaign_balance_reading`, which is `#[ignore]`:
+
+```
+ONUS_C4_CAMPAIGNS=100 ONUS_C4_THREADS=1 cargo test --test c4_balance \
+  the_campaign_balance_reading -- --ignored --nocapture
+```
+
+**Reading** (box, test profile, 100 campaigns, seeds 1–100, about 2.4 s per campaign, 240 s):
+
+| nation | campaigns won |
+|---|---|
+| house | 0 |
+| forgeborn | 0 |
+| verdant | 0 |
+| aetherkin | 0 |
+| tollmarch | 100 (100%) |
+| ashen_reach | 0 |
+| undecided | 0 |
+
+Length: every campaign ended in round 13. The median is 13, and 0 of 100 campaigns fell inside
+15–25. **AC12 reads Fail on both counts, so its box stays unticked.** No number was tuned to move
+it. The causes are design questions, not bugs, so they go to the human.
+
+**Why (a round-by-round probe of seeds 1 and 2).**
+- **The seed hardly matters.** Seeds 1 and 2 fight the same battles in the same rounds with the
+  same winners. Only the tick counts differ by a few percent. The campaign rng sets the turn
+  order and each battle's seed and map side. Those barely move a battle between rosters this
+  lopsided, and the turn order rarely decides anything. So 100 seeds are close to one campaign
+  played 100 times. A balance batch needs a source of variety that changes outcomes: start
+  positions, start rosters, AI personality, or noisier battles.
+- **Capitals are left empty in round 1.** Every AI army marches on the nearest hostile capital
+  (P17), and nothing stays home. Tollmarch's and Ashen Reach's armies pass each other on the
+  Tollgate–Ashgrave road. Tollmarch's Logistics General (+2 march points) arrives first. Ashgrave
+  has only its buildings and garrison, falls in round 2, and Ashen Reach is gone. Forgeborn falls
+  the same way to House Vael in round 4. The first capital swaps decide the campaign. Tollmarch,
+  which gains a whole nation, its levy and an absorbed General in round 2, snowballs from there.
+- **Absorption snowballs.** Each capital taken hands over every city of the fallen nation, so
+  the leader's levy grows with each kill. The wars end in 13 rounds, below the 15-round floor.
+
+Candidate levers, for the human's decision (none applied):
+- an AI home guard (keep an army, or a share of the levy, at the capital);
+- a capital garrison or defence bonus in `campaign.ron`;
+- longer roads, or a march-point scale;
+- a varied start, per seed, from the map;
+- a cap on what absorption hands over.
+Every one is campaign-layer RON or AI. None needs a base unit combat stat.

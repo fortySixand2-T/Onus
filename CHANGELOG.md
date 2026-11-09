@@ -932,3 +932,7 @@
 - [2026-11-08] Modified: src/campaign/mod.rs — C4 AC11 the campaign logs the player's decisions per round
 - [2026-11-08] Created: tests/c4_save.rs — C4 AC11 save, load and refusal tests
 - [2026-11-08] Modified: FINDINGS.md — F-089 AC11 readings
+- [2026-11-08] Created: src/campaign/balance.rs — C4 AC12 campaign balance sim: AI-only campaigns, wins per nation, length vs the C0 target
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC12 registers the balance module
+- [2026-11-08] Created: tests/c4_balance.rs — C4 AC12 balance batch smoke tests and the ignored measurement
+- [2026-11-08] Modified: FINDINGS.md — F-089 P33 and F-091 the campaign balance reading (Fail)

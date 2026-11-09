@@ -19,6 +19,7 @@
 //! 5. **The end checks**: domination, the player's capital, the round cap.
 
 pub mod ai;
+pub mod balance;
 pub mod battle;
 pub mod content;
 pub mod resolve;
