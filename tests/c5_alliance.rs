@@ -133,10 +133,52 @@ fn an_alliance_needs_tied_standing_one_action_a_round_and_the_cap_of_one() {
     c.play_round(&[court("verdant")], &mut by_numbers()).unwrap();
     assert_eq!(c.standing(h, verdant), Some(Standing::Tied));
     refused(&mut c, &[ally("verdant")], "cap of 1");
-    // An AI at the cap refuses an alliance, however willing.
+    // An AI at the cap refuses an alliance (here it is not Tied with Verdant
+    // either; the cap alone is shown by
+    // `a_tied_and_willing_nation_already_at_the_cap_refuses_an_alliance`).
     assert!(!c.accepts(aeth, verdant, onus::campaign::diplomacy::Offer::Ally));
     // The player never answers an offer in C5.
     assert!(!c.accepts(h, verdant, onus::campaign::diplomacy::Offer::Court));
+}
+
+/// The cap binds the nation answering, too (critic C5 r1): Verdant, Tied
+/// with Aetherkin and willing, would ally with Aetherkin; once allied with
+/// House it refuses, and Aetherkin's AI, which offers only what would be
+/// accepted, does not offer.
+#[test]
+fn a_tied_and_willing_nation_already_at_the_cap_refuses_an_alliance() {
+    use onus::campaign::diplomacy::Offer;
+    let t = swap(&diplomacy_text(), "court_cost: 100", "court_cost: 0");
+    let t = swap(&t, "ally_cost: 150", "ally_cost: 0");
+    let t = swap(&t, "(nation: \"verdant\", towards: [],", "(nation: \"verdant\", towards: [(\"aetherkin\", Tied)],");
+    let mut c = game(shipped_map(), passive(&t), 3);
+    let (h, aeth, verdant) = (idx(&c, "house"), idx(&c, "aetherkin"), idx(&c, "verdant"));
+    let rules_threshold = 3;
+    assert_eq!(c.standing(verdant, aeth), Some(Standing::Tied));
+    assert!(c.willingness(verdant, aeth).unwrap() >= rules_threshold, "setup: willing");
+    assert!(c.accepts(verdant, aeth, Offer::Ally), "control: under the cap it would accept");
+    c.play_round(&[court("verdant")], &mut by_numbers()).unwrap();
+    c.play_round(&[ally("verdant")], &mut by_numbers()).unwrap();
+    assert_eq!(c.ally_of(verdant), Some(h), "setup: House allied with Verdant");
+    assert_eq!(c.standing(verdant, aeth), Some(Standing::Tied), "still Tied");
+    assert!(c.willingness(verdant, aeth).unwrap() >= rules_threshold, "still willing");
+    assert!(!c.accepts(verdant, aeth, Offer::Ally), "at the cap, Verdant refuses");
+    // Aetherkin's AI acting (only House passive): it never offers Verdant,
+    // at the cap, an alliance, and Verdant keeps one ally.
+    let full = DiplomacyContent::from_ron(&t, &content()).unwrap().with_passive(verdant);
+    let mut v = Campaign::new(content(), shipped_map().with_diplomacy(full), 3, Some("house")).unwrap();
+    v.play_round(&[court("verdant")], &mut by_numbers()).unwrap();
+    v.play_round(&[ally("verdant")], &mut by_numbers()).unwrap();
+    assert_eq!(v.ally_of(verdant), Some(h), "setup: House allied with Verdant");
+    for _ in 0..4 {
+        let rep = v.play_round(&[], &mut by_numbers()).unwrap();
+        assert!(
+            !rep.diplomacy.iter().any(|r| r.act == Act::Ally { with: verdant }),
+            "an alliance was offered to a nation at the cap: {:?}",
+            rep.diplomacy
+        );
+        assert_eq!(v.allies_of(verdant), vec![h], "Verdant keeps one ally");
+    }
 }
 
 #[test]

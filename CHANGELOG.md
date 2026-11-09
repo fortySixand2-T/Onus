@@ -985,3 +985,6 @@
 - [2026-11-09] Modified: src/campaign/diplomacy.rs — hash every diplomatic record in full, not just the count
 - [2026-11-09] Created: tests/critic_c5.rs — critic C5 round 1 probes (changed refused offer diverges)
 - [2026-11-09] Modified: FINDINGS.md — F-097 critic C5 round 1: record hashing
+- [2026-11-09] Modified: tests/c5_alliance.rs — direct test of the answering nation's ally cap with a Tied, willing pair
+- [2026-11-09] Modified: tests/critic_c5.rs — critic r1 invariant sweep, incited pair fights, AI inciter never steered
+- [2026-11-09] Modified: FINDINGS.md — F-097 acceptor cap and inciter gates, AI incite frequency

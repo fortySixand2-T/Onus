@@ -7930,3 +7930,32 @@ hash. **Pins:** no C5 test pins a hash value, so nothing was re-pinned. C4's gol
 is unchanged: a campaign without diplomacy hashes nothing diplomatic (`tests/c5_golden.rs`). A
 diplomatic campaign's per-round hashes change from round 1 on, wherever any action has been
 recorded; saves from before this commit were never shipped.
+
+**2. The answering nation's cap is gated (AC3).** `accepts` refuses an alliance when the answering
+nation is already at `ally_cap`. No test held that rule on its own: the old assert in
+`an_alliance_needs_tied_standing_one_action_a_round_and_the_cap_of_one` was also satisfied because
+that pair was not Tied. The new test `tests/c5_alliance.rs::a_tied_and_willing_nation_already_at_the_cap_refuses_an_alliance`
+starts Verdant Tied with Aetherkin and willing. Verdant would accept an alliance (the control), and
+refuses once House is its ally. Removing the cap check from `accepts` fails this test (mutation run on
+the box). The critic's property sweep `critic_diplomatic_invariants_hold_every_round` is in
+`tests/critic_c5.rs`. Over 12 seeds × 3 player settings it saw 668 battles, 728 alliance-rounds and 17
+betrayals.
+
+**3. "The inciter commits nothing" is gated for an AI inciter (AC5).**
+`critic_an_ai_inciter_is_never_steered_by_its_incite` and `critic_an_incited_pair_fights_each_other`
+are in `tests/critic_c5.rs`. A mutation that sets the inciter's own war target fails the first one (run
+on the box). **How often the AI incites** (`by_numbers` resolver unless stated; counts are AI incites /
+campaigns with at least one):
+
+| campaigns | AI incites |
+|---|---|
+| AI-only, seeds 1–64 | 0 / 0 |
+| AI-only, battle sim, seeds 1–16 | 3 / 3 |
+| player House, seeds 1–64 | 0 / 0 |
+| player Tollmarch, seeds 1–64 | 94 / 64 |
+| player Verdant, seeds 1–64 | 34 / 34 |
+
+So in AI-only play the AI's incite rule almost never fires. Being Tied with two nations needs two
+accepted courts, and one is usually spent on an alliance first. The rule fires mostly when a player
+stands in for a nation that would otherwise have been someone's ally. The AC8 batch (AI-only) therefore
+measures incite barely at all.
