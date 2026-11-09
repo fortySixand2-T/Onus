@@ -957,3 +957,8 @@
 - [2026-11-08] Modified: src/campaign/mod.rs — C5 diplomatic Decision variants (Court, Ally, Ask, Betray, Incite); refused without diplomacy
 - [2026-11-08] Modified: src/campaign/diplomacy.rs — apply_diplomacy entry point
 - [2026-11-08] Created: tests/c5_golden.rs — C5 AC2 golden licence tests
+- [2026-11-08] Modified: src/campaign/diplomacy.rs — C5 diplomatic state, court/ally/ask, willingness, war targets, alliance end on a fall
+- [2026-11-08] Modified: src/campaign/mod.rs — C5 allies never fight, diplomatic victory, round report diplomacy records
+- [2026-11-08] Modified: src/campaign/ai.rs — C5 ally-aware readiness and targeting, steered wars
+- [2026-11-08] Created: tests/c5_alliance.rs — C5 AC3 alliance tests
+- [2026-11-08] Modified: FINDINGS.md — F-095 alliance readings (D7-D14)

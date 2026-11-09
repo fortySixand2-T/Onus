@@ -7771,3 +7771,30 @@ C6 or a design pass may revise it. Every number lives in `assets/data/diplomacy.
   - `court_cost` 100, `ally_cost` 150 and `incite_cost` 200 treasury Alloy (a city's levy is 40–60 a
     round, and a General costs 300);
   - `court_threshold` 1, `ally_threshold` 3, `notice_per_city` 1 and `war_rounds` 4.
+
+**Alliance (AC3).**
+- D7. Willingness of nation *n* towards *m* = *n*'s `ally_bias` + the pair's standing rank (Hostile 0,
+  Neutral 1, Tied 2) − `notice_per_city` × the cities *m* holds above *n*'s own (never negative).
+  It is C0's "hostility grows with your size" made per pair and measured in cities.
+- D8. An AI accepts a courting at willingness ≥ `court_threshold`, and an alliance at ≥
+  `ally_threshold` when the pair is Tied and it is under the cap. An abstaining nation accepts
+  nothing. The player is never asked: C5 has no client, so an offer to the player would need an
+  answer the save cannot hold yet. The AI never offers to him (AC6).
+- D9. A refused offer is a recorded outcome, not an error. It uses the actor's one action and costs
+  nothing. An unpayable, unreachable (courting past Tied, an alliance short of Tied or over the cap)
+  or malformed action is a refused decision, and the round does not happen.
+- D10. "Allies never fight" is read narrowly: an army at its ally's city is a guest, and no battle is
+  fought there. An ally does **not** join the defence of its ally's city. Joint battles need the
+  battle layer's third side, which C5 does not have.
+- D11. "Ask an AI ally to attack" steers every one of the ally's ready armies at the target's
+  capital for `war_rounds` rounds, the asking round counted as the first. It may be asked only
+  against a living nation allied with neither of the two. A player ally cannot be steered, so the
+  ask is recorded and does nothing. An ally's army that already marched that round turns at its next
+  city.
+- D12. An AI may stand ready at its ally's city as well as its own, and it never aims at an ally's
+  capital. The C4 march rule is otherwise unchanged.
+- D13. When either nation falls its alliance ends, and the pair (now one nation) drops to Tied. Any
+  war steered by or at the fallen nation ends.
+- D14. The player wins when he stands and every other nation still standing is his ally (a
+  diplomatic victory). AI nations do not win this way: two AI allies left alone fight on, and AC6's
+  betrayal rule settles it.

@@ -249,6 +249,8 @@ pub struct RoundReport {
     /// The nations in the order they acted.
     pub order: Vec<usize>,
     pub battles: Vec<BattleRecord>,
+    /// The round's diplomatic actions (C5; empty without diplomacy).
+    pub diplomacy: Vec<diplomacy::DiplomacyRecord>,
 }
 
 /// Per-nation tables (their traits applied): what each nation's units and
@@ -317,6 +319,9 @@ pub struct Campaign {
     /// The player's decisions, one list per round played (C4 AC11): the
     /// save. Not hashed: it is the input, and the hashes are its result.
     decisions: Vec<Vec<Decision>>,
+    /// The diplomatic state (C5): `None` when the campaign content carries
+    /// no diplomacy.
+    diplo: Option<diplomacy::DiploState>,
 }
 
 impl Campaign {
@@ -342,6 +347,7 @@ impl Campaign {
         };
         let tables = Tables::new(&content, campaign.economy);
         let content_fp = content.fingerprint().hash();
+        let diplo = campaign.diplomacy().map(diplomacy::DiploState::new);
         let nations = content
             .nations
             .iter()
@@ -384,6 +390,7 @@ impl Campaign {
             history: Vec::new(),
             round_hashes: Vec::new(),
             decisions: Vec::new(),
+            diplo,
         };
         let starts = c.campaign.start_armies.clone();
         for s in &starts {
@@ -608,6 +615,7 @@ impl Campaign {
         resolver: &mut dyn Resolver,
     ) -> Result<RoundReport, RoundError> {
         self.round += 1;
+        self.diplomacy_new_round();
         let order = self.turn_order();
         for &n in &order {
             if !self.nations[n].alive {
@@ -629,12 +637,14 @@ impl Campaign {
         self.siege_works();
         self.replacements();
         self.end_checks();
+        self.diplomacy_end_round();
         let h = self.state_hash();
         self.round_hashes.push(h);
         Ok(RoundReport {
             round: self.round,
             order,
             battles,
+            diplomacy: self.diplomacy_this_round(),
         })
     }
 
@@ -769,9 +779,12 @@ impl Campaign {
             let owner = self.cities[city].owner;
             // The attacker: the first nation, in this round's order, with an
             // army standing at a city it does not hold. Any other hostile
-            // nation there waits for a later round.
+            // nation there waits for a later round. Allies never fight (C5):
+            // the holder's ally standing in its city is a guest.
             let Some(&attacker) = order.iter().find(|&&n| {
-                n != owner && self.armies.iter().any(|a| a.nation == n && a.at() == Some(city))
+                n != owner
+                    && !self.allied(n, owner)
+                    && self.armies.iter().any(|a| a.nation == n && a.at() == Some(city))
             }) else {
                 continue;
             };
@@ -1072,6 +1085,7 @@ impl Campaign {
     /// capital: the General's aura comes with him, no trait does.
     fn absorb(&mut self, fallen: usize, conqueror: usize) {
         self.nations[fallen].alive = false;
+        self.diplomacy_fallen(fallen);
         for city in 0..self.cities.len() {
             if self.cities[city].owner == fallen {
                 self.change_owner(city, conqueror);
@@ -1093,6 +1107,9 @@ impl Campaign {
             self.outcome = Some(CampaignOutcome::PlayerLost);
         } else if alive.len() == 1 {
             self.outcome = Some(CampaignOutcome::Won { nation: alive[0] });
+        } else if let Some(p) = self.player.filter(|&p| alive.iter().all(|&m| m == p || self.allied(p, m))) {
+            // C5: every rival still standing is the player's ally.
+            self.outcome = Some(CampaignOutcome::Won { nation: p });
         } else if self.round >= self.campaign.rules.round_cap {
             self.outcome = Some(CampaignOutcome::Undecided);
         }

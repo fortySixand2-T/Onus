@@ -48,7 +48,10 @@ pub fn decide(c: &mut Campaign, n: usize) -> Vec<Decision> {
         .iter()
         .filter(|a| a.nation == n && a.units.len() >= min && a.general.present())
         .filter_map(|a| a.at().map(|at| (a.id, at)))
-        .filter(|&(_, at)| c.cities()[at].owner == n)
+        .filter(|&(_, at)| {
+            let owner = c.cities()[at].owner;
+            owner == n || c.allied(n, owner)
+        })
         .collect();
     for (id, at) in ready {
         if let Some(to) = toward_capital(c, n, at) {
@@ -66,15 +69,27 @@ pub fn decide(c: &mut Campaign, n: usize) -> Vec<Decision> {
 /// first hops on equally cheap routes, the RNG picks one.
 fn toward_capital(c: &mut Campaign, n: usize, at: usize) -> Option<usize> {
     let dist = c.distances(at);
-    let target = c
-        .campaign()
-        .capital
-        .iter()
-        .enumerate()
-        .filter(|&(m, _)| m != n && c.nations()[m].alive)
-        .map(|(_, &cap)| cap)
-        .filter(|&cap| c.cities()[cap].owner != n && dist[cap] != u32::MAX)
-        .min_by_key(|&cap| (dist[cap], cap))?;
+    let hostile = |c: &Campaign, cap: usize| {
+        let owner = c.cities()[cap].owner;
+        owner != n && !c.allied(n, owner) && dist[cap] != u32::MAX
+    };
+    // C5: a steered war aims at its target's capital, while it can be reached.
+    let war = c
+        .war_target(n)
+        .map(|w| c.campaign().capital[w.target])
+        .filter(|&cap| hostile(c, cap));
+    let target = match war {
+        Some(cap) => cap,
+        None => c
+            .campaign()
+            .capital
+            .iter()
+            .enumerate()
+            .filter(|&(m, _)| m != n && c.nations()[m].alive && !c.allied(n, m))
+            .map(|(_, &cap)| cap)
+            .filter(|&cap| hostile(c, cap))
+            .min_by_key(|&cap| (dist[cap], cap))?,
+    };
     // Walk back from the target: the neighbours of `at` on a cheapest route.
     let back = c.distances(target);
     let mut hops: Vec<usize> = c
