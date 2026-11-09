@@ -1436,6 +1436,8 @@ mod tag {
     pub const THREE_ECONOMY: u64 = 26;
     /// C3: a ley-well (three-resource only).
     pub const LEY_WELL: u64 = 27;
+    /// C4: a veteran General's rank (only on a ranked General).
+    pub const AURA_RANK: u64 = 28;
 }
 
 /// A 64-bit digest of one command the sim is holding. Everything about it that
@@ -1809,6 +1811,13 @@ pub fn state_hash(world: &mut World) -> u64 {
         let mut q = world.query_filtered::<&SimId, With<crate::sim::battle::General>>();
         let marked: Vec<SimId> = q.iter(world).copied().collect();
         rows.extend(marked.into_iter().map(|id| row(id, tag::GENERAL, 1, 0)));
+        let mut q = world.query::<(&SimId, &crate::sim::battle::AuraRank)>();
+        let ranked: Vec<(SimId, crate::sim::battle::AuraRank)> = q.iter(world).map(|(id, r)| (*id, *r)).collect();
+        rows.extend(
+            ranked
+                .into_iter()
+                .map(|(id, r)| row(id, tag::AURA_RANK, r.radius_milli as u64, r.extra_factor as u64)),
+        );
     }
     if let Some(battle) = world.get_resource::<crate::sim::battle::BattleState>() {
         for (i, word) in battle.hash_words().into_iter().enumerate() {

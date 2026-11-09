@@ -81,7 +81,7 @@
                 (applies_to: Barracks("gene_vats"), stat: TrainTicks, mul: 0.90),
             ],
             three_resource_traits: [
-                (applies_to: Buildings, stat: Growth, mul: 1.15),             // Biomass grows faster
+                (applies_to: Buildings, stat: Growth, mul: 1.10),             // Biomass grows faster
                 (applies_to: Barracks("gene_vats"), stat: TrainTicks, mul: 0.90),
             ],
         ),

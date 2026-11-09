@@ -871,3 +871,77 @@
 - [2026-11-07] Modified: src/sim/nation.rs — the Growth source check runs only when the content has a three_resource block
 - [2026-11-07] Modified: FINDINGS.md — F-086 R2-1
 - [2026-11-07] Created: tests/critic_c3_r3.rs — critic C3 round 3: three_resource Growth gating cannot be bypassed (regression cover)
+- [2026-11-08] Modified: CAMPAIGN_PLAN.md — C4 started ahead of B5 by user decision: heading and gate override
+- [2026-11-08] Modified: FINDINGS.md — F-088: C4 starts ahead of B5 by the user's decision
+- [2026-11-08] Created: assets/data/campaign.ron — C4 campaign content: the 16-city map, roads and terrain, start armies, General ranks, campaign rules and AI numbers
+- [2026-11-08] Created: src/campaign/content.rs — C4 campaign content loader, validated against the battle content, with its own fingerprint
+- [2026-11-08] Created: src/campaign/mod.rs — C4 AC1 campaign state machine: cities, ownership, armies, seeded rounds, conquest, state hash
+- [2026-11-08] Created: src/campaign/battle.rs — C4 battle plan/outcome types and the Resolver trait
+- [2026-11-08] Created: src/campaign/ai.rs — C4 campaign AI (march on the weakest hostile neighbour)
+- [2026-11-08] Modified: src/lib.rs — register the campaign module
+- [2026-11-08] Created: tests/c4_core.rs — C4 AC1 tests: load/validation, determinism, conquest, render-free scan
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC6 march points (slowest unit Speed + Logistics bonus), road cost by terrain, partial progress carries
+- [2026-11-08] Created: tests/c4_movement.rs — C4 AC6 army movement tests
+- [2026-11-08] Modified: src/campaign/battle.rs — C4 AC7 every attacking army at the city fights: several Generals per side
+- [2026-11-08] Created: tests/c4_converge.rs — C4 AC7 converging armies and aura stacking tests
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC8 survivors persist in their armies; treasury and per-round city levy; garrisons
+- [2026-11-08] Modified: src/campaign/battle.rs — C4 AC8 plan units name their army or the garrison; the garrison defends
+- [2026-11-08] Modified: tests/c4_converge.rs — C4 AC8 plan units' army is now an Option
+- [2026-11-08] Created: tests/c4_persist.rs — C4 AC8 survivors, levy, cap and garrison tests
+- [2026-11-08] Modified: FINDINGS.md — F-089 C4 provisional campaign readings
+- [2026-11-08] Modified: src/headless.rs — C4 AC9 MatchSettings.starting_alloy: per-side starting Alloy (default None keeps the content's)
+- [2026-11-08] Modified: src/sim/economy.rs — C4 AC9 Stockpiles::starting_each
+- [2026-11-08] Modified: src/campaign/battle.rs — C4 AC9 battle_settings: MatchSettings from a BattlePlan; plan seed, map side, nation size
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC9 a fought battle draws its seed and map side from the campaign rng
+- [2026-11-08] Modified: src/campaign/ai.rs — C4 AC9 the AI marches on the nearest hostile capital; defence counts the garrison
+- [2026-11-08] Created: tests/c4_settings.rs — C4 AC9 battle settings from campaign state tests
+- [2026-11-08] Modified: FINDINGS.md — F-089 AC9 readings and the AI fix
+- [2026-11-08] Created: src/campaign/resolve.rs — C4 AC10 HeadlessResolver: campaign battles played by the headless battle sim
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC10 resolve module and exports
+- [2026-11-08] Created: tests/c4_autoresolve.rs — C4 AC10 auto-resolve tests and the campaign golden
+- [2026-11-08] Modified: tests/c4_persist.rs — C4 every unit stays within its own nation's pool
+- [2026-11-08] Modified: FINDINGS.md — F-089 AC10 readings; Bevy 0.19 entity-bits order
+- [2026-11-08] Modified: src/sim/battle.rs — C4 AC2 AuraRank: a ranked General's aura radius and factor
+- [2026-11-08] Modified: src/sim/replay.rs — C4 AC2 hash row for a ranked General's aura
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC2 General experience, fallen Generals and replacements
+- [2026-11-08] Modified: src/campaign/battle.rs — C4 AC2 plan Generals carry their rank; leaderless armies field none
+- [2026-11-08] Modified: src/campaign/ai.rs — C4 AC2 a leaderless army does not march
+- [2026-11-08] Created: tests/c4_veterans.rs — C4 AC2 veteran General tests
+- [2026-11-08] Modified: tests/c4_autoresolve.rs — C4 AC2 campaign golden re-pinned (the hash carries experience)
+- [2026-11-08] Modified: FINDINGS.md — F-089 AC2 readings
+- [2026-11-08] Modified: src/campaign/content.rs — C4 the constructor builds `Self`, not a `Content`-like literal the guard flags
+- [2026-11-08] Modified: tests/m5_replay.rs — C4 the randomness guard admits the campaign's own seeded generator
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC3 building HP carries; unattacked cities repair; ruins are rebuilt for Alloy
+- [2026-11-08] Created: tests/c4_siege.rs — C4 AC3 siege damage tests
+- [2026-11-08] Modified: tests/c4_autoresolve.rs — C4 AC3 campaign golden re-pinned (building HP carries)
+- [2026-11-08] Modified: FINDINGS.md — F-089 AC3 readings
+- [2026-11-08] Modified: assets/data/nations.ron — Verdant three-resource Growth 1.15 -> 1.10 (user instruction)
+- [2026-11-08] Modified: tests/c4_autoresolve.rs — campaign golden re-pinned (content fingerprint moved with Verdant Growth)
+- [2026-11-08] Modified: FINDINGS.md — F-090 Verdant Growth 1.10 and the three-resource cross re-read
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC4 taking a capital absorbs its General (cap 3), leading a new army; no trait transfers
+- [2026-11-08] Created: tests/c4_absorb.rs — C4 AC4 absorbed General tests
+- [2026-11-08] Modified: tests/c4_autoresolve.rs — C4 AC4 campaign golden re-pinned (absorbed armies take the field)
+- [2026-11-08] Modified: FINDINGS.md — F-089 AC4 readings
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC5 Decision::Raise raises a house General at a held city for raise_general_cost
+- [2026-11-08] Modified: src/campaign/ai.rs — C4 AC5 the AI raises a General at its capital when it can pay and has room
+- [2026-11-08] Created: tests/c4_raise.rs — C4 AC5 raised General and own-perks tests
+- [2026-11-08] Modified: tests/c4_absorb.rs, tests/c4_persist.rs, tests/c4_siege.rs — C4 AC5 account for AI raises
+- [2026-11-08] Modified: tests/c4_autoresolve.rs — C4 AC5 campaign golden re-pinned (the AI raises Generals)
+- [2026-11-08] Modified: FINDINGS.md — F-089 AC5 readings
+- [2026-11-08] Created: src/campaign/save.rs — C4 AC11 campaign save: seed + player decisions, versioned RON, content-stamped, replay-checked load
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC11 the campaign logs the player's decisions per round
+- [2026-11-08] Created: tests/c4_save.rs — C4 AC11 save, load and refusal tests
+- [2026-11-08] Modified: FINDINGS.md — F-089 AC11 readings
+- [2026-11-08] Created: src/campaign/balance.rs — C4 AC12 campaign balance sim: AI-only campaigns, wins per nation, length vs the C0 target
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC12 registers the balance module
+- [2026-11-08] Created: tests/c4_balance.rs — C4 AC12 balance batch smoke tests and the ignored measurement
+- [2026-11-08] Modified: FINDINGS.md — F-089 P33 and F-091 the campaign balance reading (Fail)
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 critic fix: change_owner clamps a city's buildings to the new holder's pool (absorption included)
+- [2026-11-08] Created: tests/critic_c4.rs — C4 critic round 1 tests (absorbed-city pool, save tampering, seed order, probes)
+- [2026-11-08] Modified: tests/c4_siege.rs — C4 every building within its holder's pool after every round
+- [2026-11-08] Modified: FINDINGS.md — F-092 critic C4 round 1 fix
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 critic r2 fix: change_owner also clamps an absorbed city's garrison to the new holder's unit pool
+- [2026-11-08] Created: tests/critic_c4_r2.rs — C4 critic round 2 test (absorbed garrison unit pool)
+- [2026-11-08] Modified: tests/c4_siege.rs — C4 pool invariant covers buildings, garrisons and armies; a scenario that reaches an attacked, garrisoned, absorbed city
+- [2026-11-08] Modified: FINDINGS.md — F-093 critic C4 round 2 fix
+- [2026-11-08] Modified: CAMPAIGN_PLAN.md — C4 AC1–AC11 ticked after critic PASS (round 3); AC12 balance sim left open

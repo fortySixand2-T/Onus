@@ -64,6 +64,15 @@ impl Stockpiles {
         }
     }
 
+    /// Start each faction at its own Alloy, indexed by faction slot (A, B):
+    /// a campaign battle, where a nation's size sets its purse (C4).
+    pub fn starting_each(amount: [u32; 2]) -> Self {
+        Self {
+            alloy: amount,
+            ..Default::default()
+        }
+    }
+
     pub fn alloy(&self, f: Faction) -> u32 {
         self.alloy[faction_slot(f)]
     }

@@ -168,6 +168,11 @@ pub struct MatchSettings {
     /// ([`crate::sim::three`]); refused at construction when the content has
     /// no `three_resource` block.
     pub economy: EconomyMode,
+    /// Each side's starting Alloy, indexed by faction slot (A, B) — a
+    /// campaign battle, where a nation's size sets its purse (C4). `None` —
+    /// the default — is the content's `starting_alloy` for both, exactly as
+    /// every match before C4 started.
+    pub starting_alloy: Option<[u32; 2]>,
 }
 
 /// The budget for one match: **fifteen minutes of play** — an anti-stalemate
@@ -199,6 +204,7 @@ impl Default for MatchSettings {
             battle: None,
             nations: [None, None],
             economy: EconomyMode::Alloy,
+            starting_alloy: None,
         }
     }
 }
@@ -241,6 +247,12 @@ impl MatchSettings {
     /// Play this match on `economy` (C3).
     pub fn with_economy(mut self, economy: EconomyMode) -> Self {
         self.economy = economy;
+        self
+    }
+
+    /// Start side A with `a` Alloy and side B with `b` (C4).
+    pub fn with_starting_alloy(mut self, a: u32, b: u32) -> Self {
+        self.starting_alloy = Some([a, b]);
         self
     }
 
@@ -339,7 +351,9 @@ pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSe
         }
     };
 
-    let alloy = content.economy.starting_alloy;
+    let alloy = settings
+        .starting_alloy
+        .unwrap_or([content.economy.starting_alloy; 2]);
     let mut app = App::new();
     app.add_plugins(MinimalPlugins)
         .insert_resource(Time::<Fixed>::from_hz(SIM_HZ as f64))
@@ -347,7 +361,7 @@ pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSe
         .init_resource::<CommandQueue>()
         .init_resource::<RateReport>()
         .init_resource::<Casualties>()
-        .insert_resource(Stockpiles::starting(alloy));
+        .insert_resource(Stockpiles::starting_each(alloy));
     // The *shipped* sim chain, in `Update` on a manually advanced fixed clock:
     // a headless app steps one tick per `app.update()` (see [`step`]).
     crate::add_sim_systems(&mut app, Update);

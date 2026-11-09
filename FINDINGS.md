@@ -7390,3 +7390,328 @@ load, even for Alloy-only play. The check now runs only when the block is presen
 cannot play a three-resource match, so its three-resource list is never played and is left as it was before F4.
 Test: `tests/critic_c3_r2.rs::critic_shipped_nations_load_without_the_optional_three_resource_block`. It panicked
 before the fix and passes after; F4's test still passes.
+
+## F-088 — C4 starts ahead of B5, by the user's decision (C4)
+
+**Context.** `CAMPAIGN_PLAN.md` gates C1 onward on B5 Go, the human play test, which has not
+run. The user overrode that gate for C1 (2026-11-02), C2 (2026-11-03, F-062) and C3
+(2026-11-04, F-075). On 2026-11-07 the user said "merge after ci, then start c4".
+
+**Decision.** C4 (the campaign core: headless, render-free) starts now, on the same terms as C1
+to C3: B5 still runs when the user can play, and its findings can revise C1 to C4 and later
+milestones. The C4 heading in `CAMPAIGN_PLAN.md` now says "started 2026-11-08, ahead of B5 by
+user decision", and the plan's gate section records the override.
+
+**What this does not change.** C1's open AC (the B5 human re-read) and C2's open AC (the nation
+cross gate, F-074) stay open. Nothing in C4 re-pins a golden: battle, nation and three-resource
+play outside the campaign must stay byte-identical (C4 golden licence). Campaign numbers live in
+a new `assets/data/campaign.ron`, with its own fingerprint, so the battle content's fingerprint
+does not move.
+
+## F-089 — C4 provisional readings of the campaign rules (C4)
+
+`CAMPAIGN_PLAN.md` C4 names the rules but not every detail. Where it is silent, C4 takes the
+simplest reading below. **Each one is provisional:** B5 or a later design pass may revise it.
+Every number lives in `assets/data/campaign.ron`.
+
+**Rounds and battles (AC1, AC7).**
+- P1. A round is: shuffle the turn order (the campaign rng), take each nation's decisions in that
+  order, move every army, fight every battle city by city in map order, pay the upkeep, then check
+  the end.
+- P2. The attacker at a city is the first hostile nation in turn order with an army there. Other
+  hostile nations wait in the city and fight next round. Every army of the attacker in the city
+  fights, so one side can field several Generals.
+- P3. A draw or a timeout means the defender holds. A city with no army, no garrison and no
+  standing building falls without a battle.
+- P4. A failed assault sends the attacker's armies straight back to the city they came from. If
+  that city has been lost, they go to their nation's nearest city by road cost. With no city
+  left, they are disbanded. A captured city's defending armies fall back the same way.
+- P5. Taking a nation's capital absorbs that nation: its other cities pass to the conqueror and
+  its armies are removed.
+- P6. A fallen player has lost the campaign, even in the round the last rival falls.
+
+**Movement (AC6).**
+- P7. An army marches one road at a time and stops at every city. Points left over on arrival are
+  lost. A road's cost is ceil(length × terrain multiplier).
+
+**Persistence and levy (AC8).**
+- P8. A city's levy Alloy goes to its holder's treasury.
+- P9. A city's levy units join the holder's lowest-id army standing in the city that is under
+  `army_cap`. Otherwise they join the city's garrison, which is also capped at `army_cap`. A levy
+  unit beyond both caps is lost.
+- P10. An army standing in a city it holds takes in that city's garrison first.
+- P11. The garrison defends its city, and its survivors stay there. A captured city's garrison is
+  lost.
+- P12. Upkeep runs after the battles, in map order.
+
+**The battle a round launches (AC9).**
+- P13. The attacker plays Faction A and the holder Faction B. A fought battle draws its match seed
+  and its map side from the campaign rng; an undefended city draws neither.
+- P14. Each side plays its nation (and so its traits) and its nation's own strategy, on the
+  campaign's economy, under the campaign's battle tick cap.
+- P15. A nation's size reaches the battle through its purse: it starts with
+  `starting_alloy + alloy_per_city x` the cities it holds. `MatchSettings::starting_alloy`
+  (default `None`, which keeps the content's figure for both sides) carries this.
+- P16. Each roster is that side's plan units at their HP, followed by its battle-only workers
+  (`attacker_workers`, `defender_workers`). The holder also fields the city's standing buildings
+  at their HP.
+
+**The campaign AI (AC9 fix).**
+- P17. A ready AI army takes the first road toward the nearest hostile capital, and assaults any
+  hostile city on the way. Before this it marched on the weakest neighbouring city. Once AC9's
+  rng draws changed the stream, `domination_ends_the_campaign` (seed 11) showed the problem: the
+  last two nations traded outlying cities until the round cap, because their armies never met.
+  Aiming at capitals ends wars, since taking one absorbs a nation. `ai::defence` now counts the
+  garrison too.
+
+**Auto-resolve (AC10).**
+- P18. `HeadlessResolver` plays every battle it is given in the headless battle sim, including a
+  battle the player is in: C4 has no battle screen, so a player's battles are auto-resolved as
+  well until a later milestone hands them to the player. The battle runs until the battle layer
+  decides it or the campaign's tick cap runs out. At the cap the battle is undecided, so the
+  defender holds, and everyone keeps the HP he has at that tick.
+- P19. Survivors are read back by sim id from the battle's own report. A unit the battle trains,
+  and the battle-only workers, are not plan units, so they never join an army.
+- Fact, not a choice. In Bevy 0.19 `Entity::to_bits` *falls* as the entity index rises, so
+  `replay::identify` numbers a fresh world's entities in reverse spawn order. The resolver
+  first matched plan units by ascending sim id, and that read survivors back onto the wrong
+  units (an 80-HP Arclight came back with a Sentinel's 100). The resolver now matches by
+  ascending `Entity::index_u32`, which is spawn order. Nothing else depends on this: replay ids
+  only need to be stable, and they are.
+
+**Veteran Generals (AC2).**
+- P20. Every General who took the field earns experience: `xp.win` if his side won and
+  `xp.survive` if it lost. An undecided battle (a draw or the tick cap) counts as the holder's
+  win. An uncontested capture is no battle, so nobody earns anything from it.
+- P21. His rank is the highest in `ranks` whose `xp` threshold he has reached; the last rank is
+  the cap, and experience past it does nothing more. A rank scales his aura's radius by
+  `radius_mult` and adds `extra_factor` to a scaling aura's factor. Rank 0 must be plain. A ranked
+  General carries an `AuraRank` component in the battle, and the replay state hash gains a row for
+  it (tag 28). A plain General carries no component and adds no row, so every existing skirmish
+  golden is unchanged.
+- P22. A General who falls loses his experience, and his army goes leaderless for
+  `general_replacement_rounds` full rounds. At the end of the round the wait runs out, a new
+  General of the same kind takes command at rank 0. A leaderless army fields no General, cannot
+  march (it can still defend where it stands) and gets no Logistics bonus.
+- Gate fix (AC1). The full debug suite showed two source-scanning guards that C4 had tripped
+  since AC1, both now fixed. `critic_m5::nothing_in_src_builds_a_content_that_skipped_validation`
+  matched `CampaignContent {` as a battle `Content` literal (a false positive); the constructor
+  now writes `Self {`. `m5_replay::the_only_generator_lives_in_the_sim_and_nothing_else_rolls_a_number`
+  allowed `SplitMix64` only under `src/sim/`. The campaign is the second render-free sim layer,
+  with its own seeded generator stepped only in its own round, so the guard now admits
+  `src/campaign/` as well. **Provisional**: this widens an existing guard; the critic should
+  confirm the reading. Everything else stays forbidden everywhere.
+
+**Siege damage (AC3).**
+- P23. Every building comes out of a battle with the HP the battle left it. A conqueror inherits
+  them, clamped to his own pool (a sturdier holder's building can be over the conqueror's maximum).
+- P24. A city is attacked in a round when a battle or an uncontested capture happens there. Every
+  other city repairs at the end of the round, after the levies: each standing building gains
+  `repair_per_round x` its holder's repair multiplier, up to the holder's pool. The multiplier is
+  a perk, so it follows the holder: a captured Forgeborn city repairs at the conqueror's rate.
+- P25. A destroyed building (HP 0) does not repair and does not take the field. At the end of a
+  round in which its city is not attacked, its holder rebuilds it automatically if the treasury
+  holds its `alloy_cost` (the building's own build cost in `units.ron`). Cities go in map order and
+  slots in city order; a building that cannot be paid for waits. A rebuilt building stands at one
+  repair step. There is no rebuild decision yet: C4 has no player economy screen.
+- The campaign golden (`c4_autoresolve::campaign_golden`, my own) re-pinned at AC3, because
+  building HP now carries: 0x181b0e1f579e6d5a -> 0xc3c869fe51c6841c.
+
+**Absorbed Generals (AC4).**
+- P26. Taking a capital absorbs its nation (P5). If the conqueror has absorbed fewer than
+  `max_absorbed_generals`, he gains a General of the fallen nation's kind, so he carries that
+  nation's aura. The General stands at rank 0 at the fallen capital, at the head of a new, empty
+  army that fills from the levy like any other. The cap counts every absorption over the
+  campaign; a General who later falls does not free a place. The fallen nation's own absorbed
+  Generals are removed with its armies; they do not pass on.
+- P27. No trait transfers. The new army is the conqueror's, so it plays the conqueror's nation
+  and traits in every battle; only the General's kind, and so his aura, comes from the fallen
+  nation.
+- The campaign golden re-pinned at AC4 (an absorbed army now takes the field):
+  0x900de33b295916e6 -> 0x4e8757b5a5c9847c.
+
+**Raised Generals (AC5).**
+- P28. `Decision::Raise { city }` raises a General of the nation's own house at a city it holds,
+  for `raise_general_cost` treasury Alloy. A city it does not hold, an unknown city, or a
+  treasury short of the cost refuses the round. The General stands at rank 0 at the head of a
+  new, empty army in that city, and the army fills from the levy (P9). The player has no army
+  cap.
+- P29. The campaign AI raises one General per round, at its capital, when it holds the capital,
+  has fewer than `ai.max_armies` armies and can pay. It decides this before its marches.
+- P30. Perks act only on a nation's own armies and cities. A raised or absorbed army plays its
+  nation's traits. A captured city takes its new holder's pools and repair rate (P23, P24), so a
+  Forgeborn city taken by House Vael holds House Vael's building HP, not the Forgeborn's.
+- The campaign golden re-pinned at AC5 (the AI now raises Generals):
+  0x4e8757b5a5c9847c -> 0x1600ef997dbf8728.
+
+**Saves (AC11).**
+- P31. A save (`campaign::save::CampaignLog`, RON, format version 1) holds the seed, the
+  player's nation, both content fingerprints (the battle `ContentFingerprint` and the campaign
+  content's), the player's decisions one list per round, and the state hash after every round.
+  The AI's decisions and every battle are not saved: the campaign is deterministic, so a load
+  recomputes them. This is M5's match-log pattern one layer up.
+- P32. A load (`Campaign::resume`) refuses another format version, a round count that does not
+  match the hash count, and another battle or campaign content, before it replays anything. It
+  then replays round by round, checks each round's state hash, and stops at the first round
+  that diverges, naming it. A round refused on replay is also an error. The decision log is not
+  part of the state hash: it is the input, and the hashes are its result. The campaign golden
+  does not move at AC11.
+
+**The balance sim (AC12).**
+- P33. A balance batch plays one AI-only campaign per seed, to its end. A campaign's length is
+  the round it ended on, and an undecided one counts at the round cap. AC12 reads "lands on the
+  target" as a median length inside `length_target`, and "each nation wins sometimes" as at
+  least one won campaign per nation. The reading is F-091.
+
+## F-090 — Verdant's three-resource Growth lowered to ×1.10, by the user's instruction (C3 AC8 RON step)
+
+**The user's instruction (2026-11-08): "lower verdant growth to 1.10".** In `assets/data/nations.ron`, Verdant's
+`three_resource_traits` entry `(applies_to: Buildings, stat: Growth, mul: 1.15)` is now `mul: 1.10`. Nothing
+else has moved, including Forgeborn's BuildingHp 1.15. It is a trait size, which C3 AC8 allows, and it acts
+only in three-resource play. Neither `DESIGN_BRIEF.md` nor `CAMPAIGN_PLAN.md` states the number, so neither
+changes. Committed on its own, between C4 AC3 and AC4.
+
+**Re-pins.** On the full debug suite only one pin moved: `c4_autoresolve::campaign_golden` (C4's own,
+Alloy-only), 0xc3c869fe51c6841c -> 0x900de33b295916e6. It moved only through the content fingerprint, which
+the campaign state hash includes. A one-off comparison of the 1.15 and 1.10 content over the golden's 6 rounds
+showed identical play; only the fingerprint differed (0x4bc1142d466fb4ca -> 0x6d30ed0603883160). Every
+battle, nation, Alloy-only and three-resource golden is byte-identical, since no three-resource golden plays
+Verdant's Growth.
+
+**C2 nation cross gate on three resources, re-read** (F-087's configuration: every ordered pair, 5 mass probes,
+3 seeds, 900 matches; release, nice'd, single-threaded; 40 timeouts; 5757 s). Strength verdict:
+**undetermined**. Five nations pass and one is undetermined.
+
+| nation | strength | 95% interval | reading | F-087 (×1.15) |
+|---|---|---|---|---|
+| house | 47.2% | [40.1, 54.3] | pass | 44.6% |
+| forgeborn | 45.3% | [38.4, 52.3] | pass | 43.0% |
+| verdant | **52.2%** | [45.0, 59.3] | **pass** | 63.6% undetermined |
+| aetherkin | **60.1%** | [53.0, 67.1] | **undetermined** | 57.5% pass |
+| tollmarch | 48.0% | [41.0, 55.0] | pass | 46.6% |
+| ashen_reach | 47.2% | [40.1, 54.3] | pass | 44.6% |
+
+Row vs column win %: house -- 53 46 39 47 50; forgeborn 47 -- 43 37 53 47; verdant 54 57 -- 43 54 54;
+aetherkin 61 63 57 -- 58 61; tollmarch 53 47 46 42 -- 53; ashen_reach 50 53 46 39 47 --.
+
+- Verdant now passes: its interval sits inside 35–65%.
+- **Not every nation passes.** Aetherkin, at 60.1%, is under the 65% line, but its interval reaches 67.1. It
+  rose from 57.5% mainly because it now beats Verdant (57%, was 44%).
+- House and Ashen Reach still read identically, for F-087's reason.
+- B3 was not re-run: Growth is a nation trait, and the B3 kill gate plays no nation.
+
+Open, for the user to decide: Aetherkin's three-resource lean (cheaper Aether ×0.90, Arclight range +12), or
+more seeds to settle its interval.
+
+## F-091 — C4 AC12 reading: the campaign balance sim runs, and it reads Fail (C4)
+
+`campaign::balance` plays AI-only campaigns to their end on the headless battle sim
+(`HeadlessResolver`), one per seed, and reads AC12's two questions:
+- does each nation win sometimes?
+- does a campaign's length land on the C0 target, `rules.length_target` (15–25 rounds)?
+
+The readings are provisional (F-089 P33). A campaign's length is the round it ended on. An
+undecided campaign, where the round cap came first, counts at the cap. "Lands on the target" means
+the median length is inside the target. "Wins sometimes" means at least one won campaign per
+nation. A batch is deterministic and reports in seed order on any thread count. A fast test checks
+this, and another plays one real campaign. The measurement is
+`c4_balance::the_campaign_balance_reading`, which is `#[ignore]`:
+
+```
+ONUS_C4_CAMPAIGNS=100 ONUS_C4_THREADS=1 cargo test --test c4_balance \
+  the_campaign_balance_reading -- --ignored --nocapture
+```
+
+**Reading** (box, test profile, 100 campaigns, seeds 1–100, about 2.4 s per campaign, 240 s):
+
+| nation | campaigns won |
+|---|---|
+| house | 0 |
+| forgeborn | 0 |
+| verdant | 0 |
+| aetherkin | 0 |
+| tollmarch | 100 (100%) |
+| ashen_reach | 0 |
+| undecided | 0 |
+
+Length: every campaign ended in round 13. The median is 13, and 0 of 100 campaigns fell inside
+15–25. **AC12 reads Fail on both counts, so its box stays unticked.** No number was tuned to move
+it. The causes are design questions, not bugs, so they go to the human.
+
+**Why (a round-by-round probe of seeds 1 and 2).**
+- **The seed hardly matters.** Seeds 1 and 2 fight the same battles in the same rounds with the
+  same winners. Only the tick counts differ by a few percent. The campaign rng sets the turn
+  order and each battle's seed and map side. Those barely move a battle between rosters this
+  lopsided, and the turn order rarely decides anything. So 100 seeds are close to one campaign
+  played 100 times. A balance batch needs a source of variety that changes outcomes: start
+  positions, start rosters, AI personality, or noisier battles.
+- **Capitals are left empty in round 1.** Every AI army marches on the nearest hostile capital
+  (P17), and nothing stays home. Tollmarch's and Ashen Reach's armies pass each other on the
+  Tollgate–Ashgrave road. Tollmarch's Logistics General (+2 march points) arrives first. Ashgrave
+  has only its buildings and garrison, falls in round 2, and Ashen Reach is gone. Forgeborn falls
+  the same way to House Vael in round 4. The first capital swaps decide the campaign. Tollmarch,
+  which gains a whole nation, its levy and an absorbed General in round 2, snowballs from there.
+- **Absorption snowballs.** Each capital taken hands over every city of the fallen nation, so
+  the leader's levy grows with each kill. The wars end in 13 rounds, below the 15-round floor.
+
+Candidate levers, for the human's decision (none applied):
+- an AI home guard (keep an army, or a share of the levy, at the capital);
+- a capital garrison or defence bonus in `campaign.ron`;
+- longer roads, or a march-point scale;
+- a varied start, per seed, from the map;
+- a cap on what absorption hands over.
+Every one is campaign-layer RON or AI. None needs a base unit combat stat.
+
+## F-092 — Critic C4 round 1: a city that changes hands takes its new holder's building pool (C4 AC4, AC5)
+
+**Finding 1 (High).** When a nation fell, `absorb` handed its cities to the conqueror without clamping their
+building HP to the conqueror's own pool. Only two paths clamped: the battle city's write-back (P23), and
+`siege_works`, for unattacked cities only. So a city attacked and held in the round its capital fell went to
+the conqueror still carrying the fallen nation's sturdier pool. Ashen Reach's BuildingHp ×1.30 rode into House
+Vael's hands, breaking "no trait transfers" (AC4) and "perks apply only to the nation's own cities" (AC5). The
+next battle at that city was then refused by the sim's content check, and `HeadlessResolver` panicked ("a
+campaign battle the content refuses").
+
+**Fix.** `Campaign::change_owner(city, to)` is now the only way a city changes hands. It sets the holder and
+clamps every building to that holder's pool, on both paths: capture in battle and absorption.
+
+**Tests.**
+- `tests/critic_c4.rs::an_absorbed_city_does_not_keep_the_fallen_nations_building_pool` is the critic's
+  test, moved in unchanged apart from one clippy lint (`% 2 == 0` became `is_multiple_of(2)`). It failed before the fix (House held X's HQ at 10920 HP over its pool of 8400) and
+  passes after.
+- `tests/c4_siege.rs::every_building_stays_within_its_holders_pool_every_round` is a general invariant: after
+  every round of six AI-only campaigns (seeds 1–3, scripted and headless resolvers), every building is within its
+  holder's pool. The shipped map does not reach the bug, so this test passed before the fix too. It guards
+  against regression and is not the red test.
+- The campaign golden does not move (0x1600ef997dbf8728). The shipped 6-round golden never absorbs a city
+  that was attacked that round. No other golden moves.
+
+## F-093 — Critic C4 round 2: an absorbed city's garrison takes its new holder's unit pool (C4 AC4, AC5)
+
+**Finding (blocking).** F-092's `change_owner` re-based a city's buildings only. Its garrison kept the HP its
+old holder had raised it at. After an absorption, those units were the conqueror's but above his unit pool. The
+next assault on the city fielded them, the sim refused the battle, and `HeadlessResolver` panicked. A conqueror
+army standing in the city would also take in the garrison and carry the old holder's HP into its own battles.
+The shipped RON never triggers this, because no nation has a unit-HP trait, but any data-legal one (for
+example, Defense +1 on a unit) made it a crash.
+
+**Fix.** `change_owner` now clamps every garrison unit to the new holder's pool for that unit, the same way it
+clamps buildings. HP is the only per-holder state a campaign unit carries (`Unit { def, hp }`), so nothing else
+needs re-basing. A city captured in battle loses its garrison anyway (P11), and a fallen nation's armies are
+removed (P5). So the garrison of an absorbed city is the only case this reaches.
+
+**Tests.**
+- `tests/critic_c4_r2.rs::an_absorbed_garrison_does_not_keep_the_fallen_nations_unit_pool` is the critic's
+  test, moved in unchanged. Before the fix it failed with "unit 2 at 120 HP over House's pool 100" and
+  "`sentinel` for B with HP 120: must be 1..=100". It passes after.
+- In `tests/c4_siege.rs`, F-092's invariant now covers every building, every garrison unit and every army unit,
+  each checked against its current holder's pool after every round. It was renamed
+  `every_building_and_unit_stays_within_its_holders_pool_every_round`.
+- New: `an_attacked_garrisoned_city_absorbed_by_a_conqueror_takes_his_pools`, which reaches the case the
+  shipped map does not. It uses shipped data plus Defense +1 on Ashen Reach's Sentinels. The Reach's city X is
+  garrisoned by its levy, and in the same round it is assaulted and held, and then absorbed when House takes the
+  Reach's capital. Each premise is asserted. The test then plays three more rounds on the headless resolver.
+  It kills both mutants:
+  - without the garrison clamp it fails: "garrison holds a unit at 120 HP over its holder's pool 100";
+  - without the building clamp it fails: "holds a building at 10920 HP over its holder's pool 8400".
+- The campaign golden does not move (0x1600ef997dbf8728). No other golden moves.
