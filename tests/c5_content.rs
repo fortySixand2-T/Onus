@@ -39,20 +39,20 @@ fn n(c: &Content, id: &str) -> usize {
 fn the_shipped_file_gives_every_nation_its_disposition_and_the_c0_rules() {
     let c = content();
     let d = shipped();
-    let r = &d.rules;
+    let r = d.rules();
     assert_eq!(r.ally_cap, 1, "C0: at most one ally");
     assert_eq!(r.betrayal_standing_drop, 1, "C0: one step");
     assert_eq!(r.destabilize_requires_tied, 2, "C0: Tied with two nations");
     assert_eq!(r.actions_per_round, 1, "C0: one diplomatic action per round");
-    assert_eq!(d.dispositions.len(), c.nations.len(), "one per nation, in nation order");
-    for (k, (disp, nat)) in d.dispositions.iter().zip(&c.nations).enumerate() {
+    assert_eq!(d.dispositions().len(), c.nations.len(), "one per nation, in nation order");
+    for (k, (disp, nat)) in d.dispositions().iter().zip(&c.nations).enumerate() {
         assert_eq!(disp.nation, nat.id, "disposition {k} is in nation order");
     }
     // The brief: the Forgeborn hate you; Verdant and Tollmarch can be bought.
     let (house, forge, verdant, toll) = (n(&c, "house"), n(&c, "forgeborn"), n(&c, "verdant"), n(&c, "tollmarch"));
     assert_eq!(d.start_standing(forge, house), Standing::Hostile);
     assert_eq!(d.start_standing(house, forge), Standing::Hostile, "standing is per pair");
-    assert_eq!(d.start_standing(verdant, toll), d.default_standing);
+    assert_eq!(d.start_standing(verdant, toll), d.default_standing());
     assert!(d.ally_bias(forge) < d.ally_bias(house), "Forgeborn never ally readily");
     assert!(d.ally_bias(verdant) > d.ally_bias(house), "Verdant can be bought");
     assert!(d.ally_bias(toll) > d.ally_bias(house), "Tollmarch sells alliances");
@@ -64,11 +64,11 @@ fn every_number_is_read_from_the_ron() {
     let c = content();
     let t = text();
     let d = DiplomacyContent::from_ron(&swap(&t, "court_cost: 100", "court_cost: 77"), &c).unwrap();
-    assert_eq!(d.rules.court_cost, 77);
+    assert_eq!(d.rules().court_cost, 77);
     let d = DiplomacyContent::from_ron(&swap(&t, "war_rounds: 4", "war_rounds: 9"), &c).unwrap();
-    assert_eq!(d.rules.war_rounds, 9);
+    assert_eq!(d.rules().war_rounds, 9);
     let d = DiplomacyContent::from_ron(&swap(&t, "notice_per_city: 1", "notice_per_city: 3"), &c).unwrap();
-    assert_eq!(d.rules.notice_per_city, 3);
+    assert_eq!(d.rules().notice_per_city, 3);
     let d = DiplomacyContent::from_ron(&swap(&t, "default_standing: Neutral", "default_standing: Hostile"), &c).unwrap();
     assert_eq!(d.start_standing(n(&c, "verdant"), n(&c, "tollmarch")), Standing::Hostile);
 }

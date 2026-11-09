@@ -237,3 +237,28 @@ fn critic_an_ai_inciter_is_never_steered_by_its_incite() {
     eprintln!("AI incites seen: {incites}");
     assert!(incites > 0, "no AI incited on 64 seeds x 4 player settings");
 }
+
+/// AC1 "validated at load" (critic C5 r1, adapted). The critic's probe was
+/// `edited.rules.ally_cap = 2` on a loaded `DiplomacyContent`, which then
+/// played under the shipped fingerprint. The fields are now private, so that
+/// line no longer compiles (the `compile_fail` doctest on `DiplomacyContent`
+/// holds it). What remains is the one way to get other numbers, the file,
+/// which validates: a cap of 2 is refused, and a valid change of a number
+/// changes the fingerprint.
+#[test]
+fn critic_validated_rules_cannot_be_changed_after_load_under_the_same_fingerprint() {
+    let c0 = content();
+    let shipped = DiplomacyContent::shipped(&c0).unwrap();
+    let t = std::fs::read_to_string(data_dir().join("diplomacy.ron")).unwrap();
+    assert!(t.contains("ally_cap: 1"));
+    assert!(
+        DiplomacyContent::from_ron(&t.replacen("ally_cap: 1", "ally_cap: 2", 1), &c0).is_err(),
+        "ally_cap 2 is refused at load"
+    );
+    let edited = DiplomacyContent::from_ron(&t.replacen("court_cost: 100", "court_cost: 101", 1), &c0).unwrap();
+    assert_eq!(edited.rules().court_cost, 101);
+    assert_ne!(edited.fingerprint(), shipped.fingerprint(), "other numbers, another fingerprint");
+    // Reading is all a caller can do: `rules()` hands out a shared reference.
+    let r: &onus::campaign::diplomacy::DiplomacyRulesDef = shipped.rules();
+    assert_eq!(r.ally_cap, 1);
+}

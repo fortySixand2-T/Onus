@@ -113,11 +113,23 @@ struct DiplomacyFile {
 
 /// The diplomacy content, validated, with its dispositions in nation order.
 #[derive(Debug, Clone, PartialEq, Eq)]
+///
+/// Its values are read-only once loaded: the fingerprint is taken from the
+/// parsed file at load, so a value changed afterwards would play under the
+/// fingerprint of numbers that were validated (critic C5 r1). Only the
+/// engagement levers, which the fingerprint mixes in, can change.
+///
+/// ```compile_fail
+/// # use onus::campaign::diplomacy::DiplomacyContent;
+/// # let c = onus::sim::content::Content::load_from_dir(std::path::Path::new("assets/data")).unwrap();
+/// let mut d = DiplomacyContent::shipped(&c).unwrap();
+/// d.rules.ally_cap = 2; // private: validated content cannot be edited
+/// ```
 pub struct DiplomacyContent {
-    pub default_standing: Standing,
+    default_standing: Standing,
     /// One per nation, in `Content::nations` order.
-    pub dispositions: Vec<DispositionDef>,
-    pub rules: DiplomacyRulesDef,
+    dispositions: Vec<DispositionDef>,
+    rules: DiplomacyRulesDef,
     /// `start[a * n + b]`: the pair's standing at the start (symmetric).
     start: Vec<Standing>,
     /// Per nation: how far it takes part (a lever for the balance sim and
@@ -257,6 +269,21 @@ impl DiplomacyContent {
             engagement: vec![Engagement::Full; n],
             file_fp,
         })
+    }
+
+    /// The standing a pair starts at unless a disposition names it.
+    pub fn default_standing(&self) -> Standing {
+        self.default_standing
+    }
+
+    /// The dispositions, one per nation, in nation order (read-only).
+    pub fn dispositions(&self) -> &[DispositionDef] {
+        &self.dispositions
+    }
+
+    /// The rules (read-only).
+    pub fn rules(&self) -> &DiplomacyRulesDef {
+        &self.rules
     }
 
     /// Nations covered (the battle content's).
@@ -496,7 +523,7 @@ impl Campaign {
         let dc = self.diplomacy_content()?;
         let s = self.standing(n, m)?;
         let above = self.cities_of(m).len().saturating_sub(self.cities_of(n).len()) as i32;
-        Some(dc.ally_bias(n) + s.rank() - dc.rules.notice_per_city * above)
+        Some(dc.ally_bias(n) + s.rank() - dc.rules().notice_per_city * above)
     }
 
     /// Would nation `n` accept `offer` from `from`? An abstaining nation,
@@ -513,11 +540,11 @@ impl Campaign {
         }
         let Some(w) = self.willingness(n, from) else { return false };
         match offer {
-            Offer::Court => w >= dc.rules.court_threshold,
+            Offer::Court => w >= dc.rules().court_threshold,
             Offer::Ally => {
                 self.standing(n, from) == Some(Standing::Tied)
-                    && (self.allies_of(n).len() as u32) < dc.rules.ally_cap
-                    && w >= dc.rules.ally_threshold
+                    && (self.allies_of(n).len() as u32) < dc.rules().ally_cap
+                    && w >= dc.rules().ally_threshold
             }
         }
     }
@@ -556,7 +583,7 @@ impl Campaign {
         let Some(dc) = self.campaign.diplomacy().cloned() else {
             return Err("this campaign has no diplomacy (diplomacy.ron is not attached)".to_string());
         };
-        let r = &dc.rules;
+        let r = dc.rules();
         let acted = self.diplo.as_ref().expect("diplomacy").acted[nation];
         if acted >= r.actions_per_round {
             return Err(format!(
@@ -781,7 +808,7 @@ mod tests {
     #[test]
     fn it_takes_no_action_it_cannot_pay_for() {
         let mut c = game(None, |d| d);
-        c.nations[AETH].treasury = c.campaign.diplomacy().unwrap().rules.court_cost - 1;
+        c.nations[AETH].treasury = c.campaign.diplomacy().unwrap().rules().court_cost - 1;
         assert_eq!(decide(&c), None);
     }
 

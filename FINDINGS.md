@@ -7959,3 +7959,16 @@ So in AI-only play the AI's incite rule almost never fires. Being Tied with two 
 accepted courts, and one is usually spent on an alliance first. The rule fires mostly when a player
 stands in for a nation that would otherwise have been someone's ally. The AC8 batch (AI-only) therefore
 measures incite barely at all.
+
+**6. Validated diplomacy is read-only after load (AC1).** `DiplomacyContent`'s `default_standing`,
+`dispositions` and `rules` were public. So a loaded content could be edited, for example to
+`ally_cap = 2`, a value the loader refuses, and still play under the fingerprint taken at load. The
+fields are now private, with the read accessors `default_standing()`, `dispositions()` and `rules()`.
+A `compile_fail` doctest on `DiplomacyContent` holds that the edit no longer compiles.
+`critic_validated_rules_cannot_be_changed_after_load_under_the_same_fingerprint` (in
+`tests/critic_c5.rs`) is adapted because its literal edit cannot compile. It now checks the one
+remaining route, the file: a cap of 2 is refused at load, and a valid change of a number changes the
+fingerprint. Only the engagement levers (abstain, passive) can change after load, and the fingerprint
+mixes them in. **Follow-up, not done (C4's code, left unchanged as instructed):** `CampaignContent`
+has the same pattern. `rules`, `ai`, `cities`, `roads` and the rest are public and mutable after
+`campaign.ron` is validated, while its fingerprint is taken at load.

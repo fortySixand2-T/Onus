@@ -132,7 +132,7 @@ pub fn decide_diplomacy(c: &Campaign, n: usize) -> Option<Decision> {
     if dc.takes_no_initiative(n) || !c.nations()[n].alive || Some(n) == c.player() {
         return None;
     }
-    let r = &dc.rules;
+    let r = dc.rules();
     let treasury = c.nations()[n].treasury;
     let id = |m: usize| c.content().nations[m].id.clone();
     let rivals: Vec<usize> = c.alive().into_iter().filter(|&m| m != n).collect();

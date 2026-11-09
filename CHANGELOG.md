@@ -988,3 +988,9 @@
 - [2026-11-09] Modified: tests/c5_alliance.rs — direct test of the answering nation's ally cap with a Tied, willing pair
 - [2026-11-09] Modified: tests/critic_c5.rs — critic r1 invariant sweep, incited pair fights, AI inciter never steered
 - [2026-11-09] Modified: FINDINGS.md — F-097 acceptor cap and inciter gates, AI incite frequency
+- [2026-11-09] Modified: src/campaign/diplomacy.rs — DiplomacyContent fields private with read accessors; compile_fail doctest
+- [2026-11-09] Modified: src/campaign/ai.rs — read diplomacy rules through the accessor
+- [2026-11-09] Modified: tests/c5_content.rs — read diplomacy content through accessors
+- [2026-11-09] Modified: tests/c5_ai.rs — read diplomacy rules through the accessor
+- [2026-11-09] Modified: tests/critic_c5.rs — validated rules cannot change after load (adapted)
+- [2026-11-09] Modified: FINDINGS.md — F-097 read-only diplomacy content; CampaignContent follow-up

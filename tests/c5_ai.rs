@@ -86,7 +86,7 @@ fn willingness_is_bias_plus_standing_less_notice() {
                 }
                 let above = camp.cities_of(m).len().saturating_sub(camp.cities_of(n).len()) as i32;
                 let s = camp.standing(n, m).unwrap().rank();
-                let want = d.ally_bias(n) + s - d.rules.notice_per_city * above;
+                let want = d.ally_bias(n) + s - d.rules().notice_per_city * above;
                 assert_eq!(camp.willingness(n, m), Some(want));
             }
         }
