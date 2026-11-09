@@ -981,3 +981,4 @@
 - [2026-11-08] Created: tests/c5_balance.rs — C5 AC8 smoke tests and the ignored diplomacy balance reading
 - [2026-11-08] Modified: DESIGN_BRIEF.md — how diplomacy plays in C5 (provisional)
 - [2026-11-08] Modified: FINDINGS.md — F-096 C5 AC8 diplomacy balance reading (Fail)
+- [2026-11-09] Modified: src/campaign/diplomacy.rs — build DiplomacyContent as Self so critic_m5's Content-literal check passes

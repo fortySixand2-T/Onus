@@ -249,7 +249,7 @@ impl DiplomacyContent {
                 }
             }
         }
-        Ok(DiplomacyContent {
+        Ok(Self {
             default_standing,
             dispositions,
             rules,
