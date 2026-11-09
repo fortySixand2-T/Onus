@@ -947,3 +947,10 @@
 - [2026-11-08] Modified: CAMPAIGN_PLAN.md — C4 AC1–AC11 ticked after critic PASS (round 3); AC12 balance sim left open
 - [2026-11-08] Modified: CAMPAIGN_PLAN.md — C5 started ahead of B5 (user override recorded in the gate); C5's five items written as eight testable ACs
 - [2026-11-08] Modified: FINDINGS.md — F-094 C5 starts ahead of B5 by the user's decision
+- [2026-11-08] Created: assets/data/diplomacy.ron — C5 diplomacy content: dispositions and rules (opt-in)
+- [2026-11-08] Created: src/campaign/diplomacy.rs — C5 diplomacy content loader and validation; Standing
+- [2026-11-08] Modified: src/campaign/content.rs — CampaignContent::with_diplomacy; diplomacy fingerprint joins the campaign's
+- [2026-11-08] Modified: src/campaign/mod.rs — declare the diplomacy module
+- [2026-11-08] Created: tests/c5_content.rs — C5 AC1 diplomacy content tests
+- [2026-11-08] Modified: DESIGN_BRIEF.md — diplomacy.ron data shape (C5)
+- [2026-11-08] Modified: FINDINGS.md — F-095 C5 provisional readings (content)

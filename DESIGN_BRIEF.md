@@ -566,6 +566,45 @@ rejects one that tries.
 )
 ```
 
+### `diplomacy.ron` (C5)
+
+*(C5, 2026-11-08.)* The `disposition` lines of the `nations.ron` sketch, and the sketch's
+`ally_cap`, `betrayal_standing_drop`, `destabilize_requires_tied` and `notice_per_city`, ship in
+their own file, `assets/data/diplomacy.ron`, not in `nations.ron` or `campaign.ron`. Diplomacy is
+**opt-in**: a campaign takes the file on only when asked, so the battle content's fingerprint and
+C4's campaign (and its golden) do not move. The values below are the shipped ones; the sims tune
+them.
+
+```ron
+(
+    default_standing: Neutral,          // a pair neither nation names; never Allied
+    dispositions: [                     // one per nation
+        (nation: "house",       towards: [],                    ally_bias: 0,  betrayal_tolerance: 1),
+        (nation: "forgeborn",   towards: [ ("house", Hostile) ], ally_bias: -2, betrayal_tolerance: 0),
+        (nation: "verdant",     towards: [],                    ally_bias: 2,  betrayal_tolerance: 1),
+        (nation: "aetherkin",   towards: [],                    ally_bias: 1,  betrayal_tolerance: 1),
+        (nation: "tollmarch",   towards: [],                    ally_bias: 2,  betrayal_tolerance: 2),
+        (nation: "ashen_reach", towards: [],                    ally_bias: 1,  betrayal_tolerance: 0),
+    ],
+    rules: (
+        ally_cap: 1,                    // C0: at most one ally (validated <= 1)
+        betrayal_standing_drop: 1,      // every other nation's standing towards a betrayer
+        destabilize_requires_tied: 2,   // "2 diplomacy": Tied with two nations
+        actions_per_round: 1,           // C0: one diplomatic action per round
+        court_cost: 100, ally_cost: 150, incite_cost: 200,   // treasury Alloy
+        court_threshold: 1, ally_threshold: 3,               // the AI's willingness to accept
+        notice_per_city: 1,             // per city the other holds above this nation's own
+        war_rounds: 4,                  // an incited or requested war steers an AI this long
+    ),
+)
+```
+
+- `towards` is who a nation hates or favours at the start. When both nations of a pair name each
+  other, the more hostile standing stands.
+- `ally_bias` is how readily it trusts: it is added to its willingness towards every nation.
+- `betrayal_tolerance` is how many betrayals it forgives. It refuses every offer from a nation that
+  has betrayed more often than that.
+
 ## Fun hypothesis (what we're actually testing)
 
 **Hypothesis:** <e.g., "The counter pentagon + positioning produces meaningful tactical decisions in matches under 8 minutes, without economy micro dominating.">

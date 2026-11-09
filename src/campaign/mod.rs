@@ -22,6 +22,7 @@ pub mod ai;
 pub mod balance;
 pub mod battle;
 pub mod content;
+pub mod diplomacy;
 pub mod resolve;
 pub mod save;
 

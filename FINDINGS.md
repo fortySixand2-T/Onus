@@ -7732,3 +7732,42 @@ gate (F-074) and C4's campaign balance (F-091). Diplomacy is opt-in through camp
 new `assets/data/diplomacy.ron` that a campaign takes on only when asked. So the shipped
 `campaign.ron`, its fingerprint and C4's campaign golden (0x1600ef997dbf8728) do not move, and nor
 does any battle golden.
+
+## F-095 — C5 provisional readings of the diplomacy rules (C5)
+
+C0's "Diplomacy" rules and the nation sheets' "Disposition" lines name the mechanics but not every
+detail. Where they are silent, C5 takes the simplest reading below. **Each one is provisional:** B5,
+C6 or a design pass may revise it. Every number lives in `assets/data/diplomacy.ron`.
+
+**Content (AC1).**
+- D1. Diplomacy ships in its own file, `diplomacy.ron`, which a campaign takes on only when asked
+  (`CampaignContent::with_diplomacy`, `shipped_with_diplomacy`). The brief's sketch put the
+  dispositions in `nations.ron` and the rules in `campaign.ron`. Either would move a pinned
+  fingerprint: the battle content's (every battle golden) or the campaign's (C4's golden). Its
+  fingerprint is mixed into the campaign content's only when it is attached, so a plain campaign's
+  fingerprint is exactly C4's.
+- D2. Standing is per **pair** and symmetric: "every nation's standing towards you drops one step" is
+  then the pair's standing. A pair's start is the default standing (Neutral) unless a disposition
+  names the other nation, and when both do, the more hostile listing stands. No pair may start
+  Allied, and nor may the default.
+- D3. The shipped dispositions turn the sheets' prose into numbers (none was in the brief):
+  - House: no listing, `ally_bias` 0, tolerance 1. "Everyone distrusts you" is House starting
+    Neutral with everyone, never Tied.
+  - Forgeborn: Hostile towards House, bias −2, tolerance 0. "Never ally with you until you are big
+    enough to fear" has no fear term; they are simply slow to trust.
+  - Verdant: bias 2, tolerance 1 ("greedy, can be bought").
+  - Aetherkin: bias 1, tolerance 1 ("the most reasonable house; it can be Tied").
+  - Tollmarch: bias 2, tolerance 2 ("sells alliances, switches sides").
+  - Ashen Reach: bias 1, tolerance 0 ("may ally with you"; the story thread is not modelled).
+- D4. `betrayal_tolerance` is how many betrayals a nation **forgives**: it refuses every offer from a
+  nation whose betrayal count is above it. The sketch's name allows the other reading, how readily
+  the nation itself betrays. That reading was not taken, because the AI's own betrayal rule is
+  fixed (AC6).
+- D5. `ally_cap` is RON, but it is validated at most 1, because C0 makes the cap a hard rule ("a
+  scalpel, not a win button"). `destabilize_requires_tied` is validated from 2 (you incite two
+  nations) up to the number of other nations.
+- D6. Values the brief lacks, all new RON, and all placeholders for the sims to tune:
+  - `actions_per_round` 1 (C0's "one diplomatic action per round");
+  - `court_cost` 100, `ally_cost` 150 and `incite_cost` 200 treasury Alloy (a city's levy is 40–60 a
+    round, and a General costs 300);
+  - `court_threshold` 1, `ally_threshold` 3, `notice_per_city` 1 and `war_rounds` 4.
