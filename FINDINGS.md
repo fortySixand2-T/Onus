@@ -7851,3 +7851,69 @@ C6 or a design pass may revise it. Every number lives in `assets/data/diplomacy.
   a save played with diplomacy carries the diplomatic campaign fingerprint, so content without it
   refuses the save, and so does content with other diplomacy numbers. A C4 save is unchanged and
   still loads.
+
+## F-096 — C5 AC8 reading: the diplomacy balance sim runs, and it reads Fail (C5)
+
+**What ran.** `tests/c5_balance.rs::the_diplomacy_balance_reading` (`#[ignore]`; `ONUS_C5_SEEDS`,
+`ONUS_C5_THREADS`), on the box, 60 seeds × 14 profiles = 840 AI-only campaigns on the battle sim,
+898 s at two threads. A 20-seed run gave the same picture (Aetherkin better in 3 of 40, Tollmarch
+0/5/15 among diplomats). The profiles per seed are: every nation diplomatic; each nation abstaining
+alone (6); every nation abstaining; each nation diplomatic alone (6). A nation's placement is 1 plus
+the number of nations that outlasted it (the winner places 1; nations that fall in the same round
+place the same).
+
+**Reading (60 seeds).** Each nation is compared in two contexts: among diplomats (every nation
+engaged vs every nation but it) and among abstainers (it alone engaged vs every nation abstaining).
+Counts are its own placement better / same / worse with its diplomacy.
+
+| nation | among diplomats | among abstainers | diplomacy is |
+|---|---|---|---|
+| house | 0/60/0 | 0/60/0 | no effect |
+| forgeborn | 0/60/0 | 0/60/0 | no effect |
+| verdant | 0/60/0 | 0/60/0 | no effect |
+| aetherkin | 18/42/0 | 0/60/0 | **dominant** |
+| tollmarch | 0/17/43 | 0/8/52 | only a cost |
+| ashen_reach | 0/60/0 | 0/60/0 | no effect |
+
+| group | distinct outcomes | diplomatic actions | wins |
+|---|---|---|---|
+| all engaged | 14 of 60 | 703 | aetherkin 43, tollmarch 13 |
+| one abstaining | 21 of 360 | 3186 | aetherkin 161, tollmarch 191 |
+| all abstaining | 1 of 60 | 0 | tollmarch 60 |
+| one engaged | 11 of 360 | 1060 | aetherkin 104, tollmarch 242 |
+
+**Verdict: Fail** — `aetherkin: diplomacy is dominant (better in 18, never worse, of 120)`. The first
+half of the pass condition holds (diplomacy changes outcomes: it turns Tollmarch's sure win into
+Aetherkin's in most diplomatic campaigns); the second does not. AC8 stays unticked.
+
+**What the numbers say, honestly.**
+- Diplomacy is not a choice for anyone yet. For Aetherkin it is free upside; for Tollmarch, the
+  nation that wins without diplomacy, its own diplomacy only ever costs it (it spends the treasury it
+  would raise Generals with, D20). For the other four it never changes their placement — they fall
+  early in every campaign, in the same order, whatever anyone does.
+- **F-091 limits this measurement.** With every nation abstaining the seed produces one outcome in
+  60 campaigns, so "60 seeds" are not 60 independent samples of a campaign; they are one campaign
+  plus whatever variety diplomacy itself introduces. The 18-of-120 dominance for Aetherkin is a
+  count over seeds that diplomacy perturbs differently, not over different wars. The reading is
+  honest about what the shipped campaign does, but it cannot say whether diplomacy would be dominant
+  on a campaign where the seed matters. I have not tuned around it.
+- The "among abstainers" context barely moves for anyone but Tollmarch: a lone diplomat with
+  passive neighbours gains nothing it did not gain anyway.
+
+**Not done, deliberately.** No diplomacy number, base unit stat or C4 lever was tuned. Candidate
+levers for the user, if wanted: Aetherkin's `ally_bias` and the thresholds/costs in
+`diplomacy.ron`; or first fixing F-091 so the seed varies campaigns, then re-reading.
+
+**Provisional readings (the user's call).**
+- D26. Placement is 1 + the number of nations that outlasted it (fell later or never fell);
+  nations falling in the same round tie, and every nation standing at the end places 1.
+- D27. "Each nation diplomatic alone" plays the others **passive** (they answer offers, take no
+  initiative), not abstaining. With the others abstaining a lone diplomat can do nothing at all
+  (every offer is refused; incite needs Tied standings), so that context would be "no effect" by
+  construction; the first 20-seed run confirmed it (all 0/20/0).
+- D28. Dominant = across both contexts and all seeds, its placement with diplomacy is never worse
+  and at least once better. "Only a cost" = never better, sometimes worse; "a choice" = both;
+  "no effect" = neither. The verdict also fails if no profile ever changes any outcome.
+- D29. Each campaign plays to its own end (a sole survivor, or `campaign.ron`'s `round_cap`),
+  on the resolver the caller passes (the reading uses the headless battle sim). The batch runs on
+  threads and collects in seed-then-profile order, so its report does not depend on scheduling.

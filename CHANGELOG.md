@@ -977,3 +977,7 @@
 - [2026-11-08] Modified: src/campaign/diplomacy.rs — C5 DiploState::hash_into; hash unit test
 - [2026-11-08] Created: tests/c5_save.rs — C5 AC7 save/load/replay and divergence tests
 - [2026-11-08] Modified: FINDINGS.md — F-095 hash and save readings (D24-D25)
+- [2026-11-08] Modified: src/campaign/balance.rs — C5 diplomacy balance batch (profiles, placement, comparisons, verdict)
+- [2026-11-08] Created: tests/c5_balance.rs — C5 AC8 smoke tests and the ignored diplomacy balance reading
+- [2026-11-08] Modified: DESIGN_BRIEF.md — how diplomacy plays in C5 (provisional)
+- [2026-11-08] Modified: FINDINGS.md — F-096 C5 AC8 diplomacy balance reading (Fail)

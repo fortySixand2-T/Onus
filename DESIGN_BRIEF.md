@@ -605,6 +605,24 @@ them.
 - `betrayal_tolerance` is how many betrayals it forgives. It refuses every offer from a nation that
   has betrayed more often than that.
 
+How it plays in C5 (provisional; FINDINGS F-095 has every reading):
+- **Actions.** A nation takes one diplomatic action a round:
+  - **court**: one step up, to Tied at most, if the other accepts;
+  - **ally**: needs Tied and both nations under the cap, and the other must accept;
+  - **ask**: an AI ally marches on the target's capital for `war_rounds` rounds;
+  - **betray**: free;
+  - **incite**: Tied with two, which go Hostile and march on each other's capitals.
+
+  An offer is paid only when it is accepted. A refused offer still uses the round's action.
+- **Willingness** = `ally_bias` + standing (Hostile 0, Neutral 1, Tied 2) − `notice_per_city` × the
+  cities the other holds above this nation's own. An AI accepts a courting at `court_threshold` and
+  an alliance at `ally_threshold`.
+- **The AI** tries betray (when its ally is its last rival), then ally, ask, incite and court, in
+  that order. It never offers to the player and never draws from the rng.
+- **Allies.** An army at an ally's city is a guest. A betrayal turns it into an assault that same
+  round.
+- **Win.** The player also wins when every rival still standing is his ally.
+
 ## Fun hypothesis (what we're actually testing)
 
 **Hypothesis:** <e.g., "The counter pentagon + positioning produces meaningful tactical decisions in matches under 8 minutes, without economy micro dominating.">
