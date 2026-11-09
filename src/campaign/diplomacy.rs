@@ -724,6 +724,20 @@ impl Campaign {
         self.diplomacy_log().iter().filter(|r| r.round == round).copied().collect()
     }
 
+    /// The nation that betrayed `ally` this round, if one did (AC4: its
+    /// armies in the old ally's cities assault them this round, ahead of any
+    /// other nation's).
+    pub(super) fn betrayer_this_round(&self, ally: usize) -> Option<usize> {
+        let round = self.round;
+        self.diplomacy_log()
+            .iter()
+            .rev()
+            .take_while(|r| r.round == round)
+            .filter(|r| r.act == Act::Betray { ally })
+            .last()
+            .map(|r| r.actor)
+    }
+
     /// The end of a round: a steered war that has run its rounds, or whose
     /// target has fallen, is over.
     pub(super) fn diplomacy_end_round(&mut self) {

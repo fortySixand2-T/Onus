@@ -791,11 +791,13 @@ impl Campaign {
             // The attacker: the first nation, in this round's order, with an
             // army standing at a city it does not hold. Any other hostile
             // nation there waits for a later round. Allies never fight (C5):
-            // the holder's ally standing in its city is a guest.
-            let Some(&attacker) = order.iter().find(|&&n| {
-                n != owner
-                    && !self.allied(n, owner)
-                    && self.armies.iter().any(|a| a.nation == n && a.at() == Some(city))
+            // the holder's ally standing in its city is a guest. In the
+            // round a nation betrays the holder, its armies there assault
+            // first, whatever the order (C5 AC4).
+            let here = |n: usize| self.armies.iter().any(|a| a.nation == n && a.at() == Some(city));
+            let betrayer = self.betrayer_this_round(owner).filter(|&b| here(b));
+            let Some(attacker) = betrayer.or_else(|| {
+                order.iter().copied().find(|&n| n != owner && !self.allied(n, owner) && here(n))
             }) else {
                 continue;
             };

@@ -147,3 +147,86 @@ fn the_betrayers_armies_in_the_old_allys_cities_assault_them_that_round() {
     let b = r.battles.iter().find(|b| b.city == starfall).expect("the betrayer assaults Starfall at once");
     assert_eq!((b.attacker, b.defender), (h, aeth));
 }
+
+/// A line: home - aeth_cap - toll_cap (one day each), the other capitals
+/// far off. House and Tollmarch start with an army; Tollmarch's AI marches on
+/// the nearest capital not its own, Aetherkin's, and (the defender always
+/// holding) falls back and comes again.
+fn line() -> CampaignContent {
+    let t = std::fs::read_to_string(data_dir().join("campaign.ron")).unwrap();
+    let head = &t[..t.find("    cities: [").unwrap()];
+    let tail = &t[t.find("    ranks: [").unwrap()..];
+    let cap = |id: &str, owner: &str| {
+        format!("(id: \"{id}\", name: \"{id}\", owner: \"{owner}\", capital: true, buildings: [\"hq\"], levy: (alloy: 0, units: [])),")
+    };
+    let cities = [
+        cap("home", "house"),
+        cap("forge_cap", "forgeborn"),
+        cap("verd_cap", "verdant"),
+        cap("aeth_cap", "aetherkin"),
+        cap("toll_cap", "tollmarch"),
+        cap("ash_cap", "ashen_reach"),
+    ]
+    .join("\n");
+    let road = |a: &str, b: &str, len: u32| format!("(from: \"{a}\", to: \"{b}\", length: {len}, terrain: \"plain\"),");
+    let roads = [
+        road("home", "aeth_cap", 1),
+        road("aeth_cap", "toll_cap", 1),
+        road("home", "forge_cap", 90),
+        road("home", "verd_cap", 90),
+        road("home", "ash_cap", 90),
+    ]
+    .join("\n");
+    let army = |n: &str| format!("(nation: \"{n}\", general: \"general_synthesis\", at: \"{n}_at\", units: [(\"ravager\", 8)]),");
+    let armies = [army("house").replace("house_at", "home"), army("tollmarch").replace("tollmarch_at", "toll_cap")].join("\n");
+    let text = format!("{head}    cities: [{cities}],\n    roads: [{roads}],\n    start_armies: [{armies}],\n{tail}");
+    CampaignContent::from_ron(&text, &content()).unwrap_or_else(|e| panic!("{e}"))
+}
+
+/// Critic C5 r1: "the betrayer assaults at once" holds even when another
+/// nation is assaulting the old ally's city in the same round. One battle a
+/// city a round is C4's rule; in the round of a betrayal, the betrayer's
+/// assault on its old ally's city is that battle, whatever the turn order.
+/// Found by search on [`line`]: House a guest at Aetherkin's capital, and a
+/// round in which, had House not betrayed, Tollmarch would have assaulted it.
+#[test]
+fn the_betrayers_assault_is_not_preempted_by_another_nations_assault_that_round() {
+    let mut contested = 0;
+    for seed in 1..=24u64 {
+        let mut c = Campaign::new(content(), line().with_diplomacy(free_with(|t| t)), seed, Some("house")).unwrap();
+        let (h, aeth) = (idx(&c, "house"), idx(&c, "aetherkin"));
+        let starfall = c.city_index("aeth_cap").unwrap();
+        round(&mut c, &[court("aetherkin")]);
+        round(&mut c, &[ally("aetherkin")]);
+        if c.ally_of(h) != Some(aeth) {
+            continue;
+        }
+        let army = c.armies().iter().find(|a| a.nation == h).unwrap().id;
+        round(&mut c, &[Decision::March { army, to: "aeth_cap".into() }]);
+        for _ in 0..30 {
+            if c.is_over() || !c.allied(h, aeth) || c.army(army).is_none() {
+                break;
+            }
+            if c.army(army).unwrap().at() == Some(starfall) && c.cities()[starfall].owner == aeth {
+                let mut without = c.clone();
+                let r = round(&mut without, &[]);
+                let other = r.battles.iter().find(|b| b.city == starfall).map(|b| b.attacker);
+                if other.is_some_and(|o| o != h) {
+                    contested += 1;
+                    let mut with = c.clone();
+                    let r = round(&mut with, &[betray("aetherkin")]);
+                    let b = r.battles.iter().find(|b| b.city == starfall).expect("a battle at aeth_cap");
+                    assert_eq!(
+                        (b.attacker, b.defender),
+                        (h, aeth),
+                        "seed {seed} round {}: {other:?} assaulted aeth_cap before the betrayer",
+                        r.round
+                    );
+                }
+            }
+            round(&mut c, &[]);
+        }
+    }
+    eprintln!("contested betrayal rounds: {contested}");
+    assert!(contested > 0, "no round found where another nation assaults aeth_cap");
+}

@@ -7972,3 +7972,17 @@ fingerprint. Only the engagement levers (abstain, passive) can change after load
 mixes them in. **Follow-up, not done (C4's code, left unchanged as instructed):** `CampaignContent`
 has the same pattern. `rules`, `ai`, `cities`, `roads` and the rest are public and mutable after
 `campaign.ron` is validated, while its fingerprint is taken at load.
+
+**7. A betrayer's assault is not pre-empted (AC4). Fixed, not pinned.** C4 fights one battle per city
+per round. The attacker is the first nation in the round's order with an army at a city it does not
+hold, and others wait. So when a third nation was also assaulting the old ally's city that round and
+came earlier in the order, the betrayer waited. That contradicts AC4's "the betrayer's armies standing
+in the old ally's cities assault them that round". The rule now reads: in the round a nation betrays
+the holder, its army at the holder's city takes that city's battle, whatever the order. Other hostile
+nations there wait, as under C4. Without diplomacy there are no betrayals, so C4's rule and golden are
+untouched. Test: `tests/c5_betrayal.rs::the_betrayers_assault_is_not_preempted_by_another_nations_assault_that_round`.
+On a small line map (home – Aetherkin's capital – Tollmarch's), it searches 24 seeds for rounds where,
+without the betrayal, Tollmarch would have assaulted the city House stands in as a guest. It found 720
+such rounds. Before the fix it failed (seed 1, round 4: Tollmarch fought). **Provisional (D30):** the
+betrayer's priority lasts only the betrayal round. From the next round on, it queues by turn order like
+any hostile nation.

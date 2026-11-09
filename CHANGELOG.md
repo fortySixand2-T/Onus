@@ -994,3 +994,7 @@
 - [2026-11-09] Modified: tests/c5_ai.rs — read diplomacy rules through the accessor
 - [2026-11-09] Modified: tests/critic_c5.rs — validated rules cannot change after load (adapted)
 - [2026-11-09] Modified: FINDINGS.md — F-097 read-only diplomacy content; CampaignContent follow-up
+- [2026-11-09] Modified: src/campaign/diplomacy.rs — betrayer_this_round: the nation that betrayed a holder this round
+- [2026-11-09] Modified: src/campaign/mod.rs — in a betrayal round the betrayer's assault on its old ally's city comes first
+- [2026-11-09] Modified: tests/c5_betrayal.rs — betrayer's assault not pre-empted by another nation's (line map search)
+- [2026-11-09] Modified: FINDINGS.md — F-097 betrayal pre-emption fix (D30)
