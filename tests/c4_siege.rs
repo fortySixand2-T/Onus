@@ -206,20 +206,32 @@ fn a_ruin_does_not_take_the_field() {
     panic!("no second assault");
 }
 
-/// The invariant behind "perks stay their own" (critic C4 round 1): after
-/// every round, every city's building HP is within its holder's own pool,
+/// The invariant behind "perks stay their own" (critic C4 rounds 1 and 2):
+/// after every round, every building and every garrison unit is within its
+/// city's holder's own pool, and every army unit within its army's nation's,
 /// whichever way the city changed hands.
 fn within_pools(c: &Campaign, what: &str) {
+    let r = c.round();
     for (k, city) in c.cities().iter().enumerate() {
         for b in &city.buildings {
             let max = c.building_max_hp(city.owner, b.def);
-            assert!(b.hp <= max, "{what}, round {}: city {k} holds a building at {} HP over its holder's pool {max}", c.round(), b.hp);
+            assert!(b.hp <= max, "{what}, round {r}: city {k} holds a building at {} HP over its holder's pool {max}", b.hp);
+        }
+        for u in &city.garrison {
+            let max = c.unit_max_hp(city.owner, u.def);
+            assert!(u.hp <= max, "{what}, round {r}: city {k}'s garrison holds a unit at {} HP over its holder's pool {max}", u.hp);
+        }
+    }
+    for a in c.armies() {
+        for u in &a.units {
+            let max = c.unit_max_hp(a.nation, u.def);
+            assert!(u.hp <= max, "{what}, round {r}: army {} holds a unit at {} HP over its nation's pool {max}", a.id, u.hp);
         }
     }
 }
 
 #[test]
-fn every_building_stays_within_its_holders_pool_every_round() {
+fn every_building_and_unit_stays_within_its_holders_pool_every_round() {
     let content = content();
     let cc = CampaignContent::load_from_dir(&data_dir(), &content).unwrap();
     let by_numbers = |p: &BattlePlan| {
@@ -237,5 +249,96 @@ fn every_building_stays_within_its_holders_pool_every_round() {
                 within_pools(&c, &format!("seed {seed}, headless {real}"));
             }
         }
+    }
+}
+
+/// The shipped content with Ashen Reach's Sentinels made sturdier
+/// (Defense +1, a unit-HP perk; its BuildingHp x1.30 is already shipped).
+fn hardy_reach() -> Content {
+    let dir = std::env::temp_dir().join(format!("onus_c4_siege_hardy_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    for e in std::fs::read_dir(data_dir()).unwrap() {
+        let e = e.unwrap();
+        if e.file_type().unwrap().is_file() {
+            std::fs::copy(e.path(), dir.join(e.file_name())).unwrap();
+        }
+    }
+    let n = std::fs::read_to_string(data_dir().join("nations.ron")).unwrap();
+    let perk = "(applies_to: Buildings, stat: BuildingHp, mul: 1.30),";
+    let (head, tail) = n.split_at(n.find("id: \"ashen_reach\"").unwrap());
+    assert!(tail.contains(perk));
+    let tail = tail.replace(perk, &format!("{perk} (applies_to: Unit(\"sentinel\"), stat: Defense, add: 1),"));
+    std::fs::write(dir.join("nations.ron"), format!("{head}{tail}")).unwrap();
+    let c = Content::load_from_dir(&dir).unwrap_or_else(|e| panic!("{e}"));
+    let _ = std::fs::remove_dir_all(&dir);
+    c
+}
+
+/// The invariant, where it bites: the Reach's outlying city X is garrisoned
+/// (its levy) and assaulted, and held, in the very round House takes the
+/// Reach's capital, so X passes to House by absorption with the Reach's
+/// sturdier HQ and Sentinels in it, and no repair round re-bases them.
+#[test]
+fn an_attacked_garrisoned_city_absorbed_by_a_conqueror_takes_his_pools() {
+    let content = hardy_reach();
+    let t = std::fs::read_to_string(data_dir().join("campaign.ron")).unwrap();
+    let head = &t[..t.find("    cities: [").unwrap()];
+    let tail = &t[t.find("    ranks: [").unwrap()..];
+    let cap = |id: &str, n: &str| {
+        format!("(id: \"{id}\", name: \"{id}\", owner: \"{n}\", capital: true, buildings: [\"hq\"], levy: (alloy: 0, units: [])),")
+    };
+    let cities = format!(
+        "(id: \"c_x\", name: \"X\", owner: \"ashen_reach\", buildings: [\"hq\"], levy: (alloy: 0, units: [\"sentinel\", \"sentinel\"])),\n{}{}{}{}{}{}",
+        cap("home", "house"),
+        cap("ash_cap", "ashen_reach"),
+        cap("forge_cap", "forgeborn"),
+        cap("verd_cap", "verdant"),
+        cap("aeth_cap", "aetherkin"),
+        cap("toll_cap", "tollmarch"),
+    );
+    let roads = r#"
+        (from: "home", to: "ash_cap", length: 1, terrain: "plain"),
+        (from: "forge_cap", to: "c_x", length: 1, terrain: "plain"),
+        (from: "c_x", to: "home", length: 50, terrain: "plain"),
+        (from: "home", to: "verd_cap", length: 90, terrain: "plain"),
+        (from: "home", to: "aeth_cap", length: 90, terrain: "plain"),
+        (from: "home", to: "toll_cap", length: 90, terrain: "plain"),"#;
+    let armies = r#"
+        (nation: "house", general: "general_synthesis", at: "home", units: [("sentinel", 5)]),
+        (nation: "forgeborn", general: "general_bulwark", at: "forge_cap", units: [("sentinel", 5)]),"#;
+    let text = format!("{head}    cities: [{cities}],\n    roads: [{roads}],\n    start_armies: [{armies}],\n{tail}");
+    let cc = CampaignContent::from_ron(&text, &content).unwrap_or_else(|e| panic!("{e}"));
+    let mut c = Campaign::new(content, cc, 3, Some("house")).unwrap();
+    let (h, a, f) = (c.nation_index("house").unwrap(), c.nation_index("ashen_reach").unwrap(), c.nation_index("forgeborn").unwrap());
+    let x = c.city_index("c_x").unwrap();
+    let army = c.armies().iter().find(|x| x.nation == h).unwrap().id;
+    // House takes what it attacks; everyone else's assaults are held.
+    let mut r = |p: &BattlePlan| {
+        let w = if p.attack.nation == h { Side::Attack } else { Side::Defend };
+        BattleOutcome::unchanged(p, Some(w))
+    };
+    c.play_round(&[], &mut r).unwrap();
+    within_pools(&c, "round 1");
+    let g = c.cities()[x].garrison.clone();
+    assert!(!g.is_empty(), "premise: the Reach's levy garrisons X");
+    assert!(g.iter().all(|u| u.hp == c.unit_max_hp(a, u.def) && u.hp > c.unit_max_hp(h, u.def)), "premise: Reach-sturdy Sentinels");
+    let hq = c.cities()[x].buildings[0];
+    assert!(hq.hp > c.building_max_hp(h, hq.def), "premise: a Reach-sturdy HQ");
+    let rep = c.play_round(&[Decision::March { army, to: "ash_cap".into() }], &mut r).unwrap();
+    assert!(rep.battles.iter().any(|b| b.city == x && b.attacker == f && !b.captured), "premise: X was assaulted and held this round");
+    assert_eq!(c.cities()[x].owner, h, "premise: X passed to House with the Reach's capital");
+    assert!(!c.cities()[x].garrison.is_empty(), "premise: the garrison passed too");
+    within_pools(&c, "round 2, X absorbed");
+    for u in &c.cities()[x].garrison {
+        assert_eq!(u.hp, c.unit_max_hp(h, u.def), "an unhurt Sentinel stands at House's full pool");
+    }
+    // And the next assault on X is a battle the content accepts.
+    let mut real = HeadlessResolver;
+    for _ in 0..3 {
+        if c.is_over() {
+            break;
+        }
+        c.play_round(&[], &mut real).unwrap();
+        within_pools(&c, "after X was absorbed");
     }
 }

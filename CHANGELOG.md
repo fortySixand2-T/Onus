@@ -940,3 +940,7 @@
 - [2026-11-08] Created: tests/critic_c4.rs — C4 critic round 1 tests (absorbed-city pool, save tampering, seed order, probes)
 - [2026-11-08] Modified: tests/c4_siege.rs — C4 every building within its holder's pool after every round
 - [2026-11-08] Modified: FINDINGS.md — F-092 critic C4 round 1 fix
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 critic r2 fix: change_owner also clamps an absorbed city's garrison to the new holder's unit pool
+- [2026-11-08] Created: tests/critic_c4_r2.rs — C4 critic round 2 test (absorbed garrison unit pool)
+- [2026-11-08] Modified: tests/c4_siege.rs — C4 pool invariant covers buildings, garrisons and armies; a scenario that reaches an attacked, garrisoned, absorbed city
+- [2026-11-08] Modified: FINDINGS.md — F-093 critic C4 round 2 fix

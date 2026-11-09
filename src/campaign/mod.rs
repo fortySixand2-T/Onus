@@ -1027,14 +1027,19 @@ impl Campaign {
     }
 
     /// The one way a city changes hands: `to` holds it, and every building
-    /// in it is clamped to `to`'s own pool, so no holder's BuildingHp perk
-    /// rides along with the city (C4 AC4, AC5; critic C4 round 1).
+    /// and garrison unit in it is clamped to `to`'s own pools, so no
+    /// holder's BuildingHp or unit-HP perk rides along with the city (C4
+    /// AC4, AC5; critic C4 rounds 1 and 2). HP is a unit's only per-holder
+    /// state.
     fn change_owner(&mut self, city: usize, to: usize) {
-        let pool = &self.tables.building_hp[to];
+        let (buildings, units) = (&self.tables.building_hp[to], &self.tables.unit_hp[to]);
         let c = &mut self.cities[city];
         c.owner = to;
         for b in &mut c.buildings {
-            b.hp = b.hp.min(pool[b.def]);
+            b.hp = b.hp.min(buildings[b.def]);
+        }
+        for u in &mut c.garrison {
+            u.hp = u.hp.min(units[u.def]);
         }
     }
 

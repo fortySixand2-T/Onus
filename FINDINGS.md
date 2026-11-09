@@ -7685,3 +7685,33 @@ clamps every building to that holder's pool, on both paths: capture in battle an
   against regression and is not the red test.
 - The campaign golden does not move (0x1600ef997dbf8728). The shipped 6-round golden never absorbs a city
   that was attacked that round. No other golden moves.
+
+## F-093 — Critic C4 round 2: an absorbed city's garrison takes its new holder's unit pool (C4 AC4, AC5)
+
+**Finding (blocking).** F-092's `change_owner` re-based a city's buildings only. Its garrison kept the HP its
+old holder had raised it at. After an absorption, those units were the conqueror's but above his unit pool. The
+next assault on the city fielded them, the sim refused the battle, and `HeadlessResolver` panicked. A conqueror
+army standing in the city would also take in the garrison and carry the old holder's HP into its own battles.
+The shipped RON never triggers this, because no nation has a unit-HP trait, but any data-legal one (for
+example, Defense +1 on a unit) made it a crash.
+
+**Fix.** `change_owner` now clamps every garrison unit to the new holder's pool for that unit, the same way it
+clamps buildings. HP is the only per-holder state a campaign unit carries (`Unit { def, hp }`), so nothing else
+needs re-basing. A city captured in battle loses its garrison anyway (P11), and a fallen nation's armies are
+removed (P5). So the garrison of an absorbed city is the only case this reaches.
+
+**Tests.**
+- `tests/critic_c4_r2.rs::an_absorbed_garrison_does_not_keep_the_fallen_nations_unit_pool` is the critic's
+  test, moved in unchanged. Before the fix it failed with "unit 2 at 120 HP over House's pool 100" and
+  "`sentinel` for B with HP 120: must be 1..=100". It passes after.
+- In `tests/c4_siege.rs`, F-092's invariant now covers every building, every garrison unit and every army unit,
+  each checked against its current holder's pool after every round. It was renamed
+  `every_building_and_unit_stays_within_its_holders_pool_every_round`.
+- New: `an_attacked_garrisoned_city_absorbed_by_a_conqueror_takes_his_pools`, which reaches the case the
+  shipped map does not. It uses shipped data plus Defense +1 on Ashen Reach's Sentinels. The Reach's city X is
+  garrisoned by its levy, and in the same round it is assaulted and held, and then absorbed when House takes the
+  Reach's capital. Each premise is asserted. The test then plays three more rounds on the headless resolver.
+  It kills both mutants:
+  - without the garrison clamp it fails: "garrison holds a unit at 120 HP over its holder's pool 100";
+  - without the building clamp it fails: "holds a building at 10920 HP over its holder's pool 8400".
+- The campaign golden does not move (0x1600ef997dbf8728). No other golden moves.
