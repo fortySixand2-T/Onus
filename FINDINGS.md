@@ -7889,8 +7889,11 @@ Aetherkin's in most diplomatic campaigns); the second does not. AC8 stays untick
 **What the numbers say, honestly.**
 - Diplomacy is not a choice for anyone yet. For Aetherkin it is free upside; for Tollmarch, the
   nation that wins without diplomacy, its own diplomacy only ever costs it (it spends the treasury it
-  would raise Generals with, D20). For the other four it never changes their placement — they fall
-  early in every campaign, in the same order, whatever anyone does.
+  would raise Generals with, D20). For the other four it never changes their placement.
+  *Corrected after critic r1 (F-097 #4): the reasons differ by nation, and "they fall early whatever
+  anyone does" was wrong for Verdant. Forgeborn cannot take part on the shipped numbers. Ashen Reach
+  falls in round 2, before it can act. House only courts. Verdant acts (courts, allies, asks), changes
+  who wins, and falls later, but its place does not change.*
 - **F-091 limits this measurement.** With every nation abstaining the seed produces one outcome in
   60 campaigns, so "60 seeds" are not 60 independent samples of a campaign; they are one campaign
   plus whatever variety diplomacy itself introduces. The 18-of-120 dominance for Aetherkin is a
@@ -7911,7 +7914,7 @@ levers for the user, if wanted: Aetherkin's `ally_bias` and the thresholds/costs
   initiative), not abstaining. With the others abstaining a lone diplomat can do nothing at all
   (every offer is refused; incite needs Tied standings), so that context would be "no effect" by
   construction; the first 20-seed run confirmed it (all 0/20/0).
-- D28. Dominant = across both contexts and all seeds, its placement with diplomacy is never worse
+- D28. *(Verdict superseded by D31, F-097 #4.)* Dominant = across both contexts and all seeds, its placement with diplomacy is never worse
   and at least once better. "Only a cost" = never better, sometimes worse; "a choice" = both;
   "no effect" = neither. The verdict also fails if no profile ever changes any outcome.
 - D29. Each campaign plays to its own end (a sole survivor, or `campaign.ron`'s `round_cap`),
@@ -7986,3 +7989,81 @@ without the betrayal, Tollmarch would have assaulted the city House stands in as
 such rounds. Before the fix it failed (seed 1, round 4: Tollmarch fought). **Provisional (D30):** the
 betrayer's priority lasts only the betrayal round. From the next round on, it queues by turn order like
 any hostile nation.
+
+**5. Disposition prose the C5 model does not carry: provisional gaps, for the user (AC6).** The
+model has four levers per nation: a starting `towards` list, `ally_bias`, `betrayal_tolerance`, and
+the one notice rule shared by every nation. Each line of the brief's nation dispositions
+(DESIGN_BRIEF.md, nations section), against what C5 does:
+
+- **House: "everyone distrusts you, and the Forgeborn hate you."** Only the Forgeborn half is
+  modelled (`towards: [("house", Hostile)]`). Every other nation starts Neutral with House, like any
+  pair. "Distrust" has no lever beyond `default_standing`.
+- **Forgeborn: "Hostile to you. They never ally with you until you are big enough to fear."**
+  - The Hostile start is modelled. "Big enough to fear" is not, and the shared notice rule works
+    against it: a bigger House makes Forgeborn *less* willing (willingness = −2 + rank −
+    notice × House's cities above Forgeborn's).
+  - Not fixed: AC6 as written specifies the notice rule for every nation ("a grown one finds few
+    friends"). So this is a per-nation exception the AC does not carry, not an inversion of the AC's
+    rule. Modelling it needs a new disposition field, such as a per-nation sign or a fear threshold on
+    notice, and its value is a design choice.
+  - Separately, Forgeborn cannot take part in diplomacy at all on the shipped numbers. Its best
+    willingness, Tied and no notice, is −2 + 2 = 0, below `court_threshold` 1. So it never courts,
+    accepts, becomes Tied, allies or incites.
+  - Whether that is intended is the user's decision. Nothing is retuned, and
+    `tests/critic_c5.rs::critic_forgeborn_can_take_part_in_diplomacy` is `#[ignore]`d to document
+    the question.
+- **Verdant: "greedy, and can be bought into an alliance."** Modelled only as `ally_bias` 2, the
+  highest. Costs are burned, not paid to the nation answering. Nothing is bought.
+- **Aetherkin: "the most reasonable house. It can be Tied if you avoid the ley-wells."** Modelled
+  only as `ally_bias` 1. The campaign map has no ley-wells, so the condition has nothing to read.
+- **Tollmarch: "neutral to all. They sell alliances, and switch sides for a better offer."**
+  - "Neutral to all" and "sell" are modelled as `ally_bias` 2 and the costs.
+  - "Switch sides" is not. An allied nation refuses every other alliance (the cap), and nothing ever
+    breaks an alliance except a betrayal or a fall. No rule lets Tollmarch leave its ally for a
+    better offer.
+- **Ashen Reach: "may ally with you if you seek the truth of the Rupture. This is a story thread."**
+  Not modelled (C6 story beats). It has `ally_bias` 1, like Aetherkin. In AI-only campaigns it falls
+  in round 2, before it can act (`tests/critic_c5_balance.rs`, seeds 1–3, every profile).
+
+**4. AC8: the reading is redefined, and the attributions are corrected.**
+- **(a) Definition (provisional, D31).** The old verdict passed any world where diplomacy was "only a
+  cost" or "no effect" for every nation. That is narrower than AC8's "a choice or a dominant
+  strategy". The reading now fails if diplomacy is dominant for any nation (never worse, sometimes
+  better), **or** if it is a choice for none, a choice meaning sometimes better and sometimes worse.
+  It still fails, first, if diplomacy changes no outcome at all. Fast tests:
+  `tests/c5_balance.rs::the_verdict_names_a_dominant_nation_and_a_reading_without_effect`, where an
+  only-a-cost world now fails and a world with one real choice passes.
+- **(b) Finer measure, reported but not gated (D32).** This is the place, with a shared place broken
+  by the round the nation fell (later is better). AC8 gates on placement, so the verdict stays on
+  placement. The finer measure is printed beside it because placement is too coarse for nations that
+  fall in every campaign. Test: `the_finer_measure_breaks_a_shared_place_by_the_round_a_nation_fell`.
+
+**AC8 re-read, 60 seeds × 14 profiles = 840 AI-only campaigns, battle sim, 902 s.** The placement
+columns are identical to F-096's run, so the betrayal fix (#7) moved nothing here.
+
+| nation | placement: diplomats | placement: abstainers | class | finer: diplomats | finer: abstainers | finer class |
+|---|---|---|---|---|---|---|
+| house | 0/60/0 | 0/60/0 | no effect | 0/60/0 | 0/60/0 | no effect |
+| forgeborn | 0/60/0 | 0/60/0 | no effect | 0/60/0 | 0/60/0 | no effect |
+| verdant | 0/60/0 | 0/60/0 | no effect | 60/0/0 | 60/0/0 | **dominant** |
+| aetherkin | 18/42/0 | 0/60/0 | **dominant** | 19/41/0 | 33/27/0 | **dominant** |
+| tollmarch | 0/17/43 | 0/8/52 | only a cost | 0/17/43 | 0/8/52 | only a cost |
+| ashen_reach | 0/60/0 | 0/60/0 | no effect | 0/60/0 | 0/60/0 | no effect |
+
+**Verdict: Fail.** The message is "no nation has a choice: diplomacy is never better for a nation in
+one campaign and worse in another; aetherkin: diplomacy is dominant (better in 18, never worse, of
+120)". AC8 stays unticked, and nothing was tuned. By the finer measure the picture is starker: Verdant
+does better with its own diplomacy in all 120 comparisons, because it falls later (for example round 9
+instead of 7). Its place does not change only because the nations that outlast it are the same two.
+
+**Who acts, and why four nations read "no effect"** (`tests/critic_c5_balance.rs`,
+`CRIT_SEEDS=3`, every profile):
+- **Forgeborn never acts.** It cannot, on the shipped numbers (#5). Its "no effect" holds by
+  construction, not as a result.
+- **Ashen Reach falls in round 2 in every campaign**, before it can act.
+- **House** courts once and does no more. It falls in round 5 whatever anyone does.
+- **Verdant acts.** It courts, allies (with Tollmarch or Aetherkin) and asks. Whether it engages
+  decides the winner on these seeds: with Verdant diplomatic, Aetherkin wins; with Verdant abstaining,
+  Tollmarch wins. F-096's "they fall early whatever anyone does" was wrong for Verdant.
+- **F-091 still bounds all of this.** With every nation abstaining, the 60 seeds give one outcome, so
+  the counts are over the variety that diplomacy introduces, not over independent wars.

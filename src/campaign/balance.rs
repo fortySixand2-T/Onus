@@ -263,6 +263,13 @@ impl DiploCampaign {
         let last = |f: Option<u32>| f.unwrap_or(u32::MAX);
         1 + self.fallen.iter().filter(|&&f| last(f) > last(self.fallen[k])).count() as u32
     }
+
+    /// The finer measure (critic C5 r1): nation `k`'s placement, a shared
+    /// place broken by the round it fell (later is better); lower is better.
+    /// A nation that fell keeps its place; this only orders within it.
+    pub fn finer(&self, k: usize) -> (u32, u32) {
+        (self.placement(k), self.fallen[k].map_or(0, |r| u32::MAX - r))
+    }
 }
 
 /// Play one AI-only campaign of the diplomacy batch on `seed` to its end:
@@ -360,12 +367,16 @@ pub struct Comparison {
 }
 
 impl Comparison {
-    fn add(&mut self, with: u32, without: u32) {
+    fn add<T: Ord>(&mut self, with: T, without: T) {
         match with.cmp(&without) {
             std::cmp::Ordering::Less => self.better += 1,
             std::cmp::Ordering::Equal => self.same += 1,
             std::cmp::Ordering::Greater => self.worse += 1,
         }
+    }
+
+    fn plus(self, o: Comparison) -> Comparison {
+        Comparison { better: self.better + o.better, same: self.same + o.same, worse: self.worse + o.worse }
     }
 
     /// What diplomacy is for the nation, by AC8's reading.
@@ -407,23 +418,41 @@ impl DiplomacyReport {
         out
     }
 
+    /// Nation `k`'s comparisons by the finer measure
+    /// ([`DiploCampaign::finer`]), in the same two contexts.
+    pub fn finer_comparisons(&self, k: usize) -> [Comparison; 2] {
+        let mut out = [Comparison::default(); 2];
+        for seed in self.seeds() {
+            let p = |pr| self.find(seed, pr).finer(k);
+            out[0].add(p(Profile::AllEngaged), p(Profile::AllBut(k)));
+            out[1].add(p(Profile::Only(k)), p(Profile::AllAbstaining));
+        }
+        out
+    }
+
     /// Both contexts together.
     pub fn comparison(&self, k: usize) -> Comparison {
         let [a, b] = self.comparisons(k);
-        Comparison {
-            better: a.better + b.better,
-            same: a.same + b.same,
-            worse: a.worse + b.worse,
-        }
+        a.plus(b)
     }
 
-    /// AC8: `Ok` when diplomacy changes some nation's placement and is
-    /// dominant for none; otherwise every miss, by name.
+    /// Both contexts together, by the finer measure.
+    pub fn finer_comparison(&self, k: usize) -> Comparison {
+        let [a, b] = self.finer_comparisons(k);
+        a.plus(b)
+    }
+
+    /// AC8 (as read after critic C5 r1, provisional): `Ok` when diplomacy is
+    /// dominant for no nation and is a choice (sometimes better, sometimes
+    /// worse) for at least one; otherwise every miss, by name. Gated on
+    /// placement, as AC8 states it.
     pub fn verdict(&self) -> Result<(), String> {
         let mut miss = Vec::new();
         let all: Vec<Comparison> = (0..self.nations.len()).map(|k| self.comparison(k)).collect();
         if all.iter().all(|c| c.better == 0 && c.worse == 0) {
             miss.push("diplomacy changes no outcome".to_string());
+        } else if !all.iter().any(|c| c.class() == "a choice") {
+            miss.push("no nation has a choice: diplomacy is never better for a nation in one campaign and worse in another".to_string());
         }
         for (id, c) in self.nations.iter().zip(&all) {
             if c.class() == "dominant" {
@@ -447,18 +476,27 @@ impl DiplomacyReport {
             Profile::all(self.nations.len()).len(),
             self.campaigns.len()
         );
-        s += "  nation        among diplomats (b/s/w)  among abstainers (b/s/w)  diplomacy is\n";
+        s += "  by placement (gated) | finer: placement, then the round it fell (reported)\n";
+        s += "  nation        among diplomats (b/s/w)  among abstainers (b/s/w)  diplomacy is  | finer diplomats  finer abstainers  finer is\n";
         for (k, id) in self.nations.iter().enumerate() {
             let [a, b] = self.comparisons(k);
+            let [fa, fb] = self.finer_comparisons(k);
             s += &format!(
-                "  {id:<12}  {:>3}/{:>3}/{:>3}              {:>3}/{:>3}/{:>3}               {}\n",
+                "  {id:<12}  {:>3}/{:>3}/{:>3}              {:>3}/{:>3}/{:>3}               {:<12}  | {:>3}/{:>3}/{:>3}      {:>3}/{:>3}/{:>3}       {}\n",
                 a.better,
                 a.same,
                 a.worse,
                 b.better,
                 b.same,
                 b.worse,
-                self.comparison(k).class()
+                self.comparison(k).class(),
+                fa.better,
+                fa.same,
+                fa.worse,
+                fb.better,
+                fb.same,
+                fb.worse,
+                self.finer_comparison(k).class()
             );
         }
         let groups: [(&str, IsGroup); 4] = [

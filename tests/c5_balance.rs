@@ -4,8 +4,12 @@
 //! nation diplomatic alone. Each nation's placement (1 + how many nations
 //! outlasted it) is compared with and without its own diplomacy, in both
 //! contexts. Diplomacy is **dominant** for a nation when engaging is never
-//! worse and sometimes better. The reading passes when diplomacy changes some
-//! outcome and is dominant for no nation.
+//! worse and sometimes better, and **a choice** when it is sometimes better
+//! and sometimes worse. The reading passes when diplomacy is dominant for no
+//! nation and is a choice for at least one (critic C5 r1, provisional F-097).
+//! Alongside placement the summary gives a finer measure, the place with ties
+//! broken by the round a nation fell (later is better); it is reported, not
+//! gated.
 //!
 //! The measurement is `#[ignore]` (it plays every battle of 14 campaigns a
 //! seed):
@@ -143,9 +147,38 @@ fn the_verdict_names_a_dominant_nation_and_a_reading_without_effect() {
     // Nothing changes: diplomacy does nothing.
     let e = report([A; 6]).verdict().unwrap_err();
     assert!(e.contains("changes no outcome"), "{e}");
-    // n0 does worse engaging; n1 is unmoved: an outcome changes, and
-    // diplomacy is dominant for nobody.
-    assert_eq!(report([B, A, B, A, B, A]).verdict(), Ok(()));
+    // n0 does worse engaging; n1 is unmoved: an outcome changes and
+    // diplomacy is dominant for nobody, but it is never worth taking up:
+    // no nation has a choice (critic C5 r1).
+    let e = report([B, A, B, A, B, A]).verdict().unwrap_err();
+    assert!(e.contains("no nation has a choice") && !e.contains("dominant"), "{e}");
+    // n0 does better among diplomats and worse among abstainers: a choice;
+    // n1 is unmoved. The reading passes.
+    let choice = report([A, B, A, A, B, A]);
+    assert_eq!(choice.comparison(0).class(), "a choice");
+    assert_eq!(choice.verdict(), Ok(()));
+}
+
+#[test]
+fn the_finer_measure_breaks_a_shared_place_by_the_round_a_nation_fell() {
+    // Three nations: n2 always wins. n0 and n1 fall in the same round (a
+    // shared place) or n0 falls later (the same place by count only if it
+    // still shares it).
+    let c = |fallen: Vec<Option<u32>>| DiploCampaign { seed: 1, profile: Profile::AllEngaged, fallen, rounds: 9, actions: 0 };
+    let early = c(vec![Some(3), Some(6), None]);
+    let late = c(vec![Some(5), Some(6), None]);
+    // By placement alone, n0 places 3rd in both.
+    assert_eq!((early.placement(0), late.placement(0)), (3, 3));
+    // By the finer measure, falling later is better.
+    assert!(late.finer(0) < early.finer(0));
+    assert_eq!(early.finer(2), late.finer(2), "a survivor is a survivor");
+    // Over a report: a nation that falls later with diplomacy and never
+    // sooner reads "dominant" by the finer measure, "no effect" by place.
+    const N: [Option<u32>; 2] = [Some(5), None];
+    const L: [Option<u32>; 2] = [Some(7), None];
+    let r = report([L, N, N, N, L, N]);
+    assert_eq!(r.comparison(0).class(), "no effect");
+    assert_eq!(r.finer_comparison(0).class(), "dominant");
 }
 
 #[test]

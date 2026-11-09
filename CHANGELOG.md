@@ -998,3 +998,8 @@
 - [2026-11-09] Modified: src/campaign/mod.rs — in a betrayal round the betrayer's assault on its old ally's city comes first
 - [2026-11-09] Modified: tests/c5_betrayal.rs — betrayer's assault not pre-empted by another nation's (line map search)
 - [2026-11-09] Modified: FINDINGS.md — F-097 betrayal pre-emption fix (D30)
+- [2026-11-09] Modified: src/campaign/balance.rs — AC8 verdict also fails when no nation has a choice; finer measure (place, then fall round) reported
+- [2026-11-09] Modified: tests/c5_balance.rs — verdict and finer-measure tests
+- [2026-11-09] Modified: tests/critic_c5.rs — Forgeborn diplomacy test, ignored (documents an open user decision)
+- [2026-11-09] Created: tests/critic_c5_balance.rs — critic r1 ignored probe: who acts in each profile (loop rewritten for clippy only)
+- [2026-11-09] Modified: FINDINGS.md — F-097 AC8 redefinition and 60-seed re-read; F-096 attributions corrected; disposition gaps

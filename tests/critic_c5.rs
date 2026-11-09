@@ -262,3 +262,33 @@ fn critic_validated_rules_cannot_be_changed_after_load_under_the_same_fingerprin
     let r: &onus::campaign::diplomacy::DiplomacyRulesDef = shipped.rules();
     assert_eq!(r.ally_cap, 1);
 }
+
+/// AC8 / F-096: "for the other four it never changes their placement — they
+/// fall early". Forgeborn's diplomacy cannot fire at all on the shipped
+/// numbers, at any size: ally_bias -2 + Neutral 1 = -1 < court_threshold 1,
+/// and even Tied gives 0. It can neither court nor be courted, so it can never
+/// be Tied, ally or incite. Its "no effect" is by construction, not a result.
+/// Ignored: it documents an open user decision (F-097), not a defect to
+/// fix here. Under the shipped numbers Forgeborn can take no part in
+/// diplomacy; whether it should, and how (its `ally_bias`, the thresholds,
+/// or the brief's "until you are big enough to fear"), is the user's call,
+/// and nothing is retuned in C5. Run it with `--ignored` to see it fail.
+#[test]
+#[ignore = "documents an open user decision: Forgeborn cannot take part in diplomacy on the shipped numbers (F-097)"]
+fn critic_forgeborn_can_take_part_in_diplomacy() {
+    use onus::campaign::diplomacy::Offer;
+    let c = Campaign::new(content(), diplomatic(), 1, None).unwrap();
+    let f = c.nation_index("forgeborn").unwrap();
+    let d = c.campaign().diplomacy().unwrap();
+    // Best case: Forgeborn the biggest (no notice), the pair Tied.
+    let best = d.ally_bias(f) + Standing::Tied.rank();
+    let can_court_or_answer = (0..c.nations().len())
+        .filter(|&m| m != f)
+        .any(|m| c.accepts(f, m, Offer::Court) || c.willingness(f, m).unwrap() >= d.rules().court_threshold);
+    assert!(
+        can_court_or_answer || best >= d.rules().court_threshold,
+        "Forgeborn's best willingness is {best} (< court_threshold {}): it can never court, accept, \
+         be Tied, ally or incite; its diplomacy never fires",
+        d.rules().court_threshold
+    );
+}
