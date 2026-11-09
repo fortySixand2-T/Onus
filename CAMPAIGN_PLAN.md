@@ -345,7 +345,9 @@ that is C6.
   - It compares each nation's placement (how many nations outlasted it) with and without its own
     diplomacy.
   - Diplomacy is **dominant** for a nation when engaging is never worse and sometimes better.
-  - The reading passes when diplomacy changes some outcome and is dominant for no nation.
+    It is a **choice** for a nation when engaging is better in some campaigns and worse in others.
+  - The reading passes when diplomacy is dominant for no nation and is a choice for at least one
+    (provisional, F-097 D31). The tie-break by the round a nation fell (D32) is reported, not gated.
 
 ## C6 — Campaign client
 
