@@ -795,7 +795,7 @@ impl Campaign {
         }
         if outcome.winner == Some(Side::Attack) {
             rec.captured = true;
-            self.cities[city].owner = attacker;
+            self.change_owner(city, attacker);
             // A garrison falls with its city.
             self.cities[city].garrison.clear();
             // The defenders withdraw to their nearest city.
@@ -1026,6 +1026,18 @@ impl Campaign {
         dist
     }
 
+    /// The one way a city changes hands: `to` holds it, and every building
+    /// in it is clamped to `to`'s own pool, so no holder's BuildingHp perk
+    /// rides along with the city (C4 AC4, AC5; critic C4 round 1).
+    fn change_owner(&mut self, city: usize, to: usize) {
+        let pool = &self.tables.building_hp[to];
+        let c = &mut self.cities[city];
+        c.owner = to;
+        for b in &mut c.buildings {
+            b.hp = b.hp.min(pool[b.def]);
+        }
+    }
+
     /// `conqueror` took `fallen`'s capital: `fallen` is out of the campaign.
     /// Its cities pass to the conqueror and its armies are disbanded. Under
     /// the cap (C4 AC4), its house General passes to the conqueror, rank 0,
@@ -1033,9 +1045,9 @@ impl Campaign {
     /// capital: the General's aura comes with him, no trait does.
     fn absorb(&mut self, fallen: usize, conqueror: usize) {
         self.nations[fallen].alive = false;
-        for c in &mut self.cities {
-            if c.owner == fallen {
-                c.owner = conqueror;
+        for city in 0..self.cities.len() {
+            if self.cities[city].owner == fallen {
+                self.change_owner(city, conqueror);
             }
         }
         self.armies.retain(|a| a.nation != fallen);

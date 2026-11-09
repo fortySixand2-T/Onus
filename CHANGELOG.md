@@ -936,3 +936,7 @@
 - [2026-11-08] Modified: src/campaign/mod.rs — C4 AC12 registers the balance module
 - [2026-11-08] Created: tests/c4_balance.rs — C4 AC12 balance batch smoke tests and the ignored measurement
 - [2026-11-08] Modified: FINDINGS.md — F-089 P33 and F-091 the campaign balance reading (Fail)
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 critic fix: change_owner clamps a city's buildings to the new holder's pool (absorption included)
+- [2026-11-08] Created: tests/critic_c4.rs — C4 critic round 1 tests (absorbed-city pool, save tampering, seed order, probes)
+- [2026-11-08] Modified: tests/c4_siege.rs — C4 every building within its holder's pool after every round
+- [2026-11-08] Modified: FINDINGS.md — F-092 critic C4 round 1 fix

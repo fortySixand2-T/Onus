@@ -14,7 +14,7 @@
 
 use std::path::PathBuf;
 
-use onus::campaign::{BattleOutcome, BattlePlan, Campaign, CampaignContent, Decision, Side};
+use onus::campaign::{BattleOutcome, BattlePlan, Campaign, CampaignContent, Decision, HeadlessResolver, Resolver, Side};
 use onus::sim::content::Content;
 
 fn data_dir() -> PathBuf {
@@ -204,4 +204,38 @@ fn a_ruin_does_not_take_the_field() {
         }
     }
     panic!("no second assault");
+}
+
+/// The invariant behind "perks stay their own" (critic C4 round 1): after
+/// every round, every city's building HP is within its holder's own pool,
+/// whichever way the city changed hands.
+fn within_pools(c: &Campaign, what: &str) {
+    for (k, city) in c.cities().iter().enumerate() {
+        for b in &city.buildings {
+            let max = c.building_max_hp(city.owner, b.def);
+            assert!(b.hp <= max, "{what}, round {}: city {k} holds a building at {} HP over its holder's pool {max}", c.round(), b.hp);
+        }
+    }
+}
+
+#[test]
+fn every_building_stays_within_its_holders_pool_every_round() {
+    let content = content();
+    let cc = CampaignContent::load_from_dir(&data_dir(), &content).unwrap();
+    let by_numbers = |p: &BattlePlan| {
+        let w = if p.attack.units.len() > p.defend.units.len() { Side::Attack } else { Side::Defend };
+        BattleOutcome::unchanged(p, Some(w))
+    };
+    for seed in 1..=3u64 {
+        for real in [false, true] {
+            let mut c = Campaign::new(content.clone(), cc.clone(), seed, None).unwrap();
+            let mut scripted = by_numbers;
+            let mut headless = HeadlessResolver;
+            let r: &mut dyn Resolver = if real { &mut headless } else { &mut scripted };
+            while !c.is_over() {
+                c.play_round(&[], r).unwrap();
+                within_pools(&c, &format!("seed {seed}, headless {real}"));
+            }
+        }
+    }
 }

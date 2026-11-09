@@ -7661,3 +7661,27 @@ Candidate levers, for the human's decision (none applied):
 - a varied start, per seed, from the map;
 - a cap on what absorption hands over.
 Every one is campaign-layer RON or AI. None needs a base unit combat stat.
+
+## F-092 — Critic C4 round 1: a city that changes hands takes its new holder's building pool (C4 AC4, AC5)
+
+**Finding 1 (High).** When a nation fell, `absorb` handed its cities to the conqueror without clamping their
+building HP to the conqueror's own pool. Only two paths clamped: the battle city's write-back (P23), and
+`siege_works`, for unattacked cities only. So a city attacked and held in the round its capital fell went to
+the conqueror still carrying the fallen nation's sturdier pool. Ashen Reach's BuildingHp ×1.30 rode into House
+Vael's hands, breaking "no trait transfers" (AC4) and "perks apply only to the nation's own cities" (AC5). The
+next battle at that city was then refused by the sim's content check, and `HeadlessResolver` panicked ("a
+campaign battle the content refuses").
+
+**Fix.** `Campaign::change_owner(city, to)` is now the only way a city changes hands. It sets the holder and
+clamps every building to that holder's pool, on both paths: capture in battle and absorption.
+
+**Tests.**
+- `tests/critic_c4.rs::an_absorbed_city_does_not_keep_the_fallen_nations_building_pool` is the critic's
+  test, moved in unchanged apart from one clippy lint (`% 2 == 0` became `is_multiple_of(2)`). It failed before the fix (House held X's HQ at 10920 HP over its pool of 8400) and
+  passes after.
+- `tests/c4_siege.rs::every_building_stays_within_its_holders_pool_every_round` is a general invariant: after
+  every round of six AI-only campaigns (seeds 1–3, scripted and headless resolvers), every building is within its
+  holder's pool. The shipped map does not reach the bug, so this test passed before the fix too. It guards
+  against regression and is not the red test.
+- The campaign golden does not move (0x1600ef997dbf8728). The shipped 6-round golden never absorbs a city
+  that was attacked that round. No other golden moves.
