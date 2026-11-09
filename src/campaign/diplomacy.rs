@@ -696,3 +696,156 @@ impl Campaign {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    //! C5 AC6: the diplomatic AI's fixed rules, in their fixed order, on
+    //! hand-set standings. (Aetherkin decides; the shipped map; nobody
+    //! plays unless named.)
+    use super::super::ai::decide_diplomacy;
+    use super::super::{Campaign, CampaignContent, Decision};
+    use super::*;
+
+    const HOUSE: usize = 0;
+    const FORGE: usize = 1;
+    const VERDANT: usize = 2;
+    const AETH: usize = 3;
+    const TOLL: usize = 4;
+    const ASH: usize = 5;
+
+    fn game(player: Option<&str>, edit: impl Fn(DiplomacyContent) -> DiplomacyContent) -> Campaign {
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data");
+        let content = Content::load_from_dir(&dir).unwrap();
+        let d = edit(DiplomacyContent::shipped(&content).unwrap());
+        let cc = CampaignContent::shipped(&content).unwrap().with_diplomacy(d);
+        let mut c = Campaign::new(content, cc, 1, player).unwrap();
+        for n in 0..c.nations.len() {
+            c.nations[n].treasury = 1000;
+        }
+        assert_eq!(c.nation_index("aetherkin"), Some(AETH));
+        c
+    }
+    fn set(c: &mut Campaign, a: usize, b: usize, s: Standing) {
+        c.diplo.as_mut().unwrap().set(a, b, s);
+    }
+    fn id(n: usize) -> String {
+        ["house", "forgeborn", "verdant", "aetherkin", "tollmarch", "ashen_reach"][n].to_string()
+    }
+    fn decide(c: &Campaign) -> Option<Decision> {
+        decide_diplomacy(c, AETH)
+    }
+
+    #[test]
+    fn it_courts_the_most_willing_nation_that_would_accept() {
+        let c = game(None, |d| d);
+        // Aetherkin (3 cities, bias 1) towards Tollmarch and the Reach (2
+        // each) is 2, towards House 2; House (1 city) would refuse it.
+        assert_eq!(c.willingness(AETH, TOLL), Some(2));
+        assert!(!c.accepts(HOUSE, AETH, Offer::Court) && c.accepts(TOLL, AETH, Offer::Court));
+        assert_eq!(decide(&c), Some(Decision::Court { nation: id(TOLL) }), "ties to the lower index");
+    }
+
+    #[test]
+    fn it_takes_no_action_it_cannot_pay_for() {
+        let mut c = game(None, |d| d);
+        c.nations[AETH].treasury = c.campaign.diplomacy().unwrap().rules.court_cost - 1;
+        assert_eq!(decide(&c), None);
+    }
+
+    #[test]
+    fn an_alliance_comes_before_a_courting() {
+        let mut c = game(None, |d| d);
+        set(&mut c, AETH, VERDANT, Standing::Tied); // willing 2: below ally_threshold
+        assert_eq!(decide(&c), Some(Decision::Court { nation: id(TOLL) }));
+        set(&mut c, AETH, TOLL, Standing::Tied); // willing 3, and Tollmarch 3
+        assert_eq!(decide(&c), Some(Decision::Ally { nation: id(TOLL) }));
+    }
+
+    #[test]
+    fn inciting_comes_before_a_courting() {
+        let mut c = game(None, |d| d);
+        set(&mut c, AETH, FORGE, Standing::Tied);
+        set(&mut c, AETH, VERDANT, Standing::Tied);
+        assert_eq!(c.willingness(AETH, FORGE), Some(2), "too low for an alliance");
+        assert_eq!(decide(&c), Some(Decision::Incite { a: id(FORGE), b: id(VERDANT) }));
+        // Not a pair already steered.
+        c.diplo.as_mut().unwrap().war[FORGE] = Some(WarTarget { target: HOUSE, until: 9 });
+        assert_eq!(decide(&c), Some(Decision::Court { nation: id(TOLL) }));
+    }
+
+    #[test]
+    fn with_an_ally_it_asks_it_to_attack_the_nearest_enemy_capital() {
+        let mut c = game(None, |d| d);
+        set(&mut c, AETH, TOLL, Standing::Allied);
+        // From Leyhold, Cinderhold is the nearest capital.
+        assert_eq!(decide(&c), Some(Decision::Ask { target: id(HOUSE) }));
+        // An ally already at war is not asked again: Aetherkin courts.
+        c.diplo.as_mut().unwrap().war[TOLL] = Some(WarTarget { target: FORGE, until: 9 });
+        assert_eq!(decide(&c), Some(Decision::Court { nation: id(ASH) }));
+    }
+
+    #[test]
+    fn it_betrays_its_ally_once_that_ally_is_its_last_rival() {
+        let mut c = game(None, |d| d);
+        set(&mut c, AETH, TOLL, Standing::Allied);
+        for n in [HOUSE, FORGE, VERDANT] {
+            c.nations[n].alive = false;
+        }
+        assert_eq!(decide(&c), Some(Decision::Ask { target: id(ASH) }), "the Reach still stands");
+        c.nations[ASH].alive = false;
+        assert_eq!(decide(&c), Some(Decision::Betray { nation: id(TOLL) }));
+    }
+
+    #[test]
+    fn it_never_makes_an_offer_to_the_player() {
+        let only_tollmarch_left = |player| {
+            let mut c = game(player, |d| d);
+            for n in [HOUSE, FORGE, VERDANT, ASH] {
+                c.nations[n].alive = false;
+            }
+            c
+        };
+        // Tollmarch, as an AI, would be courted and then allied.
+        let mut ai = only_tollmarch_left(None);
+        assert_eq!(decide(&ai), Some(Decision::Court { nation: id(TOLL) }));
+        set(&mut ai, AETH, TOLL, Standing::Tied);
+        assert_eq!(decide(&ai), Some(Decision::Ally { nation: id(TOLL) }));
+        // As the player, it is offered nothing.
+        let mut c = only_tollmarch_left(Some("tollmarch"));
+        assert_eq!(decide(&c), None, "no courting of the player");
+        set(&mut c, AETH, TOLL, Standing::Tied);
+        assert_eq!(c.willingness(AETH, TOLL), Some(3));
+        assert_eq!(decide(&c), None, "no alliance offered to the player");
+    }
+
+    #[test]
+    fn a_passive_or_abstaining_nation_takes_no_action() {
+        assert_eq!(decide(&game(None, |d| d.with_passive(AETH))), None);
+        assert_eq!(decide(&game(None, |d| d.with_abstaining(AETH))), None);
+        // ... and an abstaining nation is not courted.
+        let c = game(None, |d| d.with_abstaining(TOLL));
+        assert_eq!(decide(&c), Some(Decision::Court { nation: id(ASH) }));
+    }
+
+    #[test]
+    fn a_pair_of_allies_is_neither_incited_by_the_ai_nor_inciteable() {
+        let mut c = game(None, |d| d);
+        set(&mut c, AETH, FORGE, Standing::Tied);
+        set(&mut c, AETH, VERDANT, Standing::Tied);
+        set(&mut c, FORGE, VERDANT, Standing::Allied);
+        assert_eq!(decide(&c), Some(Decision::Court { nation: id(TOLL) }));
+        let incite = Decision::Incite { a: id(FORGE), b: id(VERDANT) };
+        let why = c.apply_diplomacy(AETH, &incite).unwrap_err();
+        assert!(why.contains("allies"), "{why}");
+    }
+
+    #[test]
+    fn without_diplomacy_there_is_no_diplomatic_ai() {
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/data");
+        let content = Content::load_from_dir(&dir).unwrap();
+        let cc = CampaignContent::shipped(&content).unwrap();
+        let mut c = Campaign::new(content, cc, 1, None).unwrap();
+        c.nations[AETH].treasury = 1000;
+        assert_eq!(decide(&c), None);
+    }
+}

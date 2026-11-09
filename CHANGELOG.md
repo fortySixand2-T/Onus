@@ -968,3 +968,8 @@
 - [2026-11-08] Modified: src/campaign/diplomacy.rs — C5 destabilize (Incite): Tied-count gate, cost, pair Hostile, mutual steered wars
 - [2026-11-08] Created: tests/c5_destabilize.rs — C5 AC5 destabilize tests
 - [2026-11-08] Modified: FINDINGS.md — F-095 destabilize readings (D18-D19)
+- [2026-11-08] Modified: src/campaign/ai.rs — C5 decide_diplomacy: betray, ally, ask, incite, court in fixed order, no rng
+- [2026-11-08] Modified: src/campaign/mod.rs — C5 AI applies its diplomatic action before its C4 decisions
+- [2026-11-08] Modified: src/campaign/diplomacy.rs — C5 L1 tests for the diplomatic AI's rules and order
+- [2026-11-08] Created: tests/c5_ai.rs — C5 AC6 diplomatic AI tests
+- [2026-11-08] Modified: FINDINGS.md — F-095 diplomatic AI readings (D20-D23)

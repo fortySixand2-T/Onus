@@ -7818,3 +7818,24 @@ C6 or a design pass may revise it. Every number lives in `assets/data/diplomacy.
   `war_rounds` rounds (the AC3 steering rule), and a new steer replaces an old one. A player who
   is incited only has his standing changed. The inciter's standing towards both is untouched, and
   so are its armies.
+
+**Diplomatic AI (AC6).**
+- D20. An AI nation takes its diplomatic action before its C4 decisions, so money it spends is gone
+  before it decides to raise a General. That is the AI's whole trade-off: diplomacy against armies.
+- D21. The fixed order is betray, ally, ask, incite, court, and the first rule that applies acts:
+  - **betray** its ally once that ally is its only living rival (C0 and the AC);
+  - **ally** with the Tied nation it is most willing towards, if its own willingness reaches
+    `ally_threshold` and the other would accept;
+  - **ask** its AI ally, if the ally is not already steered, to attack the living nation, allied with
+    neither, whose capital is nearest its own by road;
+  - **incite** the not-allied pair of Tied nations holding the most cities, neither already steered;
+  - **court** the most willing nation below Tied, if its willingness reaches `court_threshold` and
+    the other would accept.
+
+  Ties go to the lower nation index. It never makes an offer it knows will be refused, so it never
+  makes one to the player, and it never acts when it cannot pay. It may still ask its ally to attack
+  the player, and it may incite the player against another nation, since neither is an offer.
+- D22. The AI's thresholds are the acceptance thresholds: a nation offers what it would accept. It
+  reads the campaign through `&Campaign`, so it cannot draw from the rng.
+- D23. Passive (answers offers but never acts) is a test lever beside abstaining. It is not in the
+  file and not a disposition.

@@ -624,6 +624,12 @@ impl Campaign {
             let ds = if Some(n) == self.player {
                 decisions.to_vec()
             } else {
+                // C5: its diplomatic action first, so that what it spends
+                // is gone before it raises a General.
+                if let Some(d) = ai::decide_diplomacy(self, n) {
+                    self.apply(n, &d)
+                        .map_err(|why| RoundError::BadDecision { decision: d.clone(), why })?;
+                }
                 ai::decide(self, n)
             };
             for d in ds {
