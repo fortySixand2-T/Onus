@@ -7917,3 +7917,16 @@ levers for the user, if wanted: Aetherkin's `ally_bias` and the thresholds/costs
 - D29. Each campaign plays to its own end (a sole survivor, or `campaign.ron`'s `round_cap`),
   on the resolver the caller passes (the reading uses the headless battle sim). The batch runs on
   threads and collects in seed-then-profile order, so its report does not depend on scheduling.
+
+## F-097 — Critic C5 round 1: fixes and readings (C5)
+
+**1. The diplomatic record is hashed in full (AC7).** `DiploState::hash_into` hashed only how many
+actions had been recorded. So a refused court to Forgeborn and a refused court to the Reach left the
+same hash, and a save edited from one to the other loaded cleanly
+(`tests/critic_c5.rs::critic_a_changed_refused_offer_diverges_at_its_round`). Each record is now
+hashed (round, actor, answer, the act's kind and its nations), in the order the actions were taken.
+The unit test `standings_betrayals_and_wars_are_in_the_state_hash` now shows every field reaching the
+hash. **Pins:** no C5 test pins a hash value, so nothing was re-pinned. C4's golden 0x1600ef997dbf8728
+is unchanged: a campaign without diplomacy hashes nothing diplomatic (`tests/c5_golden.rs`). A
+diplomatic campaign's per-round hashes change from round 1 on, wherever any action has been
+recorded; saves from before this commit were never shipped.

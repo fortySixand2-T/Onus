@@ -389,9 +389,10 @@ impl DiploState {
     }
 
     /// Into the campaign state hash: every standing, betrayal count and
-    /// steered war, and how many actions have been recorded (as the battle
-    /// history counts). This round's action count is not hashed: it is
-    /// zero between rounds.
+    /// steered war, and every recorded action in full (round, actor, act and
+    /// answer, in the order taken), so a refused offer to one nation and a
+    /// refused offer to another hash apart. This round's action count is not
+    /// hashed: it is zero between rounds.
     pub(super) fn hash_into(&self, h: &mut Fnv) {
         h.u64(0xD1A0);
         h.u64(self.n as u64);
@@ -408,6 +409,16 @@ impl DiploState {
             };
         }
         h.u64(self.log.len() as u64);
+        for r in &self.log {
+            h.u64(r.round as u64).u64(r.actor as u64).u64(r.accepted as u64);
+            match r.act {
+                Act::Court { with } => h.u64(1).u64(with as u64),
+                Act::Ally { with } => h.u64(2).u64(with as u64),
+                Act::Ask { ally, target } => h.u64(3).u64(ally as u64).u64(target as u64),
+                Act::Betray { ally } => h.u64(4).u64(ally as u64),
+                Act::Incite { a, b } => h.u64(5).u64(a as u64).u64(b as u64),
+            };
+        }
     }
 
     fn get(&self, a: usize, b: usize) -> Standing {
@@ -882,6 +893,27 @@ mod tests {
         let rec = DiplomacyRecord { round: 0, actor: AETH, act: Act::Court { with: TOLL }, accepted: false };
         l.diplo.as_mut().unwrap().log.push(rec);
         assert_ne!(l.state_hash(), h, "the record of actions");
+        // Every field of a record is hashed, not only how many there are.
+        let variants = [
+            DiplomacyRecord { round: 0, actor: AETH, act: Act::Court { with: ASH }, accepted: false },
+            DiplomacyRecord { round: 1, actor: AETH, act: Act::Court { with: TOLL }, accepted: false },
+            DiplomacyRecord { round: 0, actor: VERDANT, act: Act::Court { with: TOLL }, accepted: false },
+            DiplomacyRecord { round: 0, actor: AETH, act: Act::Court { with: TOLL }, accepted: true },
+            DiplomacyRecord { round: 0, actor: AETH, act: Act::Ally { with: TOLL }, accepted: false },
+            DiplomacyRecord { round: 0, actor: AETH, act: Act::Ask { ally: TOLL, target: ASH }, accepted: true },
+            DiplomacyRecord { round: 0, actor: AETH, act: Act::Ask { ally: TOLL, target: HOUSE }, accepted: true },
+            DiplomacyRecord { round: 0, actor: AETH, act: Act::Betray { ally: TOLL }, accepted: true },
+            DiplomacyRecord { round: 0, actor: AETH, act: Act::Incite { a: TOLL, b: ASH }, accepted: true },
+            DiplomacyRecord { round: 0, actor: AETH, act: Act::Incite { a: ASH, b: TOLL }, accepted: true },
+        ];
+        let mut seen = vec![l.state_hash()];
+        for v in variants {
+            let mut x = c.clone();
+            x.diplo.as_mut().unwrap().log.push(v);
+            let hx = x.state_hash();
+            assert!(!seen.contains(&hx), "{v:?} hashes like an earlier record");
+            seen.push(hx);
+        }
         // What a nation did this round is not campaign state between rounds.
         let mut a = c.clone();
         a.diplo.as_mut().unwrap().acted[AETH] = 1;

@@ -982,3 +982,6 @@
 - [2026-11-08] Modified: DESIGN_BRIEF.md — how diplomacy plays in C5 (provisional)
 - [2026-11-08] Modified: FINDINGS.md — F-096 C5 AC8 diplomacy balance reading (Fail)
 - [2026-11-09] Modified: src/campaign/diplomacy.rs — build DiplomacyContent as Self so critic_m5's Content-literal check passes
+- [2026-11-09] Modified: src/campaign/diplomacy.rs — hash every diplomatic record in full, not just the count
+- [2026-11-09] Created: tests/critic_c5.rs — critic C5 round 1 probes (changed refused offer diverges)
+- [2026-11-09] Modified: FINDINGS.md — F-097 critic C5 round 1: record hashing
