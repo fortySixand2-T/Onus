@@ -169,6 +169,26 @@ pub enum Decision {
     /// (a city it holds), for `raise_general_cost` treasury Alloy: he leads
     /// a new, empty army standing there.
     Raise { city: String },
+    /// C5, a diplomatic action: court `nation` (raise the pair's standing
+    /// one step, no higher than Tied, for `court_cost` if it accepts).
+    Court { nation: String },
+    /// C5: ally with `nation`, a nation this one is Tied with (for
+    /// `ally_cost` if it accepts; both under the ally cap).
+    Ally { nation: String },
+    /// C5: ask this nation's ally to attack `target`, a shared enemy.
+    Ask { target: String },
+    /// C5: betray `nation`, this nation's ally.
+    Betray { nation: String },
+    /// C5, destabilize: incite `a` and `b` (both Tied with this nation) to
+    /// war with each other, for `incite_cost`.
+    Incite { a: String, b: String },
+}
+
+impl Decision {
+    /// A diplomatic action (C5), as opposed to an army or a General.
+    pub fn is_diplomatic(&self) -> bool {
+        !matches!(self, Decision::March { .. } | Decision::Raise { .. })
+    }
 }
 
 /// How a campaign ended.
@@ -687,6 +707,7 @@ impl Campaign {
                 self.spawn_army(nation, kind, Vec::new(), at);
                 Ok(())
             }
+            _ => self.apply_diplomacy(nation, d),
         }
     }
 

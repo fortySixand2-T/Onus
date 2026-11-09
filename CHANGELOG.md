@@ -954,3 +954,6 @@
 - [2026-11-08] Created: tests/c5_content.rs — C5 AC1 diplomacy content tests
 - [2026-11-08] Modified: DESIGN_BRIEF.md — diplomacy.ron data shape (C5)
 - [2026-11-08] Modified: FINDINGS.md — F-095 C5 provisional readings (content)
+- [2026-11-08] Modified: src/campaign/mod.rs — C5 diplomatic Decision variants (Court, Ally, Ask, Betray, Incite); refused without diplomacy
+- [2026-11-08] Modified: src/campaign/diplomacy.rs — apply_diplomacy entry point
+- [2026-11-08] Created: tests/c5_golden.rs — C5 AC2 golden licence tests

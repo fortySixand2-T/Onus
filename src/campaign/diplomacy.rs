@@ -288,3 +288,15 @@ impl DiplomacyContent {
         h.finish()
     }
 }
+
+// ---- play -------------------------------------------------------------------
+
+impl super::Campaign {
+    /// Carry out a diplomatic decision of `nation`'s (C5).
+    pub(super) fn apply_diplomacy(&mut self, _nation: usize, _d: &super::Decision) -> Result<(), String> {
+        if self.campaign().diplomacy().is_none() {
+            return Err("this campaign has no diplomacy (diplomacy.ron is not attached)".to_string());
+        }
+        Err("diplomacy is not played yet".to_string())
+    }
+}
