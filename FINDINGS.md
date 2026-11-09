@@ -7544,6 +7544,19 @@ Every number lives in `assets/data/campaign.ron`.
 - The campaign golden re-pinned at AC5 (the AI now raises Generals):
   0x4e8757b5a5c9847c -> 0x1600ef997dbf8728.
 
+**Saves (AC11).**
+- P31. A save (`campaign::save::CampaignLog`, RON, format version 1) holds the seed, the
+  player's nation, both content fingerprints (the battle `ContentFingerprint` and the campaign
+  content's), the player's decisions one list per round, and the state hash after every round.
+  The AI's decisions and every battle are not saved: the campaign is deterministic, so a load
+  recomputes them. This is M5's match-log pattern one layer up.
+- P32. A load (`Campaign::resume`) refuses another format version, a round count that does not
+  match the hash count, and another battle or campaign content, before it replays anything. It
+  then replays round by round, checks each round's state hash, and stops at the first round
+  that diverges, naming it. A round refused on replay is also an error. The decision log is not
+  part of the state hash: it is the input, and the hashes are its result. The campaign golden
+  does not move at AC11.
+
 ## F-090 — Verdant's three-resource Growth lowered to ×1.10, by the user's instruction (C3 AC8 RON step)
 
 **The user's instruction (2026-11-08): "lower verdant growth to 1.10".** In `assets/data/nations.ron`, Verdant's

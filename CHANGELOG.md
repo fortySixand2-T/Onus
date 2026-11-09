@@ -928,3 +928,7 @@
 - [2026-11-08] Modified: tests/c4_absorb.rs, tests/c4_persist.rs, tests/c4_siege.rs — C4 AC5 account for AI raises
 - [2026-11-08] Modified: tests/c4_autoresolve.rs — C4 AC5 campaign golden re-pinned (the AI raises Generals)
 - [2026-11-08] Modified: FINDINGS.md — F-089 AC5 readings
+- [2026-11-08] Created: src/campaign/save.rs — C4 AC11 campaign save: seed + player decisions, versioned RON, content-stamped, replay-checked load
+- [2026-11-08] Modified: src/campaign/mod.rs — C4 AC11 the campaign logs the player's decisions per round
+- [2026-11-08] Created: tests/c4_save.rs — C4 AC11 save, load and refusal tests
+- [2026-11-08] Modified: FINDINGS.md — F-089 AC11 readings

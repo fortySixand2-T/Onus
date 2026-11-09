@@ -22,6 +22,7 @@ pub mod ai;
 pub mod battle;
 pub mod content;
 pub mod resolve;
+pub mod save;
 
 use std::sync::Arc;
 
@@ -32,6 +33,7 @@ use crate::sim::nation::{Defs, NationRules};
 use crate::sim::spatial::{Faction, SplitMix64};
 
 pub use resolve::{resolve_battle, HeadlessResolver};
+pub use save::{CampaignLog, CAMPAIGN_LOG_VERSION};
 pub use battle::{battle_settings, BattleOutcome, BattlePlan, PlanBuilding, PlanSide, Resolver, Side};
 pub use content::{CampaignContent, CampaignError, Fnv};
 
@@ -290,6 +292,9 @@ pub struct Campaign {
     outcome: Option<CampaignOutcome>,
     history: Vec<BattleRecord>,
     round_hashes: Vec<u64>,
+    /// The player's decisions, one list per round played (C4 AC11): the
+    /// save. Not hashed: it is the input, and the hashes are its result.
+    decisions: Vec<Vec<Decision>>,
 }
 
 impl Campaign {
@@ -356,6 +361,7 @@ impl Campaign {
             outcome: None,
             history: Vec::new(),
             round_hashes: Vec::new(),
+            decisions: Vec::new(),
         };
         let starts = c.campaign.start_armies.clone();
         for s in &starts {
@@ -569,6 +575,7 @@ impl Campaign {
         }
         let mut next = self.clone();
         let report = next.round_inner(decisions, resolver)?;
+        next.decisions.push(decisions.to_vec());
         *self = next;
         Ok(report)
     }
