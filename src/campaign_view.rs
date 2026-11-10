@@ -11,7 +11,7 @@
 use bevy::prelude::*;
 
 use crate::campaign::Location;
-use crate::campaign_client::{map_text, over_text, story_text, CampaignSession, Screen};
+use crate::campaign_client::{diplomacy_text, map_text, over_text, story_text, CampaignSession, Screen};
 use crate::client::nation_color;
 
 /// Where the map is drawn: layout units are scaled and shifted right, so
@@ -89,7 +89,7 @@ fn update_panel(
     let text = match screen.get() {
         Screen::Story => story_text(&session),
         Screen::Map => map_text(&session),
-        Screen::Diplomacy => String::new(),
+        Screen::Diplomacy => diplomacy_text(&session),
         Screen::Battle => String::new(),
         Screen::Over => over_text(&session),
     };

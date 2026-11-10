@@ -1024,3 +1024,8 @@
 - [2026-11-10] Modified: src/main.rs — `cargo run -- campaign [seed]` opens the campaign client; `cargo run` is the skirmish as before
 - [2026-11-10] Created: tests/c6/client.rs — C6 AC4 tests (layout validation, CLI, screens, key staging, end turn, refused round, report)
 - [2026-11-10] Modified: tests/c6_live.rs — hosts the client test module (no new test binary)
+- [2026-11-10] Modified: src/campaign_client.rs — C6 AC5: diplomacy screen (rival cursor, keys staging the round's one diplomatic action, played first), diplomacy_text; battle_played resumes a paused round
+- [2026-11-10] Modified: src/campaign_view.rs — C6 AC5: the panel shows the diplomacy screen
+- [2026-11-10] Created: tests/c6/diplomacy.rs — C6 AC5 tests (standings, ally, betrayals shown; keys stage court/ally/ask/betray/incite; the action plays first and its result shows)
+- [2026-11-10] Modified: tests/c6/client.rs — scripted battle stand-in (play_battle) and an attacker-wins resolver
+- [2026-11-10] Modified: tests/c6_live.rs — hosts the diplomacy test module

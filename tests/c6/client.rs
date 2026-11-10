@@ -79,6 +79,17 @@ pub fn press(app: &mut App, key: KeyCode) {
     app.update();
 }
 
+/// The battle the round is paused at, decided by `f` (the scripted stand-in
+/// for the battle screen): the round resumes with its outcome.
+pub fn play_battle(app: &mut App, f: fn(&BattlePlan) -> BattleOutcome) {
+    let world = app.world_mut();
+    let mut s = world.resource_mut::<CampaignSession>();
+    let plan = s.battle.clone().expect("the round is paused at a battle");
+    let to = s.battle_played(f(&plan));
+    world.resource_mut::<NextState<Screen>>().set(to);
+    app.update();
+}
+
 pub fn screen(app: &App) -> Screen {
     app.world().resource::<State<Screen>>().get().clone()
 }

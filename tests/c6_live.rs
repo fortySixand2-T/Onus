@@ -24,6 +24,8 @@
 
 #[path = "c6/client.rs"]
 mod client;
+#[path = "c6/diplomacy.rs"]
+mod diplomacy;
 
 use std::cell::RefCell;
 use std::path::PathBuf;

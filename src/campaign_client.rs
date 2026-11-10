@@ -20,9 +20,10 @@ use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 use serde::Deserialize;
 
+use crate::campaign::diplomacy::{Act, DiplomacyRecord};
 use crate::campaign::story::{Story, StoryProgress};
 use crate::campaign::{
-    BattlePlan, Campaign, CampaignContent, CampaignOutcome, Decision, HeadlessResolver, Location, Memo,
+    BattleOutcome, BattlePlan, Campaign, CampaignContent, CampaignOutcome, Decision, HeadlessResolver, Location, Memo,
     PlayedBattle, Resolver, RoundReport, RoundStep, Side,
 };
 use crate::client::nation_name;
@@ -154,7 +155,7 @@ impl Resolver for DynResolver {
         content: &Content,
         campaign: &CampaignContent,
         plan: &BattlePlan,
-    ) -> crate::campaign::BattleOutcome {
+    ) -> BattleOutcome {
         self.0.resolve(content, campaign, plan)
     }
 }
@@ -169,6 +170,10 @@ pub struct MapCursor {
     pub target: Option<usize>,
     /// The selected city of the player's (where `R` raises a General).
     pub city: Option<usize>,
+    /// The diplomacy screen's selected rival (a nation index).
+    pub rival: Option<usize>,
+    /// The first rival of an incitement, waiting for the second.
+    pub incite: Option<usize>,
 }
 
 /// The campaign being played, and the client's own state around it (what
@@ -183,6 +188,8 @@ pub struct CampaignSession {
     pub beats: Vec<usize>,
     /// The player's staged army and General decisions for this round.
     pub staged: Vec<Decision>,
+    /// The round's one diplomatic action, staged on the diplomacy screen.
+    pub diplomatic: Option<Decision>,
     /// The player's battles this round, played so far.
     pub played: Vec<PlayedBattle>,
     /// The battle of the player's the round is paused at.
@@ -213,6 +220,7 @@ impl CampaignSession {
             layout,
             beats,
             staged: Vec::new(),
+            diplomatic: None,
             played: Vec::new(),
             battle: None,
             message: None,
@@ -222,9 +230,11 @@ impl CampaignSession {
         }
     }
 
-    /// The decisions ending the turn plays the round on.
+    /// The decisions ending the turn plays the round on: the diplomatic
+    /// action first (as the AI's, so what it spends is gone before a
+    /// General is raised), then the staged orders in the order given.
     pub fn decisions(&self) -> Vec<Decision> {
-        self.staged.clone()
+        self.diplomatic.iter().chain(&self.staged).cloned().collect()
     }
 
     /// The screen to show when nothing else is pending.
@@ -247,6 +257,7 @@ impl CampaignSession {
         match self.campaign.step_round(&ds, &self.played, &mut self.resolver) {
             Ok(RoundStep::Played(report)) => {
                 self.staged.clear();
+                self.diplomatic = None;
                 self.played.clear();
                 self.resolver.clear();
                 self.battle = None;
@@ -271,6 +282,20 @@ impl CampaignSession {
         }
     }
 
+    /// The battle the round is paused at was played: record its outcome and
+    /// step the round again (the next screen, as [`end_turn`](Self::end_turn)).
+    pub fn battle_played(&mut self, outcome: BattleOutcome) -> Screen {
+        let Some(plan) = self.battle.take() else {
+            return self.resting();
+        };
+        self.played.push(PlayedBattle {
+            round: plan.round,
+            city: self.campaign.campaign().cities[plan.city].id.clone(),
+            outcome,
+        });
+        self.end_turn()
+    }
+
     /// The player's armies standing at a city, ascending id.
     fn orderable_armies(&self) -> Vec<u32> {
         let p = self.campaign.player();
@@ -293,6 +318,14 @@ impl CampaignSession {
     /// The city the cursor's target points at.
     pub fn target_city(&self) -> Option<usize> {
         self.cursor.target.and_then(|k| self.neighbours().get(k).copied())
+    }
+
+    /// The living nations other than the player's, ascending index.
+    fn rivals(&self) -> Vec<usize> {
+        let c = &self.campaign;
+        (0..c.nations().len())
+            .filter(|&n| Some(n) != c.player() && c.nations()[n].alive)
+            .collect()
     }
 
     fn player_cities(&self) -> Vec<usize> {
@@ -342,6 +375,7 @@ pub fn add_campaign_client(app: &mut App, _sim: impl ScheduleLabel + Clone) {
         (
             story_keys.run_if(in_state(Screen::Story)).run_if(session),
             map_keys.run_if(in_state(Screen::Map)).run_if(session),
+            diplomacy_keys.run_if(in_state(Screen::Diplomacy)).run_if(session),
         ),
     );
 }
@@ -391,7 +425,7 @@ fn story_keys(
 
 /// Map: Tab picks an army, Left/Right a neighbour for it, M stages the
 /// march; Up/Down pick a city, R stages a General raised there; Backspace
-/// clears what is staged; Enter ends the turn.
+/// clears the staged orders; D opens diplomacy; Enter ends the turn.
 fn map_keys(
     keys: Res<ButtonInput<KeyCode>>,
     mut s: ResMut<CampaignSession>,
@@ -434,9 +468,72 @@ fn map_keys(
         s.staged.clear();
         s.message = None;
     }
+    if keys.just_pressed(KeyCode::KeyD) && s.campaign.has_diplomacy() {
+        go(&mut next, now.get(), Screen::Diplomacy);
+        return;
+    }
     if keys.just_pressed(KeyCode::Enter) {
         let to = s.end_turn();
         go(&mut next, now.get(), to);
+    }
+}
+
+/// Diplomacy: Up/Down pick a rival; C courts it, A allies with it, K asks
+/// the player's ally to attack it, B betrays it, I (on two rivals in turn)
+/// incites them against each other. One action a round: a new one replaces
+/// the staged one. Backspace clears it; Esc (or D) goes back to the map.
+fn diplomacy_keys(
+    keys: Res<ButtonInput<KeyCode>>,
+    mut s: ResMut<CampaignSession>,
+    now: Res<State<Screen>>,
+    mut next: ResMut<NextState<Screen>>,
+) {
+    let s = &mut *s;
+    for (key, forward) in [(KeyCode::ArrowDown, true), (KeyCode::ArrowUp, false)] {
+        if keys.just_pressed(key) {
+            let rivals = s.rivals();
+            let cur = s.cursor.rival.and_then(|n| rivals.iter().position(|&x| x == n));
+            s.cursor.rival = cycle(rivals.len(), cur, forward).map(|k| rivals[k]);
+        }
+    }
+    if let Some(r) = s.cursor.rival {
+        let id = s.campaign.content().nations[r].id.clone();
+        let staged = if keys.just_pressed(KeyCode::KeyC) {
+            Some(Decision::Court { nation: id })
+        } else if keys.just_pressed(KeyCode::KeyA) {
+            Some(Decision::Ally { nation: id })
+        } else if keys.just_pressed(KeyCode::KeyK) {
+            Some(Decision::Ask { target: id })
+        } else if keys.just_pressed(KeyCode::KeyB) {
+            Some(Decision::Betray { nation: id })
+        } else if keys.just_pressed(KeyCode::KeyI) {
+            match s.cursor.incite.take() {
+                Some(a) if a != r => Some(Decision::Incite {
+                    a: s.campaign.content().nations[a].id.clone(),
+                    b: id,
+                }),
+                Some(_) => None,
+                None => {
+                    s.cursor.incite = Some(r);
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        if staged.is_some() {
+            if !matches!(staged, Some(Decision::Incite { .. })) {
+                s.cursor.incite = None;
+            }
+            s.diplomatic = staged;
+        }
+    }
+    if keys.just_pressed(KeyCode::Backspace) {
+        s.diplomatic = None;
+        s.cursor.incite = None;
+    }
+    if keys.just_pressed(KeyCode::Escape) || keys.just_pressed(KeyCode::KeyD) {
+        go(&mut next, now.get(), Screen::Map);
     }
 }
 
@@ -451,8 +548,78 @@ fn decision_text(c: &Campaign, d: &Decision) -> String {
     match d {
         Decision::March { army, to } => format!("March army {army} to {}", city(to)),
         Decision::Raise { city: at } => format!("Raise a General at {}", city(at)),
-        other => format!("{other:?}"),
+        Decision::Court { nation } => format!("Court {}", nation_by_id(c, nation)),
+        Decision::Ally { nation } => format!("Ally with {}", nation_by_id(c, nation)),
+        Decision::Ask { target } => format!("Ask your ally to attack {}", nation_by_id(c, target)),
+        Decision::Betray { nation } => format!("Betray {}", nation_by_id(c, nation)),
+        Decision::Incite { a, b } => format!("Incite {} and {} to war", nation_by_id(c, a), nation_by_id(c, b)),
     }
+}
+
+fn nation_by_id<'a>(c: &'a Campaign, id: &'a str) -> &'a str {
+    c.nation_index(id).map_or(id, |n| nation_name(c.content(), Some(n)))
+}
+
+/// One diplomatic record, as the player reads it.
+fn record_text(c: &Campaign, r: &DiplomacyRecord) -> String {
+    let name = |n: usize| nation_name(c.content(), Some(n)).to_string();
+    let who = if Some(r.actor) == c.player() { "You".to_string() } else { name(r.actor) };
+    let what = match r.act {
+        Act::Court { with } => format!("courted {}", name(with)),
+        Act::Ally { with } => format!("allied with {}", name(with)),
+        Act::Ask { ally, target } => format!("asked {} to attack {}", name(ally), name(target)),
+        Act::Betray { ally } => format!("betrayed {}", name(ally)),
+        Act::Incite { a, b } => format!("incited {} and {} to war", name(a), name(b)),
+    };
+    let answer = if r.accepted { "" } else { " (refused)" };
+    format!("{who} {what}{answer}")
+}
+
+/// The diplomacy screen's text: each rival's standing with the player and
+/// its betrayals, the player's ally and betrayals, the staged action, and
+/// the last round's diplomacy.
+pub fn diplomacy_text(s: &CampaignSession) -> String {
+    use std::fmt::Write;
+    let c = &s.campaign;
+    let mut t = format!("Diplomacy  -  round {}\n", c.round());
+    let Some(p) = c.player() else {
+        return t;
+    };
+    let name = |n: usize| nation_name(c.content(), Some(n));
+    let _ = writeln!(t, "You ({}): betrayals {}, treasury {} Alloy", name(p), c.betrayals(p), c.nations()[p].treasury);
+    let _ = writeln!(t, "Your ally: {}", c.ally_of(p).map_or("none", name));
+    t.push('\n');
+    for n in 0..c.nations().len() {
+        if n == p {
+            continue;
+        }
+        let mark = if s.cursor.rival == Some(n) { "> " } else { "  " };
+        let st = c.standing(p, n).map_or("-".to_string(), |x| x.to_string());
+        let _ = write!(t, "{mark}{}: {st}, betrayals {}", name(n), c.betrayals(n));
+        if !c.nations()[n].alive {
+            t.push_str(", fallen");
+        }
+        if let Some(a) = c.ally_of(n) {
+            let _ = write!(t, ", allied with {}", name(a));
+        }
+        if s.cursor.incite == Some(n) {
+            t.push_str("  [incite: pick the second]");
+        }
+        t.push('\n');
+    }
+    if let Some(d) = &s.diplomatic {
+        let _ = writeln!(t, "\nAction: {}", decision_text(c, d));
+    }
+    if let Some(rep) = &s.report {
+        if !rep.diplomacy.is_empty() {
+            let _ = writeln!(t, "\nRound {} diplomacy", rep.round);
+            for r in &rep.diplomacy {
+                let _ = writeln!(t, "  {}", record_text(c, r));
+            }
+        }
+    }
+    t.push_str("\nUp/Down rival  C court  A ally  K ask  B betray  I incite (two)  Backspace clear  Esc map\n");
+    t
 }
 
 /// The map screen's text: the round, the cities (holder, capital,
@@ -526,6 +693,9 @@ pub fn map_text(s: &CampaignSession) -> String {
         );
     }
     t.push_str("\nOrders\n");
+    if let Some(d) = &s.diplomatic {
+        let _ = writeln!(t, "  {}", decision_text(c, d));
+    }
     if let Some(id) = s.cursor.army {
         let to = s.target_city().map_or("(Left/Right)", |k| city_name(c, k));
         let _ = writeln!(t, "  army {id} -> {to}");
@@ -559,7 +729,7 @@ pub fn map_text(s: &CampaignSession) -> String {
         }
     }
     t.push_str(
-        "\nTab army  Left/Right target  M march  Up/Down city  R raise  Backspace clear  Enter end turn\n",
+        "\nTab army  Left/Right target  M march  Up/Down city  R raise  Backspace clear  D diplomacy  Enter end turn\n",
     );
     t
 }
