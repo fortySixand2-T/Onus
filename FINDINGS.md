@@ -7715,3 +7715,355 @@ removed (P5). So the garrison of an absorbed city is the only case this reaches.
   - without the garrison clamp it fails: "garrison holds a unit at 120 HP over its holder's pool 100";
   - without the building clamp it fails: "holds a building at 10920 HP over its holder's pool 8400".
 - The campaign golden does not move (0x1600ef997dbf8728). No other golden moves.
+
+## F-094 — C5 starts ahead of B5, by the user's decision (C5)
+
+**Context.** `CAMPAIGN_PLAN.md` gates C1 onward on B5 Go, the human play test, which has not
+run. The user overrode that gate for C1 (2026-11-02), C2 (2026-11-03, F-062), C3 (2026-11-04,
+F-075) and C4 (2026-11-07, F-088). On 2026-11-08 the user said "merge after ci, then start c5".
+
+**Decision.** C5 (diplomacy) starts now, on the same terms as C1 to C4: B5 still runs when the user
+can play, and its findings can revise C1 to C5 and later milestones. The C5 heading in
+`CAMPAIGN_PLAN.md` now says "started 2026-11-08, ahead of B5 by user decision", and the plan's gate
+section records the override. C5's five items are written there as eight testable ACs.
+
+**What this does not change.** The open boxes stay open: C1's B5 human re-read, C2's nation cross
+gate (F-074) and C4's campaign balance (F-091). Diplomacy is opt-in through campaign content, in a
+new `assets/data/diplomacy.ron` that a campaign takes on only when asked. So the shipped
+`campaign.ron`, its fingerprint and C4's campaign golden (0x1600ef997dbf8728) do not move, and nor
+does any battle golden.
+
+## F-095 — C5 provisional readings of the diplomacy rules (C5)
+
+C0's "Diplomacy" rules and the nation sheets' "Disposition" lines name the mechanics but not every
+detail. Where they are silent, C5 takes the simplest reading below. **Each one is provisional:** B5,
+C6 or a design pass may revise it. Every number lives in `assets/data/diplomacy.ron`.
+
+**Content (AC1).**
+- D1. Diplomacy ships in its own file, `diplomacy.ron`, which a campaign takes on only when asked
+  (`CampaignContent::with_diplomacy`, `shipped_with_diplomacy`). The brief's sketch put the
+  dispositions in `nations.ron` and the rules in `campaign.ron`. Either would move a pinned
+  fingerprint: the battle content's (every battle golden) or the campaign's (C4's golden). Its
+  fingerprint is mixed into the campaign content's only when it is attached, so a plain campaign's
+  fingerprint is exactly C4's.
+- D2. Standing is per **pair** and symmetric: "every nation's standing towards you drops one step" is
+  then the pair's standing. A pair's start is the default standing (Neutral) unless a disposition
+  names the other nation, and when both do, the more hostile listing stands. No pair may start
+  Allied, and nor may the default.
+- D3. The shipped dispositions turn the sheets' prose into numbers (none was in the brief):
+  - House: no listing, `ally_bias` 0, tolerance 1. "Everyone distrusts you" is House starting
+    Neutral with everyone, never Tied.
+  - Forgeborn: Hostile towards House, bias −2, tolerance 0. "Never ally with you until you are big
+    enough to fear" has no fear term; they are simply slow to trust.
+  - Verdant: bias 2, tolerance 1 ("greedy, can be bought").
+  - Aetherkin: bias 1, tolerance 1 ("the most reasonable house; it can be Tied").
+  - Tollmarch: bias 2, tolerance 2 ("sells alliances, switches sides").
+  - Ashen Reach: bias 1, tolerance 0 ("may ally with you"; the story thread is not modelled).
+- D4. `betrayal_tolerance` is how many betrayals a nation **forgives**: it refuses every offer from a
+  nation whose betrayal count is above it. The sketch's name allows the other reading, how readily
+  the nation itself betrays. That reading was not taken, because the AI's own betrayal rule is
+  fixed (AC6).
+- D5. `ally_cap` is RON, but it is validated at most 1, because C0 makes the cap a hard rule ("a
+  scalpel, not a win button"). `destabilize_requires_tied` is validated from 2 (you incite two
+  nations) up to the number of other nations.
+- D6. Values the brief lacks, all new RON, and all placeholders for the sims to tune:
+  - `actions_per_round` 1 (C0's "one diplomatic action per round");
+  - `court_cost` 100, `ally_cost` 150 and `incite_cost` 200 treasury Alloy (a city's levy is 40–60 a
+    round, and a General costs 300);
+  - `court_threshold` 1, `ally_threshold` 3, `notice_per_city` 1 and `war_rounds` 4.
+
+**Alliance (AC3).**
+- D7. Willingness of nation *n* towards *m* = *n*'s `ally_bias` + the pair's standing rank (Hostile 0,
+  Neutral 1, Tied 2) − `notice_per_city` × the cities *m* holds above *n*'s own (never negative).
+  It is C0's "hostility grows with your size" made per pair and measured in cities.
+- D8. An AI accepts a courting at willingness ≥ `court_threshold`, and an alliance at ≥
+  `ally_threshold` when the pair is Tied and it is under the cap. An abstaining nation accepts
+  nothing. The player is never asked: C5 has no client, so an offer to the player would need an
+  answer the save cannot hold yet. The AI never offers to him (AC6).
+- D9. A refused offer is a recorded outcome, not an error. It uses the actor's one action and costs
+  nothing. An unpayable, unreachable (courting past Tied, an alliance short of Tied or over the cap)
+  or malformed action is a refused decision, and the round does not happen.
+- D10. "Allies never fight" is read narrowly: an army at its ally's city is a guest, and no battle is
+  fought there. An ally does **not** join the defence of its ally's city. Joint battles need the
+  battle layer's third side, which C5 does not have.
+- D11. "Ask an AI ally to attack" steers every one of the ally's ready armies at the target's
+  capital for `war_rounds` rounds, the asking round counted as the first. It may be asked only
+  against a living nation allied with neither of the two. A player ally cannot be steered, so the
+  ask is recorded and does nothing. An ally's army that already marched that round turns at its next
+  city.
+- D12. An AI may stand ready at its ally's city as well as its own, and it never aims at an ally's
+  capital. The C4 march rule is otherwise unchanged.
+- D13. When either nation falls its alliance ends, and the pair (now one nation) drops to Tied. Any
+  war steered by or at the fallen nation ends.
+- D14. The player wins when he stands and every other nation still standing is his ally (a
+  diplomatic victory). AI nations do not win this way: two AI allies left alone fight on, and AC6's
+  betrayal rule settles it.
+
+**Betrayal (AC4).**
+- D15. A betrayal is an action (it uses the round's one), free, and needs no answer. It sets the pair
+  Hostile at once, so the round's battles treat the two as enemies. The betrayer's armies standing in
+  the old ally's cities assault them, and the old ally's armies standing in the betrayer's cities do
+  the same. C0 names only the first; the second is the same rule seen from the other side.
+- D16. "Every nation's standing towards you drops" covers every other **living** nation, and the
+  victim is set to Hostile instead. Fallen nations keep their last standing. It is never read again.
+- D17. A nation refuses every offer, courting and alliance alike, from a nation whose betrayal count
+  is above its `betrayal_tolerance`. Betrayal counts never decay.
+
+**Destabilize (AC5).**
+- D18. Inciting needs the inciter Tied with at least `destabilize_requires_tied` living nations, and
+  both nations it incites must be among them. Allied does not count as Tied. The two nations must
+  differ and must not be allies of each other. It is paid in full, and it needs no answer: C0 makes
+  it the inciter's act alone.
+- D19. The incited pair goes Hostile. Each AI of the two is steered at the other's capital for
+  `war_rounds` rounds (the AC3 steering rule), and a new steer replaces an old one. A player who
+  is incited only has his standing changed. The inciter's standing towards both is untouched, and
+  so are its armies.
+
+**Diplomatic AI (AC6).**
+- D20. An AI nation takes its diplomatic action before its C4 decisions, so money it spends is gone
+  before it decides to raise a General. That is the AI's whole trade-off: diplomacy against armies.
+- D21. The fixed order is betray, ally, ask, incite, court, and the first rule that applies acts:
+  - **betray** its ally once that ally is its only living rival (C0 and the AC);
+  - **ally** with the Tied nation it is most willing towards, if its own willingness reaches
+    `ally_threshold` and the other would accept;
+  - **ask** its AI ally, if the ally is not already steered, to attack the living nation, allied with
+    neither, whose capital is nearest its own by road;
+  - **incite** the not-allied pair of Tied nations holding the most cities, neither already steered;
+  - **court** the most willing nation below Tied, if its willingness reaches `court_threshold` and
+    the other would accept.
+
+  Ties go to the lower nation index. It never makes an offer it knows will be refused, so it never
+  makes one to the player, and it never acts when it cannot pay. It may still ask its ally to attack
+  the player, and it may incite the player against another nation, since neither is an offer.
+- D22. The AI's thresholds are the acceptance thresholds: a nation offers what it would accept. It
+  reads the campaign through `&Campaign`, so it cannot draw from the rng.
+- D23. Passive (answers offers but never acts) is a test lever beside abstaining. It is not in the
+  file and not a disposition.
+
+**Saved and hashed (AC7).**
+- D24. The state hash takes the diplomatic state only when the campaign has diplomacy, after
+  everything C4 hashes, so a campaign without it hashes exactly as in C4. That state is every
+  pair's standing, every betrayal count, every steered war (target and last round) and the number
+  of actions recorded. Like the battle history, the record of actions is counted, not hashed in
+  full; its effects are hashed. The per-round action count is zero between rounds and is not
+  hashed.
+- D25. The save format stays version 1. The new `Decision` variants serialize like the old ones, and
+  a save played with diplomacy carries the diplomatic campaign fingerprint, so content without it
+  refuses the save, and so does content with other diplomacy numbers. A C4 save is unchanged and
+  still loads.
+
+## F-096 — C5 AC8 reading: the diplomacy balance sim runs, and it reads Fail (C5)
+
+**What ran.** `tests/c5_balance.rs::the_diplomacy_balance_reading` (`#[ignore]`; `ONUS_C5_SEEDS`,
+`ONUS_C5_THREADS`), on the box, 60 seeds × 14 profiles = 840 AI-only campaigns on the battle sim,
+898 s at two threads. A 20-seed run gave the same picture (Aetherkin better in 3 of 40, Tollmarch
+0/5/15 among diplomats). The profiles per seed are: every nation diplomatic; each nation abstaining
+alone (6); every nation abstaining; each nation diplomatic alone (6). A nation's placement is 1 plus
+the number of nations that outlasted it (the winner places 1; nations that fall in the same round
+place the same).
+
+**Reading (60 seeds).** Each nation is compared in two contexts: among diplomats (every nation
+engaged vs every nation but it) and among abstainers (it alone engaged vs every nation abstaining).
+Counts are its own placement better / same / worse with its diplomacy.
+
+| nation | among diplomats | among abstainers | diplomacy is |
+|---|---|---|---|
+| house | 0/60/0 | 0/60/0 | no effect |
+| forgeborn | 0/60/0 | 0/60/0 | no effect |
+| verdant | 0/60/0 | 0/60/0 | no effect |
+| aetherkin | 18/42/0 | 0/60/0 | **dominant** |
+| tollmarch | 0/17/43 | 0/8/52 | only a cost |
+| ashen_reach | 0/60/0 | 0/60/0 | no effect |
+
+| group | distinct outcomes | diplomatic actions | wins |
+|---|---|---|---|
+| all engaged | 14 of 60 | 703 | aetherkin 43, tollmarch 13 |
+| one abstaining | 21 of 360 | 3186 | aetherkin 161, tollmarch 191 |
+| all abstaining | 1 of 60 | 0 | tollmarch 60 |
+| one engaged | 11 of 360 | 1060 | aetherkin 104, tollmarch 242 |
+
+**Verdict: Fail** — `aetherkin: diplomacy is dominant (better in 18, never worse, of 120)`. The first
+half of the pass condition holds (diplomacy changes outcomes: it turns Tollmarch's sure win into
+Aetherkin's in most diplomatic campaigns); the second does not. AC8 stays unticked.
+
+**What the numbers say, honestly.**
+- Diplomacy is not a choice for anyone yet. For Aetherkin it is free upside; for Tollmarch, the
+  nation that wins without diplomacy, its own diplomacy only ever costs it (it spends the treasury it
+  would raise Generals with, D20). For the other four it never changes their placement.
+  *Corrected after critic r1 (F-097 #4): the reasons differ by nation, and "they fall early whatever
+  anyone does" was wrong for Verdant. Forgeborn cannot take part on the shipped numbers. Ashen Reach
+  falls in round 2, before it can act. House only courts. Verdant acts (courts, allies, asks), changes
+  who wins, and falls later, but its place does not change.*
+- **F-091 limits this measurement.** With every nation abstaining the seed produces one outcome in
+  60 campaigns, so "60 seeds" are not 60 independent samples of a campaign; they are one campaign
+  plus whatever variety diplomacy itself introduces. The 18-of-120 dominance for Aetherkin is a
+  count over seeds that diplomacy perturbs differently, not over different wars. The reading is
+  honest about what the shipped campaign does, but it cannot say whether diplomacy would be dominant
+  on a campaign where the seed matters. I have not tuned around it.
+- The "among abstainers" context barely moves for anyone but Tollmarch: a lone diplomat with
+  passive neighbours gains nothing it did not gain anyway.
+
+**Not done, deliberately.** No diplomacy number, base unit stat or C4 lever was tuned. Candidate
+levers for the user, if wanted: Aetherkin's `ally_bias` and the thresholds/costs in
+`diplomacy.ron`; or first fixing F-091 so the seed varies campaigns, then re-reading.
+
+**Provisional readings (the user's call).**
+- D26. Placement is 1 + the number of nations that outlasted it (fell later or never fell);
+  nations falling in the same round tie, and every nation standing at the end places 1.
+- D27. "Each nation diplomatic alone" plays the others **passive** (they answer offers, take no
+  initiative), not abstaining. With the others abstaining a lone diplomat can do nothing at all
+  (every offer is refused; incite needs Tied standings), so that context would be "no effect" by
+  construction; the first 20-seed run confirmed it (all 0/20/0).
+- D28. *(Verdict superseded by D31, F-097 #4.)* Dominant = across both contexts and all seeds, its placement with diplomacy is never worse
+  and at least once better. "Only a cost" = never better, sometimes worse; "a choice" = both;
+  "no effect" = neither. The verdict also fails if no profile ever changes any outcome.
+- D29. Each campaign plays to its own end (a sole survivor, or `campaign.ron`'s `round_cap`),
+  on the resolver the caller passes (the reading uses the headless battle sim). The batch runs on
+  threads and collects in seed-then-profile order, so its report does not depend on scheduling.
+
+## F-097 — Critic C5 round 1: fixes and readings (C5)
+
+**1. The diplomatic record is hashed in full (AC7).** `DiploState::hash_into` hashed only how many
+actions had been recorded. So a refused court to Forgeborn and a refused court to the Reach left the
+same hash, and a save edited from one to the other loaded cleanly
+(`tests/critic_c5.rs::critic_a_changed_refused_offer_diverges_at_its_round`). Each record is now
+hashed (round, actor, answer, the act's kind and its nations), in the order the actions were taken.
+The unit test `standings_betrayals_and_wars_are_in_the_state_hash` now shows every field reaching the
+hash. **Pins:** no C5 test pins a hash value, so nothing was re-pinned. C4's golden 0x1600ef997dbf8728
+is unchanged: a campaign without diplomacy hashes nothing diplomatic (`tests/c5_golden.rs`). A
+diplomatic campaign's per-round hashes change from round 1 on, wherever any action has been
+recorded; saves from before this commit were never shipped.
+
+**2. The answering nation's cap is gated (AC3).** `accepts` refuses an alliance when the answering
+nation is already at `ally_cap`. No test held that rule on its own: the old assert in
+`an_alliance_needs_tied_standing_one_action_a_round_and_the_cap_of_one` was also satisfied because
+that pair was not Tied. The new test `tests/c5_alliance.rs::a_tied_and_willing_nation_already_at_the_cap_refuses_an_alliance`
+starts Verdant Tied with Aetherkin and willing. Verdant would accept an alliance (the control), and
+refuses once House is its ally. Removing the cap check from `accepts` fails this test (mutation run on
+the box). The critic's property sweep `critic_diplomatic_invariants_hold_every_round` is in
+`tests/critic_c5.rs`. Over 12 seeds × 3 player settings it saw 668 battles, 728 alliance-rounds and 17
+betrayals.
+
+**3. "The inciter commits nothing" is gated for an AI inciter (AC5).**
+`critic_an_ai_inciter_is_never_steered_by_its_incite` and `critic_an_incited_pair_fights_each_other`
+are in `tests/critic_c5.rs`. A mutation that sets the inciter's own war target fails the first one (run
+on the box). **How often the AI incites** (`by_numbers` resolver unless stated; counts are AI incites /
+campaigns with at least one):
+
+| campaigns | AI incites |
+|---|---|
+| AI-only, seeds 1–64 | 0 / 0 |
+| AI-only, battle sim, seeds 1–16 | 3 / 3 |
+| player House, seeds 1–64 | 0 / 0 |
+| player Tollmarch, seeds 1–64 | 94 / 64 |
+| player Verdant, seeds 1–64 | 34 / 34 |
+
+So in AI-only play the AI's incite rule almost never fires. Being Tied with two nations needs two
+accepted courts, and one is usually spent on an alliance first. The rule fires mostly when a player
+stands in for a nation that would otherwise have been someone's ally. The AC8 batch (AI-only) therefore
+measures incite barely at all.
+
+**6. Validated diplomacy is read-only after load (AC1).** `DiplomacyContent`'s `default_standing`,
+`dispositions` and `rules` were public. So a loaded content could be edited, for example to
+`ally_cap = 2`, a value the loader refuses, and still play under the fingerprint taken at load. The
+fields are now private, with the read accessors `default_standing()`, `dispositions()` and `rules()`.
+A `compile_fail` doctest on `DiplomacyContent` holds that the edit no longer compiles.
+`critic_validated_rules_cannot_be_changed_after_load_under_the_same_fingerprint` (in
+`tests/critic_c5.rs`) is adapted because its literal edit cannot compile. It now checks the one
+remaining route, the file: a cap of 2 is refused at load, and a valid change of a number changes the
+fingerprint. Only the engagement levers (abstain, passive) can change after load, and the fingerprint
+mixes them in. **Follow-up, not done (C4's code, left unchanged as instructed):** `CampaignContent`
+has the same pattern. `rules`, `ai`, `cities`, `roads` and the rest are public and mutable after
+`campaign.ron` is validated, while its fingerprint is taken at load.
+
+**7. A betrayer's assault is not pre-empted (AC4). Fixed, not pinned.** C4 fights one battle per city
+per round. The attacker is the first nation in the round's order with an army at a city it does not
+hold, and others wait. So when a third nation was also assaulting the old ally's city that round and
+came earlier in the order, the betrayer waited. That contradicts AC4's "the betrayer's armies standing
+in the old ally's cities assault them that round". The rule now reads: in the round a nation betrays
+the holder, its army at the holder's city takes that city's battle, whatever the order. Other hostile
+nations there wait, as under C4. Without diplomacy there are no betrayals, so C4's rule and golden are
+untouched. Test: `tests/c5_betrayal.rs::the_betrayers_assault_is_not_preempted_by_another_nations_assault_that_round`.
+On a small line map (home – Aetherkin's capital – Tollmarch's), it searches 24 seeds for rounds where,
+without the betrayal, Tollmarch would have assaulted the city House stands in as a guest. It found 720
+such rounds. Before the fix it failed (seed 1, round 4: Tollmarch fought). **Provisional (D30):** the
+betrayer's priority lasts only the betrayal round. From the next round on, it queues by turn order like
+any hostile nation.
+
+**5. Disposition prose the C5 model does not carry: provisional gaps, for the user (AC6).** The
+model has four levers per nation: a starting `towards` list, `ally_bias`, `betrayal_tolerance`, and
+the one notice rule shared by every nation. Each line of the brief's nation dispositions
+(DESIGN_BRIEF.md, nations section), against what C5 does:
+
+- **House: "everyone distrusts you, and the Forgeborn hate you."** Only the Forgeborn half is
+  modelled (`towards: [("house", Hostile)]`). Every other nation starts Neutral with House, like any
+  pair. "Distrust" has no lever beyond `default_standing`.
+- **Forgeborn: "Hostile to you. They never ally with you until you are big enough to fear."**
+  - The Hostile start is modelled. "Big enough to fear" is not, and the shared notice rule works
+    against it: a bigger House makes Forgeborn *less* willing (willingness = −2 + rank −
+    notice × House's cities above Forgeborn's).
+  - Not fixed: AC6 as written specifies the notice rule for every nation ("a grown one finds few
+    friends"). So this is a per-nation exception the AC does not carry, not an inversion of the AC's
+    rule. Modelling it needs a new disposition field, such as a per-nation sign or a fear threshold on
+    notice, and its value is a design choice.
+  - Separately, Forgeborn cannot take part in diplomacy at all on the shipped numbers. Its best
+    willingness, Tied and no notice, is −2 + 2 = 0, below `court_threshold` 1. So it never courts,
+    accepts, becomes Tied, allies or incites.
+  - Whether that is intended is the user's decision. Nothing is retuned, and
+    `tests/critic_c5.rs::critic_forgeborn_can_take_part_in_diplomacy` is `#[ignore]`d to document
+    the question.
+- **Verdant: "greedy, and can be bought into an alliance."** Modelled only as `ally_bias` 2, the
+  highest. Costs are burned, not paid to the nation answering. Nothing is bought.
+- **Aetherkin: "the most reasonable house. It can be Tied if you avoid the ley-wells."** Modelled
+  only as `ally_bias` 1. The campaign map has no ley-wells, so the condition has nothing to read.
+- **Tollmarch: "neutral to all. They sell alliances, and switch sides for a better offer."**
+  - "Neutral to all" and "sell" are modelled as `ally_bias` 2 and the costs.
+  - "Switch sides" is not. An allied nation refuses every other alliance (the cap), and nothing ever
+    breaks an alliance except a betrayal or a fall. No rule lets Tollmarch leave its ally for a
+    better offer.
+- **Ashen Reach: "may ally with you if you seek the truth of the Rupture. This is a story thread."**
+  Not modelled (C6 story beats). It has `ally_bias` 1, like Aetherkin. In AI-only campaigns it falls
+  in round 2, before it can act (`tests/critic_c5_balance.rs`, seeds 1–3, every profile).
+
+**4. AC8: the reading is redefined, and the attributions are corrected.**
+- **(a) Definition (provisional, D31).** The old verdict passed any world where diplomacy was "only a
+  cost" or "no effect" for every nation. That is narrower than AC8's "a choice or a dominant
+  strategy". The reading now fails if diplomacy is dominant for any nation (never worse, sometimes
+  better), **or** if it is a choice for none, a choice meaning sometimes better and sometimes worse.
+  It still fails, first, if diplomacy changes no outcome at all. Fast tests:
+  `tests/c5_balance.rs::the_verdict_names_a_dominant_nation_and_a_reading_without_effect`, where an
+  only-a-cost world now fails and a world with one real choice passes.
+- **(b) Finer measure, reported but not gated (D32).** This is the place, with a shared place broken
+  by the round the nation fell (later is better). AC8 gates on placement, so the verdict stays on
+  placement. The finer measure is printed beside it because placement is too coarse for nations that
+  fall in every campaign. Test: `the_finer_measure_breaks_a_shared_place_by_the_round_a_nation_fell`.
+
+**AC8 re-read, 60 seeds × 14 profiles = 840 AI-only campaigns, battle sim, 902 s.** The placement
+columns are identical to F-096's run, so the betrayal fix (#7) moved nothing here.
+
+| nation | placement: diplomats | placement: abstainers | class | finer: diplomats | finer: abstainers | finer class |
+|---|---|---|---|---|---|---|
+| house | 0/60/0 | 0/60/0 | no effect | 0/60/0 | 0/60/0 | no effect |
+| forgeborn | 0/60/0 | 0/60/0 | no effect | 0/60/0 | 0/60/0 | no effect |
+| verdant | 0/60/0 | 0/60/0 | no effect | 60/0/0 | 60/0/0 | **dominant** |
+| aetherkin | 18/42/0 | 0/60/0 | **dominant** | 19/41/0 | 33/27/0 | **dominant** |
+| tollmarch | 0/17/43 | 0/8/52 | only a cost | 0/17/43 | 0/8/52 | only a cost |
+| ashen_reach | 0/60/0 | 0/60/0 | no effect | 0/60/0 | 0/60/0 | no effect |
+
+**Verdict: Fail.** The message is "no nation has a choice: diplomacy is never better for a nation in
+one campaign and worse in another; aetherkin: diplomacy is dominant (better in 18, never worse, of
+120)". AC8 stays unticked, and nothing was tuned. By the finer measure the picture is starker: Verdant
+does better with its own diplomacy in all 120 comparisons, because it falls later (for example round 9
+instead of 7). Its place does not change only because the nations that outlast it are the same two.
+
+**Who acts, and why four nations read "no effect"** (`tests/critic_c5_balance.rs`,
+`CRIT_SEEDS=3`, every profile):
+- **Forgeborn never acts.** It cannot, on the shipped numbers (#5). Its "no effect" holds by
+  construction, not as a result.
+- **Ashen Reach falls in round 2 in every campaign**, before it can act.
+- **House** courts once and does no more. It falls in round 5 whatever anyone does.
+- **Verdant acts.** It courts, allies (with Tollmarch or Aetherkin) and asks. Whether it engages
+  decides the winner on these seeds: with Verdant diplomatic, Aetherkin wins; with Verdant abstaining,
+  Tollmarch wins. F-096's "they fall early whatever anyone does" was wrong for Verdant.
+- **F-091 still bounds all of this.** With every nation abstaining, the 60 seeds give one outcome, so
+  the counts are over the variety that diplomacy introduces, not over independent wars.

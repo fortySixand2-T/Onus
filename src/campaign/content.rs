@@ -22,6 +22,8 @@ use serde::Deserialize;
 use crate::sim::content::Content;
 use crate::sim::three::EconomyMode;
 
+use super::diplomacy::DiplomacyContent;
+
 /// Per-mille scale for every multiplier in this file (1000 = x1).
 pub const MILLI: u32 = 1000;
 
@@ -264,6 +266,12 @@ pub struct CampaignContent {
     pub logistics_general: usize,
     /// Resolved: per nation, its repair multiplier (per mille).
     pub repair_milli: Vec<u32>,
+    /// C5: the campaign's diplomacy, if it takes one on (opt-in, through
+    /// [`with_diplomacy`](Self::with_diplomacy)).
+    diplomacy: Option<DiplomacyContent>,
+    /// The parsed `campaign.ron`'s hash: the whole fingerprint when there is
+    /// no diplomacy (so C4's campaigns keep theirs).
+    file_fp: u64,
     fingerprint: u64,
 }
 
@@ -630,6 +638,8 @@ impl CampaignContent {
             nation_general,
             logistics_general,
             repair_milli,
+            diplomacy: None,
+            file_fp: fingerprint,
             fingerprint,
         })
     }
@@ -638,6 +648,26 @@ impl CampaignContent {
     /// (floats by their exact shortest rendering), never 0.
     pub fn fingerprint(&self) -> u64 {
         self.fingerprint
+    }
+
+    /// This campaign with `diplomacy` (C5): its fingerprint joins the
+    /// campaign's. Without it (the C4 default) the campaign has none.
+    pub fn with_diplomacy(mut self, diplomacy: DiplomacyContent) -> Self {
+        let mut h = Fnv::default();
+        h.u64(self.file_fp).u64(diplomacy.fingerprint());
+        self.fingerprint = h.finish();
+        self.diplomacy = Some(diplomacy);
+        self
+    }
+
+    /// The campaign's diplomacy, if it took one on.
+    pub fn diplomacy(&self) -> Option<&DiplomacyContent> {
+        self.diplomacy.as_ref()
+    }
+
+    /// The shipped campaign with the shipped diplomacy.
+    pub fn shipped_with_diplomacy(content: &Content) -> Result<Self, CampaignError> {
+        Ok(Self::shipped(content)?.with_diplomacy(DiplomacyContent::shipped(content)?))
     }
 
     pub fn city_index(&self, id: &str) -> Option<usize> {

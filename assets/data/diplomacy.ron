@@ -1,0 +1,72 @@
+// diplomacy.ron — the campaign's diplomacy (C5): each nation's disposition and
+// every diplomacy rule. DESIGN_BRIEF "Diplomacy" and the nation sheets'
+// "Disposition" lines; CAMPAIGN_PLAN C0 "Diplomacy rules" and C5. Loaded by
+// src/campaign/diplomacy.rs and validated against the battle content
+// (nations.ron); a bad name or number is a load error.
+//
+// OPT-IN. A campaign takes this file on only when asked
+// (CampaignContent::with_diplomacy / shipped_with_diplomacy). Without it a
+// campaign plays exactly as C4, and campaign.ron's fingerprint (C4's golden)
+// does not move. With it, its fingerprint joins the campaign content's.
+//
+// SCHEMA NOTE (C5).
+//   default_standing — where a pair of nations starts when neither names the
+//                  other: Hostile, Neutral or Tied (never Allied: alliances
+//                  are made in play). Standing is per pair, ordered
+//                  Hostile < Neutral < Tied < Allied.
+//   dispositions — one per nations.ron nation:
+//     towards       — [(nation id, standing)]: who it hates or favours at the
+//                     start. When both nations name each other, the more
+//                     hostile standing stands. Never itself, never Allied.
+//     ally_bias     — added to its willingness towards every nation (whole
+//                     points; negative: slow to trust).
+//     betrayal_tolerance — how many betrayals it forgives: it refuses every
+//                     offer from a nation that has betrayed more often.
+//   rules:
+//     ally_cap      — allies at a time (C0: at most 1; validated <= 1).
+//     betrayal_standing_drop — steps every other nation's standing towards a
+//                     betrayer drops (>= 1; never below Hostile).
+//     destabilize_requires_tied — Tied nations a nation needs to incite two of
+//                     them to war (C0's "2 diplomacy"; >= 2).
+//     actions_per_round — diplomatic actions per nation per round (C0: 1).
+//     court_cost, ally_cost, incite_cost — treasury Alloy; court and ally are
+//                     paid only when the other accepts.
+//     court_threshold, ally_threshold — an AI accepts (and offers) a courting
+//                     or an alliance when its willingness reaches these.
+//                     Willingness = ally_bias + standing (Hostile 0, Neutral 1,
+//                     Tied 2) - notice.
+//     notice_per_city — notice: per city the other nation holds above this
+//                     one's, its willingness drops this much (C0: hostility
+//                     grows with your size).
+//     war_rounds    — rounds an incited or requested war steers an AI's
+//                     armies at its target's capital.
+(
+    default_standing: Neutral,
+    dispositions: [
+        // Everyone distrusts you (Neutral, never Tied at the start).
+        (nation: "house", towards: [], ally_bias: 0, betrayal_tolerance: 1),
+        // Hostile to you; they never ally readily, and never forgive.
+        (nation: "forgeborn", towards: [("house", Hostile)], ally_bias: -2, betrayal_tolerance: 0),
+        // Greedy: can be bought into an alliance.
+        (nation: "verdant", towards: [], ally_bias: 2, betrayal_tolerance: 1),
+        // The most reasonable house: it can be Tied.
+        (nation: "aetherkin", towards: [], ally_bias: 1, betrayal_tolerance: 1),
+        // Neutral to all; sells alliances; business is business.
+        (nation: "tollmarch", towards: [], ally_bias: 2, betrayal_tolerance: 2),
+        // May ally with you if you seek the truth of the Rupture.
+        (nation: "ashen_reach", towards: [], ally_bias: 1, betrayal_tolerance: 0),
+    ],
+    rules: (
+        ally_cap: 1,
+        betrayal_standing_drop: 1,
+        destabilize_requires_tied: 2,
+        actions_per_round: 1,
+        court_cost: 100,
+        ally_cost: 150,
+        incite_cost: 200,
+        court_threshold: 1,
+        ally_threshold: 3,
+        notice_per_city: 1,
+        war_rounds: 4,
+    ),
+)

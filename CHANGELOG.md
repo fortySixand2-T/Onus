@@ -945,3 +945,63 @@
 - [2026-11-08] Modified: tests/c4_siege.rs — C4 pool invariant covers buildings, garrisons and armies; a scenario that reaches an attacked, garrisoned, absorbed city
 - [2026-11-08] Modified: FINDINGS.md — F-093 critic C4 round 2 fix
 - [2026-11-08] Modified: CAMPAIGN_PLAN.md — C4 AC1–AC11 ticked after critic PASS (round 3); AC12 balance sim left open
+- [2026-11-08] Modified: CAMPAIGN_PLAN.md — C5 started ahead of B5 (user override recorded in the gate); C5's five items written as eight testable ACs
+- [2026-11-08] Modified: FINDINGS.md — F-094 C5 starts ahead of B5 by the user's decision
+- [2026-11-08] Created: assets/data/diplomacy.ron — C5 diplomacy content: dispositions and rules (opt-in)
+- [2026-11-08] Created: src/campaign/diplomacy.rs — C5 diplomacy content loader and validation; Standing
+- [2026-11-08] Modified: src/campaign/content.rs — CampaignContent::with_diplomacy; diplomacy fingerprint joins the campaign's
+- [2026-11-08] Modified: src/campaign/mod.rs — declare the diplomacy module
+- [2026-11-08] Created: tests/c5_content.rs — C5 AC1 diplomacy content tests
+- [2026-11-08] Modified: DESIGN_BRIEF.md — diplomacy.ron data shape (C5)
+- [2026-11-08] Modified: FINDINGS.md — F-095 C5 provisional readings (content)
+- [2026-11-08] Modified: src/campaign/mod.rs — C5 diplomatic Decision variants (Court, Ally, Ask, Betray, Incite); refused without diplomacy
+- [2026-11-08] Modified: src/campaign/diplomacy.rs — apply_diplomacy entry point
+- [2026-11-08] Created: tests/c5_golden.rs — C5 AC2 golden licence tests
+- [2026-11-08] Modified: src/campaign/diplomacy.rs — C5 diplomatic state, court/ally/ask, willingness, war targets, alliance end on a fall
+- [2026-11-08] Modified: src/campaign/mod.rs — C5 allies never fight, diplomatic victory, round report diplomacy records
+- [2026-11-08] Modified: src/campaign/ai.rs — C5 ally-aware readiness and targeting, steered wars
+- [2026-11-08] Created: tests/c5_alliance.rs — C5 AC3 alliance tests
+- [2026-11-08] Modified: FINDINGS.md — F-095 alliance readings (D7-D14)
+- [2026-11-08] Modified: src/campaign/diplomacy.rs — C5 betrayal: pair Hostile, standing drop, betrayal count, tolerance refusals
+- [2026-11-08] Created: tests/c5_betrayal.rs — C5 AC4 betrayal tests
+- [2026-11-08] Modified: FINDINGS.md — F-095 betrayal readings (D15-D17)
+- [2026-11-08] Modified: src/campaign/diplomacy.rs — C5 destabilize (Incite): Tied-count gate, cost, pair Hostile, mutual steered wars
+- [2026-11-08] Created: tests/c5_destabilize.rs — C5 AC5 destabilize tests
+- [2026-11-08] Modified: FINDINGS.md — F-095 destabilize readings (D18-D19)
+- [2026-11-08] Modified: src/campaign/ai.rs — C5 decide_diplomacy: betray, ally, ask, incite, court in fixed order, no rng
+- [2026-11-08] Modified: src/campaign/mod.rs — C5 AI applies its diplomatic action before its C4 decisions
+- [2026-11-08] Modified: src/campaign/diplomacy.rs — C5 L1 tests for the diplomatic AI's rules and order
+- [2026-11-08] Created: tests/c5_ai.rs — C5 AC6 diplomatic AI tests
+- [2026-11-08] Modified: FINDINGS.md — F-095 diplomatic AI readings (D20-D23)
+- [2026-11-08] Modified: src/campaign/mod.rs — C5 state hash takes the diplomatic state when attached
+- [2026-11-08] Modified: src/campaign/diplomacy.rs — C5 DiploState::hash_into; hash unit test
+- [2026-11-08] Created: tests/c5_save.rs — C5 AC7 save/load/replay and divergence tests
+- [2026-11-08] Modified: FINDINGS.md — F-095 hash and save readings (D24-D25)
+- [2026-11-08] Modified: src/campaign/balance.rs — C5 diplomacy balance batch (profiles, placement, comparisons, verdict)
+- [2026-11-08] Created: tests/c5_balance.rs — C5 AC8 smoke tests and the ignored diplomacy balance reading
+- [2026-11-08] Modified: DESIGN_BRIEF.md — how diplomacy plays in C5 (provisional)
+- [2026-11-08] Modified: FINDINGS.md — F-096 C5 AC8 diplomacy balance reading (Fail)
+- [2026-11-09] Modified: src/campaign/diplomacy.rs — build DiplomacyContent as Self so critic_m5's Content-literal check passes
+- [2026-11-09] Modified: src/campaign/diplomacy.rs — hash every diplomatic record in full, not just the count
+- [2026-11-09] Created: tests/critic_c5.rs — critic C5 round 1 probes (changed refused offer diverges)
+- [2026-11-09] Modified: FINDINGS.md — F-097 critic C5 round 1: record hashing
+- [2026-11-09] Modified: tests/c5_alliance.rs — direct test of the answering nation's ally cap with a Tied, willing pair
+- [2026-11-09] Modified: tests/critic_c5.rs — critic r1 invariant sweep, incited pair fights, AI inciter never steered
+- [2026-11-09] Modified: FINDINGS.md — F-097 acceptor cap and inciter gates, AI incite frequency
+- [2026-11-09] Modified: src/campaign/diplomacy.rs — DiplomacyContent fields private with read accessors; compile_fail doctest
+- [2026-11-09] Modified: src/campaign/ai.rs — read diplomacy rules through the accessor
+- [2026-11-09] Modified: tests/c5_content.rs — read diplomacy content through accessors
+- [2026-11-09] Modified: tests/c5_ai.rs — read diplomacy rules through the accessor
+- [2026-11-09] Modified: tests/critic_c5.rs — validated rules cannot change after load (adapted)
+- [2026-11-09] Modified: FINDINGS.md — F-097 read-only diplomacy content; CampaignContent follow-up
+- [2026-11-09] Modified: src/campaign/diplomacy.rs — betrayer_this_round: the nation that betrayed a holder this round
+- [2026-11-09] Modified: src/campaign/mod.rs — in a betrayal round the betrayer's assault on its old ally's city comes first
+- [2026-11-09] Modified: tests/c5_betrayal.rs — betrayer's assault not pre-empted by another nation's (line map search)
+- [2026-11-09] Modified: FINDINGS.md — F-097 betrayal pre-emption fix (D30)
+- [2026-11-09] Modified: src/campaign/balance.rs — AC8 verdict also fails when no nation has a choice; finer measure (place, then fall round) reported
+- [2026-11-09] Modified: tests/c5_balance.rs — verdict and finer-measure tests
+- [2026-11-09] Modified: tests/critic_c5.rs — Forgeborn diplomacy test, ignored (documents an open user decision)
+- [2026-11-09] Created: tests/critic_c5_balance.rs — critic r1 ignored probe: who acts in each profile (loop rewritten for clippy only)
+- [2026-11-09] Modified: FINDINGS.md — F-097 AC8 redefinition and 60-seed re-read; F-096 attributions corrected; disposition gaps
+- [2026-11-09] Modified: CAMPAIGN_PLAN.md — C5 AC8 pass rule matches the redefined verdict (F-097 D31, provisional)
+- [2026-11-10] Modified: CAMPAIGN_PLAN.md — tick C5 AC1–AC7 after critic PASS and green gate060; AC8 (diplomacy balance) stays open
