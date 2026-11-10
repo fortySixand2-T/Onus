@@ -173,6 +173,30 @@ fn the_battle_ends_at_the_cap_and_the_round_resumes_with_the_field_as_it_stands(
     }
 }
 
+/// Critic C6 r1 #2: a tick cap of 0 (the content refuses it on load, but
+/// the rules are open to a caller) ends the battle at once, unplayed,
+/// rather than running the sim without end.
+#[test]
+fn a_tick_cap_of_0_ends_the_battle_at_once_with_no_tick_played() {
+    let mut app = app(session_capped(3, Some(0)));
+    press(&mut app, KeyCode::Enter);
+    // Holding round after round until a battle of the player's is played:
+    // each one ends in the frame it is fielded, so the client never rests
+    // on the Battle screen.
+    for _ in 0..40 {
+        if sess(&app).campaign.played().iter().any(|r| !r.is_empty()) {
+            break;
+        }
+        assert_ne!(screen(&app), Screen::Battle, "a battle on a cap of 0 is still on");
+        press(&mut app, KeyCode::Enter);
+    }
+    let played = last_played(&app);
+    assert_eq!(played.outcome.ticks, 0, "no tick was played");
+    assert_eq!(played.outcome.winner, None, "unplayed, the defender holds");
+    assert_eq!(app.world().resource::<onus::sim::MatchState>().tick(), 0, "the sim never ticked");
+    assert!(!app.world().resource::<TickGate>().is_open());
+}
+
 #[test]
 fn the_retreat_key_issues_the_c1_retreat() {
     let mut app = to_battle(3, None);

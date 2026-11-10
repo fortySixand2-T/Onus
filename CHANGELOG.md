@@ -1051,3 +1051,5 @@
 - [2026-11-10] Created: tests/c6/critic.rs — the critic's C6 r1 probes, moved from tests/critic_c6.rs into the c6_live binary
 - [2026-11-10] Deleted: tests/critic_c6.rs — folded into c6_live (disk)
 - [2026-11-10] Modified: tests/c6_live.rs — includes the critic probes
+- [2026-11-10] Modified: src/campaign_client.rs — a live battle counts the sim's own ticks (no phantom tick in the frame it is fielded); a tick cap of 0 ends the battle at once
+- [2026-11-10] Modified: tests/c6/battle.rs — a tick cap of 0 ends the battle at once with no tick played

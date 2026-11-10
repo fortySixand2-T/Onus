@@ -478,28 +478,38 @@ fn field_battle(world: &mut World) {
     crate::sim::replay::identify(world);
     let slot = |f: Faction| if f == Faction::A { 0 } else { 1 };
     let fielded = factions.map(|f| ids_of(world, &sides[slot(f)]));
+    let cap = campaign.rules.battle.tick_cap;
+    // A cap of 0 (the content refuses it on load; critic C6 r1 #2): the
+    // battle ends at once, unplayed, and the sim never runs.
+    let done = cap == 0;
     world.insert_resource(LiveBattle {
         plan,
         factions,
         fielded,
         ticks: 0,
-        cap: campaign.rules.battle.tick_cap,
-        done: false,
+        cap,
+        done,
     });
-    world.resource_mut::<TickGate>().open();
+    if !done {
+        world.resource_mut::<TickGate>().open();
+    }
 }
 
-/// In the sim schedule, after the tick: count it, and stop the sim once the
-/// battle layer has decided the battle or the cap is reached.
+/// In the sim schedule, after the tick: take the sim's own tick count, and
+/// stop the sim once the battle layer has decided the battle or the cap is
+/// reached. The count is the sim's (`MatchState`, fresh for each battle),
+/// never this system's runs: on any schedule, a run in a frame the sim did
+/// not tick counts nothing (critic C6 r1 #2).
 fn count_battle_tick(
     mut live: ResMut<LiveBattle>,
+    sim: Res<crate::sim::MatchState>,
     state: Option<Res<BattleState>>,
     mut gate: ResMut<TickGate>,
 ) {
     if live.done {
         return;
     }
-    live.ticks += 1;
+    live.ticks = sim.tick();
     let decided = state.is_some_and(|s| s.result().is_some());
     if decided || live.ticks >= live.cap {
         live.done = true;
