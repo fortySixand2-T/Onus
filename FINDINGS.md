@@ -8152,10 +8152,26 @@ may revise it.
 - S16. AI battles are resolved **in the frame**, so the window can pause while a round is played.
   Moving them off the main thread is left for later.
 
+**Readings taken while building (AC5, AC6, AC8).**
+- S17. The round's diplomatic action is played **first** among the player's decisions, as the AI's
+  is, so what it spends is gone before a General is raised.
+- S18. A round refused after some of its battles were played drops those outcomes; ending the turn
+  again pauses at them again. Decisions are checked before the first pause, so this is an edge case.
+- S19. The client's sim ticks **only during a live battle** (its gate is closed elsewhere). Each
+  battle is fielded in the client's own app on fresh match resources (the shared start,
+  `headless::populate`), and the field is cleared when it ends.
+- S20. A live battle is not tick-identical to the same plan in the headless resolver: the app
+  reuses entity slots, and the player commands instead of an AI. The campaign stays deterministic
+  because the save holds the played outcome (S10), not the battle's inputs. Recording a live
+  battle's orders for a battle replay is left for later.
+- S21. Beats a round triggers are queued after its report: the Story screen shows them, Enter
+  advances, and the map (or the Over screen) follows the last one.
+
 **For the user on the Mac (not judged by the harness; no AC is ticked on these):**
 - whether the map layout reads: city spacing, road lines, army markers, holder colours (P3);
 - whether the panels' text fits and reads at the window size;
 - the story text: its tone and pacing, and whether it carries the hook;
 - whether the battle camera frames the campaign battlefield (the bases are 1500 apart);
 - how long the window pauses while a round's AI battles resolve;
-- whether the keys feel right.
+- whether the keys feel right;
+- whether the battle panel (top left) hides any of the field, and how retreating feels.

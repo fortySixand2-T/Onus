@@ -1043,3 +1043,4 @@
 - [2026-11-10] Created: tests/c6/beats.rs — C6 AC8 tests: each round's beats show in order before the map; the loss beat shows before Over
 - [2026-11-10] Modified: tests/c6/diplomacy.rs — the courting loop reads past a round's story beats
 - [2026-11-10] Modified: tests/c6_live.rs — includes the beats module
+- [2026-11-10] Modified: FINDINGS.md — F-099 readings S17–S21 taken while building AC5, AC6 and AC8; Mac list adds the battle panel
