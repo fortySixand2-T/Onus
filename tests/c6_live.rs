@@ -18,6 +18,12 @@
 //! attacks or holds and it is fought (an undefended city is no battle); a
 //! played outcome is keyed by (round, city id); a pause is the round
 //! refused-and-replayed, so a client caches AI battles with `Memo`.
+//!
+//! The client's tests (C6 AC4 on) are modules of this binary, for the same
+//! reason: files under `tests/c6/` are not test targets of their own.
+
+#[path = "c6/client.rs"]
+mod client;
 
 use std::cell::RefCell;
 use std::path::PathBuf;

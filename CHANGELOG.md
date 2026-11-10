@@ -1017,3 +1017,10 @@
 - [2026-11-10] Modified: src/campaign/save.rs — C6 AC3: a live save carries its played battles (left out when empty, so a C4 save is written byte for byte as before) and resumes through step_round
 - [2026-11-10] Modified: src/campaign/battle.rs — C6 AC3: battle outcomes and played battles serialize
 - [2026-11-10] Modified: tests/c6_live.rs — C6 AC3: live saves resume, a changed outcome diverges, a missing one refuses, a save without live battles is unchanged
+- [2026-11-10] Created: src/campaign_client.rs — C6 AC4: campaign client logic (Screen states, CampaignSession, map keys staging Decisions, end turn via step_round, map/story/over text, MapLayout loader, `campaign` CLI argument)
+- [2026-11-10] Created: src/campaign_view.rs — C6 AC4: campaign client view (text panel, map gizmos for roads/cities/armies/cursor, city labels)
+- [2026-11-10] Created: assets/data/map_layout.ron — C6 AC4: campaign city positions for the map screen
+- [2026-11-10] Modified: src/lib.rs — registered campaign_client and campaign_view modules
+- [2026-11-10] Modified: src/main.rs — `cargo run -- campaign [seed]` opens the campaign client; `cargo run` is the skirmish as before
+- [2026-11-10] Created: tests/c6/client.rs — C6 AC4 tests (layout validation, CLI, screens, key staging, end turn, refused round, report)
+- [2026-11-10] Modified: tests/c6_live.rs — hosts the client test module (no new test binary)
