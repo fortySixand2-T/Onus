@@ -134,6 +134,10 @@ fn court_to_ally(app: &mut App) -> Option<usize> {
         }
         assert_eq!(sess(app).campaign.state_hash(), twin.state_hash(), "the client plays what was staged");
         assert_eq!(sess(app).diplomatic, None, "a played round clears the action");
+        // Past the round's story beats (AC8).
+        while screen(app) == Screen::Story {
+            press(app, KeyCode::Enter);
+        }
         if screen(app) == Screen::Map {
             press(app, KeyCode::KeyD);
         }

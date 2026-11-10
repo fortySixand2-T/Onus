@@ -1039,3 +1039,7 @@
 - [2026-11-10] Modified: tests/c6_live.rs — includes the battle module
 - [2026-11-10] Created: tests/c6/same.rs — C6 AC7 test: a client-driven campaign (keys, live battles decided, retreated and capped) hashes round for round as the headless feed, and its save resumes to the same hashes
 - [2026-11-10] Modified: tests/c6_live.rs — includes the same-campaign module
+- [2026-11-10] Modified: src/campaign_client.rs — C6 AC8: a played round's story beats wait on the Story screen, in order, before the map or the end
+- [2026-11-10] Created: tests/c6/beats.rs — C6 AC8 tests: each round's beats show in order before the map; the loss beat shows before Over
+- [2026-11-10] Modified: tests/c6/diplomacy.rs — the courting loop reads past a round's story beats
+- [2026-11-10] Modified: tests/c6_live.rs — includes the beats module

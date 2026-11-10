@@ -270,6 +270,10 @@ impl CampaignSession {
                 self.message = None;
                 self.report = Some(report);
                 self.cursor = MapCursor::default();
+                // The beats the round triggered wait on the Story screen,
+                // in order, ahead of the map (or the end).
+                let fired = self.progress.advance(&self.story, &self.campaign);
+                self.beats.extend(fired);
                 self.resting()
             }
             Ok(RoundStep::Battle(plan)) => {
