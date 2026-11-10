@@ -8067,3 +8067,95 @@ instead of 7). Its place does not change only because the nations that outlast i
   Tollmarch wins. F-096's "they fall early whatever anyone does" was wrong for Verdant.
 - **F-091 still bounds all of this.** With every nation abstaining, the 60 seeds give one outcome, so
   the counts are over the variety that diplomacy introduces, not over independent wars.
+
+## F-098 — C6 starts ahead of B5, by the user's decision (C6)
+
+**Context.** `CAMPAIGN_PLAN.md` gates C1 onward on B5 Go, the human play test, which has not
+run. The user overrode that gate for C1 (2026-11-02), C2 (2026-11-03, F-062), C3 (2026-11-04,
+F-075), C4 (2026-11-07, F-088) and C5 (2026-11-08, F-094). On 2026-11-10 the user said "merge after
+ci, then start c6".
+
+**Decision.** C6 (the campaign client) starts now, on the same terms as C1 to C5: B5 still runs when
+the user can play, and its findings can revise C1 to C6 and later milestones. The C6 heading in
+`CAMPAIGN_PLAN.md` now says "started 2026-11-10, ahead of B5 by user decision", and the plan's gate
+section records the override. C6's two items are written there as eight testable ACs.
+
+**What this does not change.** The open boxes stay open: C1's B5 human re-read, C2's nation cross
+gate (F-074), C4's campaign balance (F-091) and C5's diplomacy balance (F-096, F-097). The campaign
+and the battle sim stay render-free, and the client is a thin driver over them. The skirmish
+(`cargo run`) plays exactly as before. C4's campaign golden (0x1600ef997dbf8728) and every battle
+golden do not move. Story text and the map's layout are new RON files (`story.ron`,
+`map_layout.ron`) outside both content fingerprints. So no golden and no save fingerprint moves
+because of them.
+
+## F-099 — C6 provisional readings of the campaign client (C6)
+
+`CAMPAIGN_PLAN.md` C6 names the screens and the story beats but not their details. Where it is
+silent, C6 takes the simplest reading below. **Each one is provisional:** B5, C7 or a design pass
+may revise it.
+
+**The campaign the client plays (AC4).**
+- S1. The human plays **House Vael**, the heir: the hook is his story, and the story beats are
+  written for him. Every other nation is AI.
+- S2. The client's campaign is the shipped map **with diplomacy** (`shipped_with_diplomacy`), since
+  C6 has a diplomacy screen.
+- S3. The seed is a fixed constant (`CAMPAIGN_SEED`), and `cargo run -- campaign <seed>` overrides
+  it.
+- S4. The campaign is chosen on the **command line** (`cargo run -- campaign`), not from an in-game
+  menu. A menu would put a new screen in front of the skirmish, and the skirmish must play exactly as
+  before. `build_app()` is untouched.
+
+**Live battles (AC2, AC3, AC6).**
+- S5. A battle is **live** when the player's nation is its attacker or its holder and it is fought
+  (an undefended city falls without one, as in C4). An ally never joins a battle (C5 D10), so no
+  other battle involves the player.
+- S6. A played outcome is keyed by its **round and city**. C4 fights at most one battle per city
+  per round, so the key is unique.
+- S7. Pausing is done by **refusal and replay**. A round that reaches a live battle with no outcome is
+  refused, like any refused round, and so changes nothing. The client plays the battle, then plays
+  the whole round again with the outcome. The campaign is deterministic, so the replayed round
+  reaches the same plan. The AI battles fought before the pause are fought again; a memo resolver
+  (same plan, same outcome; the battle sim is deterministic) makes the second time free.
+- S8. The player's side always plays the **faction he commands** (`PLAYER_FACTION`, A). When he
+  holds the city, the plan's two sides are swapped and the map is reflected, so each side keeps the
+  ground the plan drew. The other side plays its nation's strategy under its AI commander. The
+  player's side has no commander.
+- S9. A live battle has the campaign's **tick cap**. At the cap it is undecided and the holder keeps
+  the city, as a headless battle.
+- S10. A save **trusts** its played outcomes. It is a single-player save, and the per-round hashes
+  catch an outcome changed without them. An edit that changes both is not caught; nor is it caught
+  for decisions.
+
+**Story (AC1, AC8).**
+- S11. **Vengeance** fires when a capture of the player's absorbs the named nation (or any nation,
+  for a beat that names none), read from the battle history. **Glory** fires when any General of the
+  player's first holds the rank. **Legacy** fires when the player wins, by domination or by
+  diplomacy. A **loss** beat fires when he loses.
+- S12. Beats fire after the round that triggers them, in file order, each once. The start beat fires
+  before round 1.
+- S13. The Ashen Reach's thread ("seek the truth of the Rupture") is not modelled. The story text
+  leaves it open, as the hook does.
+
+**Screens (AC4, AC5).**
+- S14. Keys, not the mouse, drive the map and diplomacy screens, so every choice is testable
+  headless.
+  - Map: `Tab` selects the next army, `Left`/`Right` choose a neighbouring city to march on, `M`
+    stages the march, `Up`/`Down` choose a city, `R` raises a General there, `Backspace` clears the
+    staged decisions, `D` opens diplomacy, and `Enter` ends the turn.
+  - Diplomacy: `Up`/`Down` choose a nation; `C` courts, `A` allies, `K` asks the ally to attack, `B`
+    betrays, and `I` marks the first nation of an incite and then incites the second; `Esc` returns.
+  - Battle: the skirmish's mouse controls, plus `T` to retreat.
+
+  Clicking cities is left for later.
+- S15. The map positions live in their own file, `map_layout.ron`. Adding them to `campaign.ron`
+  would move its fingerprint, and with it C4's golden.
+- S16. AI battles are resolved **in the frame**, so the window can pause while a round is played.
+  Moving them off the main thread is left for later.
+
+**For the user on the Mac (not judged by the harness; no AC is ticked on these):**
+- whether the map layout reads: city spacing, road lines, army markers, holder colours (P3);
+- whether the panels' text fits and reads at the window size;
+- the story text: its tone and pacing, and whether it carries the hook;
+- whether the battle camera frames the campaign battlefield (the bases are 1500 apart);
+- how long the window pauses while a round's AI battles resolve;
+- whether the keys feel right.

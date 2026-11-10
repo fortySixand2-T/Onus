@@ -28,6 +28,8 @@ balanced and fun. B5 needs a human to play, and that hasn't happened yet. So:
   also starts before the human play test, on the same terms as C1 to C3 (FINDINGS F-088).
 - **Overridden a fifth time by the user (2026-11-08): "merge after ci, then start c5".** C5
   also starts before the human play test, on the same terms as C1 to C4 (FINDINGS F-094).
+- **Overridden a sixth time by the user (2026-11-10): "merge after ci, then start c6".** C6
+  also starts before the human play test, on the same terms as C1 to C5 (FINDINGS F-098).
 - ~~**C1 onward waits for B5 Go.**~~ A B5 No-Go sends us back to the battle layer, and C0 is
   revised against what the play test found.
 
@@ -349,10 +351,76 @@ that is C6.
   - The reading passes when diplomacy is dominant for no nation and is a choice for at least one
     (provisional, F-097 D31). The tie-break by the round a nation fell (D32) is reported, not gated.
 
-## C6 — Campaign client
+## C6 — Campaign client (started 2026-11-10, ahead of B5 by user decision)
 
-- The map screen, round flow, diplomacy screen, and the move into and out of battles.
-- Story beats from the hook: the Rupture, and the heir's vengeance, glory or legacy.
+The two items: the map screen, round flow, diplomacy screen, and the move into and out of battles;
+and story beats from the hook (the Rupture, and the heir's vengeance, glory or legacy).
+
+The campaign (`src/campaign/`) and the battle sim (`src/sim/`) stay render-free; the client is a thin
+Bevy driver over them. The player's choices on the screens become the same `Decision`s the campaign
+already consumes, so a save is still the seed plus the log. Battle input is still `Order`s in the sim
+schedule. Readings the spec leaves open are in FINDINGS (F-099), marked provisional. What only a human
+can judge (layout, readability, feel) is listed there **for the user on the Mac**, and no AC is ticked
+on a look alone.
+
+- [ ] **Story content:** `assets/data/story.ron` holds every story beat: an id, a trigger, a title
+  and its text. The triggers are:
+  - the campaign starts (the Rupture);
+  - the player takes a nation's capital (vengeance; a named nation, or any);
+  - a General of the player's reaches a rank (glory);
+  - the player wins (legacy);
+  - the player loses.
+
+  It is validated at load against the battle and campaign content: unique ids, known nations, a rank
+  above 0 that the campaign has, no empty title or text, exactly one start beat and one win beat,
+  and at least one vengeance beat and one glory beat. A render-free rule (`campaign::story`) reads
+  the beats off campaign state: each fires once, the first time its trigger holds, in file order.
+  The story never changes campaign state or its hash.
+- [ ] **Live battles in the campaign core:** a campaign can be played with live battles.
+  - A round then pauses at each battle the player's nation fights (an undefended city is no
+    battle). It hands back that battle's plan and leaves the campaign unchanged.
+  - Given the battle's played outcome, the round resumes. AI-vs-AI battles in the round are still
+    auto-resolved.
+  - A played outcome that does not fit its battle, or names a battle the round does not fight,
+    refuses the round.
+  - A live round fed its outcomes hashes exactly as the same round played with a resolver that
+    returns them.
+  - Without live battles a campaign plays exactly as before: C4's golden (0x1600ef997dbf8728) and
+    every battle golden are unchanged.
+- [ ] **Saves carry played battles:** a live campaign's save holds each played battle's outcome
+  beside the round's decisions, and it resumes to the same hashes. A changed outcome diverges at its
+  round, and a missing one refuses its round. A save without live battles is written exactly as
+  before.
+- [ ] **Screens and round flow:**
+  - `cargo run -- campaign` opens the campaign client: the player is House Vael, the heir, on the
+    shipped map with diplomacy. `cargo run` plays the 1v1 skirmish exactly as before.
+  - The screens are Bevy states: Story, Map, Diplomacy, Battle and Over.
+  - The map screen shows the cities (holder, capital, buildings' HP), the roads and the armies. Keys
+    select one of the player's armies, a neighbouring city for it to march on, and a city to raise a
+    General at, and stage each as a `Decision`.
+  - Ending the turn plays the round on the staged decisions. A refused round shows why and changes
+    nothing. The round's report (the battles fought and the cities taken) shows on the map.
+  - City positions on the screen are RON (`assets/data/map_layout.ron`), validated against the
+    campaign map.
+- [ ] **Diplomacy screen:** it shows each rival's standing with the player, the player's ally and
+  each nation's betrayals. Keys stage the round's one diplomatic action (court, ally, ask, betray or
+  incite) as a `Decision`.
+- [ ] **Into and out of battles:** when the round pauses at a battle of the player's, the client
+  enters the Battle screen.
+  - The battle is the match `battle_settings` builds from the plan, with the player's side on the
+    faction he commands. The opposing nation's AI plays its own strategy.
+  - The player commands his side through `Order`s in the sim schedule, and a retreat key issues the
+    C1 retreat.
+  - The battle ends when the battle layer decides it or the campaign's tick cap passes. Its outcome
+    (survivors and their HP, buildings, each General's fate, a retreat) is read off the field the
+    way the headless resolver reads it. The battle world is cleared, and the round resumes with the
+    outcome.
+- [ ] **Same campaign, either way:** a campaign driven through the client (keys to decisions, live
+  battles) hashes round for round exactly as the same decisions and battle outcomes fed headlessly,
+  and its save resumes to the same hashes.
+- [ ] **Story beats on screen:** the Rupture beat opens the campaign. After each round, the beats it
+  triggered show on the Story screen, in order, before the map. The legacy beat (or the loss beat)
+  shows before the Over screen.
 
 ## C7 — Campaign fun gate (human; like B5)
 

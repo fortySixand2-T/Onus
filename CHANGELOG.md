@@ -1005,3 +1005,5 @@
 - [2026-11-09] Modified: FINDINGS.md — F-097 AC8 redefinition and 60-seed re-read; F-096 attributions corrected; disposition gaps
 - [2026-11-09] Modified: CAMPAIGN_PLAN.md — C5 AC8 pass rule matches the redefined verdict (F-097 D31, provisional)
 - [2026-11-10] Modified: CAMPAIGN_PLAN.md — tick C5 AC1–AC7 after critic PASS and green gate060; AC8 (diplomacy balance) stays open
+- [2026-11-10] Modified: CAMPAIGN_PLAN.md — sixth gate override; C6 started ahead of B5; C6 written as eight testable ACs
+- [2026-11-10] Modified: FINDINGS.md — F-098 (C6 starts ahead of B5) and F-099 (C6 provisional readings, human-look list)
