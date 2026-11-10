@@ -1037,3 +1037,5 @@
 - [2026-11-10] Modified: src/campaign_view.rs — battle screen: skirmish input and presentation on the field, battle camera framing, battle panel
 - [2026-11-10] Created: tests/c6/battle.rs — AC6 tests: into and out of battles, retreat, both sides' orientation
 - [2026-11-10] Modified: tests/c6_live.rs — includes the battle module
+- [2026-11-10] Created: tests/c6/same.rs — C6 AC7 test: a client-driven campaign (keys, live battles decided, retreated and capped) hashes round for round as the headless feed, and its save resumes to the same hashes
+- [2026-11-10] Modified: tests/c6_live.rs — includes the same-campaign module

@@ -28,6 +28,8 @@ mod client;
 mod diplomacy;
 #[path = "c6/battle.rs"]
 mod battle;
+#[path = "c6/same.rs"]
+mod same;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
