@@ -1011,3 +1011,6 @@
 - [2026-11-10] Created: src/campaign/story.rs — C6 AC1: story loader and validation, and the render-free rule that fires each beat once, in file order
 - [2026-11-10] Modified: src/campaign/mod.rs — C6 AC1: registered the story module
 - [2026-11-10] Created: tests/c6_story.rs — C6 AC1: the story loads, refuses bad beats, and fires vengeance, glory, legacy and the loss beat without touching the hash
+- [2026-11-10] Modified: src/campaign/mod.rs — C6 AC2: live battles (with_live_battles, step_round pausing at the player's battles, played outcomes checked and recorded; RoundStep, BadBattle, BattleToPlay)
+- [2026-11-10] Modified: src/campaign/battle.rs — C6 AC2: PlayedBattle and the Memo resolver
+- [2026-11-10] Created: tests/c6_live.rs — C6 AC2: pauses, resumes, refusals and hash equality of live rounds

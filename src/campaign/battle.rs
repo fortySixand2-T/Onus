@@ -159,6 +159,49 @@ impl<F: FnMut(&BattlePlan) -> BattleOutcome> Resolver for F {
     }
 }
 
+/// A battle of the player's, played live (C6 AC2): its outcome, keyed by
+/// the round and the city (a `campaign.ron` city id) it was fought over.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PlayedBattle {
+    pub round: u32,
+    pub city: String,
+    pub outcome: BattleOutcome,
+}
+
+/// A resolver that resolves each plan once (C6 AC2): a live round is
+/// replayed after each pause, and its AI-vs-AI battles come back from here
+/// instead of being fought again. The same plan gives the same outcome
+/// either way; this only saves the time.
+pub struct Memo<R> {
+    inner: R,
+    seen: Vec<(BattlePlan, BattleOutcome)>,
+}
+
+impl<R: Resolver> Memo<R> {
+    pub fn new(inner: R) -> Self {
+        Memo {
+            inner,
+            seen: Vec::new(),
+        }
+    }
+
+    /// Forget every outcome (a client clears it once a round is played).
+    pub fn clear(&mut self) {
+        self.seen.clear();
+    }
+}
+
+impl<R: Resolver> Resolver for Memo<R> {
+    fn resolve(&mut self, content: &Content, campaign: &CampaignContent, plan: &BattlePlan) -> BattleOutcome {
+        if let Some((_, o)) = self.seen.iter().find(|(p, _)| p == plan) {
+            return o.clone();
+        }
+        let o = self.inner.resolve(content, campaign, plan);
+        self.seen.push((plan.clone(), o.clone()));
+        o
+    }
+}
+
 fn side(c: &Campaign, nation: usize, armies: Vec<u32>) -> PlanSide {
     let mut s = PlanSide {
         nation,
