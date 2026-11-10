@@ -2,7 +2,9 @@
 //! [`crate::campaign_client`] holds and changes none of it. A text panel
 //! shows the current screen's text; on the map, gizmos draw the roads, the
 //! cities in their holder's colour (a capital ringed twice), the armies,
-//! and what the keys point at; each city carries its name.
+//! and what the keys point at; each city carries its name. In a battle the
+//! skirmish's own input and presentation run on the battle's field, the
+//! camera drawn back to show both bases.
 //!
 //! Render types live here and only here; the headless tests run the
 //! client's logic without this module. How it looks is the user's to judge
@@ -11,8 +13,11 @@
 use bevy::prelude::*;
 
 use crate::campaign::Location;
-use crate::campaign_client::{diplomacy_text, map_text, over_text, story_text, CampaignSession, Screen};
-use crate::client::nation_color;
+use crate::campaign_client::{
+    battle_text, diplomacy_text, map_text, over_text, story_text, CampaignSession, LiveBattle, Screen,
+};
+use crate::client::{nation_color, ClickTracker, CursorWorld, DragState};
+use crate::{input, ui};
 
 /// Where the map is drawn: layout units are scaled and shifted right, so
 /// the text panel on the left does not cover it.
@@ -23,6 +28,8 @@ const ARMY_SIZE: f32 = 9.0;
 const ROAD_COLOR: Color = Color::srgb(0.45, 0.45, 0.45);
 const CURSOR_COLOR: Color = Color::srgb(1.0, 0.9, 0.2);
 const RAISE_COLOR: Color = Color::srgb(0.95, 0.95, 0.95);
+/// The camera's zoom on a battle: the bases are 1500 apart.
+const BATTLE_SCALE: f32 = 1.4;
 
 /// The text panel.
 #[derive(Component)]
@@ -34,14 +41,52 @@ pub struct CityLabel(pub usize);
 
 /// Register the view on `app` (the shipped campaign app only).
 pub fn add_campaign_view(app: &mut App) {
-    app.add_systems(Startup, spawn_view).add_systems(
-        Update,
-        (
-            update_panel,
-            show_labels,
-            draw_map.run_if(in_state(Screen::Map).or_else(in_state(Screen::Diplomacy))),
-        ),
-    );
+    app.init_resource::<CursorWorld>()
+        .init_resource::<DragState>()
+        .init_resource::<ClickTracker>()
+        .add_systems(Startup, spawn_view)
+        .add_systems(
+            Update,
+            (
+                update_panel,
+                show_labels,
+                frame_camera,
+                draw_map.run_if(in_state(Screen::Map).or_else(in_state(Screen::Diplomacy))),
+            ),
+        )
+        .add_systems(
+            Update,
+            (
+                input::update_cursor,
+                input::selection.after(input::update_cursor),
+                input::emit_commands
+                    .after(input::update_cursor)
+                    .run_if(crate::sim::victory::match_running),
+                input::emit_build_commands
+                    .after(input::update_cursor)
+                    .run_if(crate::sim::victory::match_running),
+                ui::attach_visuals,
+                ui::sync_transform,
+                ui::draw_selection,
+                ui::draw_nation_marks,
+                ui::show_wells,
+                ui::draw_well_rings,
+            )
+                .run_if(in_state(Screen::Battle))
+                .run_if(resource_exists::<LiveBattle>),
+        );
+}
+
+/// The map at its own scale; a battle drawn back to show both bases.
+fn frame_camera(screen: Res<State<Screen>>, mut cameras: Query<&mut Projection, With<Camera2d>>) {
+    let want = if *screen.get() == Screen::Battle { BATTLE_SCALE } else { 1.0 };
+    for mut p in &mut cameras {
+        if let Projection::Orthographic(o) = p.as_mut() {
+            if o.scale != want {
+                o.scale = want;
+            }
+        }
+    }
 }
 
 fn on_screen(layout_pos: Vec2) -> Vec2 {
@@ -83,6 +128,7 @@ fn spawn_view(mut commands: Commands, session: Res<CampaignSession>) {
 
 fn update_panel(
     session: Res<CampaignSession>,
+    live: Option<Res<LiveBattle>>,
     screen: Res<State<Screen>>,
     mut panel: Query<&mut Text, With<CampaignPanel>>,
 ) {
@@ -90,7 +136,7 @@ fn update_panel(
         Screen::Story => story_text(&session),
         Screen::Map => map_text(&session),
         Screen::Diplomacy => diplomacy_text(&session),
-        Screen::Battle => String::new(),
+        Screen::Battle => battle_text(&session, live.as_deref()),
         Screen::Over => over_text(&session),
     };
     for mut t in &mut panel {

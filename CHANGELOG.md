@@ -1029,3 +1029,11 @@
 - [2026-11-10] Created: tests/c6/diplomacy.rs — C6 AC5 tests (standings, ally, betrayals shown; keys stage court/ally/ask/betray/incite; the action plays first and its result shows)
 - [2026-11-10] Modified: tests/c6/client.rs — scripted battle stand-in (play_battle) and an attacker-wins resolver
 - [2026-11-10] Modified: tests/c6_live.rs — hosts the diplomacy test module
+- [2026-11-10] Modified: src/sim/battle.rs — `install` returns what each side put on the field (`SideEntities`)
+- [2026-11-10] Modified: src/headless.rs — match start split into `check`, `commanders` and `populate`, shared with the campaign client's live battles; spawn order unchanged
+- [2026-11-10] Modified: src/campaign/resolve.rs — outcome reading extracted as `read_outcome` over a public `Fielded`, for either faction on either side
+- [2026-11-10] Modified: src/campaign/mod.rs — re-exports `read_outcome` and `Fielded`
+- [2026-11-10] Modified: src/campaign_client.rs — live battles: fielded with the player on his faction, ticked to a decision or the cap, read, cleared, the round resumed; T retreats
+- [2026-11-10] Modified: src/campaign_view.rs — battle screen: skirmish input and presentation on the field, battle camera framing, battle panel
+- [2026-11-10] Created: tests/c6/battle.rs — AC6 tests: into and out of battles, retreat, both sides' orientation
+- [2026-11-10] Modified: tests/c6_live.rs — includes the battle module

@@ -35,7 +35,7 @@ use crate::sim::content::Content;
 use crate::sim::nation::{Defs, NationRules};
 use crate::sim::spatial::{Faction, SplitMix64};
 
-pub use resolve::{resolve_battle, HeadlessResolver};
+pub use resolve::{read_outcome, resolve_battle, Fielded, HeadlessResolver};
 pub use save::{CampaignLog, CAMPAIGN_LOG_VERSION};
 pub use battle::{
     battle_settings, BattleOutcome, BattlePlan, Memo, PlanBuilding, PlanSide, PlayedBattle, Resolver, Side,

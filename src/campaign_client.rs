@@ -26,8 +26,14 @@ use crate::campaign::{
     BattleOutcome, BattlePlan, Campaign, CampaignContent, CampaignOutcome, Decision, HeadlessResolver, Location, Memo,
     PlayedBattle, Resolver, RoundReport, RoundStep, Side,
 };
-use crate::client::nation_name;
+use crate::campaign::{battle_settings, read_outcome, Fielded};
+use crate::client::{nation_name, PLAYER_FACTION};
+use crate::headless::{MatchSettings, Orientation};
+use crate::sim::battle::{AuraField, BattleState, SideEntities};
 use crate::sim::content::Content;
+use crate::sim::replay::SimId;
+use crate::sim::spatial::Faction;
+use crate::sim::{AiCommanders, CommandQueue, Order, Position, TickGate};
 
 /// The seed `cargo run -- campaign` plays when none is given.
 pub const CAMPAIGN_SEED: u64 = 20_261_110;
@@ -358,17 +364,214 @@ pub fn shipped_session(seed: u64) -> Result<CampaignSession, String> {
     Ok(CampaignSession::new(c, story, layout, Box::new(HeadlessResolver)))
 }
 
+// ---- live battles ----------------------------------------------------------
+
+/// The faction the player's opponent commands in a live battle.
+pub const OPPONENT_FACTION: Faction = Faction::B;
+
+/// A battle of the player's on the field: the plan it plays, which faction
+/// each side commands (attack, defend), each side's plan things by sim id
+/// (attack, defend), and how far it has run.
+#[derive(Resource, Debug, Clone)]
+pub struct LiveBattle {
+    pub plan: BattlePlan,
+    pub factions: [Faction; 2],
+    pub fielded: [Fielded; 2],
+    /// Sim ticks played.
+    pub ticks: u32,
+    /// The campaign's battle tick cap.
+    pub cap: u32,
+    /// Decided, or at the cap: the outcome is ready to be read.
+    pub done: bool,
+}
+
+/// The settings for the player's live battle on `plan`: the battle
+/// [`battle_settings`] builds, with the player's side on [`PLAYER_FACTION`].
+/// A defending player swaps the two slots, and the map is reflected so the
+/// attacker still stands on the plan's side of it. Returns the settings, the
+/// faction each side plays (attack, defend) and the opponent's strategy.
+pub fn live_settings(
+    content: &Content,
+    campaign: &CampaignContent,
+    plan: &BattlePlan,
+    player: Side,
+) -> (MatchSettings, [Faction; 2], String) {
+    let mut settings = battle_settings(content, campaign, plan);
+    let opponent = if player == Side::Attack { &plan.defend } else { &plan.attack };
+    let strategy = content.nations[opponent.nation].strategy.clone();
+    if player == Side::Attack {
+        return (settings, [PLAYER_FACTION, OPPONENT_FACTION], strategy);
+    }
+    settings.strategies.swap(0, 1);
+    settings.nations.swap(0, 1);
+    if let Some(a) = settings.starting_alloy.as_mut() {
+        a.swap(0, 1);
+    }
+    if let Some(b) = settings.battle.as_mut() {
+        b.sides.swap(0, 1);
+    }
+    settings.orientation = match settings.orientation {
+        Orientation::Normal => Orientation::Swapped,
+        Orientation::Swapped => Orientation::Normal,
+    };
+    (settings, [OPPONENT_FACTION, PLAYER_FACTION], strategy)
+}
+
+/// Clear the battle off `world`: every sim thing, and the battle's own
+/// resources. The match resources stay; the next battle replaces them.
+fn clear_field(world: &mut World) {
+    let mut q = world.query_filtered::<Entity, Or<(With<Position>, With<SimId>)>>();
+    let gone: Vec<Entity> = q.iter(world).collect();
+    for e in gone {
+        world.despawn(e);
+    }
+    world.remove_resource::<BattleState>();
+    world.remove_resource::<AuraField>();
+    world.remove_resource::<crate::sim::ai::BattleAiJournal>();
+    world.remove_resource::<crate::sim::nation::NationRules>();
+    world.remove_resource::<crate::sim::three::ThreeEconomy>();
+    world.remove_resource::<LiveBattle>();
+    world.resource_mut::<TickGate>().close();
+}
+
+/// The sim ids of what `side` put on the field.
+fn ids_of(world: &World, side: &SideEntities) -> Fielded {
+    let id = |e: &Entity| *world.get::<SimId>(*e).expect("identified on the field");
+    Fielded {
+        generals: side.generals.iter().map(id).collect(),
+        units: side.units.iter().map(id).collect(),
+        buildings: side.buildings.iter().map(id).collect(),
+    }
+}
+
+/// Field the battle the round is paused at (once): the player's side on his
+/// faction, the opponent's AI on its nation's strategy; then let it tick.
+fn field_battle(world: &mut World) {
+    if world.contains_resource::<LiveBattle>() {
+        return;
+    }
+    let Some((plan, content, campaign, player)) = world.get_resource::<CampaignSession>().and_then(|s| {
+        let plan = s.battle.clone()?;
+        let player = if s.campaign.player() == Some(plan.attack.nation) {
+            Side::Attack
+        } else {
+            Side::Defend
+        };
+        Some((plan, s.campaign.content().clone(), s.campaign.campaign().clone(), player))
+    }) else {
+        return;
+    };
+    let (settings, factions, strategy) = live_settings(&content, &campaign, &plan, player);
+    let commanders = AiCommanders::matchup(&content, settings.seed, &[(OPPONENT_FACTION, strategy.as_str())])
+        .unwrap_or_else(|e| panic!("a nation's strategy the content refuses: {e}"));
+    clear_field(world);
+    world.insert_resource(content);
+    let sides = crate::headless::populate(world, &settings, commanders)
+        .unwrap_or_else(|e| panic!("a campaign battle the content refuses: {e}"))
+        .expect("a campaign battle has a battle setup");
+    // The ids the sim's first tick would assign, so the plan's things can be
+    // found again at the end.
+    crate::sim::replay::identify(world);
+    let slot = |f: Faction| if f == Faction::A { 0 } else { 1 };
+    let fielded = factions.map(|f| ids_of(world, &sides[slot(f)]));
+    world.insert_resource(LiveBattle {
+        plan,
+        factions,
+        fielded,
+        ticks: 0,
+        cap: campaign.rules.battle.tick_cap,
+        done: false,
+    });
+    world.resource_mut::<TickGate>().open();
+}
+
+/// In the sim schedule, after the tick: count it, and stop the sim once the
+/// battle layer has decided the battle or the cap is reached.
+fn count_battle_tick(
+    mut live: ResMut<LiveBattle>,
+    state: Option<Res<BattleState>>,
+    mut gate: ResMut<TickGate>,
+) {
+    if live.done {
+        return;
+    }
+    live.ticks += 1;
+    let decided = state.is_some_and(|s| s.result().is_some());
+    if decided || live.ticks >= live.cap {
+        live.done = true;
+        gate.close();
+    }
+}
+
+/// A finished battle: read its outcome off the field, clear the field and
+/// resume the round with it.
+fn finish_battle(world: &mut World) {
+    let Some(live) = world.get_resource::<LiveBattle>().filter(|l| l.done).cloned() else {
+        return;
+    };
+    let outcome = read_outcome(world, &live.plan, &live.fielded, live.factions, live.ticks);
+    clear_field(world);
+    let to = world.resource_mut::<CampaignSession>().battle_played(outcome);
+    let now = world.resource::<State<Screen>>().get().clone();
+    go(&mut world.resource_mut::<NextState<Screen>>(), &now, to);
+}
+
+/// Battle: T orders the player's side off the field (the C1 retreat). The
+/// rest of the battle's input is the skirmish's (the view).
+fn battle_keys(keys: Res<ButtonInput<KeyCode>>, mut queue: ResMut<CommandQueue>) {
+    if keys.just_pressed(KeyCode::KeyT) {
+        queue.0.push_back(
+            Order::Retreat {
+                faction: PLAYER_FACTION,
+            }
+            .issued_by(PLAYER_FACTION),
+        );
+    }
+}
+
+/// The battle screen's panel.
+pub fn battle_text(s: &CampaignSession, live: Option<&LiveBattle>) -> String {
+    let Some(plan) = &s.battle else {
+        return String::new();
+    };
+    let c = &s.campaign;
+    let name = |n: usize| c.content().nations[n].name.clone();
+    let city = city_name(c, plan.city);
+    let mut t = if c.player() == Some(plan.attack.nation) {
+        format!("Battle for {city}: you attack {}", name(plan.defend.nation))
+    } else {
+        format!("Battle for {city}: {} attacks you", name(plan.attack.nation))
+    };
+    if let Some(l) = live {
+        t.push_str(&format!("\nTick {} of {}", l.ticks, l.cap));
+    }
+    t.push_str("\n\nLeft-drag: select   Right-click: move   T: retreat");
+    t
+}
+
 // ---- the app ----------------------------------------------------------------
 
 /// Register the client's logic on `app`: the screens and their keys. **The
 /// one definition**, shared by the shipped app and the headless tests.
-/// `_sim` is the schedule the battle sim runs on (`FixedUpdate` shipped,
-/// `Update` in the tests).
-pub fn add_campaign_client(app: &mut App, _sim: impl ScheduleLabel + Clone) {
+/// `sim` is the schedule the battle sim runs on (`FixedUpdate` shipped,
+/// `Update` in the tests): the sim chain goes there, its gate closed until a
+/// battle is fielded.
+pub fn add_campaign_client(app: &mut App, sim: impl ScheduleLabel + Clone) {
     if !app.is_plugin_added::<StatesPlugin>() {
         app.add_plugins(StatesPlugin);
     }
     app.init_state::<Screen>();
+    app.init_resource::<CommandQueue>();
+    crate::add_sim_systems(app, sim.clone());
+    // No sim ticks outside a battle.
+    app.world_mut().resource_mut::<TickGate>().close();
+    app.add_systems(
+        sim,
+        count_battle_tick
+            .after(crate::sim::replay::record_state_hash)
+            .run_if(crate::sim::may_tick)
+            .run_if(resource_exists::<LiveBattle>),
+    );
     let session = resource_exists::<CampaignSession>;
     app.add_systems(
         Update,
@@ -376,6 +579,11 @@ pub fn add_campaign_client(app: &mut App, _sim: impl ScheduleLabel + Clone) {
             story_keys.run_if(in_state(Screen::Story)).run_if(session),
             map_keys.run_if(in_state(Screen::Map)).run_if(session),
             diplomacy_keys.run_if(in_state(Screen::Diplomacy)).run_if(session),
+            (field_battle, battle_keys, finish_battle)
+                .chain()
+                .after(crate::sim::replay::record_state_hash)
+                .run_if(in_state(Screen::Battle))
+                .run_if(session),
         ),
     );
 }

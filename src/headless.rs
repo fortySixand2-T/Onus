@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use bevy::prelude::*;
 
 use crate::sim::ai::UnknownStrategy;
-use crate::sim::battle::{BattleSetup, BattleSetupError, SideGround};
+use crate::sim::battle::{BattleSetup, BattleSetupError, SideEntities, SideGround};
 use crate::sim::combat::{Casualties, Health};
 use crate::sim::content::{Content, ContentError};
 use crate::sim::economy::{Building, ProductionQueue, Stockpiles, UnitDefIdx};
@@ -322,23 +322,43 @@ impl std::error::Error for MatchSetupError {}
 /// panic. Every name is resolved before anything is spawned.
 pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSetupError> {
     // Refused here, before anything is spawned (installed further down).
+    check(&content, settings)?;
+    let commanders = commanders(&content, settings)?;
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(Time::<Fixed>::from_hz(SIM_HZ as f64))
+        .insert_resource(content);
+    // The *shipped* sim chain, in `Update` on a manually advanced fixed clock:
+    // a headless app steps one tick per `app.update()` (see [`step`]).
+    crate::add_sim_systems(&mut app, Update);
+    populate(app.world_mut(), settings, commanders)?;
+    Ok(app)
+}
+
+/// Refuse what `settings` asks of `content` that it does not have: the
+/// nations, a battle roster (its HP against its side's traited pools), the
+/// economy's block.
+fn check(content: &Content, settings: &MatchSettings) -> Result<(), MatchSetupError> {
     let rules =
-        NationRules::resolve_in(&content, &settings.nations, settings.economy).map_err(MatchSetupError::Nation)?;
-    // A roster's HP is checked against its side's (traited) pools.
+        NationRules::resolve_in(content, &settings.nations, settings.economy).map_err(MatchSetupError::Nation)?;
     if let Some(b) = &settings.battle {
-        b.check_with(&content, rules.as_ref())
+        b.check_with(content, rules.as_ref())
             .map_err(MatchSetupError::Battle)?;
     }
-    // The economy (C3), refused here too: its block must exist.
     if !settings.economy.is_alloy() && content.three_resource.is_none() {
         return Err(MatchSetupError::Economy(EconomyRefused(
             "this content has no `three_resource` block".to_string(),
         )));
     }
-    // Resolve names *before* anything is spawned, so a refusal costs nothing
-    // and cannot leave a half-built match behind.
-    let commanders = match &settings.strategies {
-        [None, None] => AiCommanders::new(settings.seed, &SIDES),
+    Ok(())
+}
+
+/// The scripted commanders `settings` names: one per side, on its strategy
+/// (the content's default where it names none). Refused if a name is
+/// unknown.
+pub fn commanders(content: &Content, settings: &MatchSettings) -> Result<AiCommanders, MatchSetupError> {
+    match &settings.strategies {
+        [None, None] => Ok(AiCommanders::new(settings.seed, &SIDES)),
         [a, b] => {
             let default = content.default_strategy.clone();
             let named: Vec<(Faction, &str)> = SIDES
@@ -346,26 +366,43 @@ pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSe
                 .zip([a, b])
                 .map(|(f, s)| (*f, s.as_deref().unwrap_or(default.as_str())))
                 .collect();
-            AiCommanders::matchup(&content, settings.seed, &named)
-                .map_err(MatchSetupError::Strategy)?
+            AiCommanders::matchup(content, settings.seed, &named).map_err(MatchSetupError::Strategy)
         }
-    };
+    }
+}
 
+/// Put the match `settings` describes into `world`, which holds the
+/// `Content` and the sim chain's resources ([`crate::add_sim_systems`]),
+/// with `commanders` playing it. **The one definition of a match's start**,
+/// shared by [`battle`] and the campaign client's live battles (C6), which
+/// field a battle in the app it renders and gives only the opponent an AI.
+/// The match's own resources are inserted fresh (the queue, the purses, the
+/// casualty and production counts, the outcome, the ids, the log), so a
+/// world that held a match before starts this one as a new app would; the
+/// caller clears the old match's entities first. Refused, before anything is
+/// spawned, as [`battle`] refuses. Returns what a battle setup put on the
+/// field, per faction slot.
+pub fn populate(
+    world: &mut World,
+    settings: &MatchSettings,
+    commanders: AiCommanders,
+) -> Result<Option<[SideEntities; 2]>, MatchSetupError> {
+    let content = world.resource::<Content>().clone();
+    check(&content, settings)?;
     let alloy = settings
         .starting_alloy
         .unwrap_or([content.economy.starting_alloy; 2]);
-    let mut app = App::new();
-    app.add_plugins(MinimalPlugins)
-        .insert_resource(Time::<Fixed>::from_hz(SIM_HZ as f64))
-        .insert_resource(content)
-        .init_resource::<CommandQueue>()
-        .init_resource::<RateReport>()
-        .init_resource::<Casualties>()
-        .insert_resource(Stockpiles::starting_each(alloy));
-    // The *shipped* sim chain, in `Update` on a manually advanced fixed clock:
-    // a headless app steps one tick per `app.update()` (see [`step`]).
-    crate::add_sim_systems(&mut app, Update);
+    world.insert_resource(CommandQueue::default());
+    world.insert_resource(RateReport::default());
+    world.insert_resource(Casualties::default());
+    world.insert_resource(Stockpiles::starting_each(alloy));
+    world.insert_resource(crate::sim::economy::Produced::default());
+    world.insert_resource(crate::sim::AiJournal::default());
+    world.insert_resource(crate::sim::MatchState::default());
+    world.insert_resource(crate::sim::replay::SimIds::default());
 
+    let worker = content.unit_index("worker").expect("content has a `worker` unit");
+    let hq = content.building_index("hq").expect("content has an `hq` building");
     for faction in SIDES {
         let base = base_of(faction, settings.orientation);
         // A campaign battle side with a roster brings its own army and
@@ -375,7 +412,7 @@ pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSe
             .as_ref()
             .is_some_and(|b| b.side(faction).roster.is_some());
         if roster {
-            app.world_mut().spawn((
+            world.spawn((
                 Position(base + Vec2::new(0.0, 250.0)),
                 ResourceNode {
                     amount: NODE_AMOUNT,
@@ -383,51 +420,40 @@ pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSe
             ));
             continue;
         }
-        let def = app
-            .world()
-            .resource::<Content>()
-            .building_index("hq")
-            .expect("content has an `hq` building");
-        app.world_mut().spawn((
+        world.spawn((
             Position(base),
-            Building { def },
+            Building { def: hq },
             faction,
             ProductionQueue::default(),
         ));
-        app.world_mut().spawn((
+        world.spawn((
             Position(base + Vec2::new(0.0, 250.0)),
             ResourceNode {
                 amount: NODE_AMOUNT,
             },
         ));
         for i in 0..STARTING_WORKERS {
-            let (idx, kind, hp) = {
-                let c = app.world().resource::<Content>();
-                let idx = c.unit_index("worker").expect("content has a `worker` unit");
-                (idx, c.units[idx].mvp_kind, Health::from_def(c, idx))
-            };
-            app.world_mut().spawn((
+            world.spawn((
                 Position(base + Vec2::new(0.0, 20.0 * i as f32)),
-                UnitDefIdx(idx),
-                kind,
+                UnitDefIdx(worker),
+                content.units[worker].mvp_kind,
                 faction,
-                hp,
+                Health::from_def(&content, worker),
             ));
         }
     }
 
     // The economy (C3), on the start and before the nations (a nation's
     // traits depend on it): nothing is inserted for Alloy-only.
-    crate::sim::three::install(app.world_mut(), settings.economy)
-        .map_err(MatchSetupError::Economy)?;
+    crate::sim::three::install(world, settings.economy).map_err(MatchSetupError::Economy)?;
 
     // The nations (C2), on the start and before a battle's layer: nothing is
     // inserted when neither side has one.
-    crate::sim::nation::install(app.world_mut(), &settings.nations)
+    crate::sim::nation::install(world, &settings.nations)
         .expect("resolved above, before anything was spawned");
 
     // A campaign battle's layer goes on top of the skirmish start (C1).
-    if let Some(b) = &settings.battle {
+    let fielded = settings.battle.as_ref().map(|b| {
         let ground = SIDES.map(|f| {
             let base = base_of(f, settings.orientation);
             SideGround {
@@ -435,26 +461,26 @@ pub fn battle(content: Content, settings: &MatchSettings) -> Result<App, MatchSe
                 front: Vec2::new(-base.x.signum(), 0.0),
             }
         });
-        crate::sim::battle::install(app.world_mut(), b, ground);
-    }
+        crate::sim::battle::install(world, b, ground)
+    });
 
     // The ley-wells (C3), **last**: they are new entities, and spawning them
     // anywhere earlier would move every entity after them (F-011). Nothing in
     // an Alloy-only match. Laid out between the two HQs, as a replay lays
     // them out (`replay::apply_log_economy`); a side with no HQ (a battle
     // roster) falls back to its base.
-    let (a, b) = crate::sim::three::hq_frame(app.world_mut()).unwrap_or((
+    let (a, b) = crate::sim::three::hq_frame(world).unwrap_or((
         base_of(Faction::A, settings.orientation),
         base_of(Faction::B, settings.orientation),
     ));
-    crate::sim::three::spawn_wells(app.world_mut(), a, b);
+    crate::sim::three::spawn_wells(world, a, b);
 
-    app.insert_resource(commanders);
-    app.insert_resource(CommandLog::new(settings.seed));
+    world.insert_resource(commanders);
+    world.insert_resource(CommandLog::new(settings.seed));
     if settings.hashing {
-        app.insert_resource(StateHashLog::default());
+        world.insert_resource(StateHashLog::default());
     }
-    Ok(app)
+    Ok(fielded)
 }
 
 /// Advance the match by exactly one sim tick.

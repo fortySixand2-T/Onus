@@ -330,7 +330,8 @@ fn line_offset(g: SideGround, j: usize, n: usize, spacing: f32) -> Vec2 {
 /// in ranks of `formation_rank` just behind the Generals' line,
 /// `formation_spacing` apart, each further rank one spacing nearer the base,
 /// and no rank nearer the entry edge than one spacing (more units widen the
-/// ranks). Buildings first, then units, in list order.
+/// ranks). Buildings first, then units, in list order. Returns what it
+/// spawned: the buildings, then the units, each in list order.
 fn spawn_roster(
     world: &mut World,
     content: &Content,
@@ -339,8 +340,10 @@ fn spawn_roster(
     side: Faction,
     g: SideGround,
     roster: &Roster,
-) {
+) -> (Vec<Entity>, Vec<Entity>) {
     let across = Vec2::new(-g.front.y, g.front.x);
+    let mut buildings = Vec::with_capacity(roster.buildings.len());
+    let mut units = Vec::with_capacity(roster.units.len());
     for (k, b) in roster.buildings.iter().enumerate() {
         let def = content
             .building_index(&b.id)
@@ -359,6 +362,7 @@ fn spawn_roster(
         if let Some(hp) = b.hp {
             e.insert(Health { current: hp, max: full.max });
         }
+        buildings.push(e.id());
     }
     let total = roster.units.len();
     // Ranks run back from just behind the Generals; the last that fits stands
@@ -381,7 +385,7 @@ fn spawn_roster(
         let back = battle.general_front - battle.formation_spacing * (row as f32 + 1.0);
         let at = g.base + g.front * back + line_offset(g, col, in_row, battle.formation_spacing);
         let full = defs.unit_health(side, idx);
-        world.spawn((
+        let e = world.spawn((
             Position(at),
             UnitDefIdx(idx),
             content.units[idx].mvp_kind,
@@ -391,14 +395,27 @@ fn spawn_roster(
                 max: full.max,
             },
         ));
+        units.push(e.id());
     }
+    (buildings, units)
+}
+
+/// What [`install`] put on the field for one side, each in setup order: its
+/// Generals, its roster's units and its roster's buildings (C6: a client
+/// reads a battle's outcome off these, as the headless resolver does).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SideEntities {
+    pub generals: Vec<Entity>,
+    pub units: Vec<Entity>,
+    pub buildings: Vec<Entity>,
 }
 
 /// Field the setup's Generals and install the battle's state. Call after the
 /// skirmish start has been spawned; the setup must already have passed
 /// [`BattleSetup::check`]. Spawns in faction-slot order, so entity allocation
-/// is a function of the setup alone.
-pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) {
+/// is a function of the setup alone. Returns what it spawned, per faction
+/// slot.
+pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) -> [SideEntities; 2] {
     let content = world.resource::<Content>().clone();
     // The match's nations (C2), installed before the battle: a roster enters
     // with its side's pools. Generals take no trait.
@@ -409,6 +426,7 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
         .as_ref()
         .expect("BattleSetup::check admits only content with a battle block");
     let mut fielded = Vec::new();
+    let mut spawned: [SideEntities; 2] = Default::default();
     for (slot, side) in SLOTS.iter().enumerate() {
         let g = ground[slot];
         let line = setup.sides[slot].generals.len();
@@ -435,6 +453,7 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
                     world.entity_mut(entity).insert(rank);
                 }
             }
+            spawned[slot].generals.push(entity);
             fielded.push(Fielded {
                 entity,
                 side: *side,
@@ -443,7 +462,9 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
             });
         }
         if let Some(roster) = &setup.sides[slot].roster {
-            spawn_roster(world, &content, defs, battle, *side, g, roster);
+            let (buildings, units) = spawn_roster(world, &content, defs, battle, *side, g, roster);
+            spawned[slot].buildings = buildings;
+            spawned[slot].units = units;
         }
     }
     let edges = ground.map(|g| Edge {
@@ -455,6 +476,7 @@ pub fn install(world: &mut World, setup: &BattleSetup, ground: [SideGround; 2]) 
     world.insert_resource(state);
     world.insert_resource(AuraField::default());
     world.insert_resource(crate::sim::ai::BattleAiJournal::default());
+    spawned
 }
 
 // ---- state -----------------------------------------------------------------
