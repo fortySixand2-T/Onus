@@ -1007,3 +1007,7 @@
 - [2026-11-10] Modified: CAMPAIGN_PLAN.md — tick C5 AC1–AC7 after critic PASS and green gate060; AC8 (diplomacy balance) stays open
 - [2026-11-10] Modified: CAMPAIGN_PLAN.md — sixth gate override; C6 started ahead of B5; C6 written as eight testable ACs
 - [2026-11-10] Modified: FINDINGS.md — F-098 (C6 starts ahead of B5) and F-099 (C6 provisional readings, human-look list)
+- [2026-11-10] Created: assets/data/story.ron — C6 AC1: the campaign's story beats (Rupture, glory, vengeance, legacy, the fall)
+- [2026-11-10] Created: src/campaign/story.rs — C6 AC1: story loader and validation, and the render-free rule that fires each beat once, in file order
+- [2026-11-10] Modified: src/campaign/mod.rs — C6 AC1: registered the story module
+- [2026-11-10] Created: tests/c6_story.rs — C6 AC1: the story loads, refuses bad beats, and fires vengeance, glory, legacy and the loss beat without touching the hash

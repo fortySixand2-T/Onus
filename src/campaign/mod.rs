@@ -25,6 +25,7 @@ pub mod content;
 pub mod diplomacy;
 pub mod resolve;
 pub mod save;
+pub mod story;
 
 use std::sync::Arc;
 
