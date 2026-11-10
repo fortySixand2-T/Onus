@@ -8132,8 +8132,10 @@ may revise it.
   changes; that holds for decisions too.
 
 **Story (AC1, AC8).**
-- S11. **Vengeance** fires when a capture of the player's absorbs the named nation (or any nation,
-  for a beat that names none), read from the battle history. **Glory** fires when any General of the
+- S11. **Vengeance** fires when a capture of the player's absorbs the named nation, read from the
+  battle history. A vengeance beat that names no nation fires only for a nation that no
+  nation-named vengeance beat covers (`Story::holds`, `AnyCapitalTaken`): absorbing a nation that
+  has its own beat fires that beat, not the general one (critic C6 r1 #3). **Glory** fires when any General of the
   player's first holds the rank. **Legacy** fires when the player wins, by domination or by
   diplomacy. A **loss** beat fires when he loses.
 - S12. Beats fire after the round that triggers them, in file order, each once. The start beat fires
