@@ -351,6 +351,12 @@ pub struct Campaign {
     /// they were fought (empty without live battles). Not hashed, like the
     /// decisions: it is input.
     played: Vec<Vec<PlayedBattle>>,
+    /// C6: with live battles, the battle history's hash after each round
+    /// ([`Campaign::history_hash`]). The state hash leaves the history out
+    /// (all of C4's goldens rest on that), and a played outcome can change
+    /// the history alone (its ticks, an undecided hold for a won one), so a
+    /// live save checks this too.
+    history_hashes: Vec<u64>,
 }
 
 impl Campaign {
@@ -422,6 +428,7 @@ impl Campaign {
             diplo,
             live: false,
             played: Vec::new(),
+            history_hashes: Vec::new(),
         };
         let starts = c.campaign.start_armies.clone();
         for s in &starts {
@@ -621,6 +628,34 @@ impl Campaign {
         h.finish()
     }
 
+    /// A hash of the battle history: every record, field by field. Not part
+    /// of [`state_hash`](Self::state_hash) (C4's goldens rest on it as it
+    /// is); a live save checks it beside the state hash, round by round.
+    pub fn history_hash(&self) -> u64 {
+        let mut h = Fnv::default();
+        h.u64(self.history.len() as u64);
+        for r in &self.history {
+            h.u64(r.round as u64)
+                .u64(r.city as u64)
+                .u64(r.attacker as u64)
+                .u64(r.defender as u64)
+                .u64(match r.winner {
+                    None => 0,
+                    Some(Side::Attack) => 1,
+                    Some(Side::Defend) => 2,
+                })
+                .u64(r.captured as u64)
+                .u64(r.absorbed as u64)
+                .u64(r.ticks as u64);
+        }
+        h.finish()
+    }
+
+    /// With live battles, the history hash after each round played.
+    pub fn history_hashes(&self) -> &[u64] {
+        &self.history_hashes
+    }
+
     // ---- a round ----------------------------------------------------------
 
     /// Play one round: `decisions` are the player's (empty when there is no
@@ -769,6 +804,10 @@ impl Campaign {
         self.diplomacy_end_round();
         let h = self.state_hash();
         self.round_hashes.push(h);
+        if self.live {
+            let hh = self.history_hash();
+            self.history_hashes.push(hh);
+        }
         Ok(RoundReport {
             round: self.round,
             order,

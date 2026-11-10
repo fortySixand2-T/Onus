@@ -54,6 +54,12 @@ pub struct CampaignLog {
     /// C6: with live battles, per round, the player's battles as played.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub played: Vec<Vec<PlayedBattle>>,
+    /// C6: with live battles, the battle history's hash after each round
+    /// (`Campaign::history_hash`): a played outcome changed in a way the
+    /// state hash does not see (its ticks, its winner on a hold) diverges
+    /// here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub history: Vec<u64>,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -78,8 +84,18 @@ impl CampaignLog {
                 self.played.len()
             ));
         }
+        if self.live && self.history.len() != self.rounds.len() {
+            return Err(format!(
+                "campaign save: {} rounds of decisions but {} history hashes",
+                self.rounds.len(),
+                self.history.len()
+            ));
+        }
         if !self.live && !self.played.is_empty() {
             return Err("campaign save: played battles in a save without live battles".to_string());
+        }
+        if !self.live && !self.history.is_empty() {
+            return Err("campaign save: history hashes in a save without live battles".to_string());
         }
         if !self.content.is_known() {
             return Err("campaign save: no content was stamped on it".to_string());
@@ -163,6 +179,7 @@ impl Campaign {
             hashes: self.round_hashes.clone(),
             live: self.live,
             played: self.played.clone(),
+            history: self.history_hashes.clone(),
         }
     }
 
@@ -207,6 +224,15 @@ impl Campaign {
                      {want:#018x})",
                     i + 1
                 ));
+            }
+            if let (Some(&want), Some(&got)) = (log.history.get(i), c.history_hashes().last()) {
+                if got != want {
+                    return Err(format!(
+                        "campaign save: round {} diverged on replay: its battle history (hash \
+                         {got:#018x}, the save has {want:#018x}); a played outcome was changed",
+                        i + 1
+                    ));
+                }
             }
         }
         Ok(c)

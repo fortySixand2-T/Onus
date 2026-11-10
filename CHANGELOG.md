@@ -1045,3 +1045,9 @@
 - [2026-11-10] Modified: tests/c6_live.rs — includes the beats module
 - [2026-11-10] Modified: FINDINGS.md — F-099 readings S17–S21 taken while building AC5, AC6 and AC8; Mac list adds the battle panel
 - [2026-11-10] Created: tests/critic_c6.rs — C6 critic probes (tampered played outcomes, live-vs-headless battle differential, defending player, tick counting, S18, legacy beat)
+- [2026-11-10] Modified: src/campaign/mod.rs — a live campaign keeps the battle history's hash per round (`history_hash`); the state hash is unchanged
+- [2026-11-10] Modified: src/campaign/save.rs — a live save carries the history hashes and a load checks them, so any changed played outcome diverges at its round
+- [2026-11-10] Modified: FINDINGS.md — F-099 S10 states exactly what a live save catches
+- [2026-11-10] Created: tests/c6/critic.rs — the critic's C6 r1 probes, moved from tests/critic_c6.rs into the c6_live binary
+- [2026-11-10] Deleted: tests/critic_c6.rs — folded into c6_live (disk)
+- [2026-11-10] Modified: tests/c6_live.rs — includes the critic probes

@@ -8122,9 +8122,14 @@ may revise it.
   player's side has no commander.
 - S9. A live battle has the campaign's **tick cap**. At the cap it is undecided and the holder keeps
   the city, as a headless battle.
-- S10. A save **trusts** its played outcomes. It is a single-player save, and the per-round hashes
-  catch an outcome changed without them. An edit that changes both is not caught; nor is it caught
-  for decisions.
+- S10. A save **trusts** its played outcomes as far as its hashes go. It is a single-player save.
+  A live save keeps two hashes per round: the state hash, and a hash of the battle history
+  (`Campaign::history_hash`: every record's round, city, sides, winner, capture, absorption and
+  ticks). The state hash leaves the history out, so C4's and C5's goldens stay as they were; the
+  history hash is what catches an outcome changed in a way only the history shows (its ticks, or a
+  won hold changed to an undecided one). So **any** change to a played outcome, alone, diverges at
+  its round on load (critic C6 r1 #1). Not caught: an edit that also rewrites the hashes it
+  changes; that holds for decisions too.
 
 **Story (AC1, AC8).**
 - S11. **Vengeance** fires when a capture of the player's absorbs the named nation (or any nation,

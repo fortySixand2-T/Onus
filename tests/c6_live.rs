@@ -32,6 +32,8 @@ mod battle;
 mod same;
 #[path = "c6/beats.rs"]
 mod beats;
+#[path = "c6/critic.rs"]
+mod critic_c6;
 
 use std::cell::RefCell;
 use std::path::PathBuf;
