@@ -1004,3 +1004,4 @@
 - [2026-11-09] Created: tests/critic_c5_balance.rs — critic r1 ignored probe: who acts in each profile (loop rewritten for clippy only)
 - [2026-11-09] Modified: FINDINGS.md — F-097 AC8 redefinition and 60-seed re-read; F-096 attributions corrected; disposition gaps
 - [2026-11-09] Modified: CAMPAIGN_PLAN.md — C5 AC8 pass rule matches the redefined verdict (F-097 D31, provisional)
+- [2026-11-10] Modified: CAMPAIGN_PLAN.md — tick C5 AC1–AC7 after critic PASS and green gate060; AC8 (diplomacy balance) stays open

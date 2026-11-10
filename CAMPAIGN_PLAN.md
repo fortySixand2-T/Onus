@@ -274,7 +274,7 @@ Diplomacy is **opt-in through campaign content**. Its numbers live in a new
 RON. Readings the spec does not settle are in FINDINGS (F-095), marked provisional. No client or UI:
 that is C6.
 
-- [ ] **Content:** `diplomacy.ron` holds every diplomacy number:
+- [x] **Content:** `diplomacy.ron` holds every diplomacy number:
   - each nation's disposition, `(towards, ally_bias, betrayal_tolerance)`;
   - the default standing;
   - `ally_cap`, `betrayal_standing_drop` and `destabilize_requires_tied`;
@@ -293,11 +293,11 @@ that is C6.
   Each pair of nations starts at the standing their dispositions give: the default standing when
   neither names the other, and the more hostile one when both do. The file's fingerprint joins the
   campaign content's.
-- [ ] **Golden licence:** without diplomacy, a campaign plays exactly as C4. C4's campaign golden
+- [x] **Golden licence:** without diplomacy, a campaign plays exactly as C4. C4's campaign golden
   (0x1600ef997dbf8728) and every battle golden are unchanged, and a diplomatic decision is refused.
   With diplomacy attached but every nation abstaining, a campaign fights the same battles, with the
   same results, as C4.
-- [ ] **Alliance with the ≤1 cap:**
+- [x] **Alliance with the ≤1 cap:**
   - Each pair of nations has a standing: Hostile, Neutral, Tied or Allied.
   - A nation can **court** another, which raises their standing one step (no higher than Tied), for
     `court_cost`.
@@ -311,18 +311,18 @@ that is C6.
   - A nation takes at most the RON number of diplomatic actions per round (one).
   - An alliance ends when either nation falls.
   - The player wins by domination when every rival still standing is his ally.
-- [ ] **Betrayal and its cost:** a nation can betray its ally.
+- [x] **Betrayal and its cost:** a nation can betray its ally.
   - The pair goes Hostile.
   - Every other living nation's standing towards the betrayer drops `betrayal_standing_drop` steps,
     never below Hostile.
   - The betrayal is counted. A nation refuses every offer from a nation whose betrayals exceed its
     `betrayal_tolerance`.
   - The betrayer's armies standing in the old ally's cities assault them that round.
-- [ ] **Destabilize (proxy war):** a nation with Tied standing with `destabilize_requires_tied`
+- [x] **Destabilize (proxy war):** a nation with Tied standing with `destabilize_requires_tied`
   nations (two) can incite two of them, not allied with each other, to war, for `incite_cost`. The
   two go Hostile, and each of them that is AI marches on the other's capital for the RON number of
   rounds. Both armies bleed in auto-resolved battles, and the inciter's army is never committed.
-- [ ] **Diplomatic AI:** each AI nation takes at most one diplomatic action per round, chosen from
+- [x] **Diplomatic AI:** each AI nation takes at most one diplomatic action per round, chosen from
   its disposition and the map.
   - Its **willingness** towards a nation is its `ally_bias`, plus their standing, less
     `notice_per_city` for every city that nation holds above its own. This is C0's notice rule: a
@@ -331,7 +331,7 @@ that is C6.
     asks its ally to attack, incites, or courts.
   - It draws nothing from the rng.
   - It never makes an offer to the player.
-- [ ] **Saved and hashed:**
+- [x] **Saved and hashed:**
   - Standings, betrayal counts and war targets are in the campaign state hash.
   - The player's diplomatic decisions are in the save.
   - A diplomatic campaign saves, loads, and replays to the same hashes.
