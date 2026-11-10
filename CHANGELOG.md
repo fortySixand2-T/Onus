@@ -1014,3 +1014,6 @@
 - [2026-11-10] Modified: src/campaign/mod.rs — C6 AC2: live battles (with_live_battles, step_round pausing at the player's battles, played outcomes checked and recorded; RoundStep, BadBattle, BattleToPlay)
 - [2026-11-10] Modified: src/campaign/battle.rs — C6 AC2: PlayedBattle and the Memo resolver
 - [2026-11-10] Created: tests/c6_live.rs — C6 AC2: pauses, resumes, refusals and hash equality of live rounds
+- [2026-11-10] Modified: src/campaign/save.rs — C6 AC3: a live save carries its played battles (left out when empty, so a C4 save is written byte for byte as before) and resumes through step_round
+- [2026-11-10] Modified: src/campaign/battle.rs — C6 AC3: battle outcomes and played battles serialize
+- [2026-11-10] Modified: tests/c6_live.rs — C6 AC3: live saves resume, a changed outcome diverges, a missing one refuses, a save without live battles is unchanged

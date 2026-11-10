@@ -7,7 +7,14 @@
 //! as the same round played with a resolver that returns them; without
 //! live battles nothing changes (C4's golden is checked by c4_autoresolve).
 //!
-//! The readings (F-099 S5–S7): a battle is live when the player's nation
+//! C6 AC3 — **saves carry played battles** (the tests at the end): a live
+//! campaign's save holds each played battle's outcome beside the round's
+//! decisions and resumes to the same hashes; a changed outcome diverges at
+//! its round, a missing one refuses its round; a save without live battles
+//! is written exactly as before. (One test binary for both: each costs
+//! 1.8 GB on the build box.)
+//!
+//! The readings (F-099 S5–S7, S10): a battle is live when the player's nation
 //! attacks or holds and it is fought (an undefended city is no battle); a
 //! played outcome is keyed by (round, city id); a pause is the round
 //! refused-and-replayed, so a client caches AI battles with `Memo`.
@@ -17,8 +24,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use onus::campaign::{
-    BattleOutcome, BattlePlan, Campaign, CampaignContent, Decision, Memo, PlayedBattle, Resolver, RoundError,
-    RoundStep, Side,
+    BattleOutcome, BattlePlan, Campaign, CampaignContent, CampaignLog, Decision, Memo, PlayedBattle, Resolver,
+    RoundError, RoundStep, Side,
 };
 use onus::sim::content::Content;
 
@@ -280,4 +287,127 @@ fn memo_resolves_each_plan_once() {
     other.seed ^= 1;
     m.resolve(c.content(), c.campaign(), &other);
     assert_eq!(*calls.borrow(), 2);
+}
+
+// ---- AC3: saves --------------------------------------------------------------
+
+/// Ten live rounds of seed 11, House walking on Ironspire.
+fn live_played() -> Campaign {
+    let mut c = new_campaign(11, true);
+    let army = house_army(&c);
+    let mut r = script;
+    for _ in 0..10 {
+        if c.is_over() {
+            break;
+        }
+        let ds = toward(&c, army, "ironspire");
+        live_round(&mut c, &ds, &mut r);
+    }
+    assert!(c.played().iter().map(Vec::len).sum::<usize>() >= 1, "the fixture played a battle");
+    c
+}
+fn cc() -> CampaignContent {
+    CampaignContent::shipped_with_diplomacy(&content()).unwrap()
+}
+
+#[test]
+fn a_live_save_holds_its_played_battles_and_resumes_to_the_same_hashes() {
+    let c = live_played();
+    let log = c.log();
+    assert!(log.live);
+    assert_eq!(log.played, c.played());
+    assert_eq!(log.played.len(), log.rounds.len());
+    let text = log.to_ron().unwrap();
+    assert!(text.contains("played") && text.contains("live"), "{text}");
+    let back = CampaignLog::from_ron(&text).unwrap();
+    assert_eq!(back, log, "the save round-trips");
+    // The resolver on resume only ever sees AI battles: the player's come
+    // from the save.
+    let h = c.player().unwrap();
+    let mut ai_only = move |p: &BattlePlan| {
+        assert!(p.attack.nation != h && p.defend.nation != h, "a played battle went to the resolver");
+        script(p)
+    };
+    let r = Campaign::resume(content(), cc(), &back, &mut ai_only).unwrap();
+    assert_eq!(r.round_hashes(), c.round_hashes());
+    assert_eq!(r.state_hash(), c.state_hash());
+    assert!(r.live_battles(), "a resumed live campaign plays on live");
+    assert_eq!(r.played(), c.played());
+}
+
+#[test]
+fn a_changed_outcome_diverges_at_its_round_and_a_missing_one_refuses_it() {
+    let c = live_played();
+    let log = c.log();
+    let k = log.played.iter().position(|b| !b.is_empty()).expect("a round with a played battle");
+    let mut r = script;
+    // A changed outcome (the other side wins).
+    let mut changed = log.clone();
+    let o = &mut changed.played[k][0].outcome;
+    o.winner = match o.winner {
+        Some(Side::Attack) => Some(Side::Defend),
+        _ => Some(Side::Attack),
+    };
+    let e = Campaign::resume(content(), cc(), &changed, &mut r).unwrap_err();
+    assert!(e.contains(&format!("round {} diverged", k + 1)), "{e}");
+    // A missing one.
+    let mut missing = log.clone();
+    missing.played[k].remove(0);
+    let e = Campaign::resume(content(), cc(), &missing, &mut r).unwrap_err();
+    assert!(e.contains(&format!("round {} refused", k + 1)) && e.contains("no played outcome"), "{e}");
+    // A played battle in a save without live battles, and a live save whose
+    // played rounds do not match its decision rounds, are refused at load.
+    let mut not_live = log.clone();
+    not_live.live = false;
+    assert!(not_live.to_ron().is_err());
+    let mut short = log.clone();
+    short.played.pop();
+    assert!(short.to_ron().unwrap_err().contains("played"));
+    assert!(Campaign::resume(content(), cc(), &short, &mut r).is_err());
+}
+
+/// The C4 save, field for field: what a save without live battles was
+/// written as before C6.
+#[derive(serde::Serialize)]
+struct C4Log {
+    version: u32,
+    seed: u64,
+    player: Option<String>,
+    content: onus::sim::content::ContentFingerprint,
+    campaign: u64,
+    rounds: Vec<Vec<Decision>>,
+    hashes: Vec<u64>,
+}
+
+#[test]
+fn a_save_without_live_battles_is_written_exactly_as_before() {
+    let mut c = new_campaign(11, false);
+    let army = house_army(&c);
+    let mut r = script;
+    for _ in 0..6 {
+        if c.is_over() {
+            break;
+        }
+        let ds = toward(&c, army, "ironspire");
+        c.play_round(&ds, &mut r).unwrap();
+    }
+    let log = c.log();
+    assert!(!log.live && log.played.is_empty());
+    let c4 = C4Log {
+        version: log.version,
+        seed: log.seed,
+        player: log.player.clone(),
+        content: log.content.clone(),
+        campaign: log.campaign,
+        rounds: log.rounds.clone(),
+        hashes: log.hashes.clone(),
+    };
+    let before = ron::ser::to_string_pretty(&c4, ron::ser::PrettyConfig::default()).unwrap();
+    assert_eq!(log.to_ron().unwrap(), before, "byte for byte the C4 save");
+    // And a C4 save loads as one without live battles.
+    let back = CampaignLog::from_ron(&before).unwrap();
+    assert_eq!(back, log);
+    let again = Campaign::resume(content(), cc(), &back, &mut r).unwrap();
+    assert_eq!(again.round_hashes(), c.round_hashes());
+    assert!(!again.live_battles());
 }

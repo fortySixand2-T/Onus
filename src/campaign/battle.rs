@@ -2,6 +2,8 @@
 //! ([`BattlePlan`]), what comes back ([`BattleOutcome`]), and who decides it
 //! (a [`Resolver`]).
 
+use serde::{Deserialize, Serialize};
+
 use crate::headless::{MatchSettings, Orientation};
 use crate::sim::battle::{AuraRank, BattleSetup, Roster};
 use crate::sim::content::Content;
@@ -11,7 +13,7 @@ use super::content::CampaignContent;
 use super::Campaign;
 
 /// The two sides of a campaign battle.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Side {
     /// The nation marching on the city.
     Attack,
@@ -96,7 +98,7 @@ impl BattlePlan {
 }
 
 /// How one side came out of a battle.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SideOutcome {
     /// Per plan General: did he survive?
     pub generals: Vec<bool>,
@@ -105,7 +107,7 @@ pub struct SideOutcome {
 }
 
 /// What a battle did.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BattleOutcome {
     /// `None`: undecided (a draw or the tick cap) — the defender holds.
     pub winner: Option<Side>,
@@ -161,7 +163,7 @@ impl<F: FnMut(&BattlePlan) -> BattleOutcome> Resolver for F {
 
 /// A battle of the player's, played live (C6 AC2): its outcome, keyed by
 /// the round and the city (a `campaign.ron` city id) it was fought over.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlayedBattle {
     pub round: u32,
     pub city: String,

@@ -13,14 +13,20 @@
 //!   round is replayed;
 //! - the per-round state hashes are kept, and a load checks every round
 //!   against them, stopping at the first that diverges.
+//!
+//! C6 AC3: a campaign with live battles also saves each played battle's
+//! outcome beside the round's decisions (the player fought it; nothing can
+//! recompute it), and a load takes them back in place of the resolver. A
+//! save without live battles is written exactly as in C4: the two fields
+//! are left out when empty.
 
 use serde::{Deserialize, Serialize};
 
 use crate::sim::content::{Content, ContentFingerprint};
 
-use super::battle::Resolver;
+use super::battle::{PlayedBattle, Resolver};
 use super::content::CampaignContent;
-use super::{Campaign, Decision};
+use super::{Campaign, Decision, RoundStep};
 
 /// The save format this build writes and reads.
 pub const CAMPAIGN_LOG_VERSION: u32 = 1;
@@ -42,6 +48,16 @@ pub struct CampaignLog {
     pub rounds: Vec<Vec<Decision>>,
     /// The state hash after each round: the replay is checked against them.
     pub hashes: Vec<u64>,
+    /// C6: the player's battles were played live.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub live: bool,
+    /// C6: with live battles, per round, the player's battles as played.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub played: Vec<Vec<PlayedBattle>>,
+}
+
+fn is_false(b: &bool) -> bool {
+    !*b
 }
 
 impl CampaignLog {
@@ -54,6 +70,16 @@ impl CampaignLog {
                 self.rounds.len(),
                 self.hashes.len()
             ));
+        }
+        if self.live && self.played.len() != self.rounds.len() {
+            return Err(format!(
+                "campaign save: {} rounds of decisions but {} rounds of played battles",
+                self.rounds.len(),
+                self.played.len()
+            ));
+        }
+        if !self.live && !self.played.is_empty() {
+            return Err("campaign save: played battles in a save without live battles".to_string());
         }
         if !self.content.is_known() {
             return Err("campaign save: no content was stamped on it".to_string());
@@ -135,6 +161,8 @@ impl Campaign {
             campaign: self.campaign.fingerprint(),
             rounds: self.decisions.clone(),
             hashes: self.round_hashes.clone(),
+            live: self.live,
+            played: self.played.clone(),
         }
     }
 
@@ -157,9 +185,21 @@ impl Campaign {
         log.matches(&content, &campaign)?;
         let mut c = Campaign::new(content, campaign, log.seed, log.player.as_deref())
             .map_err(|e| format!("campaign save: {e}"))?;
+        if log.live {
+            c = c.with_live_battles();
+        }
         for (i, (ds, &want)) in log.rounds.iter().zip(&log.hashes).enumerate() {
-            c.play_round(ds, resolver)
-                .map_err(|e| format!("campaign save: round {} refused on replay: {e}", i + 1))?;
+            let played = log.played.get(i).map_or(&[][..], Vec::as_slice);
+            let refused = |e: String| format!("campaign save: round {} refused on replay: {e}", i + 1);
+            match c.step_round(ds, played, resolver).map_err(|e| refused(e.to_string()))? {
+                RoundStep::Played(_) => {}
+                RoundStep::Battle(plan) => {
+                    return Err(refused(format!(
+                        "the battle at `{}` has no played outcome",
+                        c.campaign().cities[plan.city].id
+                    )))
+                }
+            }
             let got = c.state_hash();
             if got != want {
                 return Err(format!(
