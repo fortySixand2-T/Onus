@@ -1044,3 +1044,4 @@
 - [2026-11-10] Modified: tests/c6/diplomacy.rs — the courting loop reads past a round's story beats
 - [2026-11-10] Modified: tests/c6_live.rs — includes the beats module
 - [2026-11-10] Modified: FINDINGS.md — F-099 readings S17–S21 taken while building AC5, AC6 and AC8; Mac list adds the battle panel
+- [2026-11-10] Created: tests/critic_c6.rs — C6 critic probes (tampered played outcomes, live-vs-headless battle differential, defending player, tick counting, S18, legacy beat)
