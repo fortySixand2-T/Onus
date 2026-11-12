@@ -1057,3 +1057,4 @@
 - [2026-11-11] Modified: tests/c6/diplomacy.rs — the diplomatic action is paid before a staged raise (a treasury that pays one but not both)
 - [2026-11-11] Modified: CAMPAIGN_PLAN.md — C6 AC5 states the diplomatic action's order as a provisional reading
 - [2026-11-11] Modified: FINDINGS.md — F-099 S17 names its test and marks it provisional
+- [2026-11-11] Modified: FINDINGS.md — F-099 S22-S23 record the critic's two minor observations (an unfought battle's outcome refused at play time; record_unplayed's latch across battles)

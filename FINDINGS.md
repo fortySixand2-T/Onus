@@ -8175,6 +8175,16 @@ may revise it.
   battle's orders for a battle replay is left for later.
 - S21. Beats a round triggers are queued after its report: the Story screen shows them, Enter
   advances, and the map (or the Over screen) follows the last one.
+- S22. A played outcome naming a battle the round does not fight is refused when the round plays
+  (`BadBattle`), not while the round is paused at an earlier battle. The client only ever records
+  the outcome of the battle it is paused at, so it cannot name another; a hand-built list of
+  outcomes is checked at the step that plays the round. Recorded, not changed (critic C6 r1, minor).
+- S23. `sim::replay::record_unplayed` latches with a `Local<bool>`, and the client's one app plays
+  many battles, so after the first battle that ends decided it no longer drains the queue at a
+  battle's end. Nothing reads it: the client keeps no command log, the gate is closed once a battle
+  is decided, so no held order is applied, and each battle is fielded on a fresh `CommandQueue`
+  (`headless::populate`). Left as M5 built it; a client that records live battles' orders (S20)
+  would have to reset that latch per battle (critic C6 r1, minor).
 
 **For the user on the Mac (not judged by the harness; no AC is ticked on these):**
 - whether the map layout reads: city spacing, road lines, army markers, holder colours (P3);
