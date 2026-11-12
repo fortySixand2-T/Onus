@@ -1061,3 +1061,4 @@
 - [2026-11-11] Modified: tests/c6/critic.rs — C6 critic r2 probes (single-field tamper sweep of played outcomes, history hashes in saves, Update vs FixedUpdate capped battle, tick cap 0 on FixedUpdate)
 - [2026-11-11] Modified: tests/c6/battle.rs — the tick-cap-0 test also runs the sim on FixedUpdate as shipped, gating field_battle's cap-0 end
 - [2026-11-11] Modified: FINDINGS.md — F-099 S10 limits the claim to changes that affect the campaign, names the discarded-HP case, and records that the critic's probes are the gate for r1 #1 and #2
+- [2026-11-11] Modified: CAMPAIGN_PLAN.md — tick C6 AC1–AC8 after critic PASS (round 3); human-look items stay listed in F-099 for the Mac

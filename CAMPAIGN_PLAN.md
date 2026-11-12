@@ -363,7 +363,7 @@ schedule. Readings the spec leaves open are in FINDINGS (F-099), marked provisio
 can judge (layout, readability, feel) is listed there **for the user on the Mac**, and no AC is ticked
 on a look alone.
 
-- [ ] **Story content:** `assets/data/story.ron` holds every story beat: an id, a trigger, a title
+- [x] **Story content:** `assets/data/story.ron` holds every story beat: an id, a trigger, a title
   and its text. The triggers are:
   - the campaign starts (the Rupture);
   - the player takes a nation's capital (vengeance; a named nation, or any);
@@ -376,7 +376,7 @@ on a look alone.
   and at least one vengeance beat and one glory beat. A render-free rule (`campaign::story`) reads
   the beats off campaign state: each fires once, the first time its trigger holds, in file order.
   The story never changes campaign state or its hash.
-- [ ] **Live battles in the campaign core:** a campaign can be played with live battles.
+- [x] **Live battles in the campaign core:** a campaign can be played with live battles.
   - A round then pauses at each battle the player's nation fights (an undefended city is no
     battle). It hands back that battle's plan and leaves the campaign unchanged.
   - Given the battle's played outcome, the round resumes. AI-vs-AI battles in the round are still
@@ -387,11 +387,11 @@ on a look alone.
     returns them.
   - Without live battles a campaign plays exactly as before: C4's golden (0x1600ef997dbf8728) and
     every battle golden are unchanged.
-- [ ] **Saves carry played battles:** a live campaign's save holds each played battle's outcome
+- [x] **Saves carry played battles:** a live campaign's save holds each played battle's outcome
   beside the round's decisions, and it resumes to the same hashes. A changed outcome diverges at its
   round, and a missing one refuses its round. A save without live battles is written exactly as
   before.
-- [ ] **Screens and round flow:**
+- [x] **Screens and round flow:**
   - `cargo run -- campaign` opens the campaign client: the player is House Vael, the heir, on the
     shipped map with diplomacy. `cargo run` plays the 1v1 skirmish exactly as before.
   - The screens are Bevy states: Story, Map, Diplomacy, Battle and Over.
@@ -402,13 +402,13 @@ on a look alone.
     nothing. The round's report (the battles fought and the cities taken) shows on the map.
   - City positions on the screen are RON (`assets/data/map_layout.ron`), validated against the
     campaign map.
-- [ ] **Diplomacy screen:** it shows each rival's standing with the player, the player's ally and
+- [x] **Diplomacy screen:** it shows each rival's standing with the player, the player's ally and
   each nation's betrayals. Keys stage the round's one diplomatic action (court, ally, ask, betray or
   incite) as a `Decision`.
   - The round plays that action **before** the player's staged orders, as the AI's is played
     before its own, so what it spends is gone before a General is raised (a provisional reading,
     F-099 S17).
-- [ ] **Into and out of battles:** when the round pauses at a battle of the player's, the client
+- [x] **Into and out of battles:** when the round pauses at a battle of the player's, the client
   enters the Battle screen.
   - The battle is the match `battle_settings` builds from the plan, with the player's side on the
     faction he commands. The opposing nation's AI plays its own strategy.
@@ -418,10 +418,10 @@ on a look alone.
     (survivors and their HP, buildings, each General's fate, a retreat) is read off the field the
     way the headless resolver reads it. The battle world is cleared, and the round resumes with the
     outcome.
-- [ ] **Same campaign, either way:** a campaign driven through the client (keys to decisions, live
+- [x] **Same campaign, either way:** a campaign driven through the client (keys to decisions, live
   battles) hashes round for round exactly as the same decisions and battle outcomes fed headlessly,
   and its save resumes to the same hashes.
-- [ ] **Story beats on screen:** the Rupture beat opens the campaign. After each round, the beats it
+- [x] **Story beats on screen:** the Rupture beat opens the campaign. After each round, the beats it
   triggered show on the Story screen, in order, before the map. The legacy beat (or the loss beat)
   shows before the Over screen.
 
