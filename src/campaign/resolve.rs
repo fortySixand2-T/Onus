@@ -32,11 +32,13 @@ impl Resolver for HeadlessResolver {
     }
 }
 
-/// The sim ids of one side's plan things, in plan order.
-struct Fielded {
-    generals: Vec<SimId>,
-    units: Vec<SimId>,
-    buildings: Vec<SimId>,
+/// The sim ids of one side's plan things, in plan order (its units: the
+/// roster's, then the battle-only workers).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Fielded {
+    pub generals: Vec<SimId>,
+    pub units: Vec<SimId>,
+    pub buildings: Vec<SimId>,
 }
 
 /// Play `plan` in the headless battle sim (C4 AC10). Deterministic: the
@@ -87,13 +89,32 @@ pub fn resolve_battle(content: &Content, campaign: &CampaignContent, plan: &Batt
         headless::step(&mut app);
         ticks += 1;
     }
-    let state = app.world().resource::<BattleState>();
+    read_outcome(app.world_mut(), plan, &fielded, [Faction::A, Faction::B], ticks)
+}
+
+/// The outcome of `plan`'s battle as the field in `world` stands after
+/// `ticks` ticks, read by sim id: `fielded` holds each side's plan things
+/// (attack, defend), `factions` the faction each side played (attack,
+/// defend). Decided, it is read from the battle's report; undecided (the tick
+/// cap), the defender holds and everyone walks off with the HP he has. **The
+/// one reading**, shared by the headless resolver and the campaign client's
+/// live battles (C6), which field the player on his own faction.
+pub fn read_outcome(
+    world: &mut bevy::ecs::world::World,
+    plan: &BattlePlan,
+    fielded: &[Fielded; 2],
+    factions: [Faction; 2],
+    ticks: u32,
+) -> BattleOutcome {
+    let state = world.resource::<BattleState>();
     let Some(result) = state.result() else {
         // The tick cap: undecided, and the defender holds. Everyone walks
         // off with the HP he has now.
-        return at_the_cap(&mut app, plan, &fielded, ticks);
+        return at_the_cap(world, plan, fielded, ticks);
     };
-    let winner = match (result.loss(Faction::A), result.loss(Faction::B)) {
+    let [fa, fd] = fielded;
+    let [att, def] = factions;
+    let winner = match (result.loss(att), result.loss(def)) {
         (None, Some(_)) => Some(Side::Attack),
         (Some(_), None) => Some(Side::Defend),
         _ => None,
@@ -106,9 +127,9 @@ pub fn resolve_battle(content: &Content, campaign: &CampaignContent, plan: &Batt
             units: ids.units[..n_units].iter().map(|&id| hp_of(id)).collect(),
         }
     };
-    let attack = side(Faction::A, plan.attack.units.len(), fa);
-    let defend = side(Faction::B, plan.defend.units.len(), fd);
-    let rb = result.report(Faction::B);
+    let attack = side(att, plan.attack.units.len(), fa);
+    let defend = side(def, plan.defend.units.len(), fd);
+    let rb = result.report(def);
     let buildings = fd
         .buildings
         .iter()
@@ -125,15 +146,18 @@ pub fn resolve_battle(content: &Content, campaign: &CampaignContent, plan: &Batt
 
 /// An undecided battle: every plan thing's HP read off the field (or, for
 /// one that escaped in a retreat, the HP it left with); gone is dead.
-fn at_the_cap(app: &mut bevy::app::App, plan: &BattlePlan, fielded: &[Fielded; 2], ticks: u32) -> BattleOutcome {
-    let escaped: Vec<(SimId, u32)> = app
-        .world()
+fn at_the_cap(
+    world: &mut bevy::ecs::world::World,
+    plan: &BattlePlan,
+    fielded: &[Fielded; 2],
+    ticks: u32,
+) -> BattleOutcome {
+    let escaped: Vec<(SimId, u32)> = world
         .resource::<BattleState>()
         .escaped()
         .iter()
         .map(|e| (e.sim_id, e.hp))
         .collect();
-    let world = app.world_mut();
     let mut q = world.query::<(&SimId, Option<&Health>)>();
     // A campaign roster gives every unit and building its HP, so each
     // carries `Health`; a General is spawned with it.

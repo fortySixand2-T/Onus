@@ -1,0 +1,71 @@
+// story.ron: the campaign's story beats (C6 AC1). DESIGN_BRIEF "Story
+// hooks" (vengeance, glory, legacy); CAMPAIGN_PLAN C6. Loaded by
+// src/campaign/story.rs and validated against the battle and campaign
+// content; a bad beat is a load error.
+//
+// Each beat: (id, trigger, title, text). A beat fires once, the first time
+// its trigger holds after a round (Start before round 1); beats that fire
+// together show in this file's order, so the endings come last.
+//
+// Triggers:
+//   Start               the Rupture: opens the campaign (exactly one)
+//   CapitalTaken(nation) the heir's capture absorbs that nation (vengeance)
+//   AnyCapitalTaken     the same, for any nation no other beat names
+//   RankReached(r)      a General of the heir's first holds rank r (glory);
+//                       r above 0 and a rank campaign.ron has
+//   Won                 the heir wins the campaign (legacy; exactly one)
+//   Lost                the heir loses his capital
+// No two beats share a trigger. The story is not campaign state: it never
+// changes the campaign or its hash.
+(
+    beats: [
+        (
+            id: "rupture",
+            trigger: Start,
+            title: "The Rupture",
+            text: "A ley-well tore open and a region was unmade: the Rupture. The pure houses named your family's synthesis the cause, burned its works and carved up its lands. Cinderhold is all that is left of House Vael, at the edge of the scar. You are its heir.",
+        ),
+        (
+            id: "glory_1",
+            trigger: RankReached(1),
+            title: "A Name Spoken Again",
+            text: "Word of a Vael General who wins his battles reaches the courts. The name they struck from the rolls is spoken again, in fear for now.",
+        ),
+        (
+            id: "glory_2",
+            trigger: RankReached(2),
+            title: "The Name Restored",
+            text: "Your General's banner is known on every road. Soldiers who once spat at the name of Vael now ask to march under it.",
+        ),
+        (
+            id: "vengeance_forgeborn",
+            trigger: CapitalTaken("forgeborn"),
+            title: "Ironspire Falls",
+            text: "The Forgeborn forges that once melted down your family's works go cold. Their General kneels and joins your banner.",
+        ),
+        (
+            id: "vengeance_verdant",
+            trigger: CapitalTaken("verdant"),
+            title: "Greenmere Falls",
+            text: "The Verdant elders called the mixing of flesh with metal an abomination. Their grove is yours now, and they learn to live with it.",
+        ),
+        (
+            id: "vengeance_any",
+            trigger: AnyCapitalTaken,
+            title: "A House Brought Low",
+            text: "Another of the houses that divided your lands has lost its capital. Its people now answer to House Vael.",
+        ),
+        (
+            id: "fallen",
+            trigger: Lost,
+            title: "Cinderhold Burns",
+            text: "Cinderhold falls, and the last of House Vael with it. The pure houses will say the heresy died here. Nobody will ask whether it was ever the cause of the Rupture.",
+        ),
+        (
+            id: "legacy",
+            trigger: Won,
+            title: "The Synthesis Endures",
+            text: "No house is left to call your craft a heresy. Whether the synthesis tore the world or was only blamed for it, it is yours to carry now, along with the risk of a second Rupture.",
+        ),
+    ],
+)

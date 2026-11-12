@@ -9,6 +9,8 @@
 //!   runner and the tests.
 //! - [`batch`] — the balance batch loop over [`headless`] matches (B2), wrapped
 //!   by `src/bin/balance.rs`.
+//! - [`campaign_client`] / [`campaign_view`] — the campaign client (C6): its
+//!   screens, keys and session (logic, headless-testable), and its view.
 //! - [`client`] — client-side state & presentation constants (selection, colors).
 //! - [`input`] / [`ui`] / [`setup`] — the Bevy driver: turn input into orders,
 //!   render sim state, and spawn the world. May use render types; `sim` may not.
@@ -24,6 +26,8 @@ use bevy::prelude::*;
 
 pub mod batch;
 pub mod campaign;
+pub mod campaign_client;
+pub mod campaign_view;
 pub mod client;
 pub mod gate;
 pub mod headless;

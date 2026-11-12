@@ -25,6 +25,7 @@ pub mod content;
 pub mod diplomacy;
 pub mod resolve;
 pub mod save;
+pub mod story;
 
 use std::sync::Arc;
 
@@ -34,9 +35,11 @@ use crate::sim::content::Content;
 use crate::sim::nation::{Defs, NationRules};
 use crate::sim::spatial::{Faction, SplitMix64};
 
-pub use resolve::{resolve_battle, HeadlessResolver};
+pub use resolve::{read_outcome, resolve_battle, Fielded, HeadlessResolver};
 pub use save::{CampaignLog, CAMPAIGN_LOG_VERSION};
-pub use battle::{battle_settings, BattleOutcome, BattlePlan, PlanBuilding, PlanSide, Resolver, Side};
+pub use battle::{
+    battle_settings, BattleOutcome, BattlePlan, Memo, PlanBuilding, PlanSide, PlayedBattle, Resolver, Side,
+};
 pub use content::{CampaignContent, CampaignError, Fnv};
 
 // ---- state -----------------------------------------------------------------
@@ -211,6 +214,12 @@ pub enum RoundError {
     NoPlayer,
     /// A player decision that cannot be carried out.
     BadDecision { decision: Decision, why: String },
+    /// C6: a played battle outcome that does not fit its battle, or names
+    /// a battle the round does not fight.
+    BadBattle { city: String, why: String },
+    /// C6: `play_round` on a campaign with live battles reached a battle of
+    /// the player's (play it through `step_round`).
+    BattleToPlay { city: String },
 }
 
 impl std::fmt::Display for RoundError {
@@ -219,6 +228,8 @@ impl std::fmt::Display for RoundError {
             RoundError::Over => write!(f, "the campaign is over"),
             RoundError::NoPlayer => write!(f, "decisions given, but the campaign has no player"),
             RoundError::BadDecision { decision, why } => write!(f, "{decision:?} refused: {why}"),
+            RoundError::BadBattle { city, why } => write!(f, "the battle at `{city}` refused: {why}"),
+            RoundError::BattleToPlay { city } => write!(f, "the battle at `{city}` is the player's to play"),
         }
     }
 }
@@ -251,6 +262,17 @@ pub struct RoundReport {
     pub battles: Vec<BattleRecord>,
     /// The round's diplomatic actions (C5; empty without diplomacy).
     pub diplomacy: Vec<diplomacy::DiplomacyRecord>,
+}
+
+/// Where a live round stopped (C6 AC2).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RoundStep {
+    /// The round was played.
+    Played(RoundReport),
+    /// The round reached this battle of the player's, which has no played
+    /// outcome yet: play it and step the round again with its outcome. The
+    /// campaign is unchanged.
+    Battle(BattlePlan),
 }
 
 /// Per-nation tables (their traits applied): what each nation's units and
@@ -322,6 +344,19 @@ pub struct Campaign {
     /// The diplomatic state (C5): `None` when the campaign content carries
     /// no diplomacy.
     diplo: Option<diplomacy::DiploState>,
+    /// C6: the player's battles are played live (not hashed: how a battle
+    /// was decided is not state, its outcome is).
+    live: bool,
+    /// C6: per round played, the player's battles played live, in the order
+    /// they were fought (empty without live battles). Not hashed, like the
+    /// decisions: it is input.
+    played: Vec<Vec<PlayedBattle>>,
+    /// C6: with live battles, the battle history's hash after each round
+    /// ([`Campaign::history_hash`]). The state hash leaves the history out
+    /// (all of C4's goldens rest on that), and a played outcome can change
+    /// the history alone (its ticks, an undecided hold for a won one), so a
+    /// live save checks this too.
+    history_hashes: Vec<u64>,
 }
 
 impl Campaign {
@@ -391,6 +426,9 @@ impl Campaign {
             round_hashes: Vec::new(),
             decisions: Vec::new(),
             diplo,
+            live: false,
+            played: Vec::new(),
+            history_hashes: Vec::new(),
         };
         let starts = c.campaign.start_armies.clone();
         for s in &starts {
@@ -590,6 +628,34 @@ impl Campaign {
         h.finish()
     }
 
+    /// A hash of the battle history: every record, field by field. Not part
+    /// of [`state_hash`](Self::state_hash) (C4's goldens rest on it as it
+    /// is); a live save checks it beside the state hash, round by round.
+    pub fn history_hash(&self) -> u64 {
+        let mut h = Fnv::default();
+        h.u64(self.history.len() as u64);
+        for r in &self.history {
+            h.u64(r.round as u64)
+                .u64(r.city as u64)
+                .u64(r.attacker as u64)
+                .u64(r.defender as u64)
+                .u64(match r.winner {
+                    None => 0,
+                    Some(Side::Attack) => 1,
+                    Some(Side::Defend) => 2,
+                })
+                .u64(r.captured as u64)
+                .u64(r.absorbed as u64)
+                .u64(r.ticks as u64);
+        }
+        h.finish()
+    }
+
+    /// With live battles, the history hash after each round played.
+    pub fn history_hashes(&self) -> &[u64] {
+        &self.history_hashes
+    }
+
     // ---- a round ----------------------------------------------------------
 
     /// Play one round: `decisions` are the player's (empty when there is no
@@ -601,17 +667,104 @@ impl Campaign {
         decisions: &[Decision],
         resolver: &mut dyn Resolver,
     ) -> Result<RoundReport, RoundError> {
+        match self.step_round(decisions, &[], resolver)? {
+            RoundStep::Played(report) => Ok(report),
+            RoundStep::Battle(plan) => Err(RoundError::BattleToPlay {
+                city: self.campaign.cities[plan.city].id.clone(),
+            }),
+        }
+    }
+
+    /// This campaign with the player's battles played live (C6 AC2).
+    pub fn with_live_battles(mut self) -> Self {
+        self.live = true;
+        self
+    }
+
+    /// The player's battles are played live.
+    pub fn live_battles(&self) -> bool {
+        self.live
+    }
+
+    /// Per round played, the player's battles played live, in the order
+    /// they were fought.
+    pub fn played(&self) -> &[Vec<PlayedBattle>] {
+        &self.played
+    }
+
+    /// Step one round (C6 AC2). Without live battles it is
+    /// [`play_round`](Self::play_round). With them, each battle the player's
+    /// nation fights takes its outcome from `played` (keyed by round and
+    /// city); the first without one stops the round, which hands back that
+    /// battle's plan and changes nothing. Every other battle goes to
+    /// `resolver`. **Atomic**, like `play_round`: a played outcome that does
+    /// not fit its battle, or that names a battle the round does not fight,
+    /// refuses the round.
+    pub fn step_round(
+        &mut self,
+        decisions: &[Decision],
+        played: &[PlayedBattle],
+        resolver: &mut dyn Resolver,
+    ) -> Result<RoundStep, RoundError> {
         if self.is_over() {
             return Err(RoundError::Over);
         }
         if self.player.is_none() && !decisions.is_empty() {
             return Err(RoundError::NoPlayer);
         }
+        let round = self.round + 1;
+        let mut cities = Vec::with_capacity(played.len());
+        for (k, b) in played.iter().enumerate() {
+            let bad = |why: String| {
+                Err(RoundError::BadBattle {
+                    city: b.city.clone(),
+                    why,
+                })
+            };
+            if !self.live {
+                return bad("the campaign plays no live battles".to_string());
+            }
+            if b.round != round {
+                return bad(format!("it names round {}, but the round being played is {round}", b.round));
+            }
+            let Some(city) = self.city_index(&b.city) else {
+                return bad("unknown city".to_string());
+            };
+            if played[..k].iter().any(|o| o.city == b.city) {
+                return bad("the battle is played twice".to_string());
+            }
+            cities.push(city);
+        }
         let mut next = self.clone();
-        let report = next.round_inner(decisions, resolver)?;
+        let mut live = Live {
+            player: if self.live { self.player } else { None },
+            played,
+            cities,
+            used: Vec::new(),
+            pause: None,
+            bad: None,
+            tables: self.tables.clone(),
+            inner: resolver,
+        };
+        let report = next.round_inner(decisions, &mut live)?;
+        if let Some(e) = live.bad {
+            return Err(e);
+        }
+        if let Some(plan) = live.pause {
+            return Ok(RoundStep::Battle(plan));
+        }
+        if let Some(b) = (0..played.len()).find(|k| !live.used.contains(k)).map(|k| &played[k]) {
+            return Err(RoundError::BadBattle {
+                city: b.city.clone(),
+                why: "the round does not fight a battle of the player's there".to_string(),
+            });
+        }
         next.decisions.push(decisions.to_vec());
+        if self.live {
+            next.played.push(live.used.iter().map(|&k| played[k].clone()).collect());
+        }
         *self = next;
-        Ok(report)
+        Ok(RoundStep::Played(report))
     }
 
     fn round_inner(
@@ -651,6 +804,10 @@ impl Campaign {
         self.diplomacy_end_round();
         let h = self.state_hash();
         self.round_hashes.push(h);
+        if self.live {
+            let hh = self.history_hash();
+            self.history_hashes.push(hh);
+        }
         Ok(RoundReport {
             round: self.round,
             order,
@@ -1126,5 +1283,86 @@ impl Campaign {
         } else if self.round >= self.campaign.rules.round_cap {
             self.outcome = Some(CampaignOutcome::Undecided);
         }
+    }
+}
+
+/// The resolver a round runs on (C6 AC2): the player's battles take their
+/// played outcomes (or stop the round), every other battle goes to the
+/// caller's resolver. With no player (or no live battles) it is the
+/// caller's resolver.
+struct Live<'a> {
+    player: Option<usize>,
+    played: &'a [PlayedBattle],
+    /// Per played battle, its city index.
+    cities: Vec<usize>,
+    /// The played battles used, in the order fought.
+    used: Vec<usize>,
+    pause: Option<BattlePlan>,
+    bad: Option<RoundError>,
+    tables: Arc<Tables>,
+    inner: &'a mut dyn Resolver,
+}
+
+impl Live<'_> {
+    /// Does `o` fit `plan`: one entry per plan General, unit and building,
+    /// no HP above full, no more ticks than the cap.
+    fn fits(&self, campaign: &CampaignContent, plan: &BattlePlan, o: &BattleOutcome) -> Result<(), String> {
+        for (name, side, out) in [("attacking", &plan.attack, &o.attack), ("defending", &plan.defend, &o.defend)] {
+            if out.generals.len() != side.generals.len() {
+                return Err(format!("{} {name} Generals for {}", out.generals.len(), side.generals.len()));
+            }
+            if out.units.len() != side.units.len() {
+                return Err(format!("{} {name} units for {}", out.units.len(), side.units.len()));
+            }
+            for (u, &hp) in side.units.iter().zip(&out.units) {
+                let max = self.tables.unit_hp[side.nation][u.def];
+                if hp > max {
+                    return Err(format!("a {name} unit with {hp} HP, above its full {max} HP"));
+                }
+            }
+        }
+        if o.buildings.len() != plan.buildings.len() {
+            return Err(format!("{} buildings for {}", o.buildings.len(), plan.buildings.len()));
+        }
+        for (b, &hp) in plan.buildings.iter().zip(&o.buildings) {
+            let max = self.tables.building_hp[plan.defend.nation][b.def];
+            if hp > max {
+                return Err(format!("a building with {hp} HP, above its full {max} HP"));
+            }
+        }
+        let cap = campaign.rules.battle.tick_cap;
+        if o.ticks > cap {
+            return Err(format!("{} ticks, past the tick cap of {cap}", o.ticks));
+        }
+        Ok(())
+    }
+}
+
+impl Resolver for Live<'_> {
+    fn resolve(&mut self, content: &Content, campaign: &CampaignContent, plan: &BattlePlan) -> BattleOutcome {
+        // Once the round has stopped, what follows is thrown away.
+        if self.pause.is_some() || self.bad.is_some() {
+            return BattleOutcome::unchanged(plan, None);
+        }
+        let mine = self
+            .player
+            .is_some_and(|p| plan.attack.nation == p || plan.defend.nation == p);
+        if !mine {
+            return self.inner.resolve(content, campaign, plan);
+        }
+        let Some(k) = self.cities.iter().position(|&c| c == plan.city) else {
+            self.pause = Some(plan.clone());
+            return BattleOutcome::unchanged(plan, None);
+        };
+        let outcome = &self.played[k].outcome;
+        if let Err(why) = self.fits(campaign, plan, outcome) {
+            self.bad = Some(RoundError::BadBattle {
+                city: self.played[k].city.clone(),
+                why,
+            });
+            return BattleOutcome::unchanged(plan, None);
+        }
+        self.used.push(k);
+        outcome.clone()
     }
 }

@@ -1,0 +1,30 @@
+// map_layout.ron: where each campaign city is drawn on the campaign client's
+// map screen (C6 AC4). Presentation only: the campaign never reads it, and
+// it changes no state or hash. Loaded by src/campaign_client.rs and
+// validated against campaign.ron: every city exactly once, no unknown id,
+// finite coordinates, no two cities in the same place.
+//
+// Coordinates are map units, +x east, +y north. Cinderhold, the heir's
+// capital, is the centre: the Forgeborn north, the Verdant south, the
+// Aetherkin east, Tollmarch north-west and the Ashen Reach west and
+// south-west, as the roads in campaign.ron join them.
+(
+    cities: [
+        (id: "forge_gate", x: 0.0, y: 150.0),
+        (id: "ironspire", x: 0.0, y: 300.0),
+        (id: "brasswork", x: -150.0, y: 330.0),
+        (id: "anvil_reach", x: 150.0, y: 320.0),
+        (id: "silvermarket", x: -250.0, y: 170.0),
+        (id: "tollgate", x: -330.0, y: 300.0),
+        (id: "starfall", x: 280.0, y: 60.0),
+        (id: "leyhold", x: 450.0, y: 60.0),
+        (id: "prism_vale", x: 450.0, y: -150.0),
+        (id: "rootfall", x: 0.0, y: -150.0),
+        (id: "greenmere", x: 0.0, y: -300.0),
+        (id: "thornwick", x: 220.0, y: -280.0),
+        (id: "bonegarden", x: -170.0, y: -330.0),
+        (id: "cinder_wastes", x: -250.0, y: -60.0),
+        (id: "ashgrave", x: -420.0, y: -150.0),
+        (id: "cinderhold", x: 0.0, y: 0.0)
+    ],
+)

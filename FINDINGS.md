@@ -8067,3 +8067,138 @@ instead of 7). Its place does not change only because the nations that outlast i
   Tollmarch wins. F-096's "they fall early whatever anyone does" was wrong for Verdant.
 - **F-091 still bounds all of this.** With every nation abstaining, the 60 seeds give one outcome, so
   the counts are over the variety that diplomacy introduces, not over independent wars.
+
+## F-098 — C6 starts ahead of B5, by the user's decision (C6)
+
+**Context.** `CAMPAIGN_PLAN.md` gates C1 onward on B5 Go, the human play test, which has not
+run. The user overrode that gate for C1 (2026-11-02), C2 (2026-11-03, F-062), C3 (2026-11-04,
+F-075), C4 (2026-11-07, F-088) and C5 (2026-11-08, F-094). On 2026-11-10 the user said "merge after
+ci, then start c6".
+
+**Decision.** C6 (the campaign client) starts now, on the same terms as C1 to C5: B5 still runs when
+the user can play, and its findings can revise C1 to C6 and later milestones. The C6 heading in
+`CAMPAIGN_PLAN.md` now says "started 2026-11-10, ahead of B5 by user decision", and the plan's gate
+section records the override. C6's two items are written there as eight testable ACs.
+
+**What this does not change.** The open boxes stay open: C1's B5 human re-read, C2's nation cross
+gate (F-074), C4's campaign balance (F-091) and C5's diplomacy balance (F-096, F-097). The campaign
+and the battle sim stay render-free, and the client is a thin driver over them. The skirmish
+(`cargo run`) plays exactly as before. C4's campaign golden (0x1600ef997dbf8728) and every battle
+golden do not move. Story text and the map's layout are new RON files (`story.ron`,
+`map_layout.ron`) outside both content fingerprints. So no golden and no save fingerprint moves
+because of them.
+
+## F-099 — C6 provisional readings of the campaign client (C6)
+
+`CAMPAIGN_PLAN.md` C6 names the screens and the story beats but not their details. Where it is
+silent, C6 takes the simplest reading below. **Each one is provisional:** B5, C7 or a design pass
+may revise it.
+
+**The campaign the client plays (AC4).**
+- S1. The human plays **House Vael**, the heir: the hook is his story, and the story beats are
+  written for him. Every other nation is AI.
+- S2. The client's campaign is the shipped map **with diplomacy** (`shipped_with_diplomacy`), since
+  C6 has a diplomacy screen.
+- S3. The seed is a fixed constant (`CAMPAIGN_SEED`), and `cargo run -- campaign <seed>` overrides
+  it.
+- S4. The campaign is chosen on the **command line** (`cargo run -- campaign`), not from an in-game
+  menu. A menu would put a new screen in front of the skirmish, and the skirmish must play exactly as
+  before. `build_app()` is untouched.
+
+**Live battles (AC2, AC3, AC6).**
+- S5. A battle is **live** when the player's nation is its attacker or its holder and it is fought
+  (an undefended city falls without one, as in C4). An ally never joins a battle (C5 D10), so no
+  other battle involves the player.
+- S6. A played outcome is keyed by its **round and city**. C4 fights at most one battle per city
+  per round, so the key is unique.
+- S7. Pausing is done by **refusal and replay**. A round that reaches a live battle with no outcome is
+  refused, like any refused round, and so changes nothing. The client plays the battle, then plays
+  the whole round again with the outcome. The campaign is deterministic, so the replayed round
+  reaches the same plan. The AI battles fought before the pause are fought again; a memo resolver
+  (same plan, same outcome; the battle sim is deterministic) makes the second time free.
+- S8. The player's side always plays the **faction he commands** (`PLAYER_FACTION`, A). When he
+  holds the city, the plan's two sides are swapped and the map is reflected, so each side keeps the
+  ground the plan drew. The other side plays its nation's strategy under its AI commander. The
+  player's side has no commander.
+- S9. A live battle has the campaign's **tick cap**. At the cap it is undecided and the holder keeps
+  the city, as a headless battle.
+- S10. A save **trusts** its played outcomes as far as its hashes go. It is a single-player save.
+  A live save keeps two hashes per round: the state hash, and a hash of the battle history
+  (`Campaign::history_hash`: every record's round, city, sides, winner, capture, absorption and
+  ticks). The state hash leaves the history out, so C4's and C5's goldens stay as they were; the
+  history hash is what catches an outcome changed in a way only the history shows (its ticks, or a
+  won hold changed to an undecided one). So any change to a played outcome **that affects the
+  campaign**, alone, diverges at its round on load (critic C6 r1 #1). Not caught:
+  - a change to a value the campaign discards, which reaches neither hash. Example: a defender
+    unit's HP in a battle the attacker won; the campaign takes no HP from a beaten defender. The
+    critic's sweep found 2 such changes out of 147 (C6 r2 #2). They resume without error and
+    change nothing.
+  - an edit that also rewrites the hashes it changes. That holds for decisions too.
+
+  The gate for the history check (C6 r1 #1) and for the sim-tick count (r1 #2) is the critic's
+  probes in `tests/c6/critic.rs` (the `critic_c6` module of `c6_live`). They are the only tests that
+  fail without those fixes, so they must stay.
+
+**Story (AC1, AC8).**
+- S11. **Vengeance** fires when a capture of the player's absorbs the named nation, read from the
+  battle history. A vengeance beat that names no nation fires only for a nation that no
+  nation-named vengeance beat covers (`Story::holds`, `AnyCapitalTaken`): absorbing a nation that
+  has its own beat fires that beat, not the general one (critic C6 r1 #3). **Glory** fires when any General of the
+  player's first holds the rank. **Legacy** fires when the player wins, by domination or by
+  diplomacy. A **loss** beat fires when he loses.
+- S12. Beats fire after the round that triggers them, in file order, each once. The start beat fires
+  before round 1.
+- S13. The Ashen Reach's thread ("seek the truth of the Rupture") is not modelled. The story text
+  leaves it open, as the hook does.
+
+**Screens (AC4, AC5).**
+- S14. Keys, not the mouse, drive the map and diplomacy screens, so every choice is testable
+  headless.
+  - Map: `Tab` selects the next army, `Left`/`Right` choose a neighbouring city to march on, `M`
+    stages the march, `Up`/`Down` choose a city, `R` raises a General there, `Backspace` clears the
+    staged decisions, `D` opens diplomacy, and `Enter` ends the turn.
+  - Diplomacy: `Up`/`Down` choose a nation; `C` courts, `A` allies, `K` asks the ally to attack, `B`
+    betrays, and `I` marks the first nation of an incite and then incites the second; `Esc` returns.
+  - Battle: the skirmish's mouse controls, plus `T` to retreat.
+
+  Clicking cities is left for later.
+- S15. The map positions live in their own file, `map_layout.ron`. Adding them to `campaign.ron`
+  would move its fingerprint, and with it C4's golden.
+- S16. AI battles are resolved **in the frame**, so the window can pause while a round is played.
+  Moving them off the main thread is left for later.
+
+**Readings taken while building (AC5, AC6, AC8).**
+- S17. The round's diplomatic action is played **first** among the player's decisions, as the AI's
+  is, so what it spends is gone before a General is raised. A provisional reading, now in the AC5
+  text. The order is tested where it changes the round: a treasury that pays a court or a raise but
+  not both (`the_diplomatic_action_is_paid_before_a_staged_raise`; critic C6 r1 #4).
+- S18. A round refused after some of its battles were played drops those outcomes; ending the turn
+  again pauses at them again. Decisions are checked before the first pause, so this is an edge case.
+- S19. The client's sim ticks **only during a live battle** (its gate is closed elsewhere). Each
+  battle is fielded in the client's own app on fresh match resources (the shared start,
+  `headless::populate`), and the field is cleared when it ends.
+- S20. A live battle is not tick-identical to the same plan in the headless resolver: the app
+  reuses entity slots, and the player commands instead of an AI. The campaign stays deterministic
+  because the save holds the played outcome (S10), not the battle's inputs. Recording a live
+  battle's orders for a battle replay is left for later.
+- S21. Beats a round triggers are queued after its report: the Story screen shows them, Enter
+  advances, and the map (or the Over screen) follows the last one.
+- S22. A played outcome naming a battle the round does not fight is refused when the round plays
+  (`BadBattle`), not while the round is paused at an earlier battle. The client only ever records
+  the outcome of the battle it is paused at, so it cannot name another; a hand-built list of
+  outcomes is checked at the step that plays the round. Recorded, not changed (critic C6 r1, minor).
+- S23. `sim::replay::record_unplayed` latches with a `Local<bool>`, and the client's one app plays
+  many battles, so after the first battle that ends decided it no longer drains the queue at a
+  battle's end. Nothing reads it: the client keeps no command log, the gate is closed once a battle
+  is decided, so no held order is applied, and each battle is fielded on a fresh `CommandQueue`
+  (`headless::populate`). Left as M5 built it; a client that records live battles' orders (S20)
+  would have to reset that latch per battle (critic C6 r1, minor).
+
+**For the user on the Mac (not judged by the harness; no AC is ticked on these):**
+- whether the map layout reads: city spacing, road lines, army markers, holder colours (P3);
+- whether the panels' text fits and reads at the window size;
+- the story text: its tone and pacing, and whether it carries the hook;
+- whether the battle camera frames the campaign battlefield (the bases are 1500 apart);
+- how long the window pauses while a round's AI battles resolve;
+- whether the keys feel right;
+- whether the battle panel (top left) hides any of the field, and how retreating feels.

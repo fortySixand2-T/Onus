@@ -2,6 +2,8 @@
 //! ([`BattlePlan`]), what comes back ([`BattleOutcome`]), and who decides it
 //! (a [`Resolver`]).
 
+use serde::{Deserialize, Serialize};
+
 use crate::headless::{MatchSettings, Orientation};
 use crate::sim::battle::{AuraRank, BattleSetup, Roster};
 use crate::sim::content::Content;
@@ -11,7 +13,7 @@ use super::content::CampaignContent;
 use super::Campaign;
 
 /// The two sides of a campaign battle.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Side {
     /// The nation marching on the city.
     Attack,
@@ -96,7 +98,7 @@ impl BattlePlan {
 }
 
 /// How one side came out of a battle.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SideOutcome {
     /// Per plan General: did he survive?
     pub generals: Vec<bool>,
@@ -105,7 +107,7 @@ pub struct SideOutcome {
 }
 
 /// What a battle did.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BattleOutcome {
     /// `None`: undecided (a draw or the tick cap) — the defender holds.
     pub winner: Option<Side>,
@@ -156,6 +158,49 @@ pub trait Resolver {
 impl<F: FnMut(&BattlePlan) -> BattleOutcome> Resolver for F {
     fn resolve(&mut self, _: &Content, _: &CampaignContent, plan: &BattlePlan) -> BattleOutcome {
         self(plan)
+    }
+}
+
+/// A battle of the player's, played live (C6 AC2): its outcome, keyed by
+/// the round and the city (a `campaign.ron` city id) it was fought over.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlayedBattle {
+    pub round: u32,
+    pub city: String,
+    pub outcome: BattleOutcome,
+}
+
+/// A resolver that resolves each plan once (C6 AC2): a live round is
+/// replayed after each pause, and its AI-vs-AI battles come back from here
+/// instead of being fought again. The same plan gives the same outcome
+/// either way; this only saves the time.
+pub struct Memo<R> {
+    inner: R,
+    seen: Vec<(BattlePlan, BattleOutcome)>,
+}
+
+impl<R: Resolver> Memo<R> {
+    pub fn new(inner: R) -> Self {
+        Memo {
+            inner,
+            seen: Vec::new(),
+        }
+    }
+
+    /// Forget every outcome (a client clears it once a round is played).
+    pub fn clear(&mut self) {
+        self.seen.clear();
+    }
+}
+
+impl<R: Resolver> Resolver for Memo<R> {
+    fn resolve(&mut self, content: &Content, campaign: &CampaignContent, plan: &BattlePlan) -> BattleOutcome {
+        if let Some((_, o)) = self.seen.iter().find(|(p, _)| p == plan) {
+            return o.clone();
+        }
+        let o = self.inner.resolve(content, campaign, plan);
+        self.seen.push((plan.clone(), o.clone()));
+        o
     }
 }
 

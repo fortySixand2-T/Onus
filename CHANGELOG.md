@@ -1005,3 +1005,60 @@
 - [2026-11-09] Modified: FINDINGS.md — F-097 AC8 redefinition and 60-seed re-read; F-096 attributions corrected; disposition gaps
 - [2026-11-09] Modified: CAMPAIGN_PLAN.md — C5 AC8 pass rule matches the redefined verdict (F-097 D31, provisional)
 - [2026-11-10] Modified: CAMPAIGN_PLAN.md — tick C5 AC1–AC7 after critic PASS and green gate060; AC8 (diplomacy balance) stays open
+- [2026-11-10] Modified: CAMPAIGN_PLAN.md — sixth gate override; C6 started ahead of B5; C6 written as eight testable ACs
+- [2026-11-10] Modified: FINDINGS.md — F-098 (C6 starts ahead of B5) and F-099 (C6 provisional readings, human-look list)
+- [2026-11-10] Created: assets/data/story.ron — C6 AC1: the campaign's story beats (Rupture, glory, vengeance, legacy, the fall)
+- [2026-11-10] Created: src/campaign/story.rs — C6 AC1: story loader and validation, and the render-free rule that fires each beat once, in file order
+- [2026-11-10] Modified: src/campaign/mod.rs — C6 AC1: registered the story module
+- [2026-11-10] Created: tests/c6_story.rs — C6 AC1: the story loads, refuses bad beats, and fires vengeance, glory, legacy and the loss beat without touching the hash
+- [2026-11-10] Modified: src/campaign/mod.rs — C6 AC2: live battles (with_live_battles, step_round pausing at the player's battles, played outcomes checked and recorded; RoundStep, BadBattle, BattleToPlay)
+- [2026-11-10] Modified: src/campaign/battle.rs — C6 AC2: PlayedBattle and the Memo resolver
+- [2026-11-10] Created: tests/c6_live.rs — C6 AC2: pauses, resumes, refusals and hash equality of live rounds
+- [2026-11-10] Modified: src/campaign/save.rs — C6 AC3: a live save carries its played battles (left out when empty, so a C4 save is written byte for byte as before) and resumes through step_round
+- [2026-11-10] Modified: src/campaign/battle.rs — C6 AC3: battle outcomes and played battles serialize
+- [2026-11-10] Modified: tests/c6_live.rs — C6 AC3: live saves resume, a changed outcome diverges, a missing one refuses, a save without live battles is unchanged
+- [2026-11-10] Created: src/campaign_client.rs — C6 AC4: campaign client logic (Screen states, CampaignSession, map keys staging Decisions, end turn via step_round, map/story/over text, MapLayout loader, `campaign` CLI argument)
+- [2026-11-10] Created: src/campaign_view.rs — C6 AC4: campaign client view (text panel, map gizmos for roads/cities/armies/cursor, city labels)
+- [2026-11-10] Created: assets/data/map_layout.ron — C6 AC4: campaign city positions for the map screen
+- [2026-11-10] Modified: src/lib.rs — registered campaign_client and campaign_view modules
+- [2026-11-10] Modified: src/main.rs — `cargo run -- campaign [seed]` opens the campaign client; `cargo run` is the skirmish as before
+- [2026-11-10] Created: tests/c6/client.rs — C6 AC4 tests (layout validation, CLI, screens, key staging, end turn, refused round, report)
+- [2026-11-10] Modified: tests/c6_live.rs — hosts the client test module (no new test binary)
+- [2026-11-10] Modified: src/campaign_client.rs — C6 AC5: diplomacy screen (rival cursor, keys staging the round's one diplomatic action, played first), diplomacy_text; battle_played resumes a paused round
+- [2026-11-10] Modified: src/campaign_view.rs — C6 AC5: the panel shows the diplomacy screen
+- [2026-11-10] Created: tests/c6/diplomacy.rs — C6 AC5 tests (standings, ally, betrayals shown; keys stage court/ally/ask/betray/incite; the action plays first and its result shows)
+- [2026-11-10] Modified: tests/c6/client.rs — scripted battle stand-in (play_battle) and an attacker-wins resolver
+- [2026-11-10] Modified: tests/c6_live.rs — hosts the diplomacy test module
+- [2026-11-10] Modified: src/sim/battle.rs — `install` returns what each side put on the field (`SideEntities`)
+- [2026-11-10] Modified: src/headless.rs — match start split into `check`, `commanders` and `populate`, shared with the campaign client's live battles; spawn order unchanged
+- [2026-11-10] Modified: src/campaign/resolve.rs — outcome reading extracted as `read_outcome` over a public `Fielded`, for either faction on either side
+- [2026-11-10] Modified: src/campaign/mod.rs — re-exports `read_outcome` and `Fielded`
+- [2026-11-10] Modified: src/campaign_client.rs — live battles: fielded with the player on his faction, ticked to a decision or the cap, read, cleared, the round resumed; T retreats
+- [2026-11-10] Modified: src/campaign_view.rs — battle screen: skirmish input and presentation on the field, battle camera framing, battle panel
+- [2026-11-10] Created: tests/c6/battle.rs — AC6 tests: into and out of battles, retreat, both sides' orientation
+- [2026-11-10] Modified: tests/c6_live.rs — includes the battle module
+- [2026-11-10] Created: tests/c6/same.rs — C6 AC7 test: a client-driven campaign (keys, live battles decided, retreated and capped) hashes round for round as the headless feed, and its save resumes to the same hashes
+- [2026-11-10] Modified: tests/c6_live.rs — includes the same-campaign module
+- [2026-11-10] Modified: src/campaign_client.rs — C6 AC8: a played round's story beats wait on the Story screen, in order, before the map or the end
+- [2026-11-10] Created: tests/c6/beats.rs — C6 AC8 tests: each round's beats show in order before the map; the loss beat shows before Over
+- [2026-11-10] Modified: tests/c6/diplomacy.rs — the courting loop reads past a round's story beats
+- [2026-11-10] Modified: tests/c6_live.rs — includes the beats module
+- [2026-11-10] Modified: FINDINGS.md — F-099 readings S17–S21 taken while building AC5, AC6 and AC8; Mac list adds the battle panel
+- [2026-11-10] Created: tests/critic_c6.rs — C6 critic probes (tampered played outcomes, live-vs-headless battle differential, defending player, tick counting, S18, legacy beat)
+- [2026-11-10] Modified: src/campaign/mod.rs — a live campaign keeps the battle history's hash per round (`history_hash`); the state hash is unchanged
+- [2026-11-10] Modified: src/campaign/save.rs — a live save carries the history hashes and a load checks them, so any changed played outcome diverges at its round
+- [2026-11-10] Modified: FINDINGS.md — F-099 S10 states exactly what a live save catches
+- [2026-11-10] Created: tests/c6/critic.rs — the critic's C6 r1 probes, moved from tests/critic_c6.rs into the c6_live binary
+- [2026-11-10] Deleted: tests/critic_c6.rs — folded into c6_live (disk)
+- [2026-11-10] Modified: tests/c6_live.rs — includes the critic probes
+- [2026-11-10] Modified: src/campaign_client.rs — a live battle counts the sim's own ticks (no phantom tick in the frame it is fielded); a tick cap of 0 ends the battle at once
+- [2026-11-10] Modified: tests/c6/battle.rs — a tick cap of 0 ends the battle at once with no tick played
+- [2026-11-10] Modified: FINDINGS.md — F-099 S11 states when a vengeance beat that names no nation fires
+- [2026-11-11] Modified: tests/c6/diplomacy.rs — the diplomatic action is paid before a staged raise (a treasury that pays one but not both)
+- [2026-11-11] Modified: CAMPAIGN_PLAN.md — C6 AC5 states the diplomatic action's order as a provisional reading
+- [2026-11-11] Modified: FINDINGS.md — F-099 S17 names its test and marks it provisional
+- [2026-11-11] Modified: FINDINGS.md — F-099 S22-S23 record the critic's two minor observations (an unfought battle's outcome refused at play time; record_unplayed's latch across battles)
+- [2026-11-11] Modified: tests/c6/critic.rs — C6 critic r2 probes (single-field tamper sweep of played outcomes, history hashes in saves, Update vs FixedUpdate capped battle, tick cap 0 on FixedUpdate)
+- [2026-11-11] Modified: tests/c6/battle.rs — the tick-cap-0 test also runs the sim on FixedUpdate as shipped, gating field_battle's cap-0 end
+- [2026-11-11] Modified: FINDINGS.md — F-099 S10 limits the claim to changes that affect the campaign, names the discarded-HP case, and records that the critic's probes are the gate for r1 #1 and #2
+- [2026-11-11] Modified: CAMPAIGN_PLAN.md — tick C6 AC1–AC8 after critic PASS (round 3); human-look items stay listed in F-099 for the Mac
