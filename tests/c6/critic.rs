@@ -484,3 +484,224 @@ fn critic_ac8_the_legacy_beat_shows_before_the_over_screen() {
     assert_eq!(shown.last().map(String::as_str), Some("legacy"), "legacy is the last beat shown: {shown:?}");
     assert!(!shown.contains(&"fallen".to_string()));
 }
+
+// ---- round 2: the history hash, the sim's tick count -------------------------
+
+/// A live fixture whose played outcomes vary in every field: the winner
+/// cycles (attack, defend, undecided), units walk off hurt, the second
+/// General (if any) falls, buildings are damaged, ticks differ per round.
+fn varied_fixture() -> Campaign {
+    let mut c = live_campaign(11, None, None);
+    let army = house_army(&c);
+    let target = c.city_index("ironspire").unwrap();
+    let answer = |p: &BattlePlan| {
+        let w = match p.round % 3 {
+            0 => Some(Side::Attack),
+            1 => Some(Side::Defend),
+            _ => None,
+        };
+        let mut o = BattleOutcome::unchanged(p, w);
+        for hp in o.attack.units.iter_mut().chain(o.defend.units.iter_mut()) {
+            *hp = (*hp).div_ceil(2);
+        }
+        for hp in o.buildings.iter_mut() {
+            *hp = (*hp).div_ceil(2);
+        }
+        if o.attack.generals.len() > 1 {
+            o.attack.generals[1] = false;
+        }
+        o.ticks = 300 + p.round;
+        o
+    };
+    for _ in 0..14 {
+        if c.is_over() {
+            break;
+        }
+        let ds = toward(&c, army, target);
+        finish_round(&mut c, &ds, &answer);
+        assert_eq!(c.history_hashes().len(), c.round_hashes().len(), "a history hash per round, pauses or not");
+    }
+    assert!(c.played().iter().flatten().count() >= 1, "the fixture played a battle");
+    c
+}
+
+/// Everything about a campaign but its input (the played outcomes).
+fn observable(c: &Campaign) -> String {
+    format!(
+        "{:?}|{:?}|{:?}|{:?}|{:?}|{}|{:?}",
+        c.nations(),
+        c.cities(),
+        c.armies(),
+        c.history(),
+        c.outcome(),
+        c.round(),
+        c.round_hashes()
+    )
+}
+
+/// AC3: every single-field change to a played outcome is refused, or it
+/// changes nothing a player could ever see (now, or over the next rounds).
+/// A change that resumes and moves the campaign is a silent divergence.
+#[test]
+fn critic_r2_every_single_field_tamper_of_a_played_outcome_is_refused_or_changes_nothing() {
+    let c = varied_fixture();
+    let log = c.log();
+    let mut tampers: Vec<(String, onus::campaign::CampaignLog)> = Vec::new();
+    for (r, round) in log.played.iter().enumerate() {
+        for (b, pb) in round.iter().enumerate() {
+            let mut push = |what: String, f: &dyn Fn(&mut BattleOutcome)| {
+                let mut l = log.clone();
+                f(&mut l.played[r][b].outcome);
+                if l.played[r][b].outcome != pb.outcome {
+                    tampers.push((format!("round {} battle {b}: {what}", r + 1), l));
+                }
+            };
+            for w in [None, Some(Side::Attack), Some(Side::Defend)] {
+                push(format!("winner {w:?}"), &|o| o.winner = w);
+            }
+            push("ticks+1".into(), &|o| o.ticks += 1);
+            push("ticks-1".into(), &|o| o.ticks = o.ticks.saturating_sub(1));
+            for i in 0..pb.outcome.attack.units.len() {
+                push(format!("attack unit {i} hp-1"), &|o| o.attack.units[i] = o.attack.units[i].saturating_sub(1));
+                push(format!("attack unit {i} dead"), &|o| o.attack.units[i] = 0);
+            }
+            for i in 0..pb.outcome.defend.units.len() {
+                push(format!("defend unit {i} hp-1"), &|o| o.defend.units[i] = o.defend.units[i].saturating_sub(1));
+                push(format!("defend unit {i} dead"), &|o| o.defend.units[i] = 0);
+            }
+            for i in 0..pb.outcome.attack.generals.len() {
+                push(format!("attack general {i} flipped"), &|o| o.attack.generals[i] = !o.attack.generals[i]);
+            }
+            for i in 0..pb.outcome.defend.generals.len() {
+                push(format!("defend general {i} flipped"), &|o| o.defend.generals[i] = !o.defend.generals[i]);
+            }
+            for i in 0..pb.outcome.buildings.len() {
+                push(format!("building {i} hp-1"), &|o| o.buildings[i] = o.buildings[i].saturating_sub(1));
+            }
+        }
+    }
+    assert!(!tampers.is_empty());
+    let want = observable(&c);
+    let (mut refused, mut inert) = (0, Vec::new());
+    let mut silent = Vec::new();
+    for (what, l) in &tampers {
+        // Through the save text, as a player's edited file would come in.
+        let text = l.to_ron().unwrap();
+        let back = onus::campaign::CampaignLog::from_ron(&text);
+        let resumed = back.and_then(|b| Campaign::resume(content(), ccontent(None, None), &b, &mut hold));
+        match resumed {
+            Err(_) => refused += 1,
+            Ok(mut r) => {
+                let mut o = c.clone();
+                let same_now = observable(&r) == want;
+                // Play on: three more rounds, the same orders and answers.
+                for _ in 0..3 {
+                    if o.is_over() || r.is_over() {
+                        break;
+                    }
+                    finish_round(&mut o, &[], &hold);
+                    finish_round(&mut r, &[], &hold);
+                }
+                if same_now && observable(&r) == observable(&o) {
+                    inert.push(what.clone());
+                } else {
+                    silent.push(what.clone());
+                }
+            }
+        }
+    }
+    eprintln!("tampers {}, refused {refused}, inert {}: {inert:?}", tampers.len(), inert.len());
+    assert!(silent.is_empty(), "changed outcomes that resumed silently and moved the campaign: {silent:?}");
+}
+
+/// Older saves: a non-live save carries no history hashes and resumes; a
+/// live save without them (written before the hash existed) is refused
+/// loudly, never resumed unchecked; history hashes on a non-live save, or
+/// one hash too few or too many, are refused.
+#[test]
+fn critic_r2_history_hashes_in_saves_are_checked_both_ways() {
+    // Non-live.
+    let mut plain = Campaign::new(content(), ccontent(None, None), 11, Some("house")).unwrap();
+    for _ in 0..4 {
+        plain.play_round(&[], &mut hold).unwrap();
+    }
+    let pl = plain.log();
+    assert!(pl.history.is_empty());
+    let text = pl.to_ron().unwrap();
+    assert!(!text.contains("history"), "a non-live save is written as before:\n{text}");
+    let back = onus::campaign::CampaignLog::from_ron(&text).unwrap();
+    let r = Campaign::resume(content(), ccontent(None, None), &back, &mut hold).unwrap();
+    assert_eq!(r.round_hashes(), plain.round_hashes());
+    let mut bad = pl.clone();
+    bad.history = vec![0; bad.rounds.len()];
+    assert!(Campaign::resume(content(), ccontent(None, None), &bad, &mut hold).is_err());
+    // Live.
+    let c = varied_fixture();
+    let l = c.log();
+    assert_eq!(l.history.len(), l.rounds.len());
+    let mut none = l.clone();
+    none.history.clear();
+    assert!(Campaign::resume(content(), ccontent(None, None), &none, &mut hold).is_err(), "a live save without history hashes");
+    let mut short = l.clone();
+    short.history.pop();
+    assert!(Campaign::resume(content(), ccontent(None, None), &short, &mut hold).is_err());
+    let mut long = l.clone();
+    long.history.push(1);
+    assert!(Campaign::resume(content(), ccontent(None, None), &long, &mut hold).is_err());
+    // A changed history hash alone diverges at its round.
+    let k = l.played.iter().position(|b| !b.is_empty()).unwrap();
+    let mut forged = l.clone();
+    forged.history[k] ^= 1;
+    let e = Campaign::resume(content(), ccontent(None, None), &forged, &mut hold).unwrap_err();
+    assert!(e.contains(&format!("round {}", k + 1)), "{e}");
+    let ok = Campaign::resume(content(), ccontent(None, None), &l, &mut hold).unwrap();
+    assert_eq!(ok.history_hashes(), c.history_hashes());
+    assert_eq!(ok.history(), c.history());
+}
+
+/// AC6: the same battle, the player idle, read the same in the arrangement
+/// the tests use (sim on `Update`) and the one shipped (`FixedUpdate`), at a
+/// short cap: the tick count is the sim's either way, and equals the cap.
+#[test]
+fn critic_r2_a_capped_battle_reads_the_same_on_update_and_on_fixed_update() {
+    const CAP: u32 = 40;
+    let (c, ds, plan) = first_attack(CAP);
+    let mut outs = Vec::new();
+    for fixed in [false, true] {
+        let mut app = client_at_on(&c, &ds, &plan, fixed);
+        assert_eq!(app.world().resource::<LiveBattle>().ticks, 0);
+        fight_out_on(&mut app, CAP + 20, fixed);
+        outs.push(played_for(&app, &c, &plan));
+    }
+    assert_eq!(outs[0], outs[1], "Update vs FixedUpdate");
+    let o = &outs[0];
+    assert!(o.ticks == CAP || (o.winner.is_some() && o.ticks < CAP), "{o:?}");
+}
+
+/// AC6 (critic r1 #2, the cap of 0), in the shipped arrangement (sim on
+/// `FixedUpdate`): the battle ends at once with no tick played, and the
+/// round is played on it, not refused for ticks past the cap.
+#[test]
+fn critic_r2_a_tick_cap_of_0_ends_the_battle_unplayed_on_fixed_update() {
+    let (c, ds, plan) = first_attack(0);
+    let mut s = session(c.clone(), Box::new(hold));
+    s.staged = ds.clone();
+    let mut app = app_on(s, true);
+    skip_story(&mut app);
+    press(&mut app, KeyCode::Enter);
+    for _ in 0..20 {
+        if sess(&app).campaign.round() > c.round() {
+            break;
+        }
+        app.update();
+    }
+    assert_eq!(sim_tick(&app), 0, "the sim never ticked");
+    assert_eq!(
+        sess(&app).campaign.round(),
+        c.round() + 1,
+        "the round was played on the unplayed battle: {:?}",
+        sess(&app).message
+    );
+    let o = played_for(&app, &c, &plan);
+    assert_eq!((o.ticks, o.winner), (0, None));
+}
