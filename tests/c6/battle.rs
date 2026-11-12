@@ -178,7 +178,28 @@ fn the_battle_ends_at_the_cap_and_the_round_resumes_with_the_field_as_it_stands(
 /// rather than running the sim without end.
 #[test]
 fn a_tick_cap_of_0_ends_the_battle_at_once_with_no_tick_played() {
-    let mut app = app(session_capped(3, Some(0)));
+    cap_0_ends_at_once(app(session_capped(3, Some(0))));
+}
+
+/// The same on the sim schedule as shipped (`FixedUpdate`, one fixed step a
+/// frame), where the tick counter alone would let one tick play (critic C6
+/// r2 #1).
+#[test]
+fn a_tick_cap_of_0_ends_the_battle_at_once_on_the_shipped_schedule() {
+    let s = session_capped(3, Some(0));
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins)
+        .insert_resource(Time::<Fixed>::from_hz(60.0))
+        .insert_resource(bevy::time::TimeUpdateStrategy::FixedTimesteps(1))
+        .insert_resource(s.campaign.content().clone())
+        .init_resource::<ButtonInput<KeyCode>>();
+    onus::campaign_client::add_campaign_client(&mut app, FixedUpdate);
+    onus::campaign_client::start(&mut app, s);
+    app.update();
+    cap_0_ends_at_once(app);
+}
+
+fn cap_0_ends_at_once(mut app: App) {
     press(&mut app, KeyCode::Enter);
     // Holding round after round until a battle of the player's is played:
     // each one ends in the frame it is fielded, so the client never rests

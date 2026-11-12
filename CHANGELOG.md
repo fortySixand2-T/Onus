@@ -1059,3 +1059,4 @@
 - [2026-11-11] Modified: FINDINGS.md — F-099 S17 names its test and marks it provisional
 - [2026-11-11] Modified: FINDINGS.md — F-099 S22-S23 record the critic's two minor observations (an unfought battle's outcome refused at play time; record_unplayed's latch across battles)
 - [2026-11-11] Modified: tests/c6/critic.rs — C6 critic r2 probes (single-field tamper sweep of played outcomes, history hashes in saves, Update vs FixedUpdate capped battle, tick cap 0 on FixedUpdate)
+- [2026-11-11] Modified: tests/c6/battle.rs — the tick-cap-0 test also runs the sim on FixedUpdate as shipped, gating field_battle's cap-0 end
