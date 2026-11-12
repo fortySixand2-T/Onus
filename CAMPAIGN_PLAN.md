@@ -405,6 +405,9 @@ on a look alone.
 - [ ] **Diplomacy screen:** it shows each rival's standing with the player, the player's ally and
   each nation's betrayals. Keys stage the round's one diplomatic action (court, ally, ask, betray or
   incite) as a `Decision`.
+  - The round plays that action **before** the player's staged orders, as the AI's is played
+    before its own, so what it spends is gone before a General is raised (a provisional reading,
+    F-099 S17).
 - [ ] **Into and out of battles:** when the round pauses at a battle of the player's, the client
   enters the Battle screen.
   - The battle is the match `battle_settings` builds from the plan, with the player's side on the

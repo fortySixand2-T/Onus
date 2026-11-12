@@ -1054,3 +1054,6 @@
 - [2026-11-10] Modified: src/campaign_client.rs — a live battle counts the sim's own ticks (no phantom tick in the frame it is fielded); a tick cap of 0 ends the battle at once
 - [2026-11-10] Modified: tests/c6/battle.rs — a tick cap of 0 ends the battle at once with no tick played
 - [2026-11-10] Modified: FINDINGS.md — F-099 S11 states when a vengeance beat that names no nation fires
+- [2026-11-11] Modified: tests/c6/diplomacy.rs — the diplomatic action is paid before a staged raise (a treasury that pays one but not both)
+- [2026-11-11] Modified: CAMPAIGN_PLAN.md — C6 AC5 states the diplomatic action's order as a provisional reading
+- [2026-11-11] Modified: FINDINGS.md — F-099 S17 names its test and marks it provisional

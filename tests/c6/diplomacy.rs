@@ -155,3 +155,59 @@ fn the_action_is_played_with_the_round_first_and_its_result_shows() {
     assert!(t.contains(&format!("{name}: Allied")), "{t}");
     assert!(t.contains("You allied with"), "the round's record shows:\n{t}");
 }
+
+/// Critic C6 r1 #4: the round plays the diplomatic action **before** the
+/// staged orders (a provisional reading, as the AI's: what it spends is
+/// gone before a General is raised). Held round by round until the
+/// player's treasury pays a court or a raise but not both, with a rival to
+/// court: then the two orders differ (court first refuses the raise if the
+/// court is accepted, else plays; raise first always refuses the court),
+/// and the client's round is the court-first one.
+#[test]
+fn the_diplomatic_action_is_paid_before_a_staged_raise() {
+    let mut app = app(session(3));
+    let raise = sess(&app).campaign.campaign().rules.raise_general_cost;
+    let court = sess(&app).campaign.campaign().diplomacy().unwrap().rules().court_cost;
+    for _ in 0..80 {
+        loop {
+            match screen(&app) {
+                Screen::Story => press(&mut app, KeyCode::Enter),
+                Screen::Battle => play_battle(&mut app, hold),
+                _ => break,
+            }
+        }
+        assert_eq!(screen(&app), Screen::Map, "the campaign ended before the treasury fit");
+        let c = sess(&app).campaign.clone();
+        let p = c.player().unwrap();
+        let t = c.nations()[p].treasury;
+        let home = c.cities().iter().position(|x| x.owner == p).expect("the player holds a city");
+        let at = c.campaign().cities[home].id.clone();
+        let rival = (0..c.nations().len()).find(|&n| {
+            n != p && c.nations()[n].alive && c.standing(p, n) < Some(onus::campaign::diplomacy::Standing::Tied)
+        });
+        let raising = Decision::Raise { city: at };
+        let mut s = app.world_mut().resource_mut::<onus::campaign_client::CampaignSession>();
+        match rival {
+            Some(r) if t >= raise.max(court) && t < raise + court => {
+                let courting = Decision::Court { nation: c.content().nations[r].id.clone() };
+                let first = c.clone().step_round(&[courting.clone(), raising.clone()], &[], &mut hold);
+                let last = c.clone().step_round(&[raising.clone(), courting.clone()], &[], &mut hold);
+                assert!(
+                    matches!(&last, Err(onus::campaign::RoundError::BadDecision { decision, .. }) if *decision == courting),
+                    "raise first leaves the court unpaid: {last:?}"
+                );
+                s.staged = vec![raising];
+                s.diplomatic = Some(courting);
+                press(&mut app, KeyCode::Enter);
+                let want = first.err().map(|e| format!("Round refused: {e}"));
+                assert_eq!(sess(&app).message, want, "the client played the court before the raise");
+                return;
+            }
+            // Spend down toward the window.
+            _ if t >= raise + court => s.staged = vec![raising],
+            _ => {}
+        }
+        press(&mut app, KeyCode::Enter);
+    }
+    panic!("the treasury never fit a court or a raise but not both");
+}

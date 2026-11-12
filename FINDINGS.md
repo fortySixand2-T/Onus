@@ -8161,7 +8161,9 @@ may revise it.
 
 **Readings taken while building (AC5, AC6, AC8).**
 - S17. The round's diplomatic action is played **first** among the player's decisions, as the AI's
-  is, so what it spends is gone before a General is raised.
+  is, so what it spends is gone before a General is raised. A provisional reading, now in the AC5
+  text. The order is tested where it changes the round: a treasury that pays a court or a raise but
+  not both (`the_diplomatic_action_is_paid_before_a_staged_raise`; critic C6 r1 #4).
 - S18. A round refused after some of its battles were played drops those outcomes; ending the turn
   again pauses at them again. Decisions are checked before the first pause, so this is an edge case.
 - S19. The client's sim ticks **only during a live battle** (its gate is closed elsewhere). Each
