@@ -8127,9 +8127,17 @@ may revise it.
   (`Campaign::history_hash`: every record's round, city, sides, winner, capture, absorption and
   ticks). The state hash leaves the history out, so C4's and C5's goldens stay as they were; the
   history hash is what catches an outcome changed in a way only the history shows (its ticks, or a
-  won hold changed to an undecided one). So **any** change to a played outcome, alone, diverges at
-  its round on load (critic C6 r1 #1). Not caught: an edit that also rewrites the hashes it
-  changes; that holds for decisions too.
+  won hold changed to an undecided one). So any change to a played outcome **that affects the
+  campaign**, alone, diverges at its round on load (critic C6 r1 #1). Not caught:
+  - a change to a value the campaign discards, which reaches neither hash. Example: a defender
+    unit's HP in a battle the attacker won; the campaign takes no HP from a beaten defender. The
+    critic's sweep found 2 such changes out of 147 (C6 r2 #2). They resume without error and
+    change nothing.
+  - an edit that also rewrites the hashes it changes. That holds for decisions too.
+
+  The gate for the history check (C6 r1 #1) and for the sim-tick count (r1 #2) is the critic's
+  probes in `tests/c6/critic.rs` (the `critic_c6` module of `c6_live`). They are the only tests that
+  fail without those fixes, so they must stay.
 
 **Story (AC1, AC8).**
 - S11. **Vengeance** fires when a capture of the player's absorbs the named nation, read from the
